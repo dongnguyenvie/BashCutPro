@@ -3,6 +3,14 @@
 Newest first. Each entry: what was decided, why, and what it rules out. Add an entry when the owner
 decides something; don't change an old one, add a new one that supersedes it.
 
+## 2026-10-20: Upstream code is only added to, never modified
+
+- **Decided:** we never edit, delete or reorder upstream lines, signatures, structs, defaults, commands, tests or
+  docs. Our behaviour comes from new files, new `bashcut.*` commands that wrap originals, extension `impl`s / traits,
+  and one-line **inserted** hooks. Rules, extension points and upstream hot spots: [extending-upstream.md](extending-upstream.md).
+- **Why:** owner: upstream's original is solid; extend it instead of changing it, so syncs stay cheap.
+- **Exceptions:** the manual-only workflows (owner decision) and today's branding edits, which #39 turns into additions.
+
 ## 2026-10-20: In-app UI design accepted; side panel by default
 
 - **Decided:** build the in-app UI as in [in-app-ui.md](in-app-ui.md): a right rail and side panel reserved by one

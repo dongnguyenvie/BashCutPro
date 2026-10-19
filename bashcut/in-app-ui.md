@@ -97,11 +97,13 @@ reachable over the control channel and MCP bridge mode.
 
 ## 3. The hooks: every upstream line we add
 
+Every hook is an **inserted** line; no upstream line is edited (rules: [extending-upstream.md](extending-upstream.md)).
+
 | # | File (upstream) | Line(s) | Churn at that spot since 2026-09-01 |
 |---|---|---|---|
 | H1 | `crates/engine/Cargo.toml` | `bashcut-analysis = { path = "../bashcut-analysis" }` | dependency list, low |
 | H2 | `crates/engine/src/lib.rs` | `pub mod bashcut; // BashCutPro` | mod list, low |
-| H3 | `crates/engine/src/commands.rs` | in `command_specs()`: `SPECS.get_or_init(\|\| { let mut v = build(); v.extend(crate::bashcut::commands()); v })` | 1 change (the tail of `build()` changed 3×, so not there) |
+| H3 | `crates/engine/src/commands.rs` (`build()`) | inserted right after `v.extend(crate::captions::commands());` (the old head of the list): `v.extend(crate::bashcut::commands());` | 1 change at that neighbour (the tail changed 3×: upstream appends there) |
 | H4 | `crates/ui-egui/Cargo.toml` | `bashcut-plugin-host`, `bashcut-agent` path deps | low |
 | H5 | `crates/ui-egui/src/lib.rs` | `pub mod bashcut_ui;` next to `pub mod bashcut_brand;` | already ours |
 | H6 | `crates/ui-egui/src/lib.rs` (`ui()`) | right after `let body = …`: `let body = bashcut_ui::layout(self, ui, body);` | 2 changes |
@@ -109,7 +111,7 @@ reachable over the control channel and MCP bridge mode.
 | H8 | `crates/ui-egui/src/menus.rs` (`external_commands`) | `v.extend(crate::bashcut_ui::commands());` before `v` | 3 changes |
 | H9 | `crates/ui-egui/src/menus.rs` (`menu_items_for`) | `out.extend(crate::bashcut_ui::menu_items(session));` before `out` | 2 changes |
 | H10 | `crates/ui-egui/src/i18n/mod.rs` | existing `bashcut_brand::text` hook gains the language: `bashcut_brand::text(self, text)` | already ours |
-| H11 | `xtask/src/main.rs` | `mod bashcut;` and in `layer_of`: `.or_else(\|\| bashcut::layer_of(name))` | 2 changes |
+| H11 | `xtask/src/main.rs` | `mod bashcut;` and, as the first line of `layer_of`: `if let Some(l) = bashcut::layer_of(name) { return Some(l); }` | 2 changes |
 
 About **15 lines in 8 upstream files**, all marked `// BashCutPro`, all listed in `UPSTREAM.md`.
 `Cargo.lock` conflicts are resolved by taking upstream's file and running `cargo check` (it re-adds our crates).
