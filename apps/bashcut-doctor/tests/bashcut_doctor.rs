@@ -27,6 +27,7 @@ impl Fake {
         f.program("filmcraft-cli --version", 0, "filmcraft-cli 0.9.0\n");
         let ids: Vec<String> = REQUIRED_COMMANDS.iter().map(|id| format!("{{\"id\":\"{id}\"}}")).collect();
         f.program("filmcraft-cli commands bashcut --json", 0, &format!("[{}]", ids.join(",")));
+        f.program("filmcraft-cli exec transcript.models", 0, &speech(true, true));
         f.program("python3 --version", 0, "Python 3.12.1\n");
         f.program("claude --version", 0, "2.1.0 (Claude Code)\n");
         f.file("kit/.claude-plugin/plugin.json", br#"{"name":"bcp","version":"0.3.0"}"#);
@@ -92,6 +93,13 @@ fn norm(p: &Path) -> PathBuf {
     p.components().collect()
 }
 
+/// `transcript.models` as the CLI answers it.
+fn speech(available: bool, installed: bool) -> String {
+    format!(
+        r#"{{"available":{available},"default":"whisper-base","models":[{{"id":"whisper-tiny","installed":true}},{{"id":"whisper-base","installed":{installed}}}]}}"#
+    )
+}
+
 fn level(r: &Report, id: &str) -> Level {
     r.findings.iter().find(|f| f.id == id).map(|f| f.level).unwrap_or_else(|| panic!("no finding `{id}`: {}", r.to_text()))
 }
@@ -100,7 +108,7 @@ fn level(r: &Report, id: &str) -> Level {
 fn a_healthy_machine_passes() {
     let r = run_checks(&Fake::healthy(), &Options::default());
     assert_eq!(r.exit_code(), 0, "{}", r.to_text());
-    for id in ["cli", "cli.commands", "kit", "plugin.bashcut.translate-captions", "model.m1", "agent.claude", "disk", "ram", "gpu"] {
+    for id in ["cli", "cli.commands", "speech", "kit", "plugin.bashcut.translate-captions", "model.m1", "agent.claude", "disk", "ram", "gpu"] {
         assert_eq!(level(&r, id), Level::Ok, "{id}: {}", r.to_text());
     }
     assert_eq!(level(&r, "agent.codex"), Level::Info, "one agent CLI is enough");
@@ -116,6 +124,21 @@ fn missing_cli_fails_with_a_fix() {
     assert!(r.findings.iter().any(|x| x.id == "cli" && x.fix.as_deref().is_some_and(|fix| fix.contains("bcp:setup"))));
     assert_eq!(r.exit_code(), 1);
     assert_eq!(r.to_json()["ok"], false);
+}
+
+#[test]
+fn speech_to_text_missing_or_not_downloaded_warns() {
+    let mut f = Fake::healthy();
+    f.program("filmcraft-cli exec transcript.models", 0, &speech(false, false));
+    let r = run_checks(&f, &Options::default());
+    assert_eq!(level(&r, "speech"), Level::Warn);
+    assert!(r.findings.iter().any(|x| x.id == "speech" && x.fix.as_deref().is_some_and(|fix| fix.contains("--features whisper"))));
+    f.program("filmcraft-cli exec transcript.models", 0, &speech(true, false));
+    let r = run_checks(&f, &Options::default());
+    assert_eq!(level(&r, "speech"), Level::Warn);
+    assert!(r.findings.iter().any(|x| x.id == "speech" && x.fix.as_deref().is_some_and(|fix| fix.contains("transcript.downloadModel"))));
+    f.programs.remove("filmcraft-cli exec transcript.models");
+    assert_eq!(level(&run_checks(&f, &Options::default()), "speech"), Level::Info, "an old CLI is not blamed");
 }
 
 #[test]

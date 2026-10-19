@@ -205,6 +205,40 @@ fn check_cli(env: &dyn Env, opts: &Options, r: &mut Report) {
             Finding::new("cli.commands", Level::Fail, format!("this build lacks {}", missing.join(", "))).fix("rebuild filmcraft-cli from BashCutPro main"),
         );
     }
+    check_speech(env, &cli, r);
+}
+
+/// Speech-to-text: the batch presets and the kit's caption skills start with a transcription, which
+/// fails on a build without the `whisper` feature or before the default model is downloaded.
+fn check_speech(env: &dyn Env, cli: &str, r: &mut Report) {
+    let models = env.run(cli, &["exec", "transcript.models"]).filter(Output::ok).and_then(|o| serde_json::from_str::<Value>(&o.stdout).ok());
+    let Some(models) = models else {
+        r.findings.push(Finding::new("speech", Level::Info, "`transcript.models` gave no answer; speech-to-text not checked"));
+        return;
+    };
+    if models.get("available").and_then(Value::as_bool) != Some(true) {
+        r.findings.push(
+            Finding::new("speech", Level::Warn, "this filmcraft-cli has no speech-to-text: transcribing (captions, Vietsub and shorts presets) fails")
+                .fix("use a build with speech-to-text (cargo build -p filmcraft-cli --features whisper)"),
+        );
+        return;
+    }
+    let default = models.get("default").and_then(Value::as_str).unwrap_or("whisper-base");
+    let installed = models
+        .get("models")
+        .and_then(Value::as_array)
+        .and_then(|list| list.iter().find(|m| m.get("id").and_then(Value::as_str) == Some(default)))
+        .and_then(|m| m.get("installed"))
+        .and_then(Value::as_bool)
+        .unwrap_or(false);
+    if installed {
+        r.findings.push(Finding::new("speech", Level::Ok, format!("speech model {default} installed")));
+    } else {
+        r.findings.push(
+            Finding::new("speech", Level::Warn, format!("the speech model {default} is not downloaded: transcribing fails until it is"))
+                .fix(format!("{cli} exec transcript.downloadModel (or Text panel > Transcribe in the app)")),
+        );
+    }
 }
 
 fn read_json(env: &dyn Env, path: &Path) -> Option<Value> {
