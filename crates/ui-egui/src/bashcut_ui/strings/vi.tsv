@@ -51,3 +51,18 @@ Needs the agent	Cần trợ lý
 Cancelled	Đã hủy
 Timed out	Hết thời gian
 Crashed	Bị lỗi
+# Command palette (BC-52)
+Command Palette	Bảng lệnh
+Search commands, actions, looks, profiles, recipes…	Tìm lệnh, thao tác, màu phim, hồ sơ xuất, công thức…
+Nothing matches.	Không có kết quả.
+↑↓ choose · Enter run · Tab parameters · Esc close	↑↓ chọn · Enter chạy · Tab tham số · Esc đóng
+Cmd/Ctrl+Enter run · Esc back	Cmd/Ctrl+Enter chạy · Esc quay lại
+Back	Quay lại
+Parameters must be a JSON object.	Tham số phải là một đối tượng JSON.
+{label} is not available now	{label} hiện không dùng được
+Command	Lệnh
+Plugin	Plugin
+Look	Màu phim
+Profile	Hồ sơ xuất
+Template	Mẫu
+Recipe	Công thức
