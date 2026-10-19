@@ -7,7 +7,7 @@
 //! else the caption's duration is shared by character count. Everything is one undo step; no render hook.
 
 use filmcraft_project::ClipId;
-use filmcraft_time::Tick;
+use filmcraft_time::{FrameRate, Tick};
 use serde_json::{Value, json};
 
 use crate::commands::{CommandSpec, bad, f64_p, has_seq, str_p};
@@ -181,7 +181,7 @@ fn word_style(s: &mut Session, p: &Value) -> Result<Value> {
     if ids.len() > MAX_CAPTIONS {
         return Err(bad(CMD, format!("at most {MAX_CAPTIONS} captions at once")));
     }
-    let (jobs, height) = {
+    let (jobs, height, rate) = {
         let seq = s.active_sequence().ok_or(EngineError::NoSequence)?;
         let mut jobs = Vec::new();
         for tr in &seq.caption_tracks {
@@ -189,7 +189,7 @@ fn word_style(s: &mut Session, p: &Value) -> Result<Value> {
                 jobs.push(Job { id: c.id, start: c.start, duration: c.duration, text: c.text.clone(), size: f64::from(tr.style.size), color: tr.style.color });
             }
         }
-        (jobs, f64::from(seq.settings.height.max(1)))
+        (jobs, f64::from(seq.settings.height.max(1)), seq.frame_rate())
     };
     if jobs.is_empty() {
         return Err(bad(CMD, "no such captions"));
@@ -207,13 +207,13 @@ fn word_style(s: &mut Session, p: &Value) -> Result<Value> {
     };
 
     let before = s.history.undo.len();
-    let result = apply(s, &style, &jobs, &transcript, height);
+    let result = apply(s, &style, &jobs, &transcript, height, rate);
     let steps = s.history.undo.len().saturating_sub(before);
     fold_history(s, steps);
     result
 }
 
-fn apply(s: &mut Session, style: &WordStyle, jobs: &[Job], transcript: &[(Tick, Tick)], height: f64) -> Result<Value> {
+fn apply(s: &mut Session, style: &WordStyle, jobs: &[Job], transcript: &[(Tick, Tick)], height: f64, rate: FrameRate) -> Result<Value> {
     let mut report = Vec::with_capacity(jobs.len());
     for job in jobs {
         let words = word_ranges(&plain_text(&job.text));
@@ -222,7 +222,8 @@ fn apply(s: &mut Session, style: &WordStyle, jobs: &[Job], transcript: &[(Tick, 
             continue;
         }
         // 1. split at each word's start; a refused split (too short) leaves that word with the previous segment
-        let starts = word_starts(job.start, job.duration, &words, transcript);
+        // on frame boundaries (nearest), else the graphics round out to whole frames and two words show at once
+        let starts: Vec<Tick> = word_starts(job.start, job.duration, &words, transcript).into_iter().map(|t| rate.snap_nearest(t)).collect();
         let mut segments: Vec<(u64, usize)> = vec![(job.id.0, 0)];
         let mut current = job.id.0;
         for (k, t) in starts.iter().enumerate().skip(1) {

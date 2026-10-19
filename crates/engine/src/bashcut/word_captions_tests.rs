@@ -14,19 +14,20 @@ fn session_with_caption(text: &str) -> Session {
     s
 }
 
-/// Strongly red pixels in the left, middle and right third of the frame.
-fn red_by_third(w: usize, h: usize, rgba: &[u8]) -> [usize; 3] {
-    let mut n = [0usize; 3];
+/// Mean x of the strongly red pixels and how many there are.
+fn red_x(w: usize, h: usize, rgba: &[u8]) -> (f64, usize) {
+    let (mut sum, mut n) = (0usize, 0usize);
     for y in 0..h {
         for x in 0..w {
             let i = (y * w + x) * 4;
             let (r, g, b) = (rgba[i], rgba[i + 1], rgba[i + 2]);
             if r > 180 && g < 80 && b < 80 {
-                n[(x * 3 / w).min(2)] += 1;
+                sum += x;
+                n += 1;
             }
         }
     }
-    n
+    (if n == 0 { 0.0 } else { sum as f64 / n as f64 }, n)
 }
 
 #[test]
@@ -41,16 +42,25 @@ fn the_spoken_word_is_highlighted_in_its_own_segment() {
     let seq = s.active_sequence().unwrap();
     assert!(seq.caption_tracks.iter().all(|t| t.captions.is_empty()), "captions became graphics");
 
-    // words share 3 s by characters: one 0–0.82 s, two 0.82–1.64 s, three 1.64–3 s (24 fps)
+    // segments follow each other on frame boundaries: one word shows at a time
+    let mut spans: Vec<(Tick, Tick)> = r["captions"][0]["clips"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|c| seq.find_item(filmcraft_project::ClipId(c.as_u64().unwrap())).map(|(_, it)| (it.start, it.end())).unwrap())
+        .collect();
+    spans.sort();
+    assert!(spans.windows(2).all(|w| w[0].1 <= w[1].0), "segments overlap: {spans:?}");
+
+    // words share 3 s by characters: one 0–0.82 s, two 0.82–1.64 s, three 1.64–3 s (24 fps); the
+    // text is centred, so the red word moves from left to right inside it
     let mut seen = Vec::new();
     for frame in [10, 29, 58] {
         let (w, h, rgba) = frame_rgba(&mut s, frame, 1.0);
-        seen.push(red_by_third(w, h, &rgba));
+        seen.push(red_x(w, h, &rgba));
     }
-    let [first, second, third] = [seen[0], seen[1], seen[2]];
-    assert!(first[0] > first[2] && first[0] > 0, "word 1 red on the left: {seen:?}");
-    assert!(second[1] > 0 && second[1] >= second[0] && second[1] >= second[2], "word 2 red in the middle: {seen:?}");
-    assert!(third[2] > third[0] && third[2] > 0, "word 3 red on the right: {seen:?}");
+    assert!(seen.iter().all(|(_, n)| *n > 0), "a red word in every frame: {seen:?}");
+    assert!(seen[0].0 < seen[1].0 && seen[1].0 < seen[2].0, "the red word moves left to right: {seen:?}");
 
     // undo brings the caption back
     s.execute("edit.undo", json!({})).unwrap();

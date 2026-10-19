@@ -478,13 +478,7 @@ pub fn graded_patches(look: &Look, amount: f64) -> Vec<[f32; 3]> {
         }
     }
     grade(&mut img, look, amount);
-    img.px
-        .chunks_exact(4)
-        .filter_map(|p| match p {
-            [r, g, b, _] => Some([enc(*r), enc(*g), enc(*b)]),
-            _ => None,
-        })
-        .collect()
+    img.px.as_chunks::<4>().0.iter().map(|[r, g, b, _]| [enc(*r), enc(*g), enc(*b)]).collect()
 }
 
 fn enc(v: f32) -> f32 {
@@ -577,10 +571,8 @@ pub fn cube(look: &Look, amount: f64, size: usize) -> String {
     }
     grade(&mut img, look, amount);
     let mut out = format!("TITLE \"BashCutPro {}\"\n# {}\nLUT_3D_SIZE {n}\nDOMAIN_MIN 0 0 0\nDOMAIN_MAX 1 1 1\n", look.name, look.purpose);
-    for p in img.px.chunks_exact(4) {
-        if let [r, g, b, _] = p {
-            out.push_str(&format!("{:.6} {:.6} {:.6}\n", enc(*r).min(1.0), enc(*g).min(1.0), enc(*b).min(1.0)));
-        }
+    for [r, g, b, _] in img.px.as_chunks::<4>().0 {
+        out.push_str(&format!("{:.6} {:.6} {:.6}\n", enc(*r).min(1.0), enc(*g).min(1.0), enc(*b).min(1.0)));
     }
     out
 }

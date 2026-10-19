@@ -172,7 +172,7 @@ pub fn click_track(sample_rate: u32, bpm: f64, seconds: f64) -> (Vec<f32>, Vec<i
             break;
         }
         beats.push(start as i64);
-        let amp = if k % BAR == 0 { 0.9 } else { 0.45 };
+        let amp = if k.is_multiple_of(BAR) { 0.9 } else { 0.45 };
         for i in 0..burst {
             if let Some(s) = x.get_mut(start + i) {
                 let t = i as f64 / sr;
