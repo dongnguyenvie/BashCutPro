@@ -22,6 +22,7 @@ pub mod runs_panel;
 pub mod side_panel;
 pub mod state;
 pub mod strings;
+pub mod view;
 
 use std::path::PathBuf;
 

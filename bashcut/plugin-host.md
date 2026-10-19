@@ -46,7 +46,7 @@ As built in #31 (P1): `src/{manifest,registry,install,settings,runner,host}.rs`;
 serves the `bashcut.plugins.*` commands (`Host::command`), and the egui side is `crates/ui-egui/src/bashcut_ui/
 {plugins,plugins_panel,runs_panel}.rs` (rail sections, [in-app-ui.md](in-app-ui.md) §4), not `bashcut_plugins.rs`
 or a floating window. The workspace's `crates/*` glob picks the crate up, so the root `Cargo.toml` is not touched;
-the one upstream line is the ui-egui dependency (H4). Views (`view.rs`) come with #37. Tests: unit tests per module
+the one upstream line is the ui-egui dependency (H4). Views (`view.rs`, §Views) came with #37. Tests: unit tests per module
 and `tests/fake_plugins.rs` (fake Python plugins and a local git registry).
 
 Agent plugins (#35): a manifest with `"kind": "agent"` carries an `agent` section instead of being run as a tool:
@@ -82,6 +82,25 @@ layout files and `ALL` array on every merge. Docking can come later if upstream 
 2. **P2** declarative views (`bashcut-view/1`), for review lists and pickers.
 3. **P3** a dockable panel and the director chat dock, only if upstream panels become extensible or the owner
    accepts the extra merge cost.
+
+## Views (`bashcut-view/1`, #37)
+
+An action with `"view": true` shows a form in its plugin card. While it runs, every stdout line that parses as
+`{"schema": "bashcut-view/1", "title"?, "rows": [...]}` replaces the shown view (other lines are ignored; lines over
+1 MB are skipped); a final `result.data.view` counts too. The newest run of the plugin that printed a view owns the
+form, so runs without a view (button presses) do not replace it.
+
+Rows (`type`): `text {text, muted?}`, `input {id, label?, value?, multiline?}`, `select {id, label?, value?,
+choices: [{value, label?}]}`, `toggle {id, label?, value?}`, `button {id, label, action, params?}`, `list {id,
+label?, items: [{id, text, detail?, buttons: [{id, label, action, params?}]}]}`, `image {path, caption?}` (PNG, at
+most 16 MB and 4096 px a side), `progress {value?: 0..1, label?}`. Ids are 1–64 characters of letters, digits and
+`.-_:`. Caps: 200 rows, 1000 list items, 6 buttons per item, 200 choices, 16 KB per text; unknown or broken rows are
+skipped.
+
+A button runs another action of the same plugin with: the form's current values that the target action declares as
+params, then the button's own `params`, then (list buttons) `"item": <item id>`. Commands
+`bashcut.plugins.view {plugin}` (the job and view, or null) and `bashcut.plugins.click {plugin, button, item?,
+itemButton?, values?}` (returns the new job).
 
 ## Testing
 

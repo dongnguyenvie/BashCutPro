@@ -231,7 +231,8 @@ labels or subclips (§1 rule 1). A project opened in upstream FilmCraft still wo
   change}`; automation ids `bashcut.agent.{input, send, stop, picker, conversations, new, transcript}`,
   `bashcut.gate.{approve, change, note}`.
 - **Phase 1 adapters**: Claude Code (`claude -p --output-format stream-json --input-format stream-json`) and Codex
-  (`codex exec --json`, #37); others as plugins.
+  (`codex exec --json -` with the prompt on stdin, `resume <thread>` for later turns, the MCP server passed as `-c
+  mcp_servers.filmcraft.*`; `codex`, or `BASHCUT_CODEX`; events `codex-json`, #37); others as plugins.
 
 ### 6a. Batch section in detail (#46)
 
@@ -259,6 +260,16 @@ per-row buttons), `image` (a file path), `progress`. `view.rs` renders them with
 Webviews are out: they would add an OS webview dependency to a pure-Rust app and a large attack surface; BashCut's
 own research (spec 14) reached the same conclusion for most needs.
 
+Built in #37 (U4): the model and rules are in [plugin-host.md](plugin-host.md) §Views. `bashcut_ui/view.rs` draws the
+form at the end of the plugin card (the card opens when a new view arrives); a typed value stays until the plugin
+sends a different value for that field. Running a `view` action opens the Plugins section instead of Runs. Images
+are decoded off the PNG header with limits and cached by path, size and mtime. Automation ids
+`bashcut.view.<plugin>.title`, `.row<n>`, `.<id>` (fields and buttons), `.<list>.<item>[.<button>]`. Port of the
+translate-captions review list to a view is a follow-up in `bashcutpro-plugins`.
+
+Pop-out windows (#37) remember their rect per section and monitor size (`windows` in `<data dir>/bashcut/ui.json`,
+key `<section>@<w>x<h>`, at most 64 entries), so a window comes back where it was on that monitor.
+
 ## 8. Phases
 
 | Phase | Ships | Hooks used |
@@ -267,7 +278,7 @@ own research (spec 14) reached the same conclusion for most needs.
 | U1 | Plugins + Runs sections (P1 of #31), `bashcut.plugins.*` commands | H7–H9 |
 | U2 | Agent section with the Claude Code adapter, gates from `plan.json` (done, #35: `crates/bashcut-agent`, `bashcut_ui/{agent,agent_panel}.rs`) | H4 |
 | U3 | `bashcut-analysis` + engine commands (loudness, beats, picture checks) | H1–H3 |
-| U4 | Plugin views (`bashcut-view/1`), Codex adapter, pop-out windows | — |
+| U4 | Plugin views (`bashcut-view/1`), Codex adapter, pop-out windows per monitor (done, #37: `bashcut_ui/view.rs`, `bashcut-plugin-host/src/view.rs`, `bashcut-agent/src/codex_json.rs`) | — |
 | B | Batch runner #45 → Batch section #46 (§6a; `bashcut_ui/{batch,batch_panel}.rs`); templates #42, profiles #43 | H1–H3 (templates), H4, H12 |
 | Q | Looks #47, voice polish #48, word captions #49 (design note first) | H1–H3; #49 may add one render hook |
 | P | Command palette #52 | — (inside H6 / H8) |

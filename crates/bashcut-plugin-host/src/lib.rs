@@ -3,8 +3,8 @@
 //! Plugins are separate programs (`bashcut-plugin/1` manifests, listed in a `bashcut-registry/1`
 //! registry). This crate installs them from a git ref into `<data dir>/bashcut-plugins/<id>/`,
 //! keeps their settings, and runs their actions as child processes connected to the open app
-//! (`--bridge 127.0.0.1:<control port>`), reading stderr progress and one `bashcut-result/1` object
-//! from stdout. It depends on no workspace crate and on no OS crate; the egui side lives in
+//! (`--bridge 127.0.0.1:<control port>`), reading stderr progress, live `bashcut-view/1` forms and
+//! one `bashcut-result/1` object from stdout. It depends on no workspace crate and on no OS crate; the egui side lives in
 //! `filmcraft-ui-egui`'s `bashcut_ui`.
 //!
 //! Everything a plugin, a registry or a settings file says is hostile input: sizes are capped,
@@ -16,11 +16,13 @@ pub mod manifest;
 pub mod registry;
 pub mod runner;
 pub mod settings;
+pub mod view;
 
 pub use host::{AgentLaunch, Host, Job, JobKind, JobState};
 pub use manifest::Manifest;
 pub use registry::Registry;
 pub use runner::{Outcome, PluginResult, RunSpec};
+pub use view::View;
 
 use std::fmt;
 

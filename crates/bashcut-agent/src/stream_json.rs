@@ -105,7 +105,7 @@ fn blocks(v: &Value) -> Vec<Value> {
 }
 
 /// A tool result's content: a string, or text blocks.
-fn content_text(c: Option<&Value>) -> String {
+pub(crate) fn content_text(c: Option<&Value>) -> String {
     match c {
         Some(Value::String(s)) => s.clone(),
         Some(Value::Array(a)) => a.iter().filter_map(|b| b.get("text").and_then(Value::as_str)).collect::<Vec<_>>().join("\n"),

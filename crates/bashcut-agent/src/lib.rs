@@ -10,6 +10,7 @@
 //! Everything an agent prints is hostile input: lines and texts are capped, nothing here panics
 //! (AGENTS.md §0).
 
+pub mod codex_json;
 pub mod plan;
 pub mod process;
 pub mod session;
