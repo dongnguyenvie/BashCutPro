@@ -179,6 +179,7 @@ pub fn targets_source(app: &FilmcraftApp, params: &Value) -> bool {
 
 /// Execute a UI or engine command by id.
 pub fn invoke(app: &mut FilmcraftApp, ctx: &egui::Context, id: &str, mut params: Value) -> Result<Value, String> {
+    crate::bashcut_ui::route!(app, ctx, id, &params); // BashCutPro: our bashcut.* UI commands (bashcut/extending-upstream.md)
     if id == "edit.selectAll" && (crate::panels::graphics::select_all_edited_text(app) || crate::panels::effect_controls::select_all_keyframes(app)) {
         return Ok(Value::Null);
     }
@@ -792,6 +793,7 @@ pub fn menu_items_for(session: &filmcraft_engine::Session) -> Vec<MenuItem> {
             checked: None,
         });
     }
+    out.extend(crate::bashcut_ui::menu_items(session)); // BashCutPro: Window ▸ BashCutPro (bashcut/extending-upstream.md)
     out
 }
 
@@ -893,6 +895,7 @@ pub fn external_commands() -> Vec<filmcraft_engine::shortcuts::CommandInfo> {
     for p in PanelKind::ALL {
         v.push(CommandInfo::new(&panel_command_id(p), p.title(), &["Window"], p.window_shortcut()));
     }
+    v.extend(crate::bashcut_ui::commands()); // BashCutPro: our UI commands (bashcut/extending-upstream.md)
     v
 }
 
