@@ -69,6 +69,8 @@ pub fn run(job: &Job, opts: &Options) -> Result<Summary, String> {
     let mut book = job.book()?;
     // a new run clears an old cancel request
     let _ = std::fs::remove_file(job.cancel_path());
+    // steps may write into `{outputs}` (an SRT, a report) before any export makes the folder
+    let _ = std::fs::create_dir_all(pipeline.outputs_dir());
     let mut reports = book.trip_running();
     for item in &mut book.items {
         if item.status == Status::NotRun {
