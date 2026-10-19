@@ -1,0 +1,33 @@
+# Khắc phục sự cố
+
+## Trước tiên: chạy kiểm tra máy
+
+Mở cửa sổ dòng lệnh và chạy `bashcut-doctor`. Nó kiểm tra bộ máy dòng lệnh của trình dựng, bộ kỹ năng trợ lý, Python
+của từng plugin, các mô hình đã tải (kích thước và mã kiểm), Claude Code và Codex, dung lượng ổ đĩa và bộ nhớ, và chỉ
+cách sửa từng lỗi. `bashcut-doctor --updates` còn báo khi plugin, bộ kỹ năng hoặc BashCutPro có bản mới (không bao giờ tự
+cài). Hàng loạt chạy nó trước khi bắt đầu.
+
+## Lỗi thường gặp
+
+| Bạn thấy | Cách xử lý |
+|---|---|
+| Thao tác plugin báo *needs the open project: start BashCutPro with --control &lt;port&gt;* | Thoát rồi mở ứng dụng kèm kênh điều khiển: thêm `--control 9876` (Mac: `open -a BashCutPro --args --control 9876`), hoặc đặt `FILMCRAFT_CONTROL_PORT=9876` trước. Tìm kiếm, tải về và các thao tác không sửa dự án vẫn chạy được khi không có nó. |
+| Plugin không chạy | Plugin cần Python 3.9 trở lên (`bashcut-doctor` nêu tên plugin). Cài Python rồi chạy lại thao tác. |
+| Lượt chạy ghi **Cần trợ lý** | Plugin không tự làm xong (ví dụ dịch mà không có khóa API). Bấm **Gửi cho trợ lý** trong Tác vụ, hoặc thêm khóa trong **Cài đặt** của plugin rồi chạy lại. |
+| Mục Trợ lý không làm gì | Cài Claude Code và đăng nhập (`claude` trong cửa sổ dòng lệnh). Lưu dự án trước. |
+| Một mục hàng loạt **cần xem lại** | Xem [Sửa một mục cần sửa](batch.md#sửa-một-mục-cần-sửa). Mục bị dừng giữa chừng một bước (máy ngủ hoặc treo) cũng nằm ở đây: mở, kiểm tra, **Chạy lại**. |
+| Hàng loạt đứng chờ, không chạy mục mới | Máy thiếu bộ nhớ hoặc ổ đĩa; nó tự chạy tiếp khi đủ chỗ. Dọn bớt ổ đĩa, hoặc giảm số **Cùng lúc**. |
+| Thư viện ▸ Trực tuyến ghi *Chưa rõ giấy phép* | Nguồn không ghi giấy phép. Đừng đăng tệp đó khi chưa biết rõ. |
+| Mất thanh bên | **Window ▸ BashCutPro ▸ Hiện thanh bên**. Thanh bên cũng ẩn trong chế độ Nhập và Xuất. |
+| Phím tắt không có tác dụng | Xem **Edit ▸ Keyboard Shortcuts**; bảng lệnh là **Cmd+Shift+P** (Cmd+K là Add Edit của FilmCraft). |
+
+## BashCutPro lưu mọi thứ ở đâu
+
+Trong thư mục dữ liệu của FilmCraft (`~/Library/Application Support/FilmCraft` trên Mac, `%APPDATA%\FilmCraft` trên
+Windows, `~/.local/share/filmcraft` trên Linux):
+
+- `bashcut/`: hồ sơ xuất, mẫu dự án, màu phim, mẫu hàng loạt và thiết lập của bảng bên;
+- `bashcut-plugins/`: plugin đã cài và tệp chúng tải về;
+- cạnh mỗi dự án, `<dự án>.fcproj.bashcut/`: cuộc trò chuyện với trợ lý, kế hoạch dựng và kết quả plugin.
+
+Dự án làm bằng BashCutPro vẫn mở được trong FilmCraft gốc; FilmCraft chỉ bỏ qua các phần thêm này.

@@ -1,0 +1,33 @@
+# Troubleshooting
+
+## First: run the health check
+
+Open a terminal and run `bashcut-doctor`. It checks the editor's command-line engine, the agent kit, each plugin's
+Python, downloaded models (size and checksum), Claude Code and Codex, free disk space and memory, and says how to fix
+each problem. `bashcut-doctor --updates` also tells you when plugins, the kit or BashCutPro have a newer version (it
+never installs anything by itself). Batches run it before they start.
+
+## Common problems
+
+| You see | What to do |
+|---|---|
+| A plugin action says it *needs the open project: start BashCutPro with --control &lt;port&gt;* | Quit and start the app with its control channel: add `--control 9876` (Mac: `open -a BashCutPro --args --control 9876`), or set `FILMCRAFT_CONTROL_PORT=9876` first. Searches, downloads and other actions that do not edit the project work without it. |
+| A plugin will not run | It needs Python 3.9 or newer (`bashcut-doctor` names the plugin). Install Python and run the action again. |
+| A run says **Needs the agent** | The plugin could not finish alone (for example a translation without an API key). **Send to agent** in Runs, or add the key in the plugin's **Settings** and run it again. |
+| The Agent section does nothing | Install Claude Code and sign in (`claude` in a terminal). Save the project first. |
+| A batch item **needs attention** | See [Fixing an item that needs a fix](batch.md#fixing-an-item-that-needs-a-fix). An item stopped in the middle of a step (the computer slept or crashed) also lands here: open it, check it, **Retry**. |
+| A batch waits and does not start new items | It is short of memory or disk space; it goes on by itself when there is room. Free some disk space, or lower **At once**. |
+| Library ▸ Online shows *Licence unknown* | The source gave no licence. Do not publish it until you know. |
+| The rail is gone | **Window ▸ BashCutPro ▸ Show Rail**. It also hides in Import and Export mode. |
+| A shortcut does nothing | Check **Edit ▸ Keyboard Shortcuts**; the palette is **Cmd+Shift+P** (Cmd+K is FilmCraft's Add Edit). |
+
+## Where BashCutPro keeps things
+
+In FilmCraft's data folder (`~/Library/Application Support/FilmCraft` on a Mac, `%APPDATA%\FilmCraft` on Windows,
+`~/.local/share/filmcraft` on Linux):
+
+- `bashcut/`: your profiles, templates, looks, batch presets, and the side panel's settings;
+- `bashcut-plugins/`: installed plugins and their downloads;
+- next to each project, `<project>.fcproj.bashcut/`: agent conversations, the edit plan and plugin results.
+
+A project made in BashCutPro still opens in plain FilmCraft; it simply ignores these extras.

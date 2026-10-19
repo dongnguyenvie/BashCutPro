@@ -66,6 +66,9 @@ _Last updated: 2026-10-20_
 - Library (#68): Library section with Mine (library plugin) and Online (resources plugin `search` / `download`, added in
   bashcutpro-plugins#14): licence before download, add to bin / place at playhead by the app's own commands, opt-in
   credits; native egui (plugin views #37 can wrap it). Build + tests + live check pending (build pass).
+- User guide (#65): [guide/](guide/README.md), English and Vietnamese: getting started (install, first-run setup), the
+  rail and palette, batch (presets, statuses, fixing a needs-fix item), output profiles, looks, library, the agent
+  (Claude Code, Codex, terminal agents), more tools, troubleshooting. Screenshots pending (build pass).
 
 ## Next
 
