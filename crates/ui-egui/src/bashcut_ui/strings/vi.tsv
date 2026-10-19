@@ -176,3 +176,4 @@ Font saved to {path}: install it in your system to use it in titles.	Đã lưu p
 Placed {title} at the playhead	Đã đặt {title} tại đầu phát
 Added {title} to the project	Đã thêm {title} vào dự án
 Applying {title} (run {job})	Đang áp {title} (lượt chạy {job})
+Could not check {location}: {error}	Không kiểm tra được {location}: {error}

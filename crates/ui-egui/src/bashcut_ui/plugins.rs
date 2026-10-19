@@ -40,9 +40,14 @@ pub fn with<R>(app: &FilmcraftApp, ctx: &egui::Context, f: impl FnOnce(&mut Host
 pub fn poll(ctx: &egui::Context) {
     // no host yet means nothing ever ran: don't create one just to poll it
     let Some(h) = ctx.data(|d| d.get_temp::<Shared>(key())) else { return };
-    let running = h.lock().unwrap_or_else(PoisonError::into_inner).poll();
+    let mut g = h.lock().unwrap_or_else(PoisonError::into_inner);
+    let was_running = g.any_running();
+    let running = g.poll();
     if running {
         ctx.request_repaint_after(Duration::from_millis(100));
+    } else if was_running {
+        // the last job just ended: one more frame shows its outcome without waiting for input
+        ctx.request_repaint();
     }
 }
 
