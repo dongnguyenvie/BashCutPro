@@ -1,0 +1,21 @@
+[package]
+name = "bashcut-batch"
+description = "BashCutPro batch runner: parallel headless pipelines through filmcraft-cli, one project per input, resumable job book"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[lints]
+workspace = true
+
+# A stand-in for filmcraft-cli that the integration tests drive (tests/batch.rs); never shipped.
+[[bin]]
+name = "bashcut-batch-fake-cli"
+path = "tests/support/fake_cli.rs"
+test = false
+doc = false
+
+[dependencies]
+serde = { workspace = true }
+serde_json = { workspace = true }

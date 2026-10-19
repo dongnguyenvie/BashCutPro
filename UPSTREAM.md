@@ -66,7 +66,7 @@ bashcut/scripts/upstream.sh footprint        # all we carry since the last upstr
 ```
 
 It diffs upstream files (our files and new files left out: any path part named `bashcut`, `bashcut_*`, `bashcut-*`
-or `bashcut.*`, and this file), prints lines per file and each file's upstream commits in the last 30 days
+or `bashcut.*`, and this file; `Cargo.lock` is listed as generated, not checked), prints lines per file and each file's upstream commits in the last 30 days
 (`HOT` at 20 or more: any edit there will conflict), and fails when a hunk is not allowed by the two tables above, a
 hook row is stale or has no marker, or the Rust lines changed in upstream files exceed 150. Its tests:
 `python3 bashcut/scripts/test_upstream.py`.

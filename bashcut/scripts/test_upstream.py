@@ -117,6 +117,17 @@ class Footprint(Repos):
         self.assertNotIn("bashcut_ui", out)
         self.assertNotIn("xtask", out)
 
+    def test_cargo_lock_is_generated_not_checked(self):
+        self.write(self.fork, "Cargo.lock", "upstream\n")
+        self.commit(self.fork, "lock")
+        self.git(self.fork, "push", "-q", "origin", "main")
+        self.git(self.fork, "fetch", "-q", "origin")
+        self.write(self.fork, "Cargo.lock", "upstream\nours\n")
+        self.commit(self.fork, "our crate")
+        rc, out = self.tool("footprint", "--pr")
+        self.assertEqual(rc, 0, out)
+        self.assertIn("Generated (take upstream's on a sync, then regenerate): Cargo.lock", out)
+
     def test_line_without_hook_row_fails(self):
         self.write(self.fork, "src/lib.rs", self.read(self.fork, "src/lib.rs") + "fn extra() {}\n")
         self.commit(self.fork, "extra")

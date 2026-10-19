@@ -1,0 +1,18 @@
+[package]
+name = "bashcut-batch-cli"
+description = "bashcut-batch: run, watch, retry, cancel and resume BashCutPro batch pipelines"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[lints]
+workspace = true
+
+[[bin]]
+name = "bashcut-batch"
+path = "src/main.rs"
+
+[dependencies]
+bashcut-batch = { path = "../../crates/bashcut-batch" }
+serde_json = { workspace = true }
