@@ -1,0 +1,10 @@
+# Functions allowed to use AVX / AVX2 / AVX-512 in a baseline x86-64 release binary (bashcut/scripts/smoke.sh,
+# smoke.ps1). One regular expression per line, matched against the function name as the disassembler prints it
+# (mangled). Only code that checks the CPU at run time before calling it (is_x86_feature_detected!, multiversioning)
+# belongs here; add a line with the crate and why.
+#
+# runtime-dispatched SIMD paths named after their target feature (memchr, sha2, our own `*_avx2` kernels)
+avx2
+avx512
+4avx2
+6avx512
