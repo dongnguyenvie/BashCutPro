@@ -320,7 +320,7 @@ mod tests {
     fn headless_without_a_window() {
         let d = scratch("headless");
         let data = d.join("data").to_string_lossy().into_owned();
-        let p = d.join("proj/a.fcproj").to_string_lossy().into_owned();
+        let p = d.join("proj").join("a.fcproj").to_string_lossy().into_owned();
         let dec = decide(&args(&["--data-dir", &data, "--cli", "fc", "--project", &p]), &d).unwrap();
         assert_eq!(dec.mode, "headless");
         assert_eq!(dec.argv[..4], ["fc".to_string(), "mcp".into(), "--project".into(), p.clone()]);

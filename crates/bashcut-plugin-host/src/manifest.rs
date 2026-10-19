@@ -366,7 +366,7 @@ pub fn param_text(p: &Param, v: &Value) -> Result<String> {
         }
     };
     if let Some(choices) = &p.choices
-        && !choices.iter().any(|c| *c == text)
+        && !choices.contains(&text)
     {
         return err(format!("param `{}` must be one of {}", p.id, choices.join(", ")));
     }

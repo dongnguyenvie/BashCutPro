@@ -236,7 +236,7 @@ fn read_all<R: std::io::Read>(r: Option<R>, cap: u64) -> String {
     let Some(r) = r else { return String::new() };
     let mut buf = Vec::new();
     let mut r = r.take(cap);
-    let _ = r.read_to_end(&mut buf);
+    let _ = std::io::Read::read_to_end(&mut r, &mut buf);
     // drain the rest so the child never blocks on a full pipe
     let _ = std::io::copy(&mut r.into_inner(), &mut std::io::sink());
     String::from_utf8_lossy(&buf).into_owned()
