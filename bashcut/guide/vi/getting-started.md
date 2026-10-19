@@ -1,0 +1,49 @@
+# Bắt đầu
+
+Hướng dẫn này ghi tên nút theo giao diện tiếng Việt, kèm tên tiếng Anh trong ngoặc. **Cmd** trên Mac là **Ctrl** trên
+Windows và Linux. Bản gốc tiếng Anh: [Getting started](../en/getting-started.md).
+
+## 1. Cài đặt
+
+Cài BashCutPro từ gói cài cho hệ điều hành của bạn (macOS `.app`, bộ cài hoặc bản zip di động cho Windows, gói Linux).
+Mỗi gói kèm ba chương trình phụ: `bashcut-doctor` (kiểm tra máy), `bashcut-batch` (chạy hàng loạt) và `bashcut-mcp`
+(cho trợ lý AI kết nối vào cửa sổ đang mở), cùng một tập lệnh thiết lập lần đầu.
+
+## 2. Thiết lập lần đầu (tùy chọn, một lần)
+
+Tập lệnh chuẩn bị các tệp riêng của BashCutPro. Bước nào cũng bỏ qua được.
+
+| Hệ điều hành | Tập lệnh nằm ở | Chạy |
+|---|---|---|
+| macOS | trong ứng dụng: `BashCutPro.app/Contents/Resources/bashcut/` | `bash bashcut-setup.sh` |
+| Windows | thư mục cài đặt | `powershell -File bashcut-setup.ps1` |
+| Linux | `/usr/share/bashcutpro/` | `bash bashcut-setup.sh` |
+
+Nó tạo thư mục cho hồ sơ xuất, mẫu dự án và màu phim, ghi bộ màu phim thành các tệp LUT `.cube`, biến các hồ sơ xuất
+thành thiết lập xuất (tên **BashCut TikTok**, **BashCut YouTube**…), đề nghị cài bộ kỹ năng trợ lý (agent kit) khi máy
+có Claude Code hoặc Codex, và cuối cùng chạy kiểm tra máy (`bashcut-doctor`). Thêm `--yes` để đồng ý mọi bước, hoặc
+`--skip-looks`, `--skip-profiles`, `--skip-kit`, `--skip-doctor` để bỏ một bước.
+
+## 3. Mở ứng dụng
+
+Bạn thấy trình dựng của FilmCraft với một phần thêm: **thanh bên** hẹp ở mép phải. Mỗi biểu tượng mở một mục trong
+bảng bên: **Trợ lý** (Agent), **Hàng loạt** (Batch), **Màu phim** (Looks), **Thư viện** (Library), **Plugin**
+(Plugins), **Tác vụ** (Runs) ([Thanh bên](rail.md)). Bấm lại biểu tượng đó để đóng. Kéo mép trái của bảng để nới rộng
+(240–720 px). Thanh bên ẩn trong chế độ Nhập và Xuất; **Window ▸ BashCutPro ▸ Hiện thanh bên** (Show Rail) để tắt / bật.
+
+## 4. Tìm mọi thứ: bảng lệnh
+
+Nhấn **Cmd+Shift+P**. Gõ vài chữ của thứ bạn cần: một lệnh ("razor", "export"), một màu phim ("teal"), một hồ sơ xuất
+("tiktok"), một thao tác plugin, một mẫu dự án hay một công thức ("travel vlog"). **↑ ↓** để chọn, **Enter** để chạy,
+**Esc** để đóng. Thứ bạn hay dùng sẽ lên đầu. Lệnh nào cần giá trị thì **Tab** (hoặc Enter trên lệnh đó) mở một ô sửa
+nhỏ; đổi giá trị rồi nhấn **Cmd+Enter**. Mọi thứ bảng lệnh chạy đều hoàn tác được bằng **Cmd+Z** như mọi thao tác dựng.
+
+(**Cmd+K** vẫn là *Add Edit* của FilmCraft nên bảng lệnh có phím riêng. Đổi phím tắt bất kỳ trong
+**Edit ▸ Keyboard Shortcuts**.)
+
+## 5. Tiếng Việt
+
+Các bảng riêng của BashCutPro hiển thị được bằng tiếng Việt: mở bảng lệnh, gõ **BashCutPro Language**, nhấn **Tab**, thay
+`{}` bằng `{"language": "vi"}` rồi nhấn **Cmd+Enter**. Chạy lại với `{}` để theo ngôn ngữ của ứng dụng.
+
+Tiếp theo: [Thanh bên](rail.md).

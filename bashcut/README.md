@@ -20,6 +20,7 @@ and its own docs (`CLAUDE.md`, `AGENTS.md`, `docs/`) still apply in full.
 | [skill-needs.md](skill-needs.md) | what each BashCut skill needs, need by need: available, compose, plugin, or new engine command |
 | [plugin-host.md](plugin-host.md) | `bashcut-plugin-host`: running plugins from the app (approved) |
 | [in-app-ui.md](in-app-ui.md) | in-app UI (rail, side panel, agent, plugins, runs), where its code lives, and every upstream hook line (accepted) |
+| [guide/](guide/README.md) | the user guide for Pro features, for non-technical users (English and Vietnamese) |
 
 ## What BashCutPro is
 
