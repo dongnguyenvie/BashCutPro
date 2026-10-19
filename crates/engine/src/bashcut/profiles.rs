@@ -386,7 +386,7 @@ pub fn commands() -> Vec<CommandSpec> {
             label: "Export with Output Profile",
             menu: &[],
             shortcut: None,
-            params: r#"{"profile":str,"path":str?,"queue":bool=false,"wait":bool=false,"sequence":id?,"range":str?,"dir":str?}  (no path: compile only, for filmcraft-cli export --preset)"#,
+            params: r#"{"profile":str,"path":str?,"queue":bool=false,"wait":bool=false,"sequence":id?,"range":str?,"hooks":bool=true,"dir":str?}  (no path: compile only, for filmcraft-cli export --preset)"#,
             enabled: always,
             run: apply,
             journal: true,
@@ -409,6 +409,8 @@ fn apply(s: &mut Session, p: &Value) -> Result<Value> {
     if let Some(v) = p.get("range") {
         q["range"] = v.clone();
     }
+    // plugin hooks declared for `export.before` (a failed required hook stops the export)
+    out["hooks"] = super::hooks::fire(s, p, "export.before", json!({"profile": pr.id, "preset": preset, "path": path}), CMD)?;
     let queue = p.get("queue").and_then(Value::as_bool).unwrap_or(false);
     if let Some(id) = u64_p(p, "sequence") {
         q[if queue { "sequences" } else { "sequence" }] = if queue { json!([id]) } else { json!(id) };
