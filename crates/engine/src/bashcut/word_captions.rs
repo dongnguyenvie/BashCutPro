@@ -181,7 +181,7 @@ fn word_style(s: &mut Session, p: &Value) -> Result<Value> {
     if ids.len() > MAX_CAPTIONS {
         return Err(bad(CMD, format!("at most {MAX_CAPTIONS} captions at once")));
     }
-    let (jobs, height, rate) = {
+    let (jobs, (width, height), rate) = {
         let seq = s.active_sequence().ok_or(EngineError::NoSequence)?;
         let mut jobs = Vec::new();
         for tr in &seq.caption_tracks {
@@ -189,7 +189,7 @@ fn word_style(s: &mut Session, p: &Value) -> Result<Value> {
                 jobs.push(Job { id: c.id, start: c.start, duration: c.duration, text: c.text.clone(), size: f64::from(tr.style.size), color: tr.style.color });
             }
         }
-        (jobs, f64::from(seq.settings.height.max(1)), seq.frame_rate())
+        (jobs, (f64::from(seq.settings.width.max(1)), f64::from(seq.settings.height.max(1))), seq.frame_rate())
     };
     if jobs.is_empty() {
         return Err(bad(CMD, "no such captions"));
@@ -207,13 +207,13 @@ fn word_style(s: &mut Session, p: &Value) -> Result<Value> {
     };
 
     let before = s.history.undo.len();
-    let result = apply(s, &style, &jobs, &transcript, height, rate);
+    let result = apply(s, &style, &jobs, &transcript, (width, height), rate);
     let steps = s.history.undo.len().saturating_sub(before);
     fold_history(s, steps);
     result
 }
 
-fn apply(s: &mut Session, style: &WordStyle, jobs: &[Job], transcript: &[(Tick, Tick)], height: f64, rate: FrameRate) -> Result<Value> {
+fn apply(s: &mut Session, style: &WordStyle, jobs: &[Job], transcript: &[(Tick, Tick)], (width, height): (f64, f64), rate: FrameRate) -> Result<Value> {
     let mut report = Vec::with_capacity(jobs.len());
     for job in jobs {
         let words = word_ranges(&plain_text(&job.text));
@@ -240,7 +240,11 @@ fn apply(s: &mut Session, style: &WordStyle, jobs: &[Job], transcript: &[(Tick, 
         if clips.len() != segments.len() {
             return Err(EngineError::Other(format!("{CMD}: caption {} became {} graphics for {} segments", job.id.0, clips.len(), segments.len())));
         }
-        // 3. style the spoken word of each segment
+        // 3. a graphic text layer does not wrap like the caption did: break the lines ourselves, inside the frame
+        // (a popped word grows, so a little narrower then)
+        let max_width = width * if style.pop > 1.0 { 0.84 } else { 0.9 };
+        wrap_segments(s, &clips, max_width, height)?;
+        // 4. style the spoken word of each segment
         let base = job.size * height / 1080.0;
         let dim = hex_to_rgba(&format!("#{:02x}{:02x}{:02x}", job.color[0], job.color[1], job.color[2]), style.dim);
         for (clip, (_, k)) in clips.iter().zip(&segments) {
@@ -270,6 +274,72 @@ fn apply(s: &mut Session, style: &WordStyle, jobs: &[Job], transcript: &[(Tick, 
         report.push(json!({"caption": job.id.0, "words": words.len(), "clips": clips}));
     }
     Ok(json!({"captions": report}))
+}
+
+/// Text, local bounds `[x0, y0, x1, y1]` and position of a graphic clip's first layer.
+fn first_layer(s: &mut Session, clip: u64) -> Result<(String, [f64; 4], [f64; 2])> {
+    let list = s.execute("graphics.list", json!({"clip": clip}))?;
+    let layer = list.get("layers").and_then(|l| l.get(0)).cloned().unwrap_or_default();
+    let text = layer.get("text").and_then(Value::as_str).unwrap_or_default().to_string();
+    let num = |v: &Value, i: usize| v.get(i).and_then(Value::as_f64).unwrap_or(0.0);
+    let b = layer.get("localBounds").cloned().unwrap_or_default();
+    let pos = layer.get("position").cloned().unwrap_or_default();
+    Ok((text, [num(&b, 0), num(&b, 1), num(&b, 2), num(&b, 3)], [num(&pos, 0), num(&pos, 1)]))
+}
+
+/// Width of `text` laid out in the first layer of `clip` (it is left holding `text`).
+fn text_width(s: &mut Session, clip: u64, text: &str) -> Result<f64> {
+    s.execute("graphics.setText", json!({"clip": clip, "layer": 0, "text": text}))?;
+    let (_, b, _) = first_layer(s, clip)?;
+    Ok(b[2] - b[0])
+}
+
+/// `text` with spaces turned into line breaks so that no line is wider than `max_width` (greedy, measured with the
+/// layer's own layout). Every character keeps its index, so the word ranges and style runs still line up.
+pub fn wrap_text(text: &str, max_width: f64, mut width_of: impl FnMut(&str) -> Result<f64>) -> Result<String> {
+    if text.contains('\n') || width_of(text)? <= max_width {
+        return Ok(text.to_string());
+    }
+    let mut lines: Vec<String> = Vec::new();
+    let mut current = String::new();
+    for (i, word) in text.split(' ').enumerate() {
+        if i == 0 {
+            current.push_str(word);
+            continue;
+        }
+        let candidate = format!("{current} {word}");
+        if word.is_empty() || width_of(&candidate)? <= max_width {
+            current = candidate;
+        } else {
+            lines.push(std::mem::replace(&mut current, word.to_string()));
+        }
+    }
+    lines.push(current);
+    Ok(lines.join("\n"))
+}
+
+/// Wrap the (identical) text of a caption's segments inside `max_width`; a block in the lower half keeps its bottom
+/// edge where it was, so the extra lines go up.
+fn wrap_segments(s: &mut Session, clips: &[u64], max_width: f64, height: f64) -> Result<()> {
+    let Some(&probe) = clips.first() else { return Ok(()) };
+    let (text, before, pos) = first_layer(s, probe)?;
+    let wrapped = wrap_text(&text, max_width, |t| text_width(s, probe, t))?;
+    if wrapped == text {
+        // the probe may hold a measured part of the text
+        s.execute("graphics.setText", json!({"clip": probe, "layer": 0, "text": text}))?;
+        return Ok(());
+    }
+    for &clip in clips {
+        s.execute("graphics.setText", json!({"clip": clip, "layer": 0, "text": wrapped}))?;
+    }
+    let (_, after, _) = first_layer(s, probe)?;
+    let grow = after[3] - before[3];
+    if pos[1] > height / 2.0 && grow > 0.0 {
+        for &clip in clips {
+            s.execute("graphics.set", json!({"clip": clip, "layer": 0, "props": {"position": [pos[0], pos[1] - grow]}}))?;
+        }
+    }
+    Ok(())
 }
 
 /// Fold the last `steps` undo entries into one labelled [`UNDO_LABEL`].
