@@ -28,8 +28,9 @@ USAGE
                                  jobs in that folder
   bashcut-batch validate <pipeline.json | --preset NAME> [--input PATH]... [--projects DIR]
                                  check a pipeline and print the items it would make
-  bashcut-batch presets [list | show NAME | save NAME FILE | delete NAME]
-                                 saved pipelines in <data dir>/bashcut/batch-presets/
+  bashcut-batch presets [list | show NAME | save NAME FILE | install FILE|FOLDER | delete NAME]
+                                 saved pipelines in <data dir>/bashcut/batch-presets/; install takes a
+                                 pack such as bashcutpro-plugins/packs/batch/
 
   <job> is a job folder (`<projectsFolder>/.bashcut-batch/<id>`, printed by run and list).
 
@@ -270,7 +271,14 @@ fn presets_cmd(a: &Args) -> Result<u8, Fail> {
     let dir = data_dir(a)?;
     match a.pos(1).unwrap_or("list") {
         "list" => {
-            print(a, &json!({"dir": presets::presets_dir(&dir).to_string_lossy(), "presets": presets::list(&dir)}));
+            let list: Vec<Value> = presets::list(&dir).into_iter().map(|n| json!({"name": n, "description": presets::description(&dir, &n)})).collect();
+            print(a, &json!({"dir": presets::presets_dir(&dir).to_string_lossy(), "presets": list}));
+            Ok(0)
+        }
+        "install" => {
+            let src = a.pos(2).ok_or_else(|| usage("presets install FILE|FOLDER"))?;
+            let names = presets::install(&dir, Path::new(src)).map_err(usage)?;
+            print(a, &json!({"installed": names}));
             Ok(0)
         }
         "show" => {
@@ -293,6 +301,6 @@ fn presets_cmd(a: &Args) -> Result<u8, Fail> {
             print(a, &json!({"deleted": name}));
             Ok(0)
         }
-        other => Err(usage(format!("presets: unknown action {other:?} (list | show | save | delete)"))),
+        other => Err(usage(format!("presets: unknown action {other:?} (list | show | save | install | delete)"))),
     }
 }

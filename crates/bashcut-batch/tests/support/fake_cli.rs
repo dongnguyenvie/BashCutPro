@@ -74,6 +74,11 @@ fn real_main() -> i32 {
                         false
                     }
                     "fake.crash" => return 101,
+                    // an output profile export: writes the file like `export` does
+                    "bashcut.profiles.apply" => {
+                        let out = params["path"].as_str().unwrap_or_default();
+                        std::fs::write(out, format!("export profile={}\n{project}", params["profile"].as_str().unwrap_or_default())).is_err()
+                    }
                     "fake.usage" => {
                         eprintln!("fake-cli: line {}: bad params", n + 1);
                         return 2;

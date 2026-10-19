@@ -248,6 +248,8 @@ fn run_item(sh: &Shared, idx: usize) {
         ("project", project.clone()),
         ("itemDir", dir.to_string_lossy().into_owned()),
         ("outputs", sh.pipeline.outputs_dir().to_string_lossy().into_owned()),
+        ("cli", cli(sh)),
+        ("plugins", plugins_dir(sh).to_string_lossy().into_owned()),
     ]);
     let ctx = Ctx { name, input, input_is_project, project: PathBuf::from(project), dir, vars };
 
@@ -381,6 +383,19 @@ fn run_step(sh: &Shared, idx: usize, s: usize, step: StepRef, ctx: &Ctx) -> Resu
             if let Some(parent) = out.parent() {
                 std::fs::create_dir_all(parent).map_err(|e| ErrorInfo::new(Category::Io, format!("{}: {e}", parent.display())))?;
             }
+            let timeout = o.timeout_seconds.map(Duration::from_secs);
+            if let Some(profile) = &o.profile {
+                // the profile exports (and applies its loudness and captions) in one engine command
+                let line =
+                    CommandLine { id: "bashcut.profiles.apply".into(), params: serde_json::json!({"profile": profile, "path": path_arg(&out), "wait": true}) };
+                let script = write_script(ctx, &key, std::slice::from_ref(&line))?;
+                let mut argv = vec![cli(sh), "run".into(), path_arg(&script), "--project".into(), path_arg(&ctx.project), "--compact".into()];
+                argv.extend(data_dir_args(sh));
+                let spec = Spec { argv, cwd: Some(ctx.dir.clone()), env: sh.opts.env.clone(), timeout, log: ctx.dir.join(&key) };
+                let ended = spawn(sh, idx, s, &spec)?;
+                outcome(ended, &spec.log, &key)?;
+                return Ok(vec![out.to_string_lossy().into_owned()]);
+            }
             let mut argv = vec![cli(sh), "export".into(), path_arg(&out), "--project".into(), path_arg(&ctx.project), "--compact".into()];
             if let Some(p) = &o.preset {
                 argv.extend(["--preset".into(), p.clone()]);
@@ -392,13 +407,7 @@ fn run_step(sh: &Shared, idx: usize, s: usize, step: StepRef, ctx: &Ctx) -> Resu
                 argv.extend(["--settings".into(), ctx.vars.expand_value(v).to_string()]);
             }
             argv.extend(data_dir_args(sh));
-            let spec = Spec {
-                argv,
-                cwd: Some(ctx.dir.clone()),
-                env: sh.opts.env.clone(),
-                timeout: o.timeout_seconds.map(Duration::from_secs),
-                log: ctx.dir.join(&key),
-            };
+            let spec = Spec { argv, cwd: Some(ctx.dir.clone()), env: sh.opts.env.clone(), timeout, log: ctx.dir.join(&key) };
             let ended = spawn(sh, idx, s, &spec)?;
             outcome(ended, &spec.log, &key)?;
             Ok(vec![out.to_string_lossy().into_owned()])
@@ -523,6 +532,11 @@ fn item_env(sh: &Shared, ctx: &Ctx) -> Vec<(String, String)> {
 
 fn cli(sh: &Shared) -> String {
     path_arg(&sh.opts.cli)
+}
+
+/// `<data dir>/bashcut-plugins`, where the plugin host installs plugins (`{plugins}`).
+fn plugins_dir(sh: &Shared) -> PathBuf {
+    sh.opts.data_dir.clone().or_else(crate::presets::default_data_dir).unwrap_or_default().join("bashcut-plugins")
 }
 
 fn data_dir_args(sh: &Shared) -> Vec<String> {

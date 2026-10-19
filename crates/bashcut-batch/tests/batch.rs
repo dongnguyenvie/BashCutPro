@@ -120,6 +120,33 @@ fn parallel_items_each_get_a_project_and_exports() {
 }
 
 #[test]
+fn profile_outputs_export_through_the_engine_command() {
+    let b = Bench::new("profile", &["a"]);
+    let p = b.pipeline(json!({"outputs": [{"name": "{name}-tiktok.mp4", "profile": "tiktok"}]}));
+    let job = Job::create(&p, Some("profile")).unwrap();
+    assert_eq!(run(&job, &b.opts()).unwrap().status, Status::Done);
+    assert!(b.read("exports/a-tiktok.mp4").starts_with("export profile=tiktok\n"));
+    let script = std::fs::read_to_string(job.item_dir("a").join("export-1.jsonl")).unwrap();
+    assert!(script.contains("bashcut.profiles.apply") && script.contains("\"wait\":true"), "{script}");
+    assert_eq!(b.read("a.fcproj"), "file.import\nfile.newSequenceFromClip\n", "an export does not save the project");
+}
+
+#[test]
+fn plugin_steps_get_the_cli_and_plugins_placeholders() {
+    let b = Bench::new("vars", &["a"]);
+    // the "plugin" is the fake CLI ({cli}) running a script from the plugins folder ({plugins})
+    let plugins = b.dir.join("data").join("bashcut-plugins");
+    std::fs::create_dir_all(&plugins).unwrap();
+    std::fs::write(plugins.join("probe.jsonl"), "{\"id\":\"probe\"}\n").unwrap();
+    let p = b.pipeline(json!({"steps": [{"plugin": {"argv": ["{cli}", "run", "{plugins}/probe.jsonl", "--project", "{project}", "--save"]}}]}));
+    let job = Job::create(&p, Some("vars")).unwrap();
+    let mut opts = b.opts();
+    opts.data_dir = Some(b.dir.join("data"));
+    assert_eq!(run(&job, &opts).unwrap().status, Status::Done);
+    assert_eq!(b.read("a.fcproj"), "file.import\nfile.newSequenceFromClip\nprobe\n");
+}
+
+#[test]
 fn a_failing_item_is_skipped_and_the_others_finish() {
     let b = Bench::new("skip", &["a", "b", "c"]);
     let p = b.pipeline(json!({
