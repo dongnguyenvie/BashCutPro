@@ -59,8 +59,8 @@ translation, plugin hosting. Ranked list of engine commands worth adding: [skill
 | `visual-plan` | **later** | Depends on image generation (plugin) |
 | `style-study` | **later** | Useful, but builds on survey, beat and colour measurement landing first |
 | `setup` | **migrate** (rewrite) | Becomes "register `filmcraft-cli mcp` in Claude Code / Codex"; part of the kit scaffold |
-| `library` | **skip** | No unified library, but more is there than first read: effect presets with keyframes (`presets.save / apply / export / import`), `.fcgt` templates (`graphics.template.export / install`), LUTs, Lumetri / Essential Sound / export presets. Revisit as a "presets" skill |
-| `self-learn` | **skip** | Built on BashCut's `knowledge.*` store; nothing to write to |
+| `library` | **migrate later** (was skip; reversed 2026-10-20: library plugin #67, online browser #68) | No unified library, but more is there than first read: effect presets with keyframes (`presets.save / apply / export / import`), `.fcgt` templates (`graphics.template.export / install`), LUTs, Lumetri / Essential Sound / export presets. Revisit as a "presets" skill |
+| `self-learn` | **migrate later** (was skip; reversed 2026-10-20: kit-owned files, #66) | Built on BashCut's `knowledge.*` store; nothing to write to |
 
 Sub-agents: port `surveyor` and `critic` with their skills; `voice` and `graphics` with their plugins.
 Hooks (`correction`, `precompact`, `record-skill`): **skip**, they feed `self-learn`.
