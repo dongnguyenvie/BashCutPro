@@ -171,6 +171,19 @@ commands `bashcut.ui.looks.{favourite {look, on?}, previewFrame {on?}, state}`);
 `bashcut.looks.<id>[.apply|.favourite]`, `bashcut.looks.{filter,intensity,frame,remove,tag.<tag>}`. The palette
 lists looks through `bashcut.looks.list`.
 
+Built in #68: the Library section (`bashcut_ui/library_panel.rs`, rail id `library`). **Online** runs the resources
+plugin's `search` (music, sound effects, photos, video, icons, fonts; nothing downloaded, licence and source shown on
+each result) and `download` (the file plus its `.licence.json` record), then imports with `file.import` and places with
+`timeline.place {track: "new", audioTrack: "new"}` itself, so it works without the control channel; credit lines go
+into the project notes only with the Credits switch on (`<data dir>/bashcut/library-ui.json`, off by default).
+**Mine** runs the library plugin's `search`; media items (music, sound, sticker, overlay) are placed by the app, the
+rest go through the plugin's `apply` (needs `--control`). Searches and downloads are plugin runs (they show in Runs),
+results cached per query (32). Preview opens the preview URL in the browser for now; in-app thumbnails and audio
+preview need an HTTP image loader / player (later, or through plugin views #37). Commands
+`bashcut.ui.library.{search {tab?, kind?, query}, results, place|add {index}, credits {on?}, state}`; automation ids
+`bashcut.library.{tab.online,tab.mine,query,search,credits,kind.<kind>,install}`,
+`bashcut.library.online.<n>[.licence|.preview|.source|.add|.place]`, `bashcut.library.mine.<id>[.place|.apply|.favourite]`.
+
 - **UI state** (open section, width, popped-out sections, panel scroll, draft message) is a `bashcut_ui::State`
   kept in egui's context data (`ctx.data_mut(|d| d.get_temp_mut_or_default::<State>(id))`), so `FilmcraftApp`
   gains no field. It is saved to `<data dir>/bashcut/ui.json` when it changes, not in upstream's workspace files.

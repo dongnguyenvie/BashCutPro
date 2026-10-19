@@ -63,6 +63,9 @@ _Last updated: 2026-10-20_
   (drop zone through hook H12, steps from commands / plugin actions / recipes, output profiles, learned step times,
   Open to fix / Retry / Reveal, presets, recent jobs); "Run on many files…" from plugins and agent tool rows. Build +
   tests + live check pending; output thumbnails not yet.
+- Library (#68): Library section with Mine (library plugin) and Online (resources plugin `search` / `download`, added in
+  bashcutpro-plugins#14): licence before download, add to bin / place at playhead by the app's own commands, opt-in
+  credits; native egui (plugin views #37 can wrap it). Build + tests + live check pending (build pass).
 
 ## Next
 
