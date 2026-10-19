@@ -94,7 +94,8 @@ pub fn floating(app: &mut FilmcraftApp, ctx: &egui::Context, st: &mut State) {
     let mut closed = Vec::new();
     // windows come back where they were on this monitor (a laptop and a desk screen each keep theirs)
     let monitor = ctx.input(|i| i.viewport().monitor_size);
-    for sec in SECTIONS.iter().filter(|sec| st.popped.iter().any(|p| p == sec.id)) {
+    let popped: Vec<_> = SECTIONS.iter().filter(|sec| st.popped.iter().any(|p| p == sec.id)).collect();
+    for sec in popped {
         let mut open = true;
         let mut window = egui::Window::new(s(sec.title)).id(window_id(sec.id));
         window = match st.window_rect(sec.id, monitor) {

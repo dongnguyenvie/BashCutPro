@@ -56,6 +56,7 @@ fn status_label(st: Status) -> &'static str {
         Status::NeedsAttention => "Needs attention",
         Status::NotRun => "Not run",
         Status::Stopped => "Stopped",
+        Status::NeedsFix => "Needs fix",
     }
 }
 
@@ -349,7 +350,8 @@ fn queue(app: &mut FilmcraftApp, ui: &mut egui::Ui, ctx: &egui::Context, v: &mut
     app.auto.add_response("bashcut.batch.progress", &r, &summary);
     ui.label(egui::RichText::new(format!("{} · {summary}", s(status_label(book.status)))).size(10.5).color(t.text_dim));
     ui.horizontal(|ui| {
-        let failed = book.items.iter().any(|i| matches!(i.status, Status::Failed | Status::NeedsAttention | Status::Cancelled | Status::NotRun));
+        let failed =
+            book.items.iter().any(|i| matches!(i.status, Status::Failed | Status::NeedsAttention | Status::NeedsFix | Status::Cancelled | Status::NotRun));
         if button(app, ui, "bashcut.batch.retryAll", s("Retry failed"), !running && failed) {
             call(app, ctx, v, "retry", json!({}));
         }
@@ -373,7 +375,7 @@ fn item_row(app: &mut FilmcraftApp, ui: &mut egui::Ui, ctx: &egui::Context, v: &
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 let color = match item.status {
                     Status::Done => t.accent,
-                    Status::Failed | Status::NeedsAttention => egui::Color32::from_rgb(0xe0, 0x6c, 0x5f),
+                    Status::Failed | Status::NeedsAttention | Status::NeedsFix => egui::Color32::from_rgb(0xe0, 0x6c, 0x5f),
                     _ => t.text_dim,
                 };
                 ui.label(egui::RichText::new(s(status_label(item.status))).size(11.0).color(color));

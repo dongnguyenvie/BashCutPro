@@ -89,7 +89,7 @@ impl State {
     /// Keep the values in range and the sections known (after loading or a command).
     pub fn sanitize(&mut self, known: &[&str]) {
         self.width = if self.width.is_finite() { self.width.clamp(MIN_WIDTH, MAX_WIDTH) } else { DEFAULT_WIDTH };
-        let has = |s: &str| known.iter().any(|k| *k == s);
+        let has = |s: &str| known.contains(&s);
         if self.open.as_deref().is_some_and(|s| !has(s)) {
             self.open = None;
         }

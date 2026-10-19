@@ -91,7 +91,7 @@ pub fn parse_line(line: &str) -> Vec<Event> {
                 turns: v.get("num_turns").and_then(Value::as_u64),
             }]
         }
-        "error" => vec![Event::Notice(clip(&v.get("error").map(content_text).unwrap_or_else(|| text(&v, "message")), 2048))],
+        "error" => vec![Event::Notice(clip(&v.get("error").map(|e| content_text(Some(e))).unwrap_or_else(|| text(&v, "message")), 2048))],
         _ => Vec::new(),
     }
 }
