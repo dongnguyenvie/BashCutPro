@@ -55,6 +55,7 @@ re-applied by hand when a merge conflicts. Each `edits` row is an exception to t
 | `apps/filmcraft/build.rs` | edits | Windows exe icon and version info (5 lines; 1 commit in 30 days); `winresource` appends icons, so a second `set_icon` hook would not replace upstream's | keep while cold |
 | `packaging/**`, `omastore.toml` | edits | branding in packaging ([rebrand.md](bashcut/rebrand.md)); upstream's shared release workflow runs these scripts directly (no pre-step), all cold (≤ 5 commits in 30 days) | generator: #39 comment |
 | `NOTICE`, `LICENSE-MIT`, `ATTRIBUTION.md`, `.gitignore`, `AGENTS.md`, `CLAUDE.md` | additions | our copyright lines, asset rows, `.local/`, the pointer to `bashcut/README.md` | keep |
+| `Cargo.lock` | additions | lock entries of our `bashcut-*` crates | keep: on merge take upstream's file, `cargo check` re-adds ours |
 
 ## Footprint check
 
