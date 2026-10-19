@@ -30,6 +30,9 @@ pub struct SafeArea {
     pub right: f64,
 }
 
+/// Headroom under the true-peak limit for the lossy audio codec, dB.
+pub const CODEC_HEADROOM_DB: f64 = 0.5;
+
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(default, rename_all = "camelCase")]
 pub struct Profile {
@@ -232,6 +235,12 @@ impl Profile {
         })
     }
 
+    /// The export limiter's true-peak ceiling: the profile's limit less [`CODEC_HEADROOM_DB`], because AAC
+    /// encoding overshoots the limiter by a few tenths of a dB (exports measured at -0.75 dBTP for a -1 limit, #127).
+    pub fn limiter_ceiling_dbtp(&self) -> f64 {
+        (self.true_peak_dbtp - CODEC_HEADROOM_DB).max(-9.0)
+    }
+
     /// `export.presets.save` params for this profile.
     pub fn preset_params(&self) -> Value {
         let sidecar = match self.captions.as_str() {
@@ -254,7 +263,7 @@ impl Profile {
             "loudnessLufs": self.loudness_lufs,
             "settings": {
                 "audio": {"bitrateKbps": self.audio_kbps, "sampleRate": self.sample_rate},
-                "effects": {"loudness": {"true_peak_dbtp": self.true_peak_dbtp}},
+                "effects": {"loudness": {"true_peak_dbtp": self.limiter_ceiling_dbtp()}},
             },
         })
     }

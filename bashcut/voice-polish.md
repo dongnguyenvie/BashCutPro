@@ -22,7 +22,10 @@ Code: `crates/engine/src/bashcut/voice.rs`, tests in `voice_tests.rs`. Built on 
    goes in before the limiter: the limiter's input boost (up to +30 dB), then `amplify` (up to +24 dB), measured and
    set again for up to 8 passes, aiming 0.3 LU over the target. `essentialSound.autoMatch` then trims the rest down
    (a cut after the limiter can't clip). A clip that can't reach the target is reported with `short` and left
-   un-trimmed. Untyped clips get the Dialogue audio type first. Build pass (#135): before this, a quiet take raised
+   un-trimmed. Untyped clips get the Dialogue audio type first.
+   The target is the level **in the mix** (what the review gate and exports measure): a mono clip plays on both
+   channels and reads 3 LU louder there than its own one-channel measurement (Auto-Match's), so it is matched to
+   target − 3 (`mixOffsetLu` in the result; #127). Build pass (#135): before this, a quiet take raised
    ~22 dB by Auto-Match alone reached the target at +3 dBTP with clipped samples.
 3. Folds every step into one undo step `Voice Polish`. `amount` 0 changes nothing.
 4. `savePreset`: saves the chain as the effect preset `BashCut Voice Polish NN%` (`presets.save`) to apply by hand.

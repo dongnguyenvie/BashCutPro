@@ -22,7 +22,7 @@ fn every_builtin_profile_compiles_to_a_valid_export_preset() {
         assert_eq!(st["bitrateKbps"], json!(pr.video_kbps()), "{st}");
         assert_eq!(st["effects"]["loudness"]["enabled"], true, "{st}");
         assert_eq!(st["effects"]["loudness"]["target_lufs"], json!(pr.loudness_lufs), "{st}");
-        assert_eq!(st["effects"]["loudness"]["true_peak_dbtp"], json!(pr.true_peak_dbtp), "{st}");
+        assert_eq!(st["effects"]["loudness"]["true_peak_dbtp"], json!(pr.true_peak_dbtp - 0.5), "{st}: codec headroom");
         assert_eq!(st["burnCaptions"], json!(pr.captions == "burn"), "{st}");
         // the compiled preset resolves like any other (what filmcraft-cli export --preset does)
         assert!(crate::export_tools::settings_from_params(&s, &json!({"preset": pr.preset_name()}), "test").is_ok());
