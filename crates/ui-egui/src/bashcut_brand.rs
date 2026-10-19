@@ -16,6 +16,79 @@ pub const NOTICE_URL: &str = "https://github.com/dongnguyenvie/BashCutPro/blob/m
 /// The label of the header's community button (upstream: "Discord").
 pub const COMMUNITY_BUTTON: &str = "Community";
 
+/// The header's community button label, [`COMMUNITY_BUTTON`] instead of upstream's (`"Discord"`).
+/// Called by the hook in `header.rs`, which passes upstream's label.
+pub fn community_button(_upstream: &str) -> &'static str {
+    COMMUNITY_BUTTON
+}
+
+/// The window, Dock, taskbar and app-switcher icon (`bashcut/brand/app-icon/`), set by the hook in
+/// `apps/filmcraft/src/main.rs` after upstream's. Same layout as upstream's `app_icon`: macOS gets the
+/// tile inside Apple's transparent margin, Windows and Linux the full-bleed tile.
+#[cfg(not(target_arch = "wasm32"))]
+pub fn app_icon() -> egui::IconData {
+    #[cfg(target_os = "macos")]
+    let png: &[u8] = include_bytes!("../../../bashcut/brand/app-icon/bashcutpro-macos-512.png");
+    #[cfg(not(target_os = "macos"))]
+    let png: &[u8] = include_bytes!("../../../bashcut/brand/app-icon/hicolor/256x256/apps/ai.storyteller.filmcraft.png");
+    eframe::icon_data::from_png_bytes(png).unwrap_or_default()
+}
+
+/// About ▸ About, drawn instead of upstream's tab (the hook in `panels/dialogs.rs` returns when this
+/// returns `true`, which it always does): our wordmark, name and links, the NOTICE, and the same
+/// automation ids as upstream (`about.discord`, `about.website`, `about.appPage`, `about.github`,
+/// `about.reportIssue`) plus `about.notice`. Branded labels go through `tl!`, so [`text`] replaces them.
+pub fn about_tab(app: &mut crate::FilmcraftApp, ui: &mut egui::Ui) -> bool {
+    use crate::icons::{self, Icon};
+    use crate::links;
+    let t = app.tokens;
+    ui.set_width(380.0);
+    let (r, _) = ui.allocate_exact_size(egui::vec2(ui.available_width(), 30.0), egui::Sense::hover());
+    crate::brand::paint_wordmark(ui, egui::pos2(r.min.x, r.center().y), 20.0, app.ui.dark);
+    ui.add_space(6.0);
+    ui.heading(NAME);
+    ui.label(tlf!("Version {version}", version = env!("CARGO_PKG_VERSION")));
+    ui.label(tl!("A clean-room, pure-Rust non-linear video editor. Part of the ArtCraft family."));
+    ui.add_space(10.0);
+    let mut link = |ui: &mut egui::Ui, id: &str, icon: Icon, label: &str, url: &str, primary: bool| {
+        let size = egui::vec2(ui.available_width(), if primary { 36.0 } else { 28.0 });
+        let (r, resp) = ui.allocate_exact_size(size, egui::Sense::click());
+        let resp = resp.on_hover_text(url);
+        app.auto.add(&format!("about.{id}"), r, label);
+        let bg = if primary {
+            if resp.hovered() { t.accent_hover } else { t.accent }
+        } else if resp.hovered() {
+            t.hover
+        } else {
+            egui::Color32::TRANSPARENT
+        };
+        ui.painter().rect_filled(r, 6.0, bg);
+        let fg = if primary { egui::Color32::WHITE } else { t.text };
+        let ir = egui::Rect::from_center_size(egui::pos2(r.min.x + 20.0, r.center().y), egui::vec2(18.0, 18.0));
+        icons::paint(ui.painter(), ir, icon, fg);
+        ui.painter().text(
+            egui::pos2(r.min.x + 40.0, r.center().y),
+            egui::Align2::LEFT_CENTER,
+            label,
+            crate::theme::Tokens::ui(if primary { 14.0 } else { 13.0 }),
+            fg,
+        );
+        if resp.clicked() {
+            links::open(app, ui.ctx(), url);
+        }
+    };
+    link(ui, "discord", Icon::Chat, tl!("Join the ArtCraft Discord"), links::DISCORD, true);
+    ui.add_space(6.0);
+    link(ui, "website", Icon::Globe, links::WEBSITE.trim_start_matches("https://"), links::WEBSITE, false);
+    link(ui, "appPage", Icon::Globe, tl!("FilmCraft on getartcraft.com"), links::APP_PAGE, false);
+    link(ui, "github", Icon::Code, tl!("Source code on GitHub"), links::GITHUB, false);
+    link(ui, "reportIssue", Icon::Code, tl!("Report an issue"), links::ISSUES, false);
+    link(ui, "notice", Icon::Code, "Licence and notices (NOTICE)", NOTICE_URL, false);
+    ui.add_space(10.0);
+    ui.label(egui::RichText::new(tl!("MIT OR Apache-2.0. Fonts: Inter, Noto Serif and JetBrains Mono (SIL OFL 1.1).")).small().color(t.text_dim));
+    true
+}
+
 /// (upstream English string, what BashCutPro shows instead).
 const OVERRIDES: [(&str, &str); 11] = [
     // Help menu and Home screen links (`links::ALL`; their URLs are in links.rs)
@@ -68,6 +141,11 @@ mod tests {
             }
             assert_eq!(shown(lang, "About FilmCraft"), "About BashCutPro");
         }
+    }
+
+    #[test]
+    fn header_button_is_ours() {
+        assert_eq!(community_button("Discord"), COMMUNITY_BUTTON);
     }
 
     /// Every overridden string still exists upstream: an upstream rename would silently bring the

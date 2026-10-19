@@ -67,6 +67,8 @@ class Repos(unittest.TestCase):
         self.write(self.fork, "bashcut/notes.md", "ours\n")
         self.write(self.fork, "crates/bashcut-x/src/lib.rs", "pub fn x() {}\n")
         self.write(self.fork, "src/bashcut_extra.rs", "pub fn y() {}\n")
+        self.write(self.fork, "src/bashcut_ui/mod.rs", "pub fn z() {}\n")
+        self.write(self.fork, "xtask/src/bashcut.rs", "pub fn w() {}\n")
         self.write(self.fork, ".github/README.md", "new file\n")
         self.commit(self.fork, "fork")
         self.git(self.fork, "push", "-q", "origin", "main")
@@ -112,6 +114,8 @@ class Footprint(Repos):
         self.assertNotIn("bashcut/notes.md", out)
         self.assertNotIn("crates/bashcut-x", out)
         self.assertNotIn("bashcut_extra", out)
+        self.assertNotIn("bashcut_ui", out)
+        self.assertNotIn("xtask", out)
 
     def test_line_without_hook_row_fails(self):
         self.write(self.fork, "src/lib.rs", self.read(self.fork, "src/lib.rs") + "fn extra() {}\n")
@@ -186,6 +190,29 @@ class Footprint(Repos):
         self.commit(self.fork, "rename hook")
         rc, out = self.tool("footprint", "--pr")
         self.assertEqual(rc, 0, out)
+
+    def test_pr_mode_may_restore_upstream_lines(self):
+        # Turning a carried edit back into upstream's text (and dropping its row) is not a new edit.
+        self.git(self.fork, "switch", "-q", "-c", "feat")
+        self.write(self.fork, "packaging/build.sh", "NAME=FilmCraft\n")
+        self.write(self.fork, "UPSTREAM.md", self.read(self.fork, "UPSTREAM.md").replace("| `packaging/**` | edits | branding | test |\n", ""))
+        self.commit(self.fork, "restore")
+        rc, out = self.tool("footprint", "--pr")
+        self.assertEqual(rc, 0, out)
+        self.assertEqual(self.tool("footprint")[0], 0)
+
+    def test_pr_mode_sees_old_violations_in_touched_files(self):
+        # A branch touching a file is answerable for everything we carry in it.
+        self.write(self.fork, "src/lib.rs", self.read(self.fork, "src/lib.rs") + "fn old() {}\n")
+        self.commit(self.fork, "old violation")
+        self.git(self.fork, "push", "-q", "origin", "main")
+        self.git(self.fork, "fetch", "-q", "origin")
+        self.git(self.fork, "switch", "-q", "-c", "feat")
+        self.write(self.fork, "src/lib.rs", self.read(self.fork, "src/lib.rs").replace(HOOK, HOOK + " "))
+        self.commit(self.fork, "touch")
+        rc, out = self.tool("footprint", "--pr")
+        self.assertEqual(rc, 1, out)
+        self.assertIn("fn old() {}", out)
 
     def test_worktree_includes_uncommitted(self):
         self.write(self.fork, "src/lib.rs", self.read(self.fork, "src/lib.rs") + "fn extra() {}\n")

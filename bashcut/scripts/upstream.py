@@ -6,8 +6,9 @@
       file, files upstream changed most in the last 30 days flagged HOT. Fails when a hunk is not
       allowed by UPSTREAM.md (a "Hooks" row or a "Carried edits" row), when a Hooks row no longer
       matches, or when the Rust lines in upstream files go over the budget (150).
-      Default base: the last upstream merge (merge-base of HEAD and upstream/main). --pr checks only
-      this branch's changes (base: merge-base of HEAD and origin/main); run it before every PR.
+      Base: the last upstream merge (merge-base of HEAD and upstream/main). --pr limits the check to
+      the upstream files this branch changes (since its merge-base with origin/main); run it before
+      every PR.
   upstream.py merge [REF] [--no-check] [--no-fetch] [--branch NAME]
       Turn on git rerere, merge REF (default: newest upstream tag) on upstream-sync/<date>, take
       upstream's Cargo.lock, then cargo check --workspace, the bashcut-* tests and xtask layers.
@@ -51,13 +52,12 @@ def git_ok(*args):
 
 
 def is_ours(path):
-    """Files that are ours by location (bashcut/extending-upstream.md §1 rule 2)."""
-    parts = path.split("/")
-    if path == "UPSTREAM.md" or parts[0] == "bashcut":
+    """Files that are ours by location (bashcut/extending-upstream.md §1 rule 2): any path part named
+    `bashcut`, `bashcut_*`, `bashcut-*` or `bashcut.*` (`bashcut/`, `crates/bashcut-*`, `bashcut_ui/`,
+    `bashcut_brand.rs`, `xtask/src/bashcut.rs`), and this ledger."""
+    if path == "UPSTREAM.md":
         return True
-    if len(parts) > 1 and parts[0] in ("crates", "apps") and parts[1].startswith("bashcut-"):
-        return True
-    return "bashcut" in parts[:-1] or parts[-1].startswith("bashcut_")
+    return any(p == "bashcut" or p.startswith(("bashcut_", "bashcut-", "bashcut.")) for p in path.split("/"))
 
 
 # ---------------------------------------------------------------- UPSTREAM.md ledger
@@ -239,19 +239,8 @@ def hot_counts(upstream_ref, paths):
     return counts
 
 
-def upstream_lines(rev, path):
-    """Stripped lines of `path` at the upstream revision `rev` (None: unknown, treat all as upstream's)."""
-    if rev is None:
-        return None
-    p = subprocess.run(["git", "show", "%s:%s" % (rev, path)], capture_output=True, text=True, errors="replace")
-    return set(l.strip() for l in p.stdout.splitlines()) if p.returncode == 0 else set()
-
-
-def classify(f, ledger, problems, upstream_rev=None):
-    """Kind of carried change for an upstream file; appends rule breaks to `problems`.
-
-    A removed line only breaks the rules when it is upstream's: with `upstream_rev` (the last upstream
-    merge, when the diff starts later), lines absent from upstream's file were ours and may change."""
+def classify(f, ledger, problems):
+    """Kind of carried change for an upstream file; appends rule breaks to `problems`."""
     kind = ledger.carried_kind(f.path)
     if kind == "edits":
         return "carried edit"
@@ -262,11 +251,8 @@ def classify(f, ledger, problems, upstream_rev=None):
         problems.append("%s: changes an upstream binary file" % f.path)
         return "VIOLATION"
     bad = False
-    theirs = upstream_lines(upstream_rev, f.path) if any(rm for _, rm, _ in f.hunks) else None
     for header, removed, _ in f.hunks:
         for line in removed:
-            if theirs is not None and line.strip() not in theirs:
-                continue
             problems.append("%s @@ %s: changes or removes upstream line: %s" % (f.path, header, line.strip()))
             bad = True
     if kind == "additions":
@@ -297,34 +283,33 @@ def classify(f, ledger, problems, upstream_rev=None):
 def footprint(args):
     with open("UPSTREAM.md", encoding="utf-8") as fh:
         ledger = Ledger(fh.read())
-    full = not args.pr and not args.base
+    head = [] if args.worktree else ["HEAD"]
+    touched = None  # --pr: the upstream files this branch changes
     if args.base:
         base = git("rev-parse", args.base).strip()
         what = args.base
-    elif args.pr:
-        base = git("merge-base", "HEAD", args.origin).strip()
-        what = "merge-base with %s" % args.origin
     else:
         base = last_upstream_merge(args.upstream)
         what = "last upstream merge"
-    head = [] if args.worktree else ["HEAD"]
+        if args.pr:
+            fork = git("merge-base", "HEAD", args.origin).strip()
+            touched = set(git("diff", "--name-only", "--no-renames", fork, *head, "--").split("\n")) - {""}
+            what += "; files this branch changes since %s" % args.origin
+    full = not args.base  # every hook row in scope must be found
     diff = git("diff", "--no-color", "--no-renames", "--no-ext-diff", "-U0", base, *head, "--")
     files = parse_diff(diff)
+    if touched is not None:
+        files = [f for f in files if f.path in touched]
+        ledger.hooks = [h for h in ledger.hooks if h.path in touched]
 
     problems = list(ledger.errors)
     upstream_files = [f for f in files if not is_ours(f.path) and f.status != "A"]
     new_files = [f.path for f in files if not is_ours(f.path) and f.status == "A"]
     hot = hot_counts(args.upstream, [f.path for f in upstream_files])
 
-    upstream_rev = None
-    if not full:
-        try:
-            upstream_rev = last_upstream_merge(args.upstream)
-        except Fail:
-            pass
     rows, rust, plus, minus = [], 0, 0, 0
     for f in upstream_files:
-        kind = classify(f, ledger, problems, upstream_rev)
+        kind = classify(f, ledger, problems)
         h = hot.get(f.path, 0) if hot is not None else None
         rows.append((f, kind, h))
         plus += f.added
@@ -467,7 +452,7 @@ def main(argv=None):
     ap = argparse.ArgumentParser(prog="upstream.sh", description=__doc__.split("\n\n")[0])
     sub = ap.add_subparsers(dest="cmd")
     fp = sub.add_parser("footprint", help="hunks we carry in upstream files, checked against UPSTREAM.md")
-    fp.add_argument("--pr", action="store_true", help="only this branch's changes (base: merge-base with origin/main)")
+    fp.add_argument("--pr", action="store_true", help="only the upstream files this branch changes (since its merge-base with origin/main)")
     fp.add_argument("--base", help="diff from this revision instead")
     fp.add_argument("--worktree", action="store_true", help="include uncommitted changes")
     fp.add_argument("-v", "--verbose", action="store_true", help="print every hunk")

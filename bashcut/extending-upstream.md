@@ -21,13 +21,13 @@ before 2026-10-20), so the cheapest fork is one that never changes upstream's co
 
 ### Exceptions in place today
 
-These modify upstream lines and are being turned into additions (#39), or are owner decisions:
+These modify upstream lines (all listed in `UPSTREAM.md` "Carried edits", with the reason):
 
 | What | Files | Status |
 |---|---|---|
 | Workflows manual only | `.github/workflows/*.yml` (`on:` blocks) | owner decision (2026-10-20): keep, re-apply on merge |
-| Branding in code | `apps/filmcraft/{build.rs,src/main.rs}`, `crates/ui-egui/src/{brand,header,links}.rs`, `panels/dialogs.rs` | #39: move to the `bashcut_brand` lookup / one inserted hook each |
-| Branding in packaging | `packaging/**`, `omastore.toml` | #39: generate branded copies at packaging time from `bashcut/brand/packaging.env` instead of editing upstream's files |
+| Branding in code | `crates/ui-egui/src/{brand,links}.rs`, `apps/filmcraft/build.rs` | kept: cold files (≤ 4 upstream commits in 30 days) a hook can't cover; the hot ones (`main.rs`, `header.rs`, `dialogs.rs`) carry one hook each since #39 |
+| Branding in packaging | `packaging/**`, `omastore.toml` | kept: cold, run as-is by upstream's shared release workflow; a packaging-time generator is sketched in #39 |
 | Additions only (fine) | `NOTICE`, `LICENSE-MIT`, `ATTRIBUTION.md`, `.gitignore`, one pointer line in `AGENTS.md` / `CLAUDE.md`, `i18n/mod.rs` hook, `ui-egui/src/lib.rs` mod line | keep |
 
 ## 2. Extension points (how to add without modifying)
@@ -68,12 +68,12 @@ Treat anything above ~20 as "will conflict with any edit".
 | 55 | `crates/ui-egui/src/state.rs` | `UiState` (63 struct changes since 09-01); never add fields |
 | 53 / 39 / 36 | `crates/ui-egui/src/i18n/{es,ja,zh-cn}.tsv` (all catalogs) | never touch; our strings in our own catalog |
 | 51 | `crates/export/src/lib.rs` | use export presets and `filmcraft-cli export`, not its types |
-| 47 | `apps/filmcraft/src/main.rs` | branding exception today (#39); nothing new |
+| 47 | `apps/filmcraft/src/main.rs` | one hook (app icon); nothing new |
 | 43 | `crates/project/src/lib.rs` | project schema; never add fields; build projects with commands |
 | 41 | `crates/ui-egui/src/panels/effect_controls.rs` | never touch |
 | 40 | `xtask/src/main.rs` | one inserted line in `layer_of` |
 | 40 | `crates/render/src/lib.rs` | never touch; word-caption styles (#49) try the no-hook route first |
-| 37 / 37 | `panels/monitor.rs`, `panels/dialogs.rs` | never touch (dialogs: branding exception, #39) |
+| 37 / 37 | `panels/monitor.rs`, `panels/dialogs.rs` | never touch (dialogs: one hook, our About tab) |
 | 36 | `crates/edit/src/lib.rs` | call through commands, not edit functions, where possible |
 | 31 | `crates/engine/src/settings.rs` | our settings in `<data dir>/bashcut/` |
 | 29 | `crates/ui-egui/src/control.rs`, `apps/filmcraft-cli/src/main.rs` | use the control protocol and CLI as documented; the CLI help changed 12× since 09-01, so re-check flags after a sync |
