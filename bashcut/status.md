@@ -13,6 +13,8 @@ _Last updated: 2026-10-20_
 
 ## Next
 
+The full migrate / skip list and its reasons: [migration.md](migration.md).
+
 1. **Command inventory.** Build `filmcraft-cli`, run `command_list` (MCP) and save the catalogue. Map
    each `bashcut-agent-kit` skill to the FilmCraft commands it needs: available now, composable with
    `command_batch`, needs a plugin, or needs a new command.
