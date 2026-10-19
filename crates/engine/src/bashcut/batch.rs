@@ -14,6 +14,8 @@ use std::sync::Arc;
 
 use serde_json::{Value, json};
 
+use super::errors::{code_of, fail};
+use super::summary;
 use crate::commands::{CommandSpec, always, bad};
 use crate::{EngineError, Result, Session};
 
@@ -142,6 +144,7 @@ fn batch(s: &mut Session, p: &Value) -> Result<Value> {
         None => format!("Batch ({} commands)", steps.len()),
     };
     let total = steps.len();
+    let summary_before = summary::active(s);
     let before = Before::take(s);
     let mut results = Vec::with_capacity(steps.len());
     let mut last_created = None;
@@ -165,17 +168,23 @@ fn batch(s: &mut Session, p: &Value) -> Result<Value> {
     }
     if let Some((i, id, e)) = failed {
         before.restore(s);
-        return Err(EngineError::Other(format!("{CMD}: step {} of {} (`{id}`) failed: {e}; nothing was changed", i + 1, total)));
+        return Err(fail(code_of(&e), CMD, format!("step {} of {} (`{id}`) failed: {e}; nothing was changed", i + 1, total)));
     }
     let undo_steps = before.fold(s, &label);
     let errors = results.iter().filter(|r| r["ok"] == false).count();
+    let changed = match (summary_before, summary::active(s)) {
+        (Some(b), Some(a)) => summary::changes(&b, &a),
+        (_, a) => a.unwrap_or(Value::Null),
+    };
     Ok(json!({
         "ok": errors == 0,
         "label": label,
         "count": results.len(),
         "failed": errors,
         "undoSteps": undo_steps,
+        "createdId": last_created,
         "lastCreatedId": last_created,
+        "changed": changed,
         "results": results,
     }))
 }

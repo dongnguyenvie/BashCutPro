@@ -40,6 +40,9 @@ _Last updated: 2026-10-20_
   and kit skills use it with `command_batch` as fallback. Build + tests pending (build pass).
 - Command palette (#52): `bashcut_ui/palette.rs`, Cmd/Ctrl+Shift+P, over commands, plugin actions, looks, profiles,
   templates and kit recipes, ranked by recent use; no new hook. Build + tests + live check pending.
+- Agent reads (#50): `bashcut.timeline.summary` (seconds, non-default fields only), `changed` + `createdId` from our edit
+  commands, typed error codes and units notes applied to every `bashcut.*` command in `bashcut/errors.rs`; kit reads
+  the summary. Build + tests pending (build pass).
 
 ## Next
 

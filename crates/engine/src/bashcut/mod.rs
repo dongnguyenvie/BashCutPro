@@ -10,12 +10,16 @@ pub mod batch;
 #[cfg(test)]
 mod batch_tests;
 mod data;
+pub mod errors;
 pub mod hooks;
 #[cfg(test)]
 mod hooks_tests;
 pub mod profiles;
 #[cfg(test)]
 mod profiles_tests;
+pub mod summary;
+#[cfg(test)]
+mod summary_tests;
 pub mod templates;
 #[cfg(test)]
 mod templates_tests;
@@ -31,6 +35,7 @@ use crate::commands::CommandSpec;
 pub fn commands() -> Vec<CommandSpec> {
     // one line per feature file, appended at the end: `<file>::commands(),`
     let groups: Vec<Vec<CommandSpec>> =
-        vec![templates::commands(), profiles::commands(), voice::commands(), analysis::commands(), batch::commands(), hooks::commands()];
-    groups.into_iter().flatten().collect()
+        vec![templates::commands(), profiles::commands(), voice::commands(), analysis::commands(), batch::commands(), hooks::commands(), summary::commands()];
+    // typed errors (`notFound: …`) and a units note on every command (errors.rs)
+    errors::wrap(groups.into_iter().flatten().collect())
 }
