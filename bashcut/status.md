@@ -69,6 +69,9 @@ _Last updated: 2026-10-20_
 - User guide (#65): [guide/](guide/README.md), English and Vietnamese: getting started (install, first-run setup), the
   rail and palette, batch (presets, statuses, fixing a needs-fix item), output profiles, looks, library, the agent
   (Claude Code, Codex, terminal agents), more tools, troubleshooting. Screenshots pending (build pass).
+- U4 (#37): `bashcut-view/1` plugin views (live JSON lines from a `view` action, buttons run actions with the form's
+  values, `bashcut.plugins.view` / `click`), the Codex adapter (`codex exec --json`), pop-out windows remembered per
+  monitor; no new hook. Build + tests + live check pending; translate-captions view port is a follow-up in plugins.
 
 ## Next
 
@@ -77,7 +80,7 @@ _Last updated: 2026-10-20_
    Vietnamese captions, grade + scopes, mix loudness, vieneu-tts line on the timeline, image-gen batch, hyperframes
    card with alpha. Confirm `scopes.read` scale, `render_frame` max side, the Lumetri intensity param name.
 2. Next upstream sync on the next tag or in 1–2 weeks (`upstream.sh merge`, record in `UPSTREAM.md`). Then the
-   in-app UI ([in-app-ui.md](in-app-ui.md)): U4 #37; engine analysis U3 #36 in parallel.
+   in-app UI ([in-app-ui.md](in-app-ui.md)): U4 #37 done; engine analysis U3 #36.
    Batch and quality (owner goals): batch runner #45, Batch section #46 (done), templates #42, output profiles #43,
    atomic edits #44, looks #47, voice polish #48, word captions #49, palette #52, agent reads #50, auto-connect #51,
    model manifest #53, smoke checks #54. Tracking #40.

@@ -1,5 +1,6 @@
 //! Run one plugin action as a child process: stderr lines are progress, stdout holds one
-//! `bashcut-result/1` object, exit 3 is a hand-off to the agent. Cancellable, with a timeout and
+//! `bashcut-result/1` object (and, while it runs, `bashcut-view/1` lines that update the plugin's
+//! form), exit 3 is a hand-off to the agent. Cancellable, with a timeout and
 //! capped output. Every thread runs under `catch_unwind`, and the UI only polls a channel.
 
 use std::io::Read;
@@ -14,6 +15,7 @@ use std::time::{Duration, Instant};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
+use crate::view::{MAX_VIEW_LINE, View};
 use crate::{Error, Result, err};
 
 pub const DEFAULT_TIMEOUT: Duration = Duration::from_secs(30 * 60);
@@ -108,6 +110,8 @@ pub enum Event {
         fraction: Option<f32>,
         message: String,
     },
+    /// A `bashcut-view/1` line on stdout: the plugin's form as it is now.
+    View(View),
     Done(Outcome),
 }
 
@@ -210,8 +214,15 @@ fn supervise(mut child: Child, spec: &RunSpec, tx: &Sender<Event>, cancel: &Atom
     let (out_tx, out_rx) = channel();
     if let Some(out) = child.stdout.take() {
         let cap = spec.max_stdout;
+        let views = tx.clone();
         let _ = std::thread::Builder::new().name("bashcut-plugin-stdout".into()).spawn(move || {
-            let r = catch_unwind(AssertUnwindSafe(|| read_capped(out, cap)));
+            let r = catch_unwind(AssertUnwindSafe(|| {
+                read_stdout(out, cap, |line| {
+                    if let Some(v) = View::from_line(line) {
+                        let _ = views.send(Event::View(v));
+                    }
+                })
+            }));
             let _ = out_tx.send(r.unwrap_or_default());
         });
     }
@@ -289,23 +300,40 @@ fn terminate(child: &mut Child, hard: bool) {
     }
 }
 
-/// Read up to `cap` bytes, then keep draining (so the child never blocks) and report truncation.
-fn read_capped<R: Read>(mut r: R, cap: usize) -> (Vec<u8>, bool) {
+/// Read up to `cap` bytes, then keep draining (so the child never blocks) and report truncation;
+/// `on_line` gets each line as it arrives (lines longer than [`MAX_VIEW_LINE`] are skipped, not
+/// cut: half a view is no view).
+fn read_stdout<R: Read>(mut r: R, cap: usize, mut on_line: impl FnMut(&str)) -> (Vec<u8>, bool) {
     let mut buf = Vec::new();
+    let mut line: Vec<u8> = Vec::new();
+    let mut too_long = false;
     let mut chunk = [0u8; 8192];
     let mut truncated = false;
     loop {
-        match r.read(&mut chunk) {
+        let n = match r.read(&mut chunk) {
             Ok(0) | Err(_) => break,
-            Ok(n) => {
-                let room = cap.saturating_sub(buf.len());
-                let take = n.min(room);
-                buf.extend_from_slice(chunk.get(..take).unwrap_or_default());
-                if take < n {
-                    truncated = true;
+            Ok(n) => n,
+        };
+        let got = chunk.get(..n).unwrap_or_default();
+        let take = n.min(cap.saturating_sub(buf.len()));
+        buf.extend_from_slice(got.get(..take).unwrap_or_default());
+        truncated |= take < n;
+        for &b in got {
+            if b == b'\n' {
+                if !too_long {
+                    on_line(&String::from_utf8_lossy(&line));
                 }
+                line.clear();
+                too_long = false;
+            } else if line.len() < MAX_VIEW_LINE {
+                line.push(b);
+            } else {
+                too_long = true;
             }
         }
+    }
+    if !line.is_empty() && !too_long {
+        on_line(&String::from_utf8_lossy(&line));
     }
     (buf, truncated)
 }
@@ -413,7 +441,16 @@ mod tests {
         let mut got = Vec::new();
         for_each_line(long.as_bytes(), |l| got.push(l.len()));
         assert_eq!(got, [MAX_LINE, 5]);
-        let (buf, truncated) = read_capped(&b"0123456789"[..], 4);
+        let (buf, truncated) = read_stdout(&b"0123456789"[..], 4, |_| {});
         assert_eq!((buf.as_slice(), truncated), (&b"0123"[..], true));
+    }
+
+    #[test]
+    fn stdout_lines_reach_the_view_reader() {
+        let text = format!("a\n{}\nb\r\nlast", "x".repeat(MAX_VIEW_LINE + 1));
+        let mut lines = Vec::new();
+        let (buf, truncated) = read_stdout(text.as_bytes(), 3, |l| lines.push(l.to_string()));
+        assert_eq!(lines, ["a", "b\r", "last"], "the over-long line is skipped");
+        assert_eq!((buf.as_slice(), truncated), (&b"a\nx"[..], true));
     }
 }

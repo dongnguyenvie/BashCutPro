@@ -155,3 +155,56 @@ fn claude_code_needs_the_bridge() {
     assert!(e.0.contains("filmcraft-cli") || e.0.contains("--control"), "{e}");
     assert!(agent.conversation.transcript.items.is_empty(), "nothing is shown for a turn that never started");
 }
+
+/// A scripted Codex (`codex exec --json [resume <id>] -`): plain-text prompt on stdin, item events out.
+const FAKE_CODEX: &str = r#"
+import json, sys
+args = sys.argv[1:]
+assert args[-1] == "-", args
+resumed = args[args.index("resume") + 1] if "resume" in args else ""
+text = sys.stdin.read()
+def out(v):
+    print(json.dumps(v), flush=True)
+thread = resumed or "th-1"
+out({"type": "thread.started", "thread_id": thread})
+out({"type": "turn.started"})
+out({"type": "item.started", "item": {"id": "i1", "type": "mcp_tool_call", "server": "filmcraft", "tool": "command_execute",
+     "arguments": {"command": "edit.razor"}, "status": "in_progress"}})
+out({"type": "item.completed", "item": {"id": "i1", "type": "mcp_tool_call", "server": "filmcraft", "tool": "command_execute",
+     "arguments": {"command": "edit.razor"}, "result": {"content": [{"type": "text", "text": "ok"}]}, "status": "completed"}})
+if "please fail" in text:
+    out({"type": "turn.failed", "error": {"message": "quota reached"}})
+    sys.exit(1)
+out({"type": "item.completed", "item": {"id": "i2", "type": "agent_message", "text": ("resumed " + resumed + ": " if resumed else "") + "echo " + text}})
+out({"type": "turn.completed", "usage": {"input_tokens": 1, "output_tokens": 1}})
+"#;
+
+#[test]
+fn codex_turns_resume_and_show_tool_calls() {
+    let Some((dir, mut spec, ctx)) = setup("codex") else { return };
+    let script = dir.join("codex.py");
+    std::fs::write(&script, FAKE_CODEX).unwrap();
+    let codex = AgentSpec::codex(None);
+    spec.argv.truncate(1);
+    spec.argv.push(script.to_string_lossy().into_owned());
+    spec = AgentSpec { resume_args: codex.resume_args, prompt_args: codex.prompt_args, events: codex.events, ..spec };
+    let mut agent = Agent::new(vec![spec]);
+    agent.send("cut the intro", &ctx).unwrap();
+    run(&mut agent);
+    assert_eq!(agent.status, Status::Idle, "{:?}", agent.conversation.transcript.items);
+    assert_eq!(agent.conversation.session, "th-1");
+    let items = &agent.conversation.transcript.items;
+    assert!(items.iter().any(|i| matches!(i, Item::Tool { output: Some(o), is_error: false, .. } if o == "ok")));
+    assert!(items.iter().any(|i| i.tool_key().as_deref() == Some("edit.razor")));
+    assert!(agent.conversation.transcript.last_answer().unwrap().contains("cut the intro"));
+
+    agent.send("shorter", &ctx).unwrap();
+    run(&mut agent);
+    assert!(agent.conversation.transcript.last_answer().unwrap().starts_with("resumed th-1:"));
+
+    agent.send("please fail", &ctx).unwrap();
+    run(&mut agent);
+    assert!(agent.conversation.transcript.items.iter().any(|i| matches!(i, Item::Error { message } if message == "quota reached")));
+    assert!(matches!(agent.status, Status::Failed { .. }));
+    let _ = std::fs::remove_dir_all(&dir);
+}

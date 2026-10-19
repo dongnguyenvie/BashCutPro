@@ -131,6 +131,8 @@ pub struct Action {
     pub edits: bool,
     pub params: Vec<Param>,
     pub handoff: Option<Handoff>,
+    /// The action shows a `bashcut-view/1` form in the plugin's card while it runs (see [`crate::view`]).
+    pub view: bool,
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]

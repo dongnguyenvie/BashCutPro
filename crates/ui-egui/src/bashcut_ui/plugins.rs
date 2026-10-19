@@ -85,8 +85,11 @@ pub fn invoke(app: &mut FilmcraftApp, ctx: &egui::Context, name: &str, params: &
     }
     let r = with(app, ctx, |h| h.command(name, params, &rc)).map_err(|e| e.0);
     if name == "run" && r.is_ok() {
-        // a run shows up in Runs
-        super::State::update(ctx, |st| st.show("runs"));
+        // a run shows up in Runs; one that shows a form, in its plugin's card
+        let s = |k: &str| params.get(k).and_then(Value::as_str).unwrap_or_default().to_string();
+        let (plugin, action) = (s("plugin"), s("action"));
+        let view = with(app, ctx, |h| h.plugin(&plugin).and_then(|p| p.manifest.as_ref()).and_then(|m| m.action(&action)).is_some_and(|a| a.view));
+        super::State::update(ctx, |st| st.show(if view { "plugins" } else { "runs" }));
     }
     r
 }
@@ -127,6 +130,8 @@ pub fn commands() -> Vec<CommandInfo> {
         ("cancel", "Cancel Run"),
         ("clear", "Clear Finished Runs"),
         ("sendToAgent", "Send Run to Agent"),
+        ("view", "Plugin Form"),
+        ("click", "Press Plugin Form Button"),
     ]
     .into_iter()
     .map(|(id, label)| CommandInfo::new(&format!("bashcut.plugins.{id}"), label, &[], None))

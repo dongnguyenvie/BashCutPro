@@ -92,24 +92,26 @@ fn body(app: &mut FilmcraftApp, ui: &mut egui::Ui, sec: &Section) {
 pub fn floating(app: &mut FilmcraftApp, ctx: &egui::Context, st: &mut State) {
     let mut dock_back = None;
     let mut closed = Vec::new();
+    // windows come back where they were on this monitor (a laptop and a desk screen each keep theirs)
+    let monitor = ctx.input(|i| i.viewport().monitor_size);
     for sec in SECTIONS.iter().filter(|sec| st.popped.iter().any(|p| p == sec.id)) {
         let mut open = true;
-        let shown = egui::Window::new(s(sec.title))
-            .id(window_id(sec.id))
-            .open(&mut open)
-            .default_size(vec2(st.width, 520.0))
-            .min_width(MIN_WIDTH)
-            .collapsible(false)
-            .show(ctx, |ui| {
-                let r = ui.button(s("Dock back"));
-                app.auto.add_response(&format!("bashcut.window.{}.dock", sec.id), &r, s("Dock back"));
-                if r.clicked() {
-                    dock_back = Some(sec.id);
-                }
-                body(app, ui, sec);
-            });
+        let mut window = egui::Window::new(s(sec.title)).id(window_id(sec.id));
+        window = match st.window_rect(sec.id, monitor) {
+            Some(r) => window.default_pos(r.min).default_size(r.size()),
+            None => window.default_size(vec2(st.width, 520.0)),
+        };
+        let shown = window.open(&mut open).min_width(MIN_WIDTH).collapsible(false).show(ctx, |ui| {
+            let r = ui.button(s("Dock back"));
+            app.auto.add_response(&format!("bashcut.window.{}.dock", sec.id), &r, s("Dock back"));
+            if r.clicked() {
+                dock_back = Some(sec.id);
+            }
+            body(app, ui, sec);
+        });
         if let Some(w) = shown {
             app.auto.add(&format!("bashcut.window.{}", sec.id), w.response.rect, s(sec.title));
+            st.remember_window(sec.id, monitor, w.response.rect);
         }
         if !open {
             closed.push(sec.id);

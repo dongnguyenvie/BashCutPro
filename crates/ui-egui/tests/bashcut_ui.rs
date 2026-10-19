@@ -380,3 +380,137 @@ fn batch_section_runs_a_batch_with_a_fake_cli() {
     assert!(d.harness.state().ui_error.is_none(), "{:?}", d.harness.state().ui_error);
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+/// A plugin with a `view` action: `review` shows a form (input, toggle, select, list with row
+/// buttons, button, progress, text) and stays up until `stop` is created; `accept` echoes its args.
+const VIEW_PLUGIN: &str = r#"
+import json, os, sys, time
+mode = sys.argv[1]
+if mode == "review":
+    rows = [
+        {"type": "text", "text": "2 captions to review"},
+        {"type": "input", "id": "lang", "label": "Language", "value": "vi"},
+        {"type": "toggle", "id": "keep", "label": "Keep timing", "value": True},
+        {"type": "select", "id": "tone", "label": "Tone", "value": "plain", "choices": ["plain", "formal"]},
+        {"type": "list", "id": "lines", "items": [
+            {"id": "c1", "text": "Xin chào", "detail": "Hello", "buttons": [{"id": "ok", "label": "Accept", "action": "accept"}]},
+            {"id": "c2", "text": "Tạm biệt", "detail": "Bye", "buttons": [{"id": "ok", "label": "Accept", "action": "accept"}]}]},
+        {"type": "button", "id": "all", "label": "Accept all", "action": "accept", "params": {"all": True}},
+        {"type": "image", "path": "missing.png", "caption": "frame"},
+        {"type": "progress", "value": 0.5, "label": "translating"},
+    ]
+    print(json.dumps({"schema": "bashcut-view/1", "title": "Review", "rows": rows}), flush=True)
+    for _ in range(600):
+        if os.path.exists("stop"):
+            break
+        time.sleep(0.05)
+    print(json.dumps({"ok": True, "message": "reviewed"}))
+else:
+    print(json.dumps({"ok": True, "message": "accepted", "data": {"args": sys.argv[2:]}}))
+"#;
+
+#[test]
+fn a_plugin_view_draws_its_rows_and_buttons_run_actions() {
+    if std::process::Command::new("python3").arg("--version").output().is_err() {
+        eprintln!("python3 not found: skipped");
+        return;
+    }
+    let data = std::env::temp_dir().join(format!("bashcut-ui-view-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&data);
+    let plugin = data.join("bashcut-plugins").join("test.views");
+    std::fs::create_dir_all(&plugin).unwrap();
+    std::fs::write(plugin.join("plugin.py"), VIEW_PLUGIN).unwrap();
+    let manifest = json!({
+        "schema": "bashcut-plugin/1", "id": "test.views", "name": "Views", "version": "0.1.0", "summary": "test plugin",
+        "entry": {"command": ["python3", "plugin.py"]}, "output": "bashcut-result/1",
+        "actions": [
+            {"id": "review", "title": "Review", "args": ["review"], "needs": "none", "view": true},
+            {"id": "accept", "title": "Accept", "args": ["accept"], "needs": "none", "params": [
+                {"id": "lang", "flag": "--lang", "type": "string", "optional": true},
+                {"id": "item", "flag": "--item", "type": "string", "optional": true},
+                {"id": "all", "flag": "--all", "type": "bool", "optional": true}]}
+        ]
+    });
+    std::fs::write(plugin.join("bashcut-plugin.json"), manifest.to_string()).unwrap();
+
+    let mut session = Session::default();
+    session.start_autosave(filmcraft_engine::autosave::AutosaveConfig::new(&data)).expect("data dir");
+    session.execute("file.openDemoProject", json!({})).expect("demo project");
+    let (tx, rx) = channel();
+    let app = FilmcraftApp::new(session).with_control(rx);
+    let harness = Harness::builder().with_size(egui::vec2(W, H)).with_max_steps(10_000).build_eframe(move |_cc| app);
+    let mut d = Driver { harness, tx };
+    d.frames(4);
+
+    assert_eq!(d.exec("bashcut.plugins.view", json!({"plugin": "test.views"})), Value::Null);
+    d.exec("bashcut.plugins.run", json!({"plugin": "test.views", "action": "review"}));
+    let mut shown = Value::Null;
+    for _ in 0..600 {
+        shown = d.exec("bashcut.plugins.view", json!({"plugin": "test.views"}));
+        if !shown.is_null() {
+            break;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(20));
+    }
+    assert_eq!(shown["view"]["rows"].as_array().map(Vec::len), Some(8), "{shown}");
+    let review = shown["job"].as_u64().unwrap();
+    assert_eq!(d.state()["open"], json!("plugins"), "a view action opens its plugin's card");
+    d.frames(3);
+    for id in [
+        "bashcut.view.test.views.title",
+        "bashcut.view.test.views.row0",
+        "bashcut.view.test.views.lang",
+        "bashcut.view.test.views.keep",
+        "bashcut.view.test.views.tone",
+        "bashcut.view.test.views.lines.c1",
+        "bashcut.view.test.views.lines.c2.ok",
+        "bashcut.view.test.views.all",
+        "bashcut.view.test.views.row6",
+        "bashcut.view.test.views.row7",
+    ] {
+        assert!(d.has(id), "{id}");
+    }
+
+    // a row button: its item and the form's values the action takes
+    d.click("bashcut.view.test.views.lines.c2.ok");
+    let runs = d.exec("bashcut.plugins.runs", json!({}));
+    let accept = runs.as_array().unwrap().iter().filter_map(|r| r["id"].as_u64()).max().unwrap();
+    assert_ne!(accept, review, "the click started a run");
+    let mut job = Value::Null;
+    for _ in 0..600 {
+        job = d.exec("bashcut.plugins.job", json!({"job": accept}));
+        if job["state"] != json!("running") {
+            break;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(20));
+    }
+    assert_eq!(job["state"], json!("succeeded"), "{job}");
+    assert_eq!(job["outcome"]["result"]["data"]["args"], json!(["--lang", "vi", "--item", "c2"]));
+    // the control channel presses buttons with its own values
+    let r = d.exec("bashcut.plugins.click", json!({"plugin": "test.views", "button": "all", "values": {"lang": "en"}}));
+    assert!(r["job"].as_u64().is_some(), "{r}");
+    let v = d.call("engine.execute", json!({"command": "bashcut.plugins.click", "params": {"plugin": "test.views", "button": "nope"}}));
+    assert_ne!(v["ok"], json!(true), "unknown button: {v}");
+
+    std::fs::write(plugin.join("stop"), b"").unwrap();
+    let ids: Vec<String> = filmcraft_ui_egui::menus::external_commands().iter().map(|c| c.id.clone()).collect();
+    for id in ["bashcut.plugins.view", "bashcut.plugins.click"] {
+        assert!(ids.iter().any(|c| c == id), "{id} listed");
+    }
+    assert!(d.harness.state().ui_error.is_none(), "{:?}", d.harness.state().ui_error);
+    let _ = std::fs::remove_dir_all(&data);
+}
+
+#[test]
+fn popped_out_windows_come_back_where_they_were() {
+    let mut d = Driver::demo();
+    d.click("bashcut.rail.runs");
+    d.click("bashcut.panel.popout");
+    let r = d.rect("bashcut.window.runs").expect("floating window");
+    let st = d.state();
+    let windows = st["windows"].as_object().cloned().unwrap_or_default();
+    let (key, place) = windows.iter().find(|(k, _)| k.starts_with("runs@")).expect("the window's place is remembered");
+    assert!(key.contains('x'), "keyed by monitor: {key}");
+    assert!(place[0].as_f64().is_some_and(|x| (x as f32 - r[0]).abs() <= 1.0), "{place} vs {r:?}");
+    assert!(d.harness.state().ui_error.is_none(), "{:?}", d.harness.state().ui_error);
+}

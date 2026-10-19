@@ -4,6 +4,7 @@
 //! `<data dir>/bashcut/ui.json` when it changes. The file is hostile input: capped, clamped, and
 //! unknown sections are dropped.
 
+use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
@@ -15,6 +16,10 @@ pub const DEFAULT_WIDTH: f32 = 340.0;
 
 /// Largest `ui.json` read back; anything bigger is ignored.
 const MAX_FILE: u64 = 64 * 1024;
+/// Window places remembered (sections × monitors); the oldest go first past this.
+const MAX_WINDOWS: usize = 64;
+/// Farthest a remembered window corner may be from the origin (px).
+const MAX_COORD: f32 = 32_000.0;
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(default, rename_all = "camelCase")]
@@ -29,6 +34,9 @@ pub struct State {
     pub popped: Vec<String>,
     /// Our language override (`"vi"`); `None` follows the interface language.
     pub language: Option<String>,
+    /// Where each popped-out window was, per monitor: `"<section>@<width>x<height>"` →
+    /// `[x, y, width, height]` (see [`window_key`]).
+    pub windows: BTreeMap<String, [f32; 4]>,
     /// Read from disk already.
     #[serde(skip)]
     loaded: bool,
@@ -39,12 +47,20 @@ pub struct State {
 
 impl Default for State {
     fn default() -> Self {
-        Self { rail: true, open: None, width: DEFAULT_WIDTH, popped: Vec::new(), language: None, loaded: false, saved: None }
+        Self { rail: true, open: None, width: DEFAULT_WIDTH, popped: Vec::new(), language: None, windows: BTreeMap::new(), loaded: false, saved: None }
     }
 }
 
 fn key() -> egui::Id {
     egui::Id::new("bashcut.ui.state")
+}
+
+/// The key a popped-out `section`'s place is remembered under on a monitor of `monitor` size
+/// (unknown, as in headless runs, is `0x0`).
+pub fn window_key(section: &str, monitor: Option<egui::Vec2>) -> String {
+    let (w, h) =
+        monitor.filter(|m| m.x.is_finite() && m.y.is_finite()).map_or((0, 0), |m| (m.x.clamp(0.0, MAX_COORD) as u32, m.y.clamp(0.0, MAX_COORD) as u32));
+    format!("{section}@{w}x{h}")
 }
 
 /// `<data dir>/bashcut/ui.json`.
@@ -82,6 +98,39 @@ impl State {
         if self.language.as_deref().is_some_and(|l| l.len() > 8) {
             self.language = None;
         }
+        self.windows.retain(|k, r| {
+            let section = k.split('@').next().unwrap_or_default();
+            let [_, _, w, h] = *r;
+            let sane = r.iter().all(|v| v.is_finite() && v.abs() <= MAX_COORD) && w >= MIN_WIDTH && h >= 40.0;
+            k.len() <= 64 && has(section) && sane
+        });
+        while self.windows.len() > MAX_WINDOWS {
+            let Some(first) = self.windows.keys().next().cloned() else { break };
+            self.windows.remove(&first);
+        }
+    }
+
+    /// Remember where `section`'s window is on this monitor (rounded, so a still window does not
+    /// rewrite `ui.json`).
+    pub fn remember_window(&mut self, section: &str, monitor: Option<egui::Vec2>, rect: egui::Rect) {
+        let r = [rect.min.x.round(), rect.min.y.round(), rect.width().round(), rect.height().round()];
+        if !r.iter().all(|v| v.is_finite() && v.abs() <= MAX_COORD) {
+            return;
+        }
+        let key = window_key(section, monitor);
+        if self.windows.get(&key) != Some(&r) {
+            if !self.windows.contains_key(&key) && self.windows.len() >= MAX_WINDOWS {
+                let Some(first) = self.windows.keys().next().cloned() else { return };
+                self.windows.remove(&first);
+            }
+            self.windows.insert(key, r);
+        }
+    }
+
+    /// Where `section`'s window was last on this monitor.
+    pub fn window_rect(&self, section: &str, monitor: Option<egui::Vec2>) -> Option<egui::Rect> {
+        let [x, y, w, h] = *self.windows.get(&window_key(section, monitor))?;
+        Some(egui::Rect::from_min_size(egui::pos2(x, y), egui::vec2(w, h)))
     }
 
     /// Open `section` in the side panel, or close it if it is the one open. A popped-out section
@@ -196,6 +245,29 @@ mod tests {
         st.sanitize(KNOWN);
         assert_eq!(st.width, DEFAULT_WIDTH);
         assert!(serde_json::from_str::<State>("[1,2]").is_err());
+    }
+
+    #[test]
+    fn windows_are_remembered_per_monitor() {
+        let laptop = Some(egui::vec2(1512.0, 982.0));
+        let desk = Some(egui::vec2(3840.0, 2160.0));
+        let mut st = State::default();
+        st.remember_window("runs", laptop, egui::Rect::from_min_size(egui::pos2(10.4, 20.0), egui::vec2(300.0, 500.0)));
+        st.remember_window("runs", desk, egui::Rect::from_min_size(egui::pos2(2000.0, 100.0), egui::vec2(400.0, 600.0)));
+        assert_eq!(st.window_rect("runs", laptop), Some(egui::Rect::from_min_size(egui::pos2(10.0, 20.0), egui::vec2(300.0, 500.0))));
+        assert_eq!(st.window_rect("runs", desk).map(|r| r.min.x), Some(2000.0));
+        assert_eq!(st.window_rect("runs", None), None);
+        assert_eq!(window_key("runs", Some(egui::vec2(f32::NAN, 1.0))), "runs@0x0");
+        // a hostile file: bad numbers, unknown sections and too many entries are dropped
+        let mut st: State =
+            serde_json::from_str(r#"{"windows":{"runs@1x1":[1e30,0,300,300],"nope@1x1":[0,0,300,300],"agent@1x1":[0,0,10,300],"plugins@1x1":[5,5,300,300]}}"#)
+                .unwrap();
+        st.sanitize(KNOWN);
+        assert_eq!(st.windows.keys().collect::<Vec<_>>(), vec!["plugins@1x1"]);
+        for i in 0..(MAX_WINDOWS + 5) {
+            st.remember_window("runs", Some(egui::vec2(i as f32 + 1.0, 1.0)), egui::Rect::from_min_size(egui::pos2(0.0, 0.0), egui::vec2(300.0, 300.0)));
+        }
+        assert!(st.windows.len() <= MAX_WINDOWS);
     }
 
     #[test]

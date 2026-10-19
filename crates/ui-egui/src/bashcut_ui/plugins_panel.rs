@@ -28,6 +28,8 @@ struct Drafts {
     params: BTreeMap<String, String>,
     /// The last command's outcome: `(ok, message)`.
     status: Option<(bool, String)>,
+    /// Per plugin, the run whose form last opened its card (a new form opens it once).
+    shown_view: BTreeMap<String, u64>,
 }
 
 fn key() -> egui::Id {
@@ -142,9 +144,10 @@ fn plugin_card(app: &mut FilmcraftApp, ui: &mut egui::Ui, ctx: &egui::Context, d
         ui.label(egui::RichText::new(error).size(11.0).color(t.text_dim));
         return;
     };
-    let update = plugins::with(app, ctx, |h| h.update_for(&p.id));
+    let (update, view) = plugins::with(app, ctx, |h| (h.update_for(&p.id), h.view(&p.id).map(|(job, v)| (job, v.clone()))));
     let head = egui::CollapsingHeader::new(egui::RichText::new(format!("{} {}", m.name, m.version)).color(t.text))
         .id_salt(("bashcut.plugins.card", &p.id))
+        .open(view.as_ref().and_then(|(job, _)| (d.shown_view.insert(p.id.clone(), *job) != Some(*job)).then_some(true)))
         .show(ui, |ui| {
             if !m.summary.is_empty() {
                 ui.label(egui::RichText::new(&m.summary).size(11.0).color(t.text_dim));
@@ -164,6 +167,17 @@ fn plugin_card(app: &mut FilmcraftApp, ui: &mut egui::Ui, ctx: &egui::Context, d
             }
             for a in &m.actions {
                 action_row(app, ui, ctx, d, m, a);
+            }
+            // the newest form a `view` action showed; its buttons run the actions they name
+            if let Some((job, v)) = &view
+                && let Some(c) = super::view::draw(app, ui, &p.id, &p.dir, *job, v)
+            {
+                let item = c.item.as_ref();
+                let params = json!({"plugin": p.id, "button": c.button, "item": item.map(|i| &i.0), "itemButton": item.map(|i| &i.1), "values": c.values});
+                if let Some(v) = run(app, ctx, d, "click", params) {
+                    let job = v.get("job").and_then(Value::as_u64).unwrap_or_default();
+                    d.status = Some((true, f("Started run {job}", &[("job", &job.to_string())])));
+                }
             }
         });
     app.auto.add_response(&format!("bashcut.plugins.{}", p.id), &head.header_response, &m.name);

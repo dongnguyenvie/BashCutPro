@@ -18,6 +18,7 @@ use crate::manifest::{Connection, Manifest, version_key};
 use crate::registry::{self, Registry};
 use crate::runner::{End, Event, Outcome, RunSpec, Running};
 use crate::settings::{self, SecretStore};
+use crate::view::View;
 use crate::{Error, Result, err};
 
 /// Jobs kept in the list (oldest finished ones go first).
@@ -79,6 +80,8 @@ pub struct Job {
     pub elapsed_ms: u64,
     /// For a hand-off: the action the agent runs to finish (`handoff.then`).
     pub then: Option<String>,
+    /// The latest `bashcut-view/1` form the run printed (or put in its result as `data.view`).
+    pub view: Option<View>,
     #[serde(skip)]
     started: Instant,
 }
@@ -96,6 +99,7 @@ impl Job {
             outcome: None,
             elapsed_ms: 0,
             then: None,
+            view: None,
             started: Instant::now(),
         }
     }
@@ -387,6 +391,28 @@ impl Host {
         Ok(id)
     }
 
+    /// The newest form `plugin` showed, and the run that showed it.
+    pub fn view(&self, plugin: &str) -> Option<(u64, &View)> {
+        self.jobs.iter().rev().find_map(|j| match (&j.kind, &j.view) {
+            (JobKind::Run { plugin: p, .. }, Some(v)) if p == plugin => Some((j.id, v)),
+            _ => None,
+        })
+    }
+
+    /// Press a button of `plugin`'s form: the button row `button`, or with `item = (item, button)`
+    /// that item's button in the list `button`. The action it names starts with the form's
+    /// `values` (those the action takes) and the button's params on top.
+    pub fn click(&mut self, plugin: &str, button: &str, item: Option<(&str, &str)>, values: &BTreeMap<String, Value>, ctx: &RunContext) -> Result<u64> {
+        let (_, view) = self.view(plugin).ok_or_else(|| Error(format!("{plugin} shows no form")))?;
+        let (action, extra) = view.button(button, item).ok_or_else(|| Error(format!("{plugin}'s form has no button `{button}`")))?;
+        let m = self.manifest(plugin)?;
+        let a = m.action(&action).ok_or_else(|| Error(format!("{plugin} has no action `{action}`")))?;
+        let mut params: BTreeMap<String, Value> =
+            values.iter().filter(|(k, _)| a.params.iter().any(|p| &p.id == *k)).map(|(k, v)| (k.clone(), v.clone())).collect();
+        params.extend(extra);
+        self.run(plugin, &action, &params, ctx, None)
+    }
+
     pub fn cancel(&mut self, job: u64) -> Result<()> {
         match self.live.iter().find(|(id, _)| *id == job) {
             Some((_, Live::Run(r))) => {
@@ -421,7 +447,11 @@ impl Host {
                                 j.message = message.clone();
                                 j.push_log(message);
                             }
+                            Event::View(v) => j.view = Some(v),
                             Event::Done(o) => {
+                                if let Some(v) = o.result.as_ref().and_then(|r| r.data.get("view")).and_then(View::from_value) {
+                                    j.view = Some(v);
+                                }
                                 let msg = o.summary();
                                 j.finish(o.end.into(), msg);
                                 j.outcome = Some(o);
@@ -521,6 +551,27 @@ impl Host {
                     .map(|t| Duration::from_secs_f64(t.min(86_400.0)));
                 Ok(json!({"job": self.run(&plugin, &action, &p, ctx, timeout)?}))
             }
+            "view" => {
+                let plugin = need("plugin")?;
+                Ok(self.view(&plugin).map_or(Value::Null, |(job, v)| json!({"job": job, "view": v})))
+            }
+            "click" => {
+                let plugin = need("plugin")?;
+                let button = need("button")?;
+                let item = s("item");
+                let item_button = s("itemButton");
+                let item = match (&item, &item_button) {
+                    (Some(i), Some(b)) => Some((i.as_str(), b.as_str())),
+                    (None, None) => None,
+                    _ => return err("`item` and `itemButton` go together"),
+                };
+                let values: BTreeMap<String, Value> = match params.get("values") {
+                    Some(Value::Object(m)) => m.clone().into_iter().collect(),
+                    None | Some(Value::Null) => BTreeMap::new(),
+                    Some(_) => return err("`values` must be an object"),
+                };
+                Ok(json!({"job": self.click(&plugin, &button, item, &values, ctx)?}))
+            }
             "runs" => Ok(json!(self.jobs.iter().map(job_summary).collect::<Vec<_>>())),
             "job" => {
                 let id = job_param()?;
@@ -571,7 +622,7 @@ impl Host {
 
 /// A job without its log, for lists.
 pub fn job_summary(j: &Job) -> Value {
-    json!({"id": j.id, "kind": j.kind, "title": j.title, "state": j.state, "progress": j.progress, "message": j.message, "elapsedMs": j.elapsed_ms, "then": j.then})
+    json!({"id": j.id, "kind": j.kind, "title": j.title, "state": j.state, "progress": j.progress, "message": j.message, "elapsedMs": j.elapsed_ms, "then": j.then, "view": j.view.is_some()})
 }
 
 fn spawn_task(f: impl FnOnce() -> Task + Send + 'static) -> Result<Receiver<Task>> {
