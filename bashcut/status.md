@@ -21,7 +21,7 @@ _Last updated: 2026-10-20_
   recipes (#5–#7, #9–#12, #15–#22); sub-agents surveyor, critic, voice.
 - Plugins (`bashcutpro-plugins`): translate-captions (#8), vieneu-tts (#13), resources (#14, credits opt-in),
   image-gen (#20), hyperframes (#21). Plugin format decision copied into [decisions.md](decisions.md).
-- `bashcut-plugin-host` design note: [plugin-host.md](plugin-host.md) (#23), waiting for owner approval.
+- `bashcut-plugin-host` design note: [plugin-host.md](plugin-host.md) (#23), approved 2026-10-20.
 
 ## Next
 
@@ -29,7 +29,7 @@ _Last updated: 2026-10-20_
    fakes). Run each issue's "Done when" against a `filmcraft-cli` build: rough-cut on a talking-head clip,
    Vietnamese captions, grade + scopes, mix loudness, vieneu-tts line on the timeline, image-gen batch, hyperframes
    card with alpha. Confirm `scopes.read` scale, `render_frame` max side, the Lumetri intensity param name.
-2. **Approve or change** [plugin-host.md](plugin-host.md), then build P1 of `crates/bashcut-plugin-host`.
+2. Build P1 of `crates/bashcut-plugin-host` ([plugin-host.md](plugin-host.md), approved).
 3. Vlog library pack (text styles, stickers, transitions) once `.fcgt` conversions exist.
 
 ## Open questions

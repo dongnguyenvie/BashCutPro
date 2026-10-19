@@ -1,6 +1,6 @@
 # Design note: `crates/bashcut-plugin-host`
 
-Status: **proposed, waiting for owner approval** ([#23](https://github.com/dongnguyenvie/BashCutPro/issues/23)).
+Status: **approved by the owner 2026-10-20**: floating window, registry-only install ([#23](https://github.com/dongnguyenvie/BashCutPro/issues/23)).
 No code is written until this note is approved. Names come from [decisions.md](decisions.md) (2026-10-20, "Names for
 our plugin layer"); the plugin format is the one settled by #8 (`bashcut-plugin/1`, `bashcut-registry/1`,
 `bashcut-result/1`, see `bashcutpro-plugins/README.md`).
@@ -78,7 +78,7 @@ Never-crash rules apply (`AGENTS.md` §0): plugin output is hostile input, parse
 Unit tests in the crate with fake plugins (a Python stdlib script per case, as `bashcutpro-plugins` does);
 `cargo test -p bashcut-plugin-host` only, no release build. One manual check in the app per phase.
 
-## Open questions for the owner
+## Owner answers (2026-10-20)
 
-- Approve the floating-window approach (no `PanelKind` variant) for P1–P2?
-- Install from `registry.json` at a git ref only, or also from a local folder (developer mode)?
+- Floating window, no `PanelKind` variant, for P1–P2: yes.
+- Install from `registry.json` at a git ref only; no local-folder install.
