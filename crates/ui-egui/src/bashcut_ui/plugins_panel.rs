@@ -4,6 +4,7 @@
 
 use std::collections::BTreeMap;
 
+use bashcut_plugin_host::JobState;
 use bashcut_plugin_host::install::Installed;
 use bashcut_plugin_host::manifest::{Action, Manifest, Param, Setting};
 use bashcut_plugin_host::registry::Entry;
@@ -30,6 +31,8 @@ struct Drafts {
     status: Option<(bool, String)>,
     /// Per plugin, the run whose form last opened its card (a new form opens it once).
     shown_view: BTreeMap<String, u64>,
+    /// The registry fetch the "Checking…" line waits for.
+    checking: Option<u64>,
 }
 
 fn key() -> egui::Id {
@@ -65,9 +68,15 @@ pub fn draw(app: &mut FilmcraftApp, ui: &mut egui::Ui) {
     let ctx = ui.ctx().clone();
     let mut d = drafts(&ctx);
     let t = app.tokens;
-    let (installed, registry, location, running) = plugins::with(app, &ctx, |h| {
-        (h.installed().to_vec(), h.registry().cloned(), format!("{}@{}", h.registry_location.0, h.registry_location.1), h.any_running())
+    let (installed, registry, location, running, checked) = plugins::with(app, &ctx, |h| {
+        let checked = d.checking.and_then(|id| h.job(id)).filter(|j| j.state != JobState::Running).map(|j| (j.state, j.message.clone()));
+        (h.installed().to_vec(), h.registry().cloned(), format!("{}@{}", h.registry_location.0, h.registry_location.1), h.any_running(), checked)
     });
+    // the fetch ended: drop "Checking…", or say why it failed
+    if let Some((state, msg)) = checked {
+        d.checking = None;
+        d.status = (state != JobState::Succeeded).then(|| (false, f("Could not check {location}: {error}", &[("location", &location), ("error", &msg)])));
+    }
     let can_install = super::data_dir(app).is_some();
 
     if let Some((ok, msg)) = &d.status {
@@ -91,7 +100,10 @@ pub fn draw(app: &mut FilmcraftApp, ui: &mut egui::Ui) {
     ui.horizontal(|ui| {
         ui.label(egui::RichText::new(s("Available")).strong().color(t.text));
         let label = if registry.is_some() { s("Refresh") } else { s("Check registry") };
-        if button(app, ui, "bashcut.plugins.registry.refresh", label, can_install) && run(app, &ctx, &mut d, "registry", json!({})).is_some() {
+        if button(app, ui, "bashcut.plugins.registry.refresh", label, can_install)
+            && let Some(v) = run(app, &ctx, &mut d, "registry", json!({}))
+        {
+            d.checking = v["job"].as_u64();
             d.status = Some((true, f("Checking {location}…", &[("location", &location)])));
         }
     });
