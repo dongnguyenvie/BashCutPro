@@ -43,14 +43,15 @@ class Fail(Exception):
 
 
 def git(*args, check=True, cwd=None):
-    p = subprocess.run(["git", *args], cwd=cwd, capture_output=True, text=True)
+    # git prints UTF-8; decode it as such everywhere (Windows would use the ANSI code page and fail on diffs)
+    p = subprocess.run(["git", *args], cwd=cwd, capture_output=True, text=True, encoding="utf-8", errors="replace")
     if check and p.returncode != 0:
         raise Fail("git %s: %s" % (" ".join(args), p.stderr.strip()))
     return p.stdout
 
 
 def git_ok(*args):
-    return subprocess.run(["git", *args], capture_output=True, text=True).returncode == 0
+    return subprocess.run(["git", *args], capture_output=True, text=True, encoding="utf-8", errors="replace").returncode == 0
 
 
 def is_ours(path):
