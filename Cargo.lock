@@ -500,6 +500,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2af50177e190e07a26ab74f8b1efbfe2ef87da2116221318cb1c2e82baf7de06"
 
 [[package]]
+name = "bashcut-agent"
+version = "0.9.0"
+dependencies = [
+ "log",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "bashcut-analysis"
 version = "0.9.0"
 dependencies = [
@@ -2381,6 +2390,8 @@ dependencies = [
 name = "filmcraft-ui-egui"
 version = "0.9.0"
 dependencies = [
+ "bashcut-agent",
+ "bashcut-batch",
  "bashcut-plugin-host",
  "cpu-time",
  "craft-ui",
