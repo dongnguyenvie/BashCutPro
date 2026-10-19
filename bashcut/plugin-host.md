@@ -1,6 +1,6 @@
 # Design note: `crates/bashcut-plugin-host`
 
-Status: **approved by the owner 2026-10-20**: floating window, registry-only install ([#23](https://github.com/dongnguyenvie/BashCutPro/issues/23)).
+Status: **approved by the owner 2026-10-20**: floating window, registry-only install. The in-app UI around it (side panel by default, floating as pop-out): [in-app-ui.md](in-app-ui.md), proposed. ([#23](https://github.com/dongnguyenvie/BashCutPro/issues/23)).
 No code is written until this note is approved. Names come from [decisions.md](decisions.md) (2026-10-20, "Names for
 our plugin layer"); the plugin format is the one settled by #8 (`bashcut-plugin/1`, `bashcut-registry/1`,
 `bashcut-result/1`, see `bashcutpro-plugins/README.md`).
