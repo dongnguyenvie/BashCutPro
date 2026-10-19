@@ -155,6 +155,21 @@ fuzzy score plus recent use (`<data dir>/bashcut/palette.json`). Commands `bashc
 search {query, limit?}, run {item, params?}, recipe {recipe}}`; automation ids `bashcut.palette`,
 `bashcut.palette.input`, `bashcut.palette.item.<key>`, `bashcut.palette.params[.run|.back]`.
 
+Built in #47 (Q): `crates/engine/src/bashcut/looks.rs`, a curated pack of 26 looks, each a set of Lumetri Color
+parameters with a one-line purpose, genre tags and one intensity knob (1.0 = as designed, 0 = no change; each look
+has a safe range). Commands `bashcut.looks.{list {tags?, query?}, get {look, intensity?}, apply {look, intensity?,
+clips?}, remove {clips?}, thumbnail {look, intensity?, width?, frame?, path?}, export {look + path | dir, size?},
+check {look?}}`. Applying adds one Lumetri Color marked by a `bashcut_look` text param (Lumetri ignores it), so a
+second look replaces the first; one undo step. Thumbnails are upstream's Lumetri on its procedural preview picture
+(or the program frame), cached by look fingerprint; `.cube` LUTs are sampled from the same grade. Golden values at
+min / default / max intensity live in `looks_golden.json` (bless with `BASHCUT_BLESS=1`), damage checks (clipped
+highlights, crushed shadows, skin hue shift, ramp order) in `looks_tests.rs` and `bashcut.looks.check`. The Looks
+section (`bashcut_ui/looks_panel.rs`, rail id `looks`) lists them with thumbnails, filter and genre tags, the knob,
+"Preview on current frame", Apply / Remove on the selection and favourites (`<data dir>/bashcut/looks-ui.json`;
+commands `bashcut.ui.looks.{favourite {look, on?}, previewFrame {on?}, state}`); automation ids
+`bashcut.looks.<id>[.apply|.favourite]`, `bashcut.looks.{filter,intensity,frame,remove,tag.<tag>}`. The palette
+lists looks through `bashcut.looks.list`.
+
 - **UI state** (open section, width, popped-out sections, panel scroll, draft message) is a `bashcut_ui::State`
   kept in egui's context data (`ctx.data_mut(|d| d.get_temp_mut_or_default::<State>(id))`), so `FilmcraftApp`
   gains no field. It is saved to `<data dir>/bashcut/ui.json` when it changes, not in upstream's workspace files.
