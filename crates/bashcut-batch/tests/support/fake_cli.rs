@@ -12,7 +12,7 @@ use serde_json::{Value, json};
 use std::io::Write;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
-const VALUED: &[&str] = &["--project", "--save-as", "--preset", "--format", "--settings", "--data-dir"];
+const VALUED: &[&str] = &["--project", "--save-as", "--preset", "--format", "--settings", "--data-dir", "--mode", "--prompt", "--session", "--sleep-ms"];
 
 fn main() {
     let code = real_main();
@@ -89,7 +89,17 @@ fn real_main() -> i32 {
                     println!("{}", json!({"line": n + 1, "id": id, "ok": false, "error": "fake failure"}));
                     return 1;
                 }
-                println!("{}", json!({"line": n + 1, "id": id, "ok": true, "result": null}));
+                // the review gate: one blocking finding until an agent wrote "fixed" into the project
+                let result = if id == "bashcut.review.run" {
+                    let blocking = u64::from(!project.contains("fixed\n"));
+                    let findings: Vec<Value> = (0..blocking)
+                        .map(|_| json!({"category": "captions", "check": "captions.readingSpeed", "severity": "blocking", "start": 1.0, "end": 2.0, "message": "24 characters a second", "fix": "split the caption"}))
+                        .collect();
+                    json!({"ok": blocking == 0, "verdict": if blocking == 0 { "pass" } else { "needsFix" }, "blocking": blocking, "warnings": 0, "scores": {"captions": 100 - 40 * blocking}, "findings": findings})
+                } else {
+                    Value::Null
+                };
+                println!("{}", json!({"line": n + 1, "id": id, "ok": true, "result": result}));
                 project.push_str(&id);
                 project.push('\n');
             }
@@ -121,6 +131,40 @@ fn real_main() -> i32 {
                 return 1;
             }
             println!("{}", json!({"path": out}));
+            0
+        }
+        // an agent (Claude Code's stream-json): edits the project file itself, as an agent saving
+        // through MCP would; --mode ok (writes "fixed" on a fix round), fixfirst, stubborn, loop, sleep
+        Some("fake-agent") => {
+            log("agent-start");
+            let mode = opt("--mode").unwrap_or_default();
+            let prompt = opt("--prompt").unwrap_or_default();
+            let session = opt("--session").filter(|s| !s.is_empty());
+            if let Some(ms) = opt("--sleep-ms").and_then(|m| m.parse::<u64>().ok()) {
+                std::thread::sleep(Duration::from_millis(ms));
+            }
+            if mode == "sleep" {
+                std::thread::sleep(Duration::from_secs(10));
+            }
+            if let Some(s) = &session {
+                project.push_str(&format!("resume:{s}\n"));
+            }
+            project.push_str("agent\n");
+            let fix_round = prompt.contains("found blocking problems");
+            if mode == "fixfirst" || (mode == "ok" && fix_round) {
+                project.push_str("fixed\n");
+            }
+            if opt("--project").is_some_and(|p| std::fs::write(p, &project).is_err()) {
+                return 1;
+            }
+            let sid = session.unwrap_or_else(|| format!("sess-{}", std::process::id()));
+            println!("{}", json!({"type": "system", "subtype": "init", "session_id": sid}));
+            let subtype = if mode == "loop" { "error_max_turns" } else { "success" };
+            println!(
+                "{}",
+                json!({"type": "result", "subtype": subtype, "is_error": false, "num_turns": 3, "session_id": sid, "total_cost_usd": 0.01, "usage": {"input_tokens": 100, "output_tokens": 20}, "result": "done"})
+            );
+            log("agent-end");
             0
         }
         // a plugin that needs the calling agent (`bashcut-result/1`, exit 3)

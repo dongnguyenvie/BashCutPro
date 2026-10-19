@@ -39,6 +39,10 @@ RUN OPTIONS
                       program, else filmcraft-cli on PATH)
   --concurrency N     items at once (overrides the pipeline; free RAM and cores may allow fewer)
   --no-keep-awake     let the machine sleep while the batch runs
+  --agent-concurrency N
+                      agent steps at once, across items (overrides the pipeline's agentConcurrency)
+  --mcp PATH          bashcut-mcp for agent steps (default: $BASHCUT_MCP, else the one next to this
+                      program; without it agents get filmcraft-cli mcp, writes not limited)
   --data-dir DIR      FilmCraft data dir: presets, and --data-dir for filmcraft-cli
   --compact           one-line JSON
 
@@ -46,7 +50,8 @@ EXIT STATUS
   0 every item done · 1 the job ended failed, stopped, cancelled or needing attention · 2 usage or error
 ";
 
-const VALUED: &[&str] = &["--preset", "--id", "--input", "--projects", "--cli", "--concurrency", "--data-dir", "--items", "--timeout"];
+const VALUED: &[&str] =
+    &["--preset", "--id", "--input", "--projects", "--cli", "--concurrency", "--agent-concurrency", "--mcp", "--data-dir", "--items", "--timeout"];
 
 struct Args {
     pos: Vec<String>,
@@ -250,9 +255,29 @@ fn options(a: &Args) -> Result<Options, Fail> {
         }
         o.concurrency = Some(n);
     }
+    if let Some(n) = a.opt("--agent-concurrency") {
+        let n: usize = n.parse().map_err(|_| usage("--agent-concurrency takes a number"))?;
+        if n == 0 || n > pipeline::MAX_CONCURRENCY {
+            return Err(usage(format!("--agent-concurrency must be 1 to {}", pipeline::MAX_CONCURRENCY)));
+        }
+        o.agent_concurrency = Some(n);
+    }
     o.data_dir = a.opt("--data-dir").map(PathBuf::from);
     o.keep_awake = !a.flag("--no-keep-awake");
+    o.mcp = find_mcp(a);
     Ok(o)
+}
+
+/// `bashcut-mcp` for agent steps: `--mcp`, `$BASHCUT_MCP`, else next to this program.
+fn find_mcp(a: &Args) -> Option<PathBuf> {
+    if let Some(m) = a.opt("--mcp") {
+        return Some(PathBuf::from(m));
+    }
+    if let Some(m) = std::env::var_os("BASHCUT_MCP").filter(|v| !v.is_empty()) {
+        return Some(PathBuf::from(m));
+    }
+    let name = format!("bashcut-mcp{}", std::env::consts::EXE_SUFFIX);
+    std::env::current_exe().ok().and_then(|e| e.parent().map(|d| d.join(&name))).filter(|p| p.is_file())
 }
 
 fn find_cli(a: &Args) -> PathBuf {

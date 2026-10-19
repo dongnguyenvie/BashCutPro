@@ -47,6 +47,9 @@ pub struct Pipeline {
     /// RAM / CPU / disk limits for the runner (#61, [`crate::governor::Limits`]).
     #[serde(default)]
     pub resources: crate::governor::Limits,
+    /// Agent steps running at once, across items (separate from `concurrency`; default 1).
+    #[serde(default = "one")]
+    pub agent_concurrency: usize,
     /// Item (and project file) name; `{stem}` is the input's file stem, `{index}` its 1-based
     /// number (001…). Default `{stem}`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -63,6 +66,10 @@ pub struct Pipeline {
 
 fn one() -> usize {
     1
+}
+
+fn yes() -> bool {
+    true
 }
 
 fn empty_object() -> Value {
@@ -129,18 +136,82 @@ pub struct ProcessStep {
     pub env: BTreeMap<String, String>,
 }
 
+/// An agent step (#60): a kit skill run headless against the item's project, then reviewed
+/// (`bashcut.review.run`); blocking findings go back to the agent for at most `fixRounds` rounds,
+/// after which the item ends **needs fix**.
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct AgentStep {
     pub skill: String,
     #[serde(default)]
     pub brief: String,
-    /// The agent's command line; `{prompt}` is the skill, brief and project in one sentence.
-    /// Default: [`DEFAULT_AGENT_ARGV`].
+    /// `claude` (Claude Code, default) or `codex`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub agent: Option<String>,
+    /// A command line of your own instead of the adapter's: `{prompt}`, `{session}` (empty on the
+    /// first round) and `{mcpConfig}` besides the item placeholders; it should print Claude Code
+    /// stream-json or Codex `--json` events to read usage from.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub argv: Vec<String>,
+    /// Turns per round (Claude Code `--max-turns`; default 40).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub max_turns: Option<u32>,
+    /// Wall time for the whole step, every round included (default 30).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub max_minutes: Option<f64>,
+    /// Review after the agent (default true).
+    #[serde(default = "yes")]
+    pub review: bool,
+    /// The output profile the review measures against (`bashcut.review.run {profile}`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub review_profile: Option<String>,
+    /// Rounds that send blocking findings back to the agent (default 2, at most 5).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub fix_rounds: Option<u32>,
 }
 
-pub const DEFAULT_AGENT_ARGV: &[&str] = &["claude", "-p", "{prompt}"];
+pub const DEFAULT_MAX_TURNS: u32 = 40;
+pub const DEFAULT_MAX_MINUTES: f64 = 30.0;
+pub const DEFAULT_FIX_ROUNDS: u32 = 2;
+pub const MAX_FIX_ROUNDS: u32 = 5;
+/// Agents the runner knows how to start and read.
+pub const AGENTS: &[&str] = &["claude", "codex"];
+
+impl AgentStep {
+    fn check(&self) -> Result<(), String> {
+        if self.agent.as_deref().is_some_and(|a| !AGENTS.contains(&a)) {
+            return Err(format!("agent must be one of {}", AGENTS.join(", ")));
+        }
+        if self.max_turns.is_some_and(|t| t == 0 || t > 1000) {
+            return Err("maxTurns must be 1 to 1000".into());
+        }
+        if self.max_minutes.is_some_and(|m| !m.is_finite() || m <= 0.0 || m > 24.0 * 60.0) {
+            return Err("maxMinutes must be above 0 and at most 1440".into());
+        }
+        if self.fix_rounds.is_some_and(|r| r > MAX_FIX_ROUNDS) {
+            return Err(format!("fixRounds must be at most {MAX_FIX_ROUNDS}"));
+        }
+        Ok(())
+    }
+
+    /// The adapter: `claude` unless set.
+    pub fn agent_name(&self) -> &str {
+        self.agent.as_deref().unwrap_or("claude")
+    }
+
+    pub fn max_turns(&self) -> u32 {
+        self.max_turns.unwrap_or(DEFAULT_MAX_TURNS)
+    }
+
+    /// The step's whole wall time.
+    pub fn max_duration(&self) -> std::time::Duration {
+        std::time::Duration::from_secs_f64(self.max_minutes.unwrap_or(DEFAULT_MAX_MINUTES).clamp(0.001, 24.0 * 60.0) * 60.0)
+    }
+
+    pub fn fix_rounds(&self) -> u32 {
+        self.fix_rounds.unwrap_or(DEFAULT_FIX_ROUNDS).min(MAX_FIX_ROUNDS)
+    }
+}
 
 /// What a step does, borrowed from a validated [`Step`].
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -256,8 +327,8 @@ impl Pipeline {
         if self.steps.len() > MAX_STEPS || self.outputs.len() > MAX_OUTPUTS {
             return Err(format!("pipeline: at most {MAX_STEPS} steps and {MAX_OUTPUTS} outputs"));
         }
-        if self.concurrency == 0 || self.concurrency > MAX_CONCURRENCY {
-            return Err(format!("pipeline: concurrency must be 1 to {MAX_CONCURRENCY}"));
+        if self.concurrency == 0 || self.concurrency > MAX_CONCURRENCY || self.agent_concurrency == 0 || self.agent_concurrency > MAX_CONCURRENCY {
+            return Err(format!("pipeline: concurrency and agentConcurrency must be 1 to {MAX_CONCURRENCY}"));
         }
         for (i, s) in self.steps.iter().enumerate() {
             let kind = s.kind().map_err(|e| format!("pipeline: step {}: {e}", i + 1))?;
@@ -269,6 +340,9 @@ impl Pipeline {
             };
             if bad {
                 return Err(format!("pipeline: step {}: empty command id, program or skill", i + 1));
+            }
+            if let StepKind::Agent(a) = kind {
+                a.check().map_err(|e| format!("pipeline: step {}: {e}", i + 1))?;
             }
         }
         self.resources.validate()?;
@@ -460,6 +534,11 @@ mod tests {
         assert_eq!(p.steps[0].describe(), "captions.auto");
         let p = Pipeline::parse(&minimal(json!({"description": "d", "outputs": [{"name": "{name}.mp4", "profile": "tiktok"}]})), Path::new("/")).unwrap();
         assert_eq!((p.description.as_str(), p.outputs[0].profile.as_deref()), ("d", Some("tiktok")));
+        let p = Pipeline::parse(&minimal(json!({"steps": [{"agent": {"skill": "rough-cut", "maxMinutes": 0.5}}]})), Path::new("/")).unwrap();
+        let a = p.steps[0].agent.as_ref().unwrap();
+        assert_eq!((a.agent_name(), a.max_turns(), a.fix_rounds(), a.review), ("claude", DEFAULT_MAX_TURNS, DEFAULT_FIX_ROUNDS, true));
+        assert_eq!(a.max_duration(), std::time::Duration::from_secs(30));
+        assert_eq!(p.agent_concurrency, 1);
     }
 
     #[test]
@@ -475,6 +554,11 @@ mod tests {
             json!({"outputs": [{"name": "a.mp4", "profile": "tiktok", "preset": "x"}]}),
             json!({"outputs": [{"name": "a.mp4", "profile": " "}]}),
             json!({"template": {"project": "t.fcproj", "commands": [{"id": "x"}]}}),
+            json!({"agentConcurrency": 0}),
+            json!({"steps": [{"agent": {"skill": "rough-cut", "agent": "gpt"}}]}),
+            json!({"steps": [{"agent": {"skill": "rough-cut", "maxTurns": 0}}]}),
+            json!({"steps": [{"agent": {"skill": "rough-cut", "maxMinutes": -1}}]}),
+            json!({"steps": [{"agent": {"skill": "rough-cut", "fixRounds": 9}}]}),
         ];
         for b in bad {
             assert!(Pipeline::parse(&minimal(b.clone()), Path::new("/")).is_err(), "{b}");
