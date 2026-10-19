@@ -1,6 +1,6 @@
 //! BashCutPro doctor (#73): checks a machine before a long unattended run, and says how to fix what is wrong.
 //!
-//! Checks: `filmcraft-cli` (found, version, the `bashcut.*` commands a run needs), the agent kit, installed plugins
+//! Checks: the engine, `bashcutpro` or `filmcraft-cli` (found, version, the `bashcut.*` commands a run needs), the agent kit, installed plugins
 //! and their runtimes, downloaded models (sizes and SHA-256 against `models.json`), agent CLIs (claude, codex), free
 //! disk, memory and the GPU backend. [`updates`] compares installed versions with the registry and the release list
 //! and only reports; nothing is installed. Everything the doctor reads goes through [`Env`], so tests use fakes.
@@ -157,9 +157,14 @@ pub fn meets(version: (u64, u64, u64), requirement: &str) -> bool {
     }
 }
 
-/// The program that runs `filmcraft-cli`.
+/// The engine program (#154): `--cli`, `BASHCUTPRO_CLI` or `FILMCRAFT_CLI`, else `bashcutpro` when it
+/// starts, else `filmcraft-cli`.
 pub fn cli_program(env: &dyn Env, opts: &Options) -> String {
-    opts.cli.clone().or_else(|| env.var("BASHCUTPRO_CLI")).unwrap_or_else(|| "filmcraft-cli".to_string())
+    let named = opts.cli.clone().or_else(|| env.var("BASHCUTPRO_CLI")).or_else(|| env.var("FILMCRAFT_CLI"));
+    named.unwrap_or_else(|| {
+        let pro = env.run("bashcutpro", &["--version"]).is_some_and(|o| o.ok());
+        if pro { "bashcutpro" } else { "filmcraft-cli" }.to_string()
+    })
 }
 
 /// Every check, in a fixed order.
@@ -183,7 +188,7 @@ fn check_cli(env: &dyn Env, opts: &Options, r: &mut Report) {
     let Some(out) = env.run(&cli, &["--version"]).filter(Output::ok) else {
         r.findings.push(
             Finding::new("cli", Level::Fail, format!("`{cli}` was not found or does not start"))
-                .fix("install or build filmcraft-cli (kit skill bcp:setup), or point BASHCUTPRO_CLI / --cli at it"),
+                .fix("install BashCutPro or build bashcutpro / filmcraft-cli (kit skill bcp:setup), or point BASHCUTPRO_CLI / --cli at it"),
         );
         return;
     };
@@ -192,7 +197,8 @@ fn check_cli(env: &dyn Env, opts: &Options, r: &mut Report) {
     let listed = env.run(&cli, &["commands", "bashcut", "--json"]).filter(Output::ok).and_then(|o| serde_json::from_str::<Value>(&o.stdout).ok());
     let Some(Value::Array(list)) = listed else {
         r.findings.push(
-            Finding::new("cli.commands", Level::Warn, "`commands bashcut --json` gave no command list").fix("rebuild filmcraft-cli from BashCutPro main"),
+            Finding::new("cli.commands", Level::Warn, "`commands bashcut --json` gave no command list")
+                .fix("rebuild filmcraft-cli (behind bashcutpro) from BashCutPro main"),
         );
         return;
     };
@@ -202,7 +208,8 @@ fn check_cli(env: &dyn Env, opts: &Options, r: &mut Report) {
         r.findings.push(Finding::new("cli.commands", Level::Ok, format!("{} bashcut.* commands", have.len())));
     } else {
         r.findings.push(
-            Finding::new("cli.commands", Level::Fail, format!("this build lacks {}", missing.join(", "))).fix("rebuild filmcraft-cli from BashCutPro main"),
+            Finding::new("cli.commands", Level::Fail, format!("this build lacks {}", missing.join(", ")))
+                .fix("rebuild filmcraft-cli (behind bashcutpro) from BashCutPro main"),
         );
     }
     check_speech(env, &cli, r);
@@ -218,7 +225,7 @@ fn check_speech(env: &dyn Env, cli: &str, r: &mut Report) {
     };
     if models.get("available").and_then(Value::as_bool) != Some(true) {
         r.findings.push(
-            Finding::new("speech", Level::Warn, "this filmcraft-cli has no speech-to-text: transcribing (captions, Vietsub and shorts presets) fails")
+            Finding::new("speech", Level::Warn, "this engine (filmcraft-cli) has no speech-to-text: transcribing (captions, Vietsub and shorts presets) fails")
                 .fix("use a build with speech-to-text (cargo build -p filmcraft-cli --features whisper)"),
         );
         return;

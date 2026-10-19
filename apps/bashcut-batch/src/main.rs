@@ -11,7 +11,7 @@ use std::process::ExitCode;
 use std::time::{Duration, Instant};
 
 const HELP: &str = "\
-bashcut-batch: BashCutPro batch pipelines through filmcraft-cli (headless; the app need not be open)
+bashcut-batch: BashCutPro batch pipelines through bashcutpro, the filmcraft-cli engine (headless; the app need not be open)
 
 USAGE
   bashcut-batch run <pipeline.json> [--id ID] [--input PATH]... [--projects DIR] [--outputs DIR] [RUN OPTIONS]
@@ -37,8 +37,9 @@ USAGE
   <job> is a job folder (`<projectsFolder>/.bashcut-batch/<id>`, printed by run and list).
 
 RUN OPTIONS
-  --cli PATH          filmcraft-cli to use (default: $BASHCUT_FILMCRAFT_CLI, the one next to this
-                      program, else filmcraft-cli on PATH)
+  --cli PATH          the engine to use (default: $BASHCUTPRO_CLI, $BASHCUT_FILMCRAFT_CLI or
+                      $FILMCRAFT_CLI, else bashcutpro or filmcraft-cli next to this program, else
+                      the same on PATH)
   --concurrency N     items at once (overrides the pipeline; free RAM and cores may allow fewer)
   --no-keep-awake     let the machine sleep while the batch runs
   --agent-concurrency N
@@ -298,14 +299,7 @@ fn find_cli(a: &Args) -> PathBuf {
         let c = Path::new(c);
         return if c.components().count() > 1 { pipeline::absolute(c) } else { c.to_path_buf() };
     }
-    if let Some(c) = std::env::var_os("BASHCUT_FILMCRAFT_CLI").filter(|v| !v.is_empty()) {
-        return PathBuf::from(c);
-    }
-    let name = format!("filmcraft-cli{}", std::env::consts::EXE_SUFFIX);
-    if let Some(sibling) = std::env::current_exe().ok().and_then(|e| e.parent().map(|d| d.join(&name))).filter(|p| p.is_file()) {
-        return sibling;
-    }
-    PathBuf::from(name)
+    bashcut_batch::cli::default_cli()
 }
 
 fn presets_cmd(a: &Args) -> Result<u8, Fail> {

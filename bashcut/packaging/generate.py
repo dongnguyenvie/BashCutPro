@@ -6,7 +6,9 @@ The packaging scripts re-exec the copy this writes (bash: `bashcut/brand/packagi
 never edited for the Pro pieces. Every change is an exact-match substitution that must match the expected number of
 times: when upstream rewrites a line we depend on, packaging fails loudly here instead of shipping without our tools.
 
-What the copy adds on every OS: the binaries `bashcut-doctor`, `bashcut-batch`, `bashcut-mcp` (built with the app) and
+What the copy adds on every OS: the binaries `bashcutpro` and its alias `bcpro` (the Pro command line, installed beside
+`filmcraft-cli`, which stays for upstream's docs and scripts), `bashcut-doctor`, `bashcut-batch`, `bashcut-mcp` (built
+with the app) and
 the optional first-run setup (`bashcut/packaging/share/`). Data files stay where they are; only scripts and the
 manifests that list files (nfpm.yaml, the WiX source, the Linux tarball installer) are copied and changed.
 
@@ -18,9 +20,16 @@ import os
 import shutil
 import sys
 
-PRO_BINS = ["bashcut-doctor", "bashcut-batch", "bashcut-mcp"]
-PRO_PACKAGES = "-p bashcut-doctor -p bashcut-batch-cli -p bashcut-mcp"
+# bashcutpro and its alias bcpro (#154): the Pro command line, a wrapper that runs the filmcraft-cli shipped beside it
+PRO_BINS = ["bashcutpro", "bcpro", "bashcut-doctor", "bashcut-batch", "bashcut-mcp"]
+PRO_PACKAGES = "-p bashcut-cli -p bashcut-doctor -p bashcut-batch-cli -p bashcut-mcp"
 BINS_SH = " ".join(PRO_BINS)
+
+
+def wix_id(binary):
+    """A WiX id for a binary: `bashcut-doctor` -> `BashcutDoctor`, `bcpro` -> `Bcpro`."""
+    return "".join(part.capitalize() for part in binary.split("-"))
+
 
 # (file under packaging/, old text, new text, expected matches)
 SUBS = [
@@ -149,8 +158,8 @@ SUBS = [
         '        <File Id="FilmcraftCliExe" Source="$(var.BinDir)\\filmcraft-cli.exe" KeyPath="yes" />\n      </Component>\n',
         '        <File Id="FilmcraftCliExe" Source="$(var.BinDir)\\filmcraft-cli.exe" KeyPath="yes" />\n      </Component>\n'
         + "".join(
-            '\n      <Component Id="Bashcut%s">\n        <File Id="Bashcut%sExe" Source="$(var.BinDir)\\%s.exe" KeyPath="yes" />\n      </Component>\n'
-            % (b.split("-")[1].capitalize(), b.split("-")[1].capitalize(), b)
+            '\n      <Component Id="%s">\n        <File Id="%sExe" Source="$(var.BinDir)\\%s.exe" KeyPath="yes" />\n      </Component>\n'
+            % (wix_id(b), wix_id(b), b)
             for b in PRO_BINS
         )
         + '\n      <Component Id="BashcutSetup">\n        <File Id="BashcutSetupPs1" Source="$(var.BinDir)\\bashcut-setup.ps1" KeyPath="yes" />\n      </Component>\n',

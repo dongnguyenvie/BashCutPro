@@ -28,8 +28,9 @@ function Find-Tool([string]$name) {
 if ($env:FILMCRAFT_DATA_DIR) { $data = $env:FILMCRAFT_DATA_DIR }
 elseif (Test-Path (Join-Path $PSScriptRoot 'portable.txt')) { $data = Join-Path $PSScriptRoot 'data' }
 else { $data = Join-Path $env:APPDATA 'FilmCraft' }
-$cli = Find-Tool 'filmcraft-cli'
-Write-Output "BashCutPro setup: data folder $data, filmcraft-cli $(if ($cli) { $cli } else { 'not found' })"
+$cli = Find-Tool 'bashcutpro'
+if (-not $cli) { $cli = Find-Tool 'filmcraft-cli' }
+Write-Output "BashCutPro setup: data folder $data, command line (bashcutpro) $(if ($cli) { $cli } else { 'not found' })"
 foreach ($d in 'profiles', 'templates', 'looks') { New-Item -ItemType Directory -Force -Path (Join-Path $data "bashcut\$d") | Out-Null }
 
 if (-not $SkipLooks -and $cli -and (Ask "Write the look pack (.cube LUTs) to $data\bashcut\looks?")) {
@@ -48,7 +49,7 @@ if (-not $SkipKit) {
   $kit = Join-Path $env:USERPROFILE '.bashcutpro\bashcutpro-agent-kit'
   if ($agents -and -not (Test-Path $kit) -and (Get-Command git -ErrorAction SilentlyContinue) -and (Ask "Clone the agent kit to $kit?")) {
     git clone --depth 1 https://github.com/dongnguyenvie/bashcutpro-agent-kit $kit
-    if ($LASTEXITCODE -eq 0) { Write-Output '  kit cloned; follow its README (register filmcraft-cli as an MCP server)' } else { Write-Output '  kit: clone failed (skipped)' }
+    if ($LASTEXITCODE -eq 0) { Write-Output '  kit cloned; follow its README (register bashcutpro as an MCP server)' } else { Write-Output '  kit: clone failed (skipped)' }
   }
 }
 Write-Output 'Plugins: install them in the app (Window > BashCut Plugins); models download on first use.'

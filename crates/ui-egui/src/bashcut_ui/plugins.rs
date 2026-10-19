@@ -67,11 +67,10 @@ pub fn bridge_address() -> Option<String> {
     .clone()
 }
 
-/// `filmcraft-cli` next to the running app, passed to plugins as `--cli`.
+/// The engine next to the running app, `bashcutpro` first, else `filmcraft-cli` (#154); passed to
+/// plugins as `--cli`, to batches and to agents.
 pub fn cli_path() -> Option<String> {
-    let name = if cfg!(windows) { "filmcraft-cli.exe" } else { "filmcraft-cli" };
-    let p = std::env::current_exe().ok()?.with_file_name(name);
-    p.is_file().then(|| p.to_string_lossy().into_owned())
+    bashcut_batch::cli::beside_self().map(|p| p.to_string_lossy().into_owned())
 }
 
 pub fn run_context() -> RunContext {

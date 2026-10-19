@@ -8,6 +8,7 @@
 
 mod agent;
 pub mod book;
+pub mod cli;
 pub mod governor;
 pub mod pipeline;
 pub mod presets;

@@ -6,8 +6,9 @@ Windows và Linux. Bản gốc tiếng Anh: [Getting started](../en/getting-star
 ## 1. Cài đặt
 
 Cài BashCutPro từ gói cài cho hệ điều hành của bạn (macOS `.app`, bộ cài hoặc bản zip di động cho Windows, gói Linux).
-Mỗi gói kèm ba chương trình phụ: `bashcut-doctor` (kiểm tra máy), `bashcut-batch` (chạy hàng loạt) và `bashcut-mcp`
-(cho trợ lý AI kết nối vào cửa sổ đang mở), cùng một tập lệnh thiết lập lần đầu.
+Mỗi gói kèm dòng lệnh `bashcutpro` (tên ngắn `bcpro`; nó chạy bộ máy `filmcraft-cli` nằm cạnh nó) và ba chương trình
+phụ: `bashcut-doctor` (kiểm tra máy), `bashcut-batch` (chạy hàng loạt) và `bashcut-mcp` (cho trợ lý AI kết nối vào cửa
+sổ đang mở), cùng một tập lệnh thiết lập lần đầu.
 
 ## 2. Thiết lập lần đầu (tùy chọn, một lần)
 

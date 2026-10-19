@@ -402,7 +402,7 @@ fn for_each_line<R: Read>(mut r: R, mut f: impl FnMut(&str, bool)) {
     emit(&mut line, &mut cut);
 }
 
-/// A temporary MCP config for this app: `filmcraft-cli mcp --bridge <address>` as server `filmcraft`.
+/// A temporary MCP config for this app: `<engine> mcp --bridge <address>` (`bashcutpro` or `filmcraft-cli`) as server `filmcraft`.
 /// Written to the temp dir (it holds no secret) and removed by the caller when the session ends.
 pub fn write_mcp_config(cli: &str, bridge: &str) -> Result<PathBuf> {
     let v = serde_json::json!({"mcpServers": {"filmcraft": {"command": cli, "args": ["mcp", "--bridge", bridge]}}});

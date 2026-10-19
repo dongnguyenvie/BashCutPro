@@ -127,6 +127,28 @@ fn missing_cli_fails_with_a_fix() {
 }
 
 #[test]
+fn pro_name_first_and_filmcraft_cli_still_works() {
+    // only bashcutpro installed (#154)
+    let mut f = Fake::healthy();
+    let old: Vec<(String, Output)> = std::mem::take(&mut f.programs).into_iter().collect();
+    for (k, v) in old {
+        f.programs.insert(k.replace("filmcraft-cli", "bashcutpro"), v);
+    }
+    let r = run_checks(&f, &Options::default());
+    assert_eq!(level(&r, "cli"), Level::Ok);
+    assert!(r.findings.iter().any(|x| x.id == "cli" && x.message.contains("(bashcutpro)")), "{:?}", r.findings);
+    assert_eq!(level(&r, "cli.commands"), Level::Ok);
+    // only filmcraft-cli: the healthy machine as it was
+    let r = run_checks(&Fake::healthy(), &Options::default());
+    assert!(r.findings.iter().any(|x| x.id == "cli" && x.message.contains("(filmcraft-cli)")), "{:?}", r.findings);
+    // FILMCRAFT_CLI names it when BASHCUTPRO_CLI does not
+    let mut f = Fake::healthy();
+    f.vars.insert("FILMCRAFT_CLI".into(), "filmcraft-cli".into());
+    f.program("bashcutpro --version", 0, "filmcraft-cli 0.9.0\n");
+    assert!(run_checks(&f, &Options::default()).findings.iter().any(|x| x.id == "cli" && x.message.contains("(filmcraft-cli)")));
+}
+
+#[test]
 fn speech_to_text_missing_or_not_downloaded_warns() {
     let mut f = Fake::healthy();
     f.program("filmcraft-cli exec transcript.models", 0, &speech(false, false));

@@ -8,7 +8,7 @@ So a long unattended run does not fail on setup. Rules: [extending-upstream.md](
 
 | Check (`id`) | Fails / warns when | Fix it prints |
 |---|---|---|
-| `cli`, `cli.commands` | `filmcraft-cli` (or `BASHCUTPRO_CLI` / `--cli`) does not start; the build lacks `bashcut.profiles.*`, `bashcut.template.instantiate`, `bashcut.audio.polish` | install / rebuild (kit `bcp:setup`) |
+| `cli`, `cli.commands` | the engine (`--cli`, `BASHCUTPRO_CLI` or `FILMCRAFT_CLI`, else `bashcutpro` when it starts, else `filmcraft-cli`) does not start; the build lacks `bashcut.profiles.*`, `bashcut.template.instantiate`, `bashcut.audio.polish` | install / rebuild (kit `bcp:setup`) |
 | `speech` | `transcript.models` says the CLI has no speech-to-text (built without `whisper`) or the default model is not downloaded (warn): the batch presets and caption skills start by transcribing | build with `--features whisper`; `filmcraft-cli exec transcript.downloadModel` |
 | `kit` | no kit clone (`BASHCUTPRO_KIT_DIR` / `--kit`) and no installed `bcp-*` skills in `~/.agents/skills` or `~/.claude/skills` | install the kit |
 | `plugin.<id>` | a Python plugin's interpreter (its `entry`, per OS) is missing or older than `runtime.version` | install that Python |

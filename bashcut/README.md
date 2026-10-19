@@ -52,7 +52,7 @@ and its own docs (`CLAUDE.md`, `AGENTS.md`, `docs/`) still apply in full.
    rewritten against FilmCraft command ids.
 3. **Plugins live outside the app.** FilmCraft has no plugin system (gap G11 in `docs/gaps.md` is about
    VST3 / AU / OpenFX; Preferences ▸ Plugins is a stub). A plugin is a separate process that:
-   - reads state through MCP (`filmcraft-cli mcp`, headless or `--bridge`) or the control channel
+   - reads state through MCP (`bashcutpro mcp`, headless or `--bridge`) or the control channel
      (`filmcraft --control <port>`, `docs/control-protocol.md`);
    - does its work outside (AI image generation, Vietnamese TTS, caption translation, producing
      `.fcgt` graphics templates, `.cube` LUTs, wav / srt files…);
@@ -69,9 +69,9 @@ and its own docs (`CLAUDE.md`, `AGENTS.md`, `docs/`) still apply in full.
 
 | Surface | Use |
 |---|---|
-| MCP: `filmcraft-cli mcp` | every engine command, project / sequence inspection, frame render; `--bridge` drives the open app |
+| MCP: `bashcutpro mcp` | every engine command, project / sequence inspection, frame render; `--bridge` drives the open app |
 | Control channel: `filmcraft --control <port>` | JSON lines: `engine.execute`, UI state, screenshots, clicks |
-| CLI | `filmcraft-cli export --preset …` |
+| CLI | `bashcutpro export --preset …` (`bashcutpro`, alias `bcpro`, runs upstream's `filmcraft-cli` beside it, #154) |
 | `.fcproj` | UTF-8 JSON with a schema version (`docs/project-files.md`) |
 | Data files | effect presets JSON, export presets, `.fcgt` templates (`graphics.template.install`), `.cube` / `.3dl` LUTs, SRT / VTT / SCC / TTML captions, label presets |
 | Web build | `window.filmcraft` (`docs/web.md`) |

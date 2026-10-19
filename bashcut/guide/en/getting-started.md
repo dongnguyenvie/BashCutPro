@@ -3,8 +3,9 @@
 ## 1. Install
 
 Install BashCutPro from its package for your system (macOS `.app`, Windows installer or portable zip, Linux package).
-Every package also carries three helper programs: `bashcut-doctor` (checks your setup), `bashcut-batch` (runs batches)
-and `bashcut-mcp` (lets an AI agent reach the open window), plus a first-run setup script.
+Every package also carries the command line `bashcutpro` (short name `bcpro`; it runs the editor's engine
+`filmcraft-cli`, which sits beside it) and three helper programs: `bashcut-doctor` (checks your setup), `bashcut-batch`
+(runs batches) and `bashcut-mcp` (lets an AI agent reach the open window), plus a first-run setup script.
 
 ## 2. Run the first-run setup (optional, once)
 

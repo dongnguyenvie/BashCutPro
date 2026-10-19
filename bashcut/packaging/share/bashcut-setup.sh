@@ -43,8 +43,8 @@ if [ -n "${FILMCRAFT_DATA_DIR:-}" ]; then data="$FILMCRAFT_DATA_DIR"
 elif [ "$(uname -s)" = Darwin ]; then data="$HOME/Library/Application Support/FilmCraft"
 else data="${XDG_DATA_HOME:-$HOME/.local/share}/filmcraft"
 fi
-cli="$(find_tool filmcraft-cli || true)"
-echo "BashCutPro setup: data folder $data, filmcraft-cli ${cli:-not found}"
+cli="$(find_tool bashcutpro || find_tool filmcraft-cli || true)"
+echo "BashCutPro setup: data folder $data, command line (bashcutpro) ${cli:-not found}"
 mkdir -p "$data/bashcut/profiles" "$data/bashcut/templates" "$data/bashcut/looks"
 
 if [ "$skip_looks" = 0 ] && [ -n "$cli" ] && ask "Write the look pack (.cube LUTs) to $data/bashcut/looks?"; then
