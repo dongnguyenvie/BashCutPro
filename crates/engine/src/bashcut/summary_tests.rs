@@ -53,7 +53,7 @@ fn summary_of_a_named_sequence_and_refusals() {
 #[test]
 fn batch_returns_what_changed_and_the_created_id() {
     let mut s = Session::default();
-    s.execute("file.newSequence", json!({"name": "c", "video": 2, "audio": 2, "width": 320, "height": 180})).unwrap();
+    s.execute("file.newSequence", json!({"name": "c", "video": 2, "audio": 2, "width": 320, "height": 180, "fps": 30})).unwrap();
     let item = s.execute("file.newColorMatte", json!({"color": "#808080", "seconds": 2.0})).unwrap()["item"].as_u64().unwrap();
     let place = |at: f64| json!({"id": "timeline.place", "params": {"item": item, "track": "V1", "seconds": at, "audio": false}});
     let v = s.execute("bashcut.batch", json!({"commands": [place(0.0), place(3.0)]})).unwrap();
