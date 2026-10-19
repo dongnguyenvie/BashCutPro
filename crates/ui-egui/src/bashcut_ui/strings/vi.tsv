@@ -182,3 +182,6 @@ More tags ({n})	Thêm thẻ ({n})
 Fewer tags	Bớt thẻ
 1 clip selected	Đã chọn 1 clip
 Applied {look} to 1 clip	Đã áp {look} cho 1 clip
+Add files to run the batch.	Thêm tệp để chạy batch.
+Batches need filmcraft-cli next to the app. Reinstall BashCutPro, or in a source build run `cargo build -p filmcraft-cli`.	Batch cần filmcraft-cli nằm cạnh ứng dụng. Hãy cài lại BashCutPro, hoặc nếu build từ mã nguồn thì chạy `cargo build -p filmcraft-cli`.
+{name} is already in {folder} from an earlier batch. Choose another Projects folder, or move it away.	{name} đã có trong {folder} từ một lần chạy trước. Hãy chọn thư mục Dự án khác, hoặc chuyển tệp đó đi chỗ khác.

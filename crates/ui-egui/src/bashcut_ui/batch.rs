@@ -21,6 +21,7 @@ use serde_json::{Map, Value, json};
 
 use super::palette::RECIPES;
 use super::plugins;
+use super::strings::s;
 use crate::FilmcraftApp;
 
 pub type Shared = Arc<Mutex<Batch>>;
@@ -306,7 +307,44 @@ pub fn prepared(draft: &Pipeline) -> Result<Pipeline, String> {
         p.name = "batch".into();
     }
     let text = serde_json::to_string(&p).map_err(|e| e.to_string())?;
-    Pipeline::parse(&text, &pipeline::absolute(&base))
+    let mut parsed = Pipeline::parse(&text, &pipeline::absolute(&base))?;
+    if draft.projects_folder.trim().is_empty() {
+        // running the same files again goes to batch-2/, batch-3/… instead of failing on the
+        // projects the last run left in batch/
+        let names = parsed.item_names(&parsed.expand_inputs()?);
+        let first = parsed.projects_dir();
+        for n in 2..=MAX_DEFAULT_FOLDERS {
+            if !taken(&parsed.projects_dir(), &names) {
+                break;
+            }
+            parsed.projects_folder = format!("{}-{n}", first.to_string_lossy());
+        }
+    }
+    Ok(parsed)
+}
+
+/// `batch/` … `batch-99/` are tried before the run fails on the last one.
+const MAX_DEFAULT_FOLDERS: usize = 99;
+
+/// An item's project already exists in `dir`.
+fn taken(dir: &Path, names: &[String]) -> bool {
+    names.iter().any(|n| dir.join(format!("{n}.{}", pipeline::PROJECT_EXTENSION)).exists())
+}
+
+/// The runner's "already exists" error, said as what to do in the panel.
+fn plain_create_error(e: String) -> String {
+    match e.split_once(": already exists;") {
+        Some((path, _)) => {
+            let path = Path::new(path);
+            let name = path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+            let folder = path.parent().map(|p| p.to_string_lossy().into_owned()).unwrap_or_default();
+            super::strings::f(
+                "{name} is already in {folder} from an earlier batch. Choose another Projects folder, or move it away.",
+                &[("name", &name), ("folder", &folder)],
+            )
+        }
+        None => e,
+    }
 }
 
 fn start(ctx: &egui::Context, g: &mut Batch, job: Job, opts: Options) -> Result<(), String> {
@@ -347,7 +385,9 @@ fn cli_param(params: &Value, last: Option<&str>) -> Result<String, String> {
         .map(str::to_string)
         .or_else(|| last.map(str::to_string))
         .or_else(plugins::cli_path)
-        .ok_or_else(|| "filmcraft-cli was not found next to the app; pass `cli`".into())
+        .ok_or_else(|| {
+            s("Batches need filmcraft-cli next to the app. Reinstall BashCutPro, or in a source build run `cargo build -p filmcraft-cli`.").to_string()
+        })
 }
 
 fn str_p<'a>(p: &'a Value, k: &str) -> Option<&'a str> {
@@ -575,7 +615,7 @@ pub fn invoke(app: &mut FilmcraftApp, ctx: &egui::Context, name: &str, p: &Value
             }
             let cli = cli_param(p, None)?;
             let pipeline = prepared(&g.draft)?;
-            let job = Job::create(&pipeline, None)?;
+            let job = Job::create(&pipeline, None).map_err(plain_create_error)?;
             let dir_text = job.dir.to_string_lossy().into_owned();
             g.cli = Some(cli.clone());
             start(ctx, &mut g, job, options(app, &cli))?;
@@ -756,6 +796,26 @@ mod tests {
         assert!(p < 1.0 && p > 0.9, "{p}");
         item.status = Status::Failed;
         assert_eq!(item_progress(item, &m, 0), 1.0);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn a_rerun_goes_to_a_fresh_default_folder() {
+        let dir = std::env::temp_dir().join(format!("bashcut-ui-batch-rerun-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(dir.join("batch")).unwrap();
+        std::fs::write(dir.join("a.mov"), b"x").unwrap();
+        let mut draft = empty_draft();
+        draft.inputs = vec![dir.join("a.mov").to_string_lossy().into_owned()];
+        assert_eq!(prepared(&draft).unwrap().projects_dir(), dir.join("batch"));
+        std::fs::write(dir.join("batch").join("a.fcproj"), b"x").unwrap();
+        assert_eq!(prepared(&draft).unwrap().projects_dir(), dir.join("batch-2"));
+        // a folder the user chose is kept, and the clash is said plainly
+        draft.projects_folder = dir.join("batch").to_string_lossy().into_owned();
+        let p = prepared(&draft).unwrap();
+        assert_eq!(p.projects_dir(), dir.join("batch"));
+        let e = Job::create(&p, None).map_err(plain_create_error).unwrap_err();
+        assert!(e.starts_with("a.fcproj is already in ") && e.ends_with("Choose another Projects folder, or move it away."), "{e}");
         let _ = std::fs::remove_dir_all(&dir);
     }
 

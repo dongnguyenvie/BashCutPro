@@ -98,6 +98,9 @@ pub fn draw(app: &mut FilmcraftApp, ui: &mut egui::Ui) {
         if button(app, ui, "bashcut.batch.cancel", s("Cancel"), running) {
             call(app, &ctx, &mut v, "cancel", json!({}));
         }
+        if !running && draft.inputs.is_empty() {
+            ui.label(egui::RichText::new(s("Add files to run the batch.")).size(10.5).color(app.tokens.text_dim));
+        }
     });
     if let Some(book) = &book {
         queue(app, ui, &ctx, &mut v, book, &memory, running);
@@ -167,7 +170,16 @@ fn step_params(item: &Item) -> Option<Value> {
         return Some(json!({"recipe": item.params.get("recipe")?}));
     }
     let params = if item.command == "bashcut.plugins.run" { item.params.clone() } else { palette::template(item) };
-    batch::prefill_params(&item.command, &params)
+    let mut step = batch::prefill_params(&item.command, &params)?;
+    // the palette's blanks are for a person to fill; a batch step leaves them to the command's defaults
+    if let Some(p) = step.get_mut("params").and_then(Value::as_object_mut) {
+        p.retain(|_, v| !v.is_null());
+    }
+    // the list shows "Add Marker", not "markers.add"
+    if let Some(o) = step.as_object_mut() {
+        o.entry("label").or_insert_with(|| json!(item.label));
+    }
+    Some(step)
 }
 
 fn steps(app: &mut FilmcraftApp, ui: &mut egui::Ui, ctx: &egui::Context, v: &mut View, list: &[bashcut_batch::pipeline::Step]) {
@@ -438,4 +450,28 @@ fn presets(app: &mut FilmcraftApp, ui: &mut egui::Ui, ctx: &egui::Context, v: &m
             v.preset.clear();
         }
     });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::palette::Kind;
+    use super::*;
+
+    #[test]
+    fn searched_steps_drop_the_blanks_and_keep_the_label() {
+        let item = Item {
+            key: "command:markers.add".into(),
+            kind: Kind::Command,
+            label: "Add Marker".into(),
+            detail: String::new(),
+            shortcut: None,
+            enabled: true,
+            command: "markers.add".into(),
+            params: json!({"name": "Hook"}),
+            signature: r#"{"target":"program"|"source","time":ticks?,"name":str?}"#.into(),
+            needs_params: true,
+        };
+        let step = step_params(&item).unwrap();
+        assert_eq!(step, json!({"command": "markers.add", "params": {"name": "Hook"}, "label": "Add Marker"}));
+    }
 }
