@@ -7,6 +7,7 @@
 //!
 //! Adding a section: one row in [`SECTIONS`] and a `draw` function in its own file.
 
+pub mod palette;
 pub mod plugins;
 pub mod plugins_panel;
 pub mod rail;
@@ -97,6 +98,7 @@ pub fn layout(app: &mut FilmcraftApp, ui: &mut egui::Ui, body: egui::Rect) -> eg
         st.save_if_changed(dir.as_deref());
     }
     st.put(&ctx);
+    palette::show(app, &ctx);
     dock
 }
 
@@ -117,6 +119,9 @@ pub fn invoke(app: &mut FilmcraftApp, ctx: &egui::Context, id: &str, params: &Va
     }
     if let Some(name) = id.strip_prefix("bashcut.plugins.") {
         return Some(plugins::invoke(app, ctx, name, params));
+    }
+    if let Some(name) = id.strip_prefix("bashcut.palette.") {
+        return Some(palette::invoke(app, ctx, name, params));
     }
     let known = section_ids();
     let section_param = || params.get("section").and_then(Value::as_str).filter(|s| is_section(s)).map(str::to_string);
@@ -199,6 +204,7 @@ pub fn commands() -> Vec<CommandInfo> {
         v.push(CommandInfo::new(&format!("bashcut.ui.show.{}", sec.id), sec.title, &["Window", "BashCutPro"], None));
     }
     v.extend(plugins::commands());
+    v.extend(palette::commands());
     v
 }
 

@@ -143,6 +143,18 @@ and MCP share one code path (`sendToAgent` answers `sent: false` until the Agent
 `bashcut.plugins.<id>.secret.<setting>[.save|.clear]`, `bashcut.plugins.<id>.action.<action>[.param.<param>]`,
 `bashcut.plugins.<id>.<action>.run`, `bashcut.runs.<job>[.progress|.cancel|.log|.agent]`, `bashcut.runs.clear`.
 
+Built in #52 (P): `bashcut_ui/palette.rs`, a foreground `egui::Area` drawn at the end of `layout` in every mode.
+Cmd/Ctrl+Shift+P (`bashcut.palette.open`, Window ▸ BashCutPro ▸ Command Palette…) opens it; Cmd/Ctrl+K stays
+upstream's Add Edit. Items: engine and UI commands (live shortcut and enabled state), `bashcut.*` commands, plugin
+actions (`bashcut.plugins.run`), and catalogs read from list commands when they exist: looks (`bashcut.looks.list`),
+output profiles (`bashcut.profiles.list`), templates (`bashcut.template.list`); batch presets join `CATALOGS` with one
+row once the batch runner lists them. Kit recipes (`vlog-*`) open the Agent section and copy a starting prompt
+(`bashcut.palette.recipe`) until the Agent section takes a draft. Enter runs through `menus::invoke` (undoable); Tab,
+or Enter on an item with required params, opens a JSON params editor (Cmd/Ctrl+Enter runs). Ranking: substring /
+fuzzy score plus recent use (`<data dir>/bashcut/palette.json`). Commands `bashcut.palette.{open {query?}, close,
+search {query, limit?}, run {item, params?}, recipe {recipe}}`; automation ids `bashcut.palette`,
+`bashcut.palette.input`, `bashcut.palette.item.<key>`, `bashcut.palette.params[.run|.back]`.
+
 - **UI state** (open section, width, popped-out sections, panel scroll, draft message) is a `bashcut_ui::State`
   kept in egui's context data (`ctx.data_mut(|d| d.get_temp_mut_or_default::<State>(id))`), so `FilmcraftApp`
   gains no field. It is saved to `<data dir>/bashcut/ui.json` when it changes, not in upstream's workspace files.

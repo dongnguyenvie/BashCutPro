@@ -38,6 +38,8 @@ _Last updated: 2026-10-20_
   the Plugins and Runs sections with `bashcut.plugins.*` commands; hook H4. Build + tests + live check pending.
 - Atomic edits (#44): `bashcut.batch` runs many commands as one undo step, all or nothing (no hook); plugins' `mcp.py`
   and kit skills use it with `command_batch` as fallback. Build + tests pending (build pass).
+- Command palette (#52): `bashcut_ui/palette.rs`, Cmd/Ctrl+Shift+P, over commands, plugin actions, looks, profiles,
+  templates and kit recipes, ranked by recent use; no new hook. Build + tests + live check pending.
 
 ## Next
 
