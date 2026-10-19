@@ -59,3 +59,10 @@ _Last updated: 2026-10-20_
 - Which features from BashCut matter most for BashCutPro's first release?
 - Windows / Linux targets: which plugins must run there (VieNeu, Whisper MLX are macOS-only in BashCut;
   FilmCraft's own Whisper runs on candle).
+
+## Smoke checks
+
+One row per run of `bashcut/scripts/smoke.sh` / `smoke.ps1` ([smoke.md](smoke.md)): date, machine, commit, the summary line.
+
+| Date | Machine | Commit | Result |
+|---|---|---|---|

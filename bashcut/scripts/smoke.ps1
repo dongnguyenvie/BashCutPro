@@ -1,0 +1,250 @@
+<#
+BashCutPro smoke check (#54) for Windows builds. macOS / Linux: smoke.sh.
+
+Launches the built app with --control, waits for its window, takes ui.screenshot, checks the window title says
+BashCutPro, runs `filmcraft-cli commands razor` and an MCP command_list, quits the app; then scans the x86-64 release
+binaries for AVX / AVX2 / AVX-512 instructions outside the allowed (runtime-dispatched) functions.
+Exits non-zero on any failure and never reports success without having launched the app.
+
+  powershell -ExecutionPolicy Bypass -File bashcut\scripts\smoke.ps1 -App target\release\filmcraft.exe
+  powershell -ExecutionPolicy Bypass -File bashcut\scripts\smoke.ps1 -IsaOnly target\release\filmcraft.exe,target\release\filmcraft-cli.exe
+
+Options: -Cli <path> (default: filmcraft-cli.exe next to the app), -Port N (a free port from 19000), -Timeout S (60),
+         -Out DIR (target\smoke), -ExpectTitle TEXT (BashCutPro), -NoIsa, -IsaAllow FILE (bashcut\scripts\isa-allow.txt)
+Needs for the scan: llvm-objdump (PATH, or `rustup component add llvm-tools`) or dumpbin (Visual Studio).
+Windows PowerShell 5.1 or PowerShell 7.
+#>
+param(
+    [string]$App = "",
+    [string]$Cli = "",
+    [int]$Port = 0,
+    [int]$Timeout = 60,
+    [string]$Out = "target\smoke",
+    [string]$ExpectTitle = "BashCutPro",
+    [switch]$NoIsa,
+    [string]$IsaAllow = "",
+    [string[]]$IsaOnly = @()
+)
+
+$ErrorActionPreference = "Continue"
+$script:passes = 0
+$script:failures = 0
+function Pass([string]$m) { $script:passes++; Write-Output "PASS  $m" }
+function Fail([string]$m) { $script:failures++; Write-Output "FAIL  $m" }
+function Note([string]$m) { Write-Output "      $m" }
+if (-not $IsaAllow) { $IsaAllow = Join-Path $PSScriptRoot "isa-allow.txt" }
+
+# ------------------------------------------------------------------------------------------------ ISA scan
+function Find-Disassembler {
+    $c = Get-Command llvm-objdump -ErrorAction SilentlyContinue
+    if ($c) { return @{ kind = "llvm"; path = $c.Source } }
+    $sysroot = $null
+    try { $sysroot = (& rustc --print sysroot 2>$null) } catch { }
+    if ($sysroot) {
+        $p = Get-ChildItem -Path (Join-Path $sysroot "lib\rustlib") -Filter llvm-objdump.exe -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
+        if ($p) { return @{ kind = "llvm"; path = $p.FullName } }
+    }
+    $d = Get-Command dumpbin -ErrorAction SilentlyContinue
+    if ($d) { return @{ kind = "dumpbin"; path = $d.Source } }
+    return $null
+}
+
+function Test-X64([string]$bin) {
+    # PE header: e_lfanew at 0x3C, then "PE\0\0" and the machine (0x8664 = x86-64)
+    try {
+        $fs = [IO.File]::OpenRead($bin)
+        $br = New-Object IO.BinaryReader($fs)
+        $fs.Seek(0x3C, 'Begin') | Out-Null
+        $pe = $br.ReadInt32()
+        $fs.Seek($pe + 4, 'Begin') | Out-Null
+        $machine = $br.ReadUInt16()
+        $fs.Close()
+        return ($machine -eq 0x8664)
+    } catch { return $false }
+}
+
+function Invoke-IsaScan([string]$bin) {
+    if (-not (Test-Path $bin -PathType Leaf)) { Fail "isa: $bin not found"; return }
+    if (-not (Test-X64 $bin)) { Note "isa: $bin is not an x86-64 executable; skipped"; return }
+    $dis = Find-Disassembler
+    if (-not $dis) { Fail "isa: no llvm-objdump or dumpbin to disassemble $bin (rustup component add llvm-tools)"; return }
+    $patterns = @()
+    if (Test-Path $IsaAllow) {
+        $patterns = Get-Content $IsaAllow | Where-Object { $_ -and -not $_.StartsWith("#") }
+    }
+    if ($dis.kind -eq "llvm") {
+        $lines = & $dis.path -d --no-show-raw-insn $bin 2>$null
+        $header = '^[0-9a-f]+ <(.+)>:$'
+    } else {
+        $lines = & $dis.path /nologo /disasm:nobytes $bin 2>$null
+        $header = '^(\S+):$'
+    }
+    $wide = 'ymm\d|zmm\d|%k[1-7]\b|\{k[1-7]\}'
+    $fn = "?"
+    $seen = @{}
+    foreach ($l in $lines) {
+        if ($l -match $header) { $fn = $Matches[1]; continue }
+        if ($l -notmatch $wide) { continue }
+        $kind = "AVX/AVX2"
+        if ($l -match 'zmm\d|%k[1-7]\b|\{k[1-7]\}') { $kind = "AVX-512" }
+        $ok = $false
+        foreach ($p in $patterns) { if ($fn -match $p) { $ok = $true; break } }
+        if (-not $ok) { $seen["$kind`t$fn"] = $true }
+    }
+    if ($seen.Count -eq 0) {
+        Pass "isa: $bin has no AVX/AVX2/AVX-512 outside allowed functions"
+    } else {
+        Fail "isa: $bin uses wide vector instructions in $($seen.Count) function(s):"
+        $seen.Keys | Sort-Object | Select-Object -First 20 | ForEach-Object { Note $_ }
+    }
+}
+
+function Write-Summary([string]$what) {
+    Write-Output ("smoke{0}: {1} passed, {2} failed (Windows {3}, {4})" -f $what, $script:passes, $script:failures, $env:PROCESSOR_ARCHITECTURE, (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mmZ"))
+}
+
+if ($IsaOnly.Count -gt 0) {
+    foreach ($b in $IsaOnly) { Invoke-IsaScan $b }
+    Write-Summary " (isa)"
+    if ($script:failures -eq 0) { exit 0 } else { exit 1 }
+}
+
+# ------------------------------------------------------------------------------------------------ launch
+if (-not $App) { Write-Error "smoke: -App <path to the built app> is required"; exit 2 }
+if (-not (Test-Path $App -PathType Leaf)) { Fail "launch: $App is not a file"; Write-Summary ""; exit 1 }
+$App = (Resolve-Path $App).Path
+if (-not $Cli) {
+    $Cli = Join-Path (Split-Path $App) "filmcraft-cli.exe"
+    if (-not (Test-Path $Cli)) {
+        $c = Get-Command filmcraft-cli -ErrorAction SilentlyContinue
+        if ($c) { $Cli = $c.Source } else { $Cli = "" }
+    }
+}
+New-Item -ItemType Directory -Force $Out | Out-Null
+$Out = (Resolve-Path $Out).Path
+
+function Test-PortOpen([int]$p) {
+    $c = New-Object Net.Sockets.TcpClient
+    try { $c.Connect("127.0.0.1", $p); return $true } catch { return $false } finally { $c.Close() }
+}
+if ($Port -eq 0) {
+    $Port = 19000
+    while (Test-PortOpen $Port) { $Port++ }
+}
+
+# One request on a fresh connection; returns the reply line ("" on failure).
+function Send-Request([string]$json, [int]$seconds = 30) {
+    $c = New-Object Net.Sockets.TcpClient
+    try {
+        $c.Connect("127.0.0.1", $Port)
+        $c.ReceiveTimeout = $seconds * 1000
+        $s = $c.GetStream()
+        $w = New-Object IO.StreamWriter($s)
+        $w.NewLine = "`n"
+        $w.WriteLine($json)
+        $w.Flush()
+        $r = New-Object IO.StreamReader($s)
+        return [string]$r.ReadLine()
+    } catch { return "" } finally { $c.Close() }
+}
+
+Write-Output "smoke: $App on port $Port (cli: $Cli, out: $Out)"
+$proc = Start-Process -FilePath $App -ArgumentList @("--control", "$Port", "--control-input-only") -PassThru `
+    -RedirectStandardOutput (Join-Path $Out "app.log") -RedirectStandardError (Join-Path $Out "app.err.log")
+
+$ready = $false
+$deadline = (Get-Date).AddSeconds($Timeout)
+while ((Get-Date) -lt $deadline) {
+    if ($proc.HasExited) { break }
+    $r = Send-Request '{"id":1,"method":"ui.inspect"}' 5
+    if ($r -match '"ok":\s*true') { $ready = $true; break }
+    Start-Sleep -Milliseconds 500
+}
+if (-not $ready) {
+    Fail "launch: no answer on the control port within $Timeout s (log: $Out\app.log)"
+    Get-Content (Join-Path $Out "app.err.log") -Tail 20 -ErrorAction SilentlyContinue | ForEach-Object { Note $_ }
+    if (-not $proc.HasExited) { Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue }
+    Write-Summary ""
+    exit 1
+}
+Pass "launch: the app answers ui.inspect (pid $($proc.Id))"
+
+# ------------------------------------------------------------------------------------------------ window
+$shot = Join-Path $Out "smoke.png"
+Remove-Item $shot -ErrorAction SilentlyContinue
+$shotJson = ConvertTo-Json -Compress @{ id = 2; method = "ui.screenshot"; params = @{ path = $shot } }
+$r = Send-Request $shotJson 30
+$isPng = $false
+if (Test-Path $shot) {
+    $b = [IO.File]::ReadAllBytes($shot)
+    $isPng = ($b.Length -gt 8 -and $b[0] -eq 0x89 -and $b[1] -eq 0x50 -and $b[2] -eq 0x4E -and $b[3] -eq 0x47)
+}
+if ($isPng) { Pass "screenshot: $shot" } else { Fail "screenshot: no PNG written ($r)" }
+
+$title = ""
+for ($i = 0; $i -lt 20 -and -not $title; $i++) {
+    $proc.Refresh()
+    $title = $proc.MainWindowTitle
+    if (-not $title) { Start-Sleep -Milliseconds 250 }
+}
+if ($title) {
+    if ($title -like "*$ExpectTitle*") { Pass "title: `"$title`"" } else { Fail "title: `"$title`" does not say $ExpectTitle" }
+} else {
+    $els = Send-Request '{"id":3,"method":"ui.elements"}' 30
+    if ($els -like "*$ExpectTitle*") { Pass "title: no window title; the UI shows $ExpectTitle" } else { Fail "title: no window title and the UI does not show $ExpectTitle" }
+}
+
+# ------------------------------------------------------------------------------------------------ CLI and MCP
+# Run a program with a time limit; stdout goes to $outFile. Returns the exit code (124 = timed out).
+function Invoke-Limited([string]$exe, [string[]]$argv, [string]$outFile, [string]$inFile = "", [int]$seconds = 60) {
+    $p = @{ FilePath = $exe; ArgumentList = $argv; PassThru = $true; NoNewWindow = $true; RedirectStandardOutput = $outFile; RedirectStandardError = "$outFile.err" }
+    if ($inFile) { $p.RedirectStandardInput = $inFile }
+    $q = Start-Process @p
+    if (-not $q.WaitForExit($seconds * 1000)) { Stop-Process -Id $q.Id -Force -ErrorAction SilentlyContinue; return 124 }
+    return $q.ExitCode
+}
+
+if (-not $Cli -or -not (Test-Path $Cli)) {
+    Fail "cli: filmcraft-cli not found (pass -Cli)"
+} else {
+    $razor = Join-Path $Out "cli-razor.txt"
+    $code = Invoke-Limited $Cli @("commands", "razor") $razor
+    if ($code -eq 0 -and (Select-String -Path $razor -Pattern "razor" -Quiet)) {
+        Pass "cli: commands razor ($((Get-Content $razor).Count) line(s))"
+    } else {
+        Fail "cli: commands razor failed (exit $code, $razor)"
+    }
+    $mcpIn = Join-Path $Out "mcp-in.jsonl"
+    $mcpOut = Join-Path $Out "mcp-out.jsonl"
+    $lines = @(
+        '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"smoke","version":"1"}}}',
+        '{"jsonrpc":"2.0","method":"notifications/initialized"}',
+        '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"command_list","arguments":{}}}'
+    )
+    [IO.File]::WriteAllText($mcpIn, (($lines -join "`n") + "`n"))
+    Invoke-Limited $Cli @("--demo", "mcp") $mcpOut $mcpIn 60 | Out-Null
+    $reply = Get-Content $mcpOut -ErrorAction SilentlyContinue | Where-Object { $_ -match '"id":\s*2' } | Select-Object -First 1
+    if ($reply -and $reply -match 'file\.newProject' -and $reply -notmatch '"isError":\s*true') {
+        Pass "mcp: command_list answers"
+    } else {
+        Fail "mcp: command_list gave no command list ($mcpOut)"
+    }
+}
+
+# ------------------------------------------------------------------------------------------------ quit
+Send-Request '{"id":9,"method":"app.quit"}' 10 | Out-Null
+if ($proc.WaitForExit(15000)) {
+    Pass "quit: the app exited"
+} else {
+    Fail "quit: the app is still running 15 s after app.quit"
+    Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue
+}
+
+# ------------------------------------------------------------------------------------------------ ISA
+if (-not $NoIsa) {
+    Invoke-IsaScan $App
+    if ($Cli -and (Test-Path $Cli)) { Invoke-IsaScan $Cli }
+}
+
+Write-Summary ""
+if ($script:failures -eq 0) { exit 0 } else { exit 1 }

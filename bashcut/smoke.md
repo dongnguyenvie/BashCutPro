@@ -1,0 +1,30 @@
+# Smoke launch and instruction-set checks (#54)
+
+Catch broken builds before users do. Run by hand (workflows stay manual) on mac 01 and geekomT before each release,
+and log the summary line in [status.md](status.md) § Smoke checks.
+
+| Script | OS |
+|---|---|
+| `bashcut/scripts/smoke.sh --app <filmcraft or BashCutPro.app> [--cli <filmcraft-cli>]` | macOS, Linux (bash) |
+| `powershell -ExecutionPolicy Bypass -File bashcut\scripts\smoke.ps1 -App <filmcraft.exe> [-Cli <filmcraft-cli.exe>]` | Windows (PowerShell 5.1 / 7) |
+
+Steps, each printed as `PASS` / `FAIL`; the exit status is 1 when any step failed, and nothing passes unless the app
+was launched and answered:
+
+1. Launch the app with `--control <free port> --control-input-only`; wait (`--timeout`, 60 s) until `ui.inspect`
+   answers on the control port.
+2. `ui.screenshot` to `<out>/smoke.png` and check it is a PNG.
+3. The window title must contain `BashCutPro` (`--expect-title`): macOS through System Events (Terminal needs
+   Accessibility permission), Linux through `xdotool` / `wmctrl`, Windows through the process's main window title. When
+   no title can be read, the UI's elements (`ui.elements`) must show the name.
+4. `filmcraft-cli commands razor` lists the razor commands; `filmcraft-cli --demo mcp` answers `tools/call command_list`.
+5. `app.quit` (control method: no save prompt); the process must exit within 15 s.
+6. Instruction-set scan of the app and CLI when they are x86-64: no `ymm` (AVX / AVX2) or `zmm` / opmask (AVX-512)
+   registers outside the functions matched by `bashcut/scripts/isa-allow.txt` (runtime-dispatched code only). Needs
+   `llvm-objdump` (`rustup component add llvm-tools`) or `objdump`; on Windows `dumpbin` also works. `--isa-only` /
+   `-IsaOnly` scans binaries without launching anything.
+
+Outputs go to `target/smoke/` (`--out`): app log, screenshot, CLI and MCP transcripts.
+
+Known on 2026-10-20: the native window title is still `FilmCraft` (`apps/filmcraft/src/main.rs`, `with_title`), so
+step 3 fails where the OS title is readable until the branding work covers the window title.
