@@ -191,7 +191,7 @@ impl Profile {
             return b;
         }
         let short = self.width.min(self.height);
-        let mut kbps = match short {
+        let mut kbps: f64 = match short {
             0..=480 => 2_500.0,
             481..=720 => 5_000.0,
             721..=1080 => 8_000.0,
