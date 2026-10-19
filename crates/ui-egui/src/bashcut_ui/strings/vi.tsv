@@ -178,3 +178,7 @@ Added {title} to the project	Đã thêm {title} vào dự án
 Applying {title} (run {job})	Đang áp {title} (lượt chạy {job})
 Could not check {location}: {error}	Không kiểm tra được {location}: {error}
 Select a clip in the timeline first.	Hãy chọn một clip trên timeline trước.
+More tags ({n})	Thêm thẻ ({n})
+Fewer tags	Bớt thẻ
+1 clip selected	Đã chọn 1 clip
+Applied {look} to 1 clip	Đã áp {look} cho 1 clip

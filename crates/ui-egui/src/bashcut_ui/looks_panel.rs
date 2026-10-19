@@ -31,6 +31,8 @@ const MAX_FILE: u64 = 64 * 1024;
 struct Panel {
     filter: String,
     tag: Option<String>,
+    /// Every tag is shown, not only the most used ones.
+    all_tags: bool,
     /// The knob, 1.0 = each look as designed (clamped to each look's safe range when applied).
     intensity: f64,
     /// Thumbnails show the current program frame instead of the preview picture.
@@ -51,6 +53,7 @@ impl Default for Panel {
         Panel {
             filter: String::new(),
             tag: None,
+            all_tags: false,
             intensity: 1.0,
             on_frame: false,
             favourites: Vec::new(),
@@ -158,6 +161,36 @@ fn shown<'a>(p: &Panel, pack: &'a [Look]) -> Vec<&'a Look> {
     v
 }
 
+/// Tags shown before "More tags".
+const TOP_TAGS: usize = 10;
+
+fn tag_count(pack: &[Look]) -> usize {
+    let mut all: Vec<&str> = pack.iter().flat_map(|l| l.tags.iter().copied()).collect();
+    all.sort_unstable();
+    all.dedup();
+    all.len()
+}
+
+/// The tag buttons: every tag when `all`, else the most used ones plus the chosen one, alphabetical.
+fn shown_tags<'a>(pack: &'a [Look], chosen: Option<&str>, all: bool) -> Vec<&'a str> {
+    let mut counts: HashMap<&str, usize> = HashMap::new();
+    for t in pack.iter().flat_map(|l| l.tags.iter().copied()) {
+        *counts.entry(t).or_default() += 1;
+    }
+    let mut tags: Vec<(&str, usize)> = counts.into_iter().collect();
+    if !all {
+        tags.sort_unstable_by(|a, b| b.1.cmp(&a.1).then(a.0.cmp(b.0)));
+        let mut rank = 0;
+        tags.retain(|(t, _)| {
+            rank += 1;
+            rank <= TOP_TAGS || Some(*t) == chosen
+        });
+    }
+    let mut names: Vec<&str> = tags.into_iter().map(|(t, _)| t).collect();
+    names.sort_unstable();
+    names
+}
+
 fn texture(ctx: &egui::Context, name: &str, img: &Image) -> egui::TextureHandle {
     let rgba = img.over_black_rgba8();
     let ci = egui::ColorImage::from_rgba_unmultiplied([img.w, img.h], &rgba);
@@ -210,10 +243,9 @@ pub fn draw(app: &mut FilmcraftApp, ui: &mut egui::Ui) {
         }
     });
 
-    // genre tags
-    let mut tags: Vec<&str> = pack.iter().flat_map(|l| l.tags.iter().copied()).collect();
-    tags.sort_unstable();
-    tags.dedup();
+    // genre tags: the most used ones (and the chosen one), the rest behind "More tags"
+    let tags = shown_tags(pack, p.tag.as_deref(), p.all_tags);
+    let hidden = tag_count(pack).saturating_sub(tags.len());
     ui.horizontal_wrapped(|ui| {
         ui.spacing_mut().item_spacing = egui::vec2(4.0, 4.0);
         let all = ui.selectable_label(p.tag.is_none(), egui::RichText::new(s("All")).size(11.0));
@@ -229,6 +261,15 @@ pub fn draw(app: &mut FilmcraftApp, ui: &mut egui::Ui) {
                 p.tag = if on { None } else { Some(tag.to_string()) };
             }
         }
+        let more =
+            if p.all_tags { Some(s("Fewer tags").to_string()) } else { (hidden > 0).then(|| f("More tags ({n})", &[("n", hidden.to_string().as_str())])) };
+        if let Some(label) = more {
+            let r = ui.small_button(egui::RichText::new(&label).size(11.0));
+            app.auto.add_response("bashcut.looks.tags.more", &r, &label);
+            if r.clicked() {
+                p.all_tags = !p.all_tags;
+            }
+        }
     });
 
     // selection
@@ -236,7 +277,11 @@ pub fn draw(app: &mut FilmcraftApp, ui: &mut egui::Ui) {
     let current = applied_to_selection(app);
     ui.horizontal(|ui| {
         let n = selected.to_string();
-        let msg = if selected == 0 { s("Select clips on the timeline to apply a look.").to_string() } else { f("{n} clips selected", &[("n", n.as_str())]) };
+        let msg = match selected {
+            0 => s("Select clips on the timeline to apply a look.").to_string(),
+            1 => s("1 clip selected").to_string(),
+            _ => f("{n} clips selected", &[("n", n.as_str())]),
+        };
         ui.label(egui::RichText::new(msg).size(11.0).color(t.text_dim));
         if current.is_some() {
             let r = ui.small_button(s("Remove look"));
@@ -244,7 +289,7 @@ pub fn draw(app: &mut FilmcraftApp, ui: &mut egui::Ui) {
             if r.clicked() {
                 p.status = match crate::menus::invoke(app, &ctx, "bashcut.looks.remove", json!({})) {
                     Ok(_) => None,
-                    Err(e) => Some((false, e)),
+                    Err(e) => Some((false, super::palette::plain_error(&e))),
                 };
             }
         }
@@ -337,9 +382,10 @@ fn card(
                     p.status = match crate::menus::invoke(app, ctx, "bashcut.looks.apply", params) {
                         Ok(v) => {
                             let n = v["clips"].to_string();
-                            Some((true, f("Applied {look} to {n} clips", &[("look", look.name), ("n", n.as_str())])))
+                            let text = if n == "1" { "Applied {look} to 1 clip" } else { "Applied {look} to {n} clips" };
+                            Some((true, f(text, &[("look", look.name), ("n", n.as_str())])))
                         }
-                        Err(e) => Some((false, e)),
+                        Err(e) => Some((false, super::palette::plain_error(&e))),
                     };
                 }
             });
@@ -412,6 +458,17 @@ mod tests {
         p.tag = None;
         p.filter = "sunset".into();
         assert!(shown(&p, pack).iter().any(|l| l.id == "golden-hour"));
+    }
+
+    #[test]
+    fn tags_show_the_most_used_until_more_is_asked_for() {
+        let pack = looks::pack();
+        let top = shown_tags(pack, None, false);
+        assert!(top.len() <= TOP_TAGS && tag_count(pack) > TOP_TAGS, "{top:?}");
+        assert!(top.windows(2).all(|w| w[0] < w[1]), "alphabetical");
+        let rare = shown_tags(pack, None, true).into_iter().find(|t| !top.contains(t)).unwrap();
+        assert!(shown_tags(pack, Some(rare), false).contains(&rare), "the chosen tag stays visible");
+        assert_eq!(shown_tags(pack, None, true).len(), tag_count(pack));
     }
 
     #[test]
