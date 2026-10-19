@@ -177,3 +177,4 @@ Placed {title} at the playhead	Đã đặt {title} tại đầu phát
 Added {title} to the project	Đã thêm {title} vào dự án
 Applying {title} (run {job})	Đang áp {title} (lượt chạy {job})
 Could not check {location}: {error}	Không kiểm tra được {location}: {error}
+Select a clip in the timeline first.	Hãy chọn một clip trên timeline trước.
