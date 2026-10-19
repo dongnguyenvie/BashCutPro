@@ -15,7 +15,20 @@ Newest first. Add a row after every merge from upstream (`upstream.sh merge` pri
 
 | Date (sync) | Upstream commit | Upstream commit date | Note |
 |---|---|---|---|
+| 2026-10-20 | `105c09bd80e2c86ec7464a2c59a2501eb89ffc5c` | 2026-10-19 | Check with `upstream.sh merge` (#63): already up to date, nothing merged (see Sync records) |
 | 2026-10-20 | `105c09bd80e2c86ec7464a2c59a2501eb89ffc5c` | 2026-10-19 | Initial import (latest tag v0.8.0), PR #2452 merge |
+
+### Sync records
+
+One entry per sync: what came in, what conflicted, what it cost. Newest first.
+
+**2026-10-20, first run of the tooling (#63).** `git fetch upstream --tags`; `upstream.sh merge --no-check` on
+`upstream-sync/2026-10-20`: the newest tag `v0.9.0` (`4a69a038`, 2026-10-17) is already inside our base and
+`upstream/main` is still `105c09bd`, so: **0 commits pulled, no conflicts, ~2 s**. rerere is on for this clone. No
+`cargo check` was needed (nothing changed; builds are off on worker machines this week). API breaks in our adapters:
+none. The footprint after the run: 38 upstream files, Rust lines 46 / 150, 16 hook rows all matched. The tool printed
+a sync-log row for a merge that did not happen; fixed in the same PR (it now says "already up to date"). Next: repeat
+on the next upstream tag or in 1–2 weeks, whichever comes first.
 
 ## Hooks
 

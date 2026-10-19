@@ -258,6 +258,12 @@ class Merge(Repos):
         self.assertIn("| `%s` |" % self.git(self.up, "rev-parse", "v2").strip(), out)
         self.assertIn("Merge v2 |", out)
 
+    def test_already_up_to_date_prints_no_sync_row(self):
+        rc, out = self.tool("merge", "v1", "--no-check", "--no-fetch", "--branch", "sync-0")
+        self.assertEqual(rc, 0, out)
+        self.assertIn("Already up to date with v1", out)
+        self.assertNotIn("sync-log row:", out)
+
     def test_refuses_a_dirty_tree(self):
         self.write(self.fork, "src/lib.rs", "dirty\n")
         rc, out = self.tool("merge", "v1", "--no-check", "--no-fetch")

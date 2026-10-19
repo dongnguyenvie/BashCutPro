@@ -53,6 +53,7 @@ These modify upstream lines (all listed in `UPSTREAM.md` "Carried edits", with t
 ## 3. What upstream changes most
 
 Upstream commits touching each file in the 30 days to 2026-10-20 (`git log --since=2026-09-20 upstream/main`).
+Re-counted at the first sync (#63, 2026-10-20): unchanged, upstream `main` had not moved past `105c09bd`.
 Treat anything above ~20 as "will conflict with any edit".
 
 | Changes | File | What it means for us |
