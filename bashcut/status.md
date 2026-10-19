@@ -29,7 +29,9 @@ _Last updated: 2026-10-20_
    fakes). Run each issue's "Done when" against a `filmcraft-cli` build: rough-cut on a talking-head clip,
    Vietnamese captions, grade + scopes, mix loudness, vieneu-tts line on the timeline, image-gen batch, hyperframes
    card with alpha. Confirm `scopes.read` scale, `render_frame` max side, the Lumetri intensity param name.
-2. Build P1 of `crates/bashcut-plugin-host` ([plugin-host.md](plugin-host.md), approved).
+2. Upstream-sync hygiene first: footprint check + hook ledger (#38), branding out of hot files (#39). Then the
+   in-app UI ([in-app-ui.md](in-app-ui.md)): U0 #34 → U1 #31 → U2 #35 → U4 #37; engine analysis U3 #36 in parallel.
+   Tracking #40.
 3. Vlog library pack (text styles, stickers, transitions) once `.fcgt` conversions exist.
 
 ## Open questions

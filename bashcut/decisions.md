@@ -3,6 +3,15 @@
 Newest first. Each entry: what was decided, why, and what it rules out. Add an entry when the owner
 decides something; don't change an old one, add a new one that supersedes it.
 
+## 2026-10-20: In-app UI design accepted; side panel by default
+
+- **Decided:** build the in-app UI as in [in-app-ui.md](in-app-ui.md): a right rail and side panel reserved by one
+  layout hook (no `PanelKind`), sections Agent / Plugins / Runs, code in `bashcut-*` crates and
+  `crates/ui-egui/src/bashcut_ui/`, about 15 hook lines in upstream files. Supersedes the "floating window" default of
+  the plugin-host approval: floating windows stay as the pop-out mode. Tickets #34–#40 (tracking #40).
+- **Why:** owner asked for a UI designed for BashCutPro (not a copy of BashCut's) that extends FilmCraft without
+  merge conflicts.
+
 ## 2026-10-20: One-way upstream sync, no contributions upstream
 
 - **Decided:** BashCutPro is a separate fork. We pull `upstream/main` (FilmCraft) into it from time to time and
