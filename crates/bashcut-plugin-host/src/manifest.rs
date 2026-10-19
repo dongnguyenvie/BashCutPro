@@ -223,7 +223,7 @@ impl Manifest {
         }
         let mut seen = Vec::new();
         for a in &self.actions {
-            if !valid_id(&a.id) || seen.contains(&&a.id) {
+            if !valid_id(&a.id.to_ascii_lowercase()) || seen.contains(&&a.id) {
                 return err(format!("{}: bad or repeated action id `{}`", self.id, a.id));
             }
             if a.args.len() > MAX_ARGS || a.params.len() > MAX_ITEMS {
@@ -489,6 +489,12 @@ mod tests {
         assert!(Manifest::parse(&v.to_string()).is_err(), "secret with a default");
         assert!(Manifest::parse("[").is_err());
         assert!(Manifest::parse(&" ".repeat(MAX_BYTES as usize + 1)).is_err());
+        let mut camel = v.clone();
+        camel["settings"][1]["default"] = Value::Null;
+        camel["actions"][1]["id"] = json!("packExport");
+        assert!(Manifest::parse(&camel.to_string()).is_ok(), "camelCase action ids, as the registry checker allows");
+        camel["actions"][1]["id"] = json!("../x");
+        assert!(Manifest::parse(&camel.to_string()).is_err(), "a path is still no action id");
         assert_eq!(version_key("1.10.2"), (1, 10, 2));
         assert!(version_key("1.10.2") > version_key("1.9.9"));
     }
