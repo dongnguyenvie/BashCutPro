@@ -30,6 +30,10 @@ none. The footprint after the run: 38 upstream files, Rust lines 46 / 150, 16 ho
 a sync-log row for a merge that did not happen; fixed in the same PR (it now says "already up to date"). Next: repeat
 on the next upstream tag or in 1–2 weeks, whichever comes first.
 
+Same day, Windows (geekomT) re-run: still 0 commits; `upstream.py` crashed on Windows decoding git output with the
+ANSI code page (`UnicodeDecodeError` in the footprint diff). It now reads git output as UTF-8; after the fix
+`merge --no-check --no-fetch` and the footprint pass (38 files, Rust 46 / 150, ledger OK) and `test_upstream.py` passes (18 tests).
+
 ## Hooks
 
 One row per hook: an inserted block in an upstream file that calls into our code. `First line` is the hook's first
