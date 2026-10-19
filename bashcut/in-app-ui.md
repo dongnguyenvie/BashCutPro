@@ -183,7 +183,7 @@ one manual look at the app through `ui.screenshot`. No release build per phase.
 
 ## 9. Upstream sync checklist (for these hooks)
 
-1. `upstream.sh merge` on `upstream-sync/<date>` with `git rerere` on.
+1. `bashcut/scripts/upstream.sh merge` (see `UPSTREAM.md` "How to sync") on `upstream-sync/<date>` with `git rerere` on.
 2. Conflicts should only be in the H-lines; re-place a hook if upstream moved the function (search for
    `// BashCutPro`).
 3. `cargo check --workspace`, `cargo test -p bashcut-plugin-host -p bashcut-agent -p bashcut-analysis`,

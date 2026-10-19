@@ -92,7 +92,9 @@ Struct and API churn since 2026-09-01 (changes to the definition):
 | `Tokens`, `History`, automation `Element` | 2–3 | yes |
 | `CommandSpec`, automation `Registry`, MCP `command_run` | 1–2 | yes: the most stable Rust surfaces |
 
-Refresh these numbers at each upstream sync (`upstream.sh footprint`, #38) and update this section.
+Refresh these numbers at each upstream sync (`bashcut/scripts/upstream.sh footprint` prints each changed file's
+30-day count; `git log --since=<30 days> --format= --name-only upstream/main | sort | uniq -c | sort -rn` for the rest)
+and update this section.
 
 ## 4. Stability ladder
 
@@ -112,4 +114,5 @@ Prefer the highest rung that does the job:
 - [ ] If a hook is needed: one inserted line, no edited line, stable neighbour, marker comment, `UPSTREAM.md` row.
 - [ ] No new field, variant, default or test in upstream code.
 - [ ] Our tests are in our own files and pass: `cargo test -p <our crates>`, `cargo xtask layers`.
-- [ ] `git diff <last upstream merge>..HEAD -- <upstream files>` shows only `+` lines (except the exceptions in §1).
+- [ ] `bashcut/scripts/upstream.sh footprint --pr` passes: every inserted upstream line is covered by a `UPSTREAM.md`
+      Hooks row, no upstream line is changed (except the Carried edits rows, §1).

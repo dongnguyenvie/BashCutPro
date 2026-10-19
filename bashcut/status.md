@@ -21,6 +21,8 @@ _Last updated: 2026-10-20_
   recipes (#5–#7, #9–#12, #15–#22); sub-agents surveyor, critic, voice.
 - Plugins (`bashcutpro-plugins`): translate-captions (#8), vieneu-tts (#13), resources (#14, credits opt-in),
   image-gen (#20), hyperframes (#21). Plugin format decision copied into [decisions.md](decisions.md).
+- Upstream-sync tooling (#38): `bashcut/scripts/upstream.sh` (`footprint`, `merge` with rerere, `setup`) and the
+  Hooks / Carried edits ledger in `UPSTREAM.md`; `footprint --pr` is the check before every PR.
 - `bashcut-plugin-host` design note: [plugin-host.md](plugin-host.md) (#23), approved 2026-10-20.
 
 ## Next
@@ -29,7 +31,7 @@ _Last updated: 2026-10-20_
    fakes). Run each issue's "Done when" against a `filmcraft-cli` build: rough-cut on a talking-head clip,
    Vietnamese captions, grade + scopes, mix loudness, vieneu-tts line on the timeline, image-gen batch, hyperframes
    card with alpha. Confirm `scopes.read` scale, `render_frame` max side, the Lumetri intensity param name.
-2. Upstream-sync hygiene first: footprint check + hook ledger (#38), branding out of hot files (#39). Then the
+2. Upstream-sync hygiene: branding out of hot files (#39). Then the
    in-app UI ([in-app-ui.md](in-app-ui.md)): U0 #34 → U1 #31 → U2 #35 → U4 #37; engine analysis U3 #36 in parallel.
    Batch and quality (owner goals): batch runner #45 → Batch section #46, templates #42, output profiles #43,
    atomic edits #44, looks #47, voice polish #48, word captions #49, palette #52, agent reads #50, auto-connect #51,
