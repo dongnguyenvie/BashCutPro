@@ -14,3 +14,40 @@ Coming soon	Sắp có
 Chat with the editing agent (Claude Code, Codex) about this project.	Trò chuyện với trợ lý dựng phim (Claude Code, Codex) về dự án này.
 Installed plugins, their settings and actions.	Plugin đã cài, cài đặt và thao tác của chúng.
 Plugin runs and agent turns with progress and results.	Các lượt chạy plugin và trợ lý, với tiến độ và kết quả.
+# Plugins and Runs (BC-31)
+Installed	Đã cài
+Available	Có thể cài
+No plugins installed yet.	Chưa cài plugin nào.
+Check registry	Kiểm tra kho plugin
+Refresh	Làm mới
+Checking {location}…	Đang kiểm tra {location}…
+Registry: {location}	Kho plugin: {location}
+No data folder in this session: plugins cannot be installed.	Phiên này không có thư mục dữ liệu: không thể cài plugin.
+Install	Cài đặt
+Not available on this system	Không dùng được trên hệ thống này
+Remove	Gỡ bỏ
+Update to {version}	Cập nhật lên {version}
+Settings	Cài đặt
+stored	đã lưu
+not set	chưa đặt
+Save	Lưu
+Clear	Xóa
+Save settings	Lưu cài đặt
+Saved settings of {plugin}	Đã lưu cài đặt của {plugin}
+uses the open project	dùng dự án đang mở
+Run	Chạy
+Started run {job}	Đã bắt đầu lượt chạy {job}
+Nothing has run yet.	Chưa có gì chạy.
+Clear finished	Xóa mục đã xong
+Cancel	Hủy
+Log	Nhật ký
+Hide log	Ẩn nhật ký
+Send to agent	Gửi cho trợ lý
+{seconds} s	{seconds} giây
+Running	Đang chạy
+Done	Xong
+Failed	Thất bại
+Needs the agent	Cần trợ lý
+Cancelled	Đã hủy
+Timed out	Hết thời gian
+Crashed	Bị lỗi

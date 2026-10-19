@@ -191,3 +191,27 @@ fn vietnamese_strings() {
     assert_eq!(v[0]["label"], json!("Plugin"));
     d.exec("bashcut.ui.setLanguage", json!({"language": null}));
 }
+
+#[test]
+fn plugins_and_runs_sections_draw_and_commands_answer() {
+    let mut d = Driver::demo();
+    d.click("bashcut.rail.plugins");
+    assert!(d.has("bashcut.panel.plugins"));
+    assert!(d.has("bashcut.plugins.registry.refresh"), "registry button");
+    // a headless session has no data folder: nothing to install, listed as such
+    let list = d.exec("bashcut.plugins.list", json!({}));
+    assert_eq!(list["installed"], json!([]));
+    assert_eq!(list["canInstall"], json!(false));
+    let v = d.call("engine.execute", json!({"command": "bashcut.plugins.run", "params": {"plugin": "nope", "action": "x"}}));
+    assert_ne!(v["ok"], json!(true), "unknown plugin: {v}");
+    let v = d.call("engine.execute", json!({"command": "bashcut.plugins.cancel", "params": {}}));
+    assert_ne!(v["ok"], json!(true), "job is required: {v}");
+    assert_eq!(d.exec("bashcut.plugins.runs", json!({})), json!([]));
+    d.click("bashcut.rail.runs");
+    assert!(d.has("bashcut.panel.runs"));
+    assert!(!d.has("bashcut.runs.clear"), "nothing ran");
+    let ids: Vec<String> = filmcraft_ui_egui::menus::external_commands().iter().map(|c| c.id.clone()).collect();
+    for id in ["bashcut.plugins.list", "bashcut.plugins.run", "bashcut.plugins.cancel", "bashcut.plugins.sendToAgent"] {
+        assert!(ids.iter().any(|c| c == id), "{id} listed");
+    }
+}

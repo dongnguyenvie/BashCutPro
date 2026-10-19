@@ -42,6 +42,13 @@ The runner talks to the app the same way an agent does: through the control chan
 (`filmcraft --control <port>`, `crates/ui-egui/src/control.rs`) and the MCP bridge. The host never proxies engine
 calls, so a plugin behaves identically from a shell, an agent or the app.
 
+As built in #31 (P1): `src/{manifest,registry,install,settings,runner,host}.rs`; `host.rs` holds the jobs and
+serves the `bashcut.plugins.*` commands (`Host::command`), and the egui side is `crates/ui-egui/src/bashcut_ui/
+{plugins,plugins_panel,runs_panel}.rs` (rail sections, [in-app-ui.md](in-app-ui.md) §4), not `bashcut_plugins.rs`
+or a floating window. The workspace's `crates/*` glob picks the crate up, so the root `Cargo.toml` is not touched;
+the one upstream line is the ui-egui dependency (H4). Views (`view.rs`) come with #37. Tests: unit tests per module
+and `tests/fake_plugins.rs` (fake Python plugins and a local git registry).
+
 ## Touch points in upstream files (the whole core change)
 
 | File | Change |
