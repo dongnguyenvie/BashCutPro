@@ -6,3 +6,6 @@ plan/
 .DS_Store
 .claude/worktrees/
 __pycache__/
+
+# BashCutPro: maintainer-local scripts and notes (never committed)
+.local/
