@@ -27,6 +27,8 @@ _Last updated: 2026-10-20_
   `bashcut_brand`; cold `brand.rs`, `links.rs`, `build.rs` and packaging stay as listed carried edits.
 - Batch runner (#45): `crates/bashcut-batch` + `apps/bashcut-batch` ([batch.md](batch.md)); tested with a fake
   `filmcraft-cli`, live run pending.
+- Agent auto-connect (#51): the window publishes `automation.json`, `bashcut-mcp` bridges or runs headless with a
+  project lock and a write guard ([agent-connect.md](agent-connect.md)); runtime "Let agents edit" switch left for #35.
 - `bashcut-plugin-host` design note: [plugin-host.md](plugin-host.md) (#23), approved 2026-10-20.
 - In-app UI U0 (#34): `crates/ui-egui/src/bashcut_ui/` rail + side panel, state, strings (vi), hooks H5–H9, H11
   (ledger in `UPSTREAM.md`). Build + tests pending (build pass).

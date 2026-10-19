@@ -523,6 +523,30 @@ dependencies = [
 ]
 
 [[package]]
+name = "bashcut-connect"
+version = "0.9.0"
+dependencies = [
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "bashcut-doctor"
+version = "0.9.0"
+dependencies = [
+ "serde_json",
+ "sha2",
+]
+
+[[package]]
+name = "bashcut-mcp"
+version = "0.9.0"
+dependencies = [
+ "bashcut-connect",
+ "serde_json",
+]
+
+[[package]]
 name = "bashcut-plugin-host"
 version = "0.9.0"
 dependencies = [

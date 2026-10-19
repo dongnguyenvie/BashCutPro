@@ -13,6 +13,7 @@ and its own docs (`CLAUDE.md`, `AGENTS.md`, `docs/`) still apply in full.
 | [status.md](status.md) | where the work stands and the next steps; update it when you finish something |
 | [rebrand.md](rebrand.md) | how builds show BashCutPro instead of FilmCraft / ArtCraft, and every upstream file that touches |
 | [scripts/](scripts/upstream.py) | upstream-sync tooling: `upstream.sh footprint` (the check before every PR), `merge` with rerere, `setup` |
+| [agent-connect.md](agent-connect.md) | agents reach the open window (`automation.json`, `bashcut-mcp`), project engine lock, allowed write roots (#51) |
 | [batch.md](batch.md) | `bashcut-batch`: headless parallel pipelines, one project per input, resumable job book (#45) |
 | [brand/](brand/README.md) | BashCutPro's app icon, mark and wordmarks, and the scripts that render them |
 | [commands.md](commands.md), [commands.json](commands.json) | FilmCraft's live command catalogue (`command_list`) and the ids that matter for agents |

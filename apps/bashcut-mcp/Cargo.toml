@@ -1,0 +1,18 @@
+[package]
+name = "bashcut-mcp"
+description = "bashcut-mcp: start filmcraft-cli's MCP server for an agent, bridged to the open BashCutPro window when there is one"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[lints]
+workspace = true
+
+[[bin]]
+name = "bashcut-mcp"
+path = "src/main.rs"
+
+[dependencies]
+bashcut-connect = { path = "../../crates/bashcut-connect" }
+serde_json = { workspace = true }

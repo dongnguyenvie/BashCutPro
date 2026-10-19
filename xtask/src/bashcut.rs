@@ -11,9 +11,11 @@ const LAYERS: &[(&str, u8)] = &[
     ("bashcut-plugin-host", 4),
     ("bashcut-agent", 4),
     ("bashcut-batch", 4),
+    ("bashcut-connect", 4),
     // apps
     ("bashcut-batch-cli", 6),
     ("bashcut-doctor", 6),
+    ("bashcut-mcp", 6),
 ];
 
 /// The layer of one of our crates, or `None` for any other crate.
