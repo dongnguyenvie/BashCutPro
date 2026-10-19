@@ -167,6 +167,18 @@ class Footprint(Repos):
         self.assertIn("Hooks row not found in the diff (stale?): mod gone;", out)
         self.assertIn("hook line has no 'BashCutPro' marker: mod gone;", out)
 
+    def test_hook_row_in_a_carried_edit_file_is_found(self):
+        hook = "run_ours  # BashCutPro: test hook (bashcut/extending-upstream.md)"
+        self.write(self.fork, "packaging/build.sh", "NAME=BashCutPro\n%s\n" % hook)
+        ledger = self.read(self.fork, "UPSTREAM.md").replace(
+            "| `src/lib.rs` | 1 |", "| `packaging/build.sh` | 1 | `%s` | x | - |\n| `src/lib.rs` | 1 |" % hook
+        )
+        self.write(self.fork, "UPSTREAM.md", ledger)
+        self.commit(self.fork, "packaging hook")
+        rc, out = self.tool("footprint")
+        self.assertEqual(rc, 0, out)
+        self.assertNotIn("stale", out)
+
     def test_multi_line_hook(self):
         block = ["#[cfg(not(test))] // BashCutPro: two lines (x)", "use crate::bashcut_extra;"]
         self.write(self.fork, "src/lib.rs", self.read(self.fork, "src/lib.rs").replace("mod b;\n", "mod b;\n%s\n" % "\n".join(block)))

@@ -246,6 +246,13 @@ def classify(f, ledger, problems):
     """Kind of carried change for an upstream file; appends rule breaks to `problems`."""
     kind = ledger.carried_kind(f.path)
     if kind == "edits":
+        # a hook may also sit in a carried-edit file: count it so its row is not reported as stale
+        for _, _, runs in f.hunks:
+            for run in runs:
+                for line in run:
+                    hook = next((h for h in ledger.hooks if h.path == f.path and h.first == line.strip()), None)
+                    if hook is not None:
+                        hook.used += 1
         return "carried edit"
     if f.status == "D":
         problems.append("%s: deletes an upstream file" % f.path)
