@@ -53,6 +53,9 @@ _Last updated: 2026-10-20_
 - Review gate (#57): `bashcut.review.run` measures sound, picture, captions and edit, writes findings as Review markers
   (one undo step), scores each category and returns `verdict` (`needsFix` on blocking findings); kit review and critic
   start from it. Not measured yet: music over speech, caption safe area and contrast. Build + tests pending.
+- Looks (#47): 26 curated looks (Lumetri params with purpose, tags, one knob and safe range) as `bashcut.looks.*`, the
+  Looks section with engine thumbnails, golden + damage checks; no new hook. Build + tests + golden bless + live check
+  pending (build pass).
 
 ## Next
 

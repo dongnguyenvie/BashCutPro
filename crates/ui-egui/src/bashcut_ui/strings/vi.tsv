@@ -84,3 +84,18 @@ Stop	Dừng
 Stopping…	Đang dừng…
 Working…	Đang làm…
 You	Bạn
+# Looks (BC-47)
+Curated looks with a purpose each: preview, apply to the selection, favourite.	Bộ màu chọn lọc, mỗi màu một mục đích: xem trước, áp cho clip đang chọn, đánh dấu yêu thích.
+Search looks	Tìm màu phim
+Intensity	Cường độ
+Preview on current frame	Xem trước trên khung hình hiện tại
+No program frame to preview on.	Không có khung hình chương trình để xem trước.
+All	Tất cả
+Select clips on the timeline to apply a look.	Chọn clip trên timeline để áp màu.
+{n} clips selected	Đã chọn {n} clip
+Remove look	Gỡ màu
+No look matches.	Không có màu phù hợp.
+Favourite	Yêu thích
+Applied	Đang dùng
+Apply	Áp dụng
+Applied {look} to {n} clips	Đã áp {look} cho {n} clip
