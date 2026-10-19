@@ -1,6 +1,6 @@
 # Design: BashCutPro's in-app UI and how it extends FilmCraft
 
-Status: **proposed** (2026-10-20). Extends [plugin-host.md](plugin-host.md) (#23, #31) and follows the one-way
+Status: **accepted** (2026-10-20); tickets #34 (U0), #31 (U1), #35 (U2), #36 (U3), #37 (U4), tracking #40. Extends [plugin-host.md](plugin-host.md) (#23, #31) and follows the one-way
 upstream sync decision in [decisions.md](decisions.md): everything below is ours, lives in our own files, and
 reaches upstream code only through a short list of one-line hooks.
 
@@ -164,6 +164,6 @@ one manual look at the app through `ui.screenshot`. No release build per phase.
 ## 10. Changes to earlier decisions
 
 - [plugin-host.md](plugin-host.md) approved a **floating window** for P1–P2. This design keeps that as the pop-out
-  mode but makes the default a **side panel reserved by hook H6**, which still adds no `PanelKind`. Needs the
-  owner's OK.
+  mode but makes the default a **side panel reserved by hook H6**, which still adds no `PanelKind`. Accepted
+  2026-10-20 (decisions.md).
 - The plugin host's touch points in plugin-host.md (`lib.rs` per-frame call, `menus.rs` routing) are H5–H9 here.
