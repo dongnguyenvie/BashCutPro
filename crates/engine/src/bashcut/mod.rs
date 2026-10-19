@@ -28,14 +28,25 @@ mod tests;
 pub mod voice;
 #[cfg(test)]
 mod voice_tests;
+pub mod word_captions;
+#[cfg(test)]
+mod word_captions_tests;
 
 use crate::commands::CommandSpec;
 
 /// Every `bashcut.*` engine command, in menu / listing order.
 pub fn commands() -> Vec<CommandSpec> {
     // one line per feature file, appended at the end: `<file>::commands(),`
-    let groups: Vec<Vec<CommandSpec>> =
-        vec![templates::commands(), profiles::commands(), voice::commands(), analysis::commands(), batch::commands(), hooks::commands(), summary::commands()];
+    let groups: Vec<Vec<CommandSpec>> = vec![
+        templates::commands(),
+        profiles::commands(),
+        voice::commands(),
+        analysis::commands(),
+        batch::commands(),
+        hooks::commands(),
+        summary::commands(),
+        word_captions::commands(),
+    ];
     // typed errors (`notFound: …`) and a units note on every command (errors.rs)
     errors::wrap(groups.into_iter().flatten().collect())
 }

@@ -1,5 +1,8 @@
 # Word-by-word caption styles (#49): design note
 
+Status: no-hook route implemented in `crates/engine/src/bashcut/word_captions.rs` (tests in `word_captions_tests.rs`);
+the box style waits for the owner (#49).
+
 The spoken word highlighted, the most requested short-form look. FilmCraft has no word styling for captions
 ([skill-needs.md](skill-needs.md) #4). Rules: [extending-upstream.md](extending-upstream.md); `crates/render/src/lib.rs`
 is a hot spot (40–54 upstream changes in 30 days), so the no-hook route comes first.
