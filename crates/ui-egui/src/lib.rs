@@ -30,7 +30,7 @@ macro_rules! tlf {
 }
 
 pub mod automation;
-pub mod bashcut_brand;
+pub mod bashcut_brand; // BashCutPro: branded strings and links (bashcut/extending-upstream.md)
 pub mod brand;
 pub mod calc;
 mod cjk;
