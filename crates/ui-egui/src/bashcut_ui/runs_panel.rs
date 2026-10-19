@@ -74,6 +74,7 @@ pub fn draw(app: &mut FilmcraftApp, ui: &mut egui::Ui) {
             if !j.message.is_empty() {
                 ui.label(egui::RichText::new(&j.message).size(11.0).color(t.text_dim));
             }
+            super::view::job_view(app, ui, j);
             if !j.state.is_running() {
                 let secs = format!("{:.1}", j.elapsed_ms as f64 / 1000.0);
                 ui.label(egui::RichText::new(f("{seconds} s", &[("seconds", &secs)])).size(10.5).color(t.text_dim));
@@ -105,5 +106,6 @@ pub fn draw(app: &mut FilmcraftApp, ui: &mut egui::Ui) {
         app.auto.add(&format!("bashcut.runs.{}", j.id), frame.response.rect, &j.title);
     }
     v.logs.retain(|id| jobs.iter().any(|j| j.id == *id));
+    super::view::retain(&ctx, &jobs.iter().map(|j| j.id).collect::<Vec<_>>());
     ctx.data_mut(|d| d.insert_temp(key(), v));
 }

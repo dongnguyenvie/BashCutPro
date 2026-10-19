@@ -108,6 +108,8 @@ pub enum Event {
         fraction: Option<f32>,
         message: String,
     },
+    /// A `bashcut-view/1` line on stdout: the plugin's panel, replacing the previous one.
+    View(crate::view::View),
     Done(Outcome),
 }
 
@@ -210,8 +212,13 @@ fn supervise(mut child: Child, spec: &RunSpec, tx: &Sender<Event>, cancel: &Atom
     let (out_tx, out_rx) = channel();
     if let Some(out) = child.stdout.take() {
         let cap = spec.max_stdout;
+        let views = tx.clone();
         let _ = std::thread::Builder::new().name("bashcut-plugin-stdout".into()).spawn(move || {
-            let r = catch_unwind(AssertUnwindSafe(|| read_capped(out, cap)));
+            let r = catch_unwind(AssertUnwindSafe(|| {
+                read_stdout(out, cap, |v| {
+                    let _ = views.send(Event::View(v));
+                })
+            }));
             let _ = out_tx.send(r.unwrap_or_default());
         });
     }
@@ -290,6 +297,7 @@ fn terminate(child: &mut Child, hard: bool) {
 }
 
 /// Read up to `cap` bytes, then keep draining (so the child never blocks) and report truncation.
+#[cfg_attr(not(test), allow(dead_code))]
 fn read_capped<R: Read>(mut r: R, cap: usize) -> (Vec<u8>, bool) {
     let mut buf = Vec::new();
     let mut chunk = [0u8; 8192];
@@ -307,6 +315,48 @@ fn read_capped<R: Read>(mut r: R, cap: usize) -> (Vec<u8>, bool) {
             }
         }
     }
+    (buf, truncated)
+}
+
+/// Longest stdout line looked at for a view (a longer line is not a view).
+pub const MAX_VIEW_LINE: usize = 1024 * 1024;
+
+/// stdout as [`read_capped`] keeps it, and every `bashcut-view/1` line passed to `view` as it arrives.
+fn read_stdout<R: Read>(mut r: R, cap: usize, mut view: impl FnMut(crate::view::View)) -> (Vec<u8>, bool) {
+    let mut buf = Vec::new();
+    let mut truncated = false;
+    let mut line: Vec<u8> = Vec::new();
+    let mut long = false;
+    let mut chunk = [0u8; 8192];
+    let mut flush = |line: &mut Vec<u8>, long: &mut bool| {
+        if !*long && let Some(v) = crate::view::parse_line(&String::from_utf8_lossy(line)) {
+            view(v);
+        }
+        line.clear();
+        *long = false;
+    };
+    loop {
+        let n = match r.read(&mut chunk) {
+            Ok(0) | Err(_) => break,
+            Ok(n) => n,
+        };
+        let got = chunk.get(..n).unwrap_or_default();
+        let room = cap.saturating_sub(buf.len());
+        buf.extend_from_slice(got.get(..n.min(room)).unwrap_or_default());
+        if n > room {
+            truncated = true;
+        }
+        for &b in got {
+            if b == b'\n' {
+                flush(&mut line, &mut long);
+            } else if line.len() < MAX_VIEW_LINE {
+                line.push(b);
+            } else {
+                long = true;
+            }
+        }
+    }
+    flush(&mut line, &mut long);
     (buf, truncated)
 }
 

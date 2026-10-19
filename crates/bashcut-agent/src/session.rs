@@ -164,7 +164,7 @@ impl Agent {
         if let Some(side) = ctx.project.as_deref().map(crate::sidecar) {
             env.push(("BASHCUT_PROJECT_SIDECAR".into(), side.to_string_lossy().into_owned()));
         }
-        let turn = Turn::start(&argv, &cwd, &env, &message, Duration::from_secs(self.agent.timeout_secs.max(1)))?;
+        let turn = Turn::start_as(&argv, &cwd, &env, &message, Duration::from_secs(self.agent.timeout_secs.max(1)), &self.agent.events)?;
         self.conversation.transcript.push(Item::User { text: text.to_string() });
         self.turn = Some(turn);
         self.status = Status::Running;
@@ -184,7 +184,7 @@ impl Agent {
         };
         self.mcp_config = mcp.clone();
         let session = Some(self.conversation.session.as_str()).filter(|s| !s.is_empty());
-        self.agent.command_line(mcp.as_deref(), session)
+        self.agent.command_line_for(mcp.as_deref(), session, ctx.cli.as_deref(), ctx.bridge.as_deref())
     }
 
     pub fn stop(&mut self) {

@@ -13,6 +13,7 @@ use std::time::{Duration, Instant};
 
 use serde::{Deserialize, Serialize};
 
+use crate::codex_json;
 use crate::stream_json::{self, Event};
 use crate::{Error, Result, err};
 
@@ -36,8 +37,11 @@ pub struct AgentSpec {
     pub mcp_args: Vec<String>,
     /// Arguments resuming a session (`{session}` is replaced by its id).
     pub resume_args: Vec<String>,
-    /// Event format of stdout (only [`stream_json::FORMAT`] for now).
+    /// Event format of stdout: [`stream_json::FORMAT`] (the message goes in as a stream-json line) or
+    /// [`codex_json::FORMAT`] (the message goes in as plain text).
     pub events: String,
+    /// Arguments after everything else (Codex: `-`, read the prompt from stdin).
+    pub tail_args: Vec<String>,
     /// Extra environment.
     pub env: Vec<(String, String)>,
     /// A turn is stopped after this long.
@@ -53,6 +57,7 @@ impl Default for AgentSpec {
             mcp_args: Vec::new(),
             resume_args: Vec::new(),
             events: stream_json::FORMAT.into(),
+            tail_args: Vec::new(),
             env: Vec::new(),
             timeout_secs: 2 * 60 * 60,
         }
@@ -75,24 +80,63 @@ impl AgentSpec {
         }
     }
 
+    /// Codex (`codex exec --json`, the prompt on stdin), with FilmCraft's MCP server passed as `-c` overrides.
+    /// `program` overrides `codex` (from `BASHCUT_CODEX` in the app).
+    pub fn codex(program: Option<String>) -> Self {
+        let program = program.filter(|p| !p.trim().is_empty()).unwrap_or_else(|| "codex".into());
+        AgentSpec {
+            id: "codex".into(),
+            name: "Codex".into(),
+            argv: vec![program, "exec".into(), "--json".into(), "--skip-git-repo-check".into()],
+            mcp_args: vec![
+                "-c".into(),
+                "mcp_servers.filmcraft.command='{cli}'".into(),
+                "-c".into(),
+                "mcp_servers.filmcraft.args=['mcp','--bridge','{bridge}']".into(),
+            ],
+            resume_args: vec!["resume".into(), "{session}".into()],
+            events: codex_json::FORMAT.into(),
+            tail_args: vec!["-".into()],
+            ..AgentSpec::default()
+        }
+    }
+
     pub fn check(&self) -> Result<()> {
         if self.argv.is_empty() || self.argv.len() > 128 {
             return err(format!("agent `{}` has no command", self.id));
         }
-        if self.events != stream_json::FORMAT {
-            return err(format!("agent `{}`: event format `{}` is not supported (use {})", self.id, self.events, stream_json::FORMAT));
+        if self.events != stream_json::FORMAT && self.events != codex_json::FORMAT {
+            return err(format!(
+                "agent `{}`: event format `{}` is not supported (use {} or {})",
+                self.id,
+                self.events,
+                stream_json::FORMAT,
+                codex_json::FORMAT
+            ));
         }
         Ok(())
     }
 
     /// The command line of a turn.
     pub fn command_line(&self, mcp_config: Option<&Path>, session: Option<&str>) -> Result<Vec<String>> {
+        self.command_line_for(mcp_config, session, None, None)
+    }
+
+    /// The command line of a turn; `{cli}` and `{bridge}` in the MCP arguments become `cli` and `bridge`.
+    pub fn command_line_for(&self, mcp_config: Option<&Path>, session: Option<&str>, cli: Option<&str>, bridge: Option<&str>) -> Result<Vec<String>> {
         self.check()?;
         let mut argv = self.argv.clone();
         if !self.mcp_args.is_empty() {
             let Some(cfg) = mcp_config else { return err("this agent needs the app's control channel: start BashCutPro with --control <port>") };
             let path = cfg.to_string_lossy();
-            argv.extend(self.mcp_args.iter().map(|a| a.replace("{config}", &path)));
+            let needs = |k: &str| self.mcp_args.iter().any(|a| a.contains(k));
+            // the values go inside TOML quotes: refuse what would break out of them
+            let quoted = |v: &str| !v.is_empty() && !v.contains(['\'', '"', '\n']);
+            let (cli, bridge) = (cli.unwrap_or_default(), bridge.unwrap_or_default());
+            if (needs("{cli}") && !quoted(cli)) || (needs("{bridge}") && !quoted(bridge)) {
+                return err("this agent needs filmcraft-cli next to the app and the app's control channel (--control <port>)");
+            }
+            argv.extend(self.mcp_args.iter().map(|a| a.replace("{config}", &path).replace("{cli}", cli).replace("{bridge}", bridge)));
         }
         if let Some(s) = session.filter(|s| !s.is_empty()) {
             if !s.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_') || s.len() > 128 {
@@ -100,6 +144,7 @@ impl AgentSpec {
             }
             argv.extend(self.resume_args.iter().map(|a| a.replace("{session}", s)));
         }
+        argv.extend(self.tail_args.iter().cloned());
         Ok(argv)
     }
 }
@@ -128,8 +173,15 @@ pub struct Turn {
 }
 
 impl Turn {
-    /// Start `argv` in `cwd` and send `message`.
+    /// Start `argv` in `cwd` and send `message` (Claude Code stream-json).
     pub fn start(argv: &[String], cwd: &Path, env: &[(String, String)], message: &str, timeout: Duration) -> Result<Turn> {
+        Turn::start_as(argv, cwd, env, message, timeout, stream_json::FORMAT)
+    }
+
+    /// Start `argv` for an agent speaking `events` ([`stream_json::FORMAT`] or [`codex_json::FORMAT`]).
+    pub fn start_as(argv: &[String], cwd: &Path, env: &[(String, String)], message: &str, timeout: Duration, events: &str) -> Result<Turn> {
+        let codex = events == codex_json::FORMAT;
+        let parse: fn(&str) -> Vec<Event> = if codex { codex_json::parse_line } else { stream_json::parse_line };
         let Some((program, args)) = argv.split_first() else { return err("empty agent command") };
         let mut cmd = Command::new(program);
         cmd.args(args).current_dir(cwd).envs(env.iter().map(|(k, v)| (k, v))).stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::piped());
@@ -142,7 +194,7 @@ impl Turn {
         let mut child = cmd.spawn().map_err(|e| Error(format!("cannot start `{program}`: {e}")))?;
         if let Some(mut stdin) = child.stdin.take() {
             // one message, then EOF: the agent answers it and exits
-            let line = format!("{}\n", stream_json::user_message(message));
+            let line = if codex { format!("{message}\n") } else { format!("{}\n", stream_json::user_message(message)) };
             if let Err(e) = stdin.write_all(line.as_bytes()) {
                 log::warn!("bashcut agent stdin: {e}");
             }
@@ -154,7 +206,7 @@ impl Turn {
         std::thread::Builder::new()
             .name("bashcut-agent-turn".into())
             .spawn(move || {
-                if catch_unwind(AssertUnwindSafe(|| supervise(child, timeout, &tx, &flag))).is_err() {
+                if catch_unwind(AssertUnwindSafe(|| supervise(child, timeout, &tx, &flag, parse))).is_err() {
                     let _ = done.send(TurnEvent::Ended(TurnEnd::Failed("agent host thread failed".into())));
                 }
             })
@@ -206,7 +258,7 @@ impl Turn {
     }
 }
 
-fn supervise(mut child: Child, timeout: Duration, tx: &Sender<TurnEvent>, stop: &AtomicBool) {
+fn supervise(mut child: Child, timeout: Duration, tx: &Sender<TurnEvent>, stop: &AtomicBool, parse: fn(&str) -> Vec<Event>) {
     let (out_done_tx, out_done) = channel::<()>();
     if let Some(out) = child.stdout.take() {
         let tx = tx.clone();
@@ -217,7 +269,7 @@ fn supervise(mut child: Child, timeout: Duration, tx: &Sender<TurnEvent>, stop: 
                         let _ = tx.send(TurnEvent::Agent(Event::Notice("skipped an event larger than 1 MB".into())));
                         return;
                     }
-                    for e in stream_json::parse_line(line) {
+                    for e in parse(line) {
                         let _ = tx.send(TurnEvent::Agent(e));
                     }
                 })
@@ -357,6 +409,44 @@ mod tests {
         assert!(spec.command_line(Some(Path::new("/t")), Some("x; rm -rf /")).is_err());
         let bad = AgentSpec { events: "other".into(), ..spec };
         assert!(bad.check().is_err());
+    }
+
+    #[test]
+    fn codex_command_line() {
+        let spec = AgentSpec::codex(None);
+        assert!(spec.check().is_ok());
+        let cfg = Some(Path::new("/t/m.json"));
+        assert!(spec.command_line(cfg, None).is_err(), "Codex needs the CLI and the bridge");
+        let argv = spec.command_line_for(cfg, Some("th-1"), Some("/app/filmcraft-cli"), Some("127.0.0.1:9876")).unwrap();
+        assert_eq!(&argv[..4], ["codex", "exec", "--json", "--skip-git-repo-check"]);
+        assert!(argv.windows(2).any(|w| w == ["-c", "mcp_servers.filmcraft.command='/app/filmcraft-cli'"]));
+        assert!(argv.windows(2).any(|w| w == ["-c", "mcp_servers.filmcraft.args=['mcp','--bridge','127.0.0.1:9876']"]));
+        assert!(argv.windows(2).any(|w| w == ["resume", "th-1"]));
+        assert_eq!(argv.last().map(String::as_str), Some("-"), "the prompt comes from stdin");
+        assert!(spec.command_line_for(cfg, None, Some("/x/it's/cli"), Some("127.0.0.1:1")).is_err(), "no quote breaks out of TOML");
+    }
+
+    #[test]
+    fn a_codex_turn_reads_its_events() {
+        // a stand-in agent: prints Codex events whatever it is asked
+        let script = r#"{"type":"thread.started","thread_id":"th-9"}
+{"type":"item.completed","item":{"id":"m","type":"agent_message","text":"hi"}}
+{"type":"turn.completed"}"#;
+        let dir = std::env::temp_dir().join(format!("bashcut-codex-turn-{}", std::process::id()));
+        let _ = std::fs::create_dir_all(&dir);
+        let file = dir.join("events.jsonl");
+        let _ = std::fs::write(&file, script);
+        let argv: Vec<String> = if cfg!(windows) {
+            vec!["cmd".into(), "/C".into(), format!("type {}", file.display())]
+        } else {
+            vec!["cat".into(), file.to_string_lossy().into_owned()]
+        };
+        let mut turn = Turn::start_as(&argv, &dir, &[], "hello", Duration::from_secs(20), codex_json::FORMAT).unwrap();
+        let events = turn.wait(Duration::from_secs(20));
+        assert!(events.contains(&TurnEvent::Agent(Event::Text("hi".into()))), "{events:?}");
+        assert!(events.iter().any(|e| matches!(e, TurnEvent::Agent(Event::Init { session, .. }) if session == "th-9")));
+        assert!(events.contains(&TurnEvent::Ended(TurnEnd::Done)), "{events:?}");
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]

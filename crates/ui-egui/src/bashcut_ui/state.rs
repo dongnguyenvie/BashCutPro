@@ -4,9 +4,13 @@
 //! `<data dir>/bashcut/ui.json` when it changes. The file is hostile input: capped, clamped, and
 //! unknown sections are dropped.
 
+use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
+
+/// Monitors remembered for pop-out positions.
+const MAX_MONITORS: usize = 8;
 
 /// Side panel width limits (px).
 pub const MIN_WIDTH: f32 = 240.0;
@@ -29,6 +33,8 @@ pub struct State {
     pub popped: Vec<String>,
     /// Our language override (`"vi"`); `None` follows the interface language.
     pub language: Option<String>,
+    /// Where each popped-out section's window was, per monitor (`"<w>x<h>"` of the monitor): `[x, y, w, h]`.
+    pub windows: BTreeMap<String, BTreeMap<String, [f32; 4]>>,
     /// Read from disk already.
     #[serde(skip)]
     loaded: bool,
@@ -39,7 +45,7 @@ pub struct State {
 
 impl Default for State {
     fn default() -> Self {
-        Self { rail: true, open: None, width: DEFAULT_WIDTH, popped: Vec::new(), language: None, loaded: false, saved: None }
+        Self { rail: true, open: None, width: DEFAULT_WIDTH, popped: Vec::new(), language: None, windows: BTreeMap::new(), loaded: false, saved: None }
     }
 }
 
@@ -81,6 +87,34 @@ impl State {
         self.popped.dedup();
         if self.language.as_deref().is_some_and(|l| l.len() > 8) {
             self.language = None;
+        }
+        // window rects: known sections, finite, on-screen sizes; a few monitors at most
+        for rects in self.windows.values_mut() {
+            rects.retain(|s, r| has(s) && r.iter().all(|v| v.is_finite() && v.abs() < 100_000.0) && r[2] >= MIN_WIDTH / 2.0 && r[3] >= 40.0);
+        }
+        self.windows.retain(|m, rects| m.len() <= 32 && !rects.is_empty());
+        while self.windows.len() > MAX_MONITORS {
+            let Some(first) = self.windows.keys().next().cloned() else { break };
+            self.windows.remove(&first);
+        }
+    }
+
+    /// The saved window rect of `section` on `monitor`.
+    pub fn window_rect(&self, monitor: &str, section: &str) -> Option<[f32; 4]> {
+        self.windows.get(monitor).and_then(|m| m.get(section)).copied()
+    }
+
+    /// Remember where `section`'s window is on `monitor` (rounded, so tiny moves do not rewrite the file).
+    pub fn remember_window(&mut self, monitor: &str, section: &str, rect: [f32; 4]) {
+        if !rect.iter().all(|v| v.is_finite()) {
+            return;
+        }
+        let r = rect.map(f32::round);
+        self.windows.entry(monitor.to_string()).or_default().insert(section.to_string(), r);
+        if self.windows.len() > MAX_MONITORS
+            && let Some(other) = self.windows.keys().find(|k| k.as_str() != monitor).cloned()
+        {
+            self.windows.remove(&other);
         }
     }
 
@@ -196,6 +230,27 @@ mod tests {
         st.sanitize(KNOWN);
         assert_eq!(st.width, DEFAULT_WIDTH);
         assert!(serde_json::from_str::<State>("[1,2]").is_err());
+    }
+
+    #[test]
+    fn pop_out_windows_remember_their_place_per_monitor() {
+        let mut st = State::default();
+        st.remember_window("2560x1440", "runs", [100.4, 80.0, 400.0, 520.0]);
+        st.remember_window("1512x982", "runs", [10.0, 10.0, 300.0, 400.0]);
+        assert_eq!(st.window_rect("2560x1440", "runs"), Some([100.0, 80.0, 400.0, 520.0]));
+        assert_eq!(st.window_rect("1512x982", "runs"), Some([10.0, 10.0, 300.0, 400.0]));
+        assert_eq!(st.window_rect("1512x982", "agent"), None);
+        st.remember_window("x", "runs", [f32::NAN, 0.0, 1.0, 1.0]);
+        assert_eq!(st.window_rect("x", "runs"), None);
+        for i in 0..20 {
+            st.remember_window(&format!("{i}x{i}"), "runs", [0.0, 0.0, 300.0, 300.0]);
+        }
+        assert!(st.windows.len() <= MAX_MONITORS);
+        let mut st: State =
+            serde_json::from_str(r#"{"windows":{"a":{"runs":[1e30,0,300,300],"nope":[0,0,300,300],"agent":[0,0,300,300]},"b":{"runs":[0,0,1,1]}}}"#).unwrap();
+        st.sanitize(KNOWN);
+        assert_eq!(st.windows.len(), 1);
+        assert_eq!(st.window_rect("a", "agent"), Some([0.0, 0.0, 300.0, 300.0]));
     }
 
     #[test]

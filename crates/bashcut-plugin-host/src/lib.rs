@@ -16,11 +16,13 @@ pub mod manifest;
 pub mod registry;
 pub mod runner;
 pub mod settings;
+pub mod view;
 
 pub use host::{AgentLaunch, Host, Job, JobKind, JobState};
 pub use manifest::Manifest;
 pub use registry::Registry;
 pub use runner::{Outcome, PluginResult, RunSpec};
+pub use view::View;
 
 use std::fmt;
 
@@ -81,4 +83,16 @@ pub(crate) fn read_capped(path: &std::path::Path, cap: u64) -> Result<String> {
         return err(format!("{}: larger than {cap} bytes", path.display()));
     }
     std::fs::read_to_string(path).map_err(|e| Error(format!("{}: {e}", path.display())))
+}
+
+/// `text` cut to at most `max` bytes on a character boundary, with `…` when cut.
+pub fn clip(text: &str, max: usize) -> String {
+    if text.len() <= max {
+        return text.to_string();
+    }
+    let mut end = max;
+    while end > 0 && !text.is_char_boundary(end) {
+        end -= 1;
+    }
+    format!("{}…", text.get(..end).unwrap_or_default())
 }

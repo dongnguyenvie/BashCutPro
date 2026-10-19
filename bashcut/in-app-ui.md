@@ -259,6 +259,30 @@ per-row buttons), `image` (a file path), `progress`. `view.rs` renders them with
 Webviews are out: they would add an OS webview dependency to a pure-Rust app and a large attack surface; BashCut's
 own research (spec 14) reached the same conclusion for most needs.
 
+**As built (#37).** Model and checks: `crates/bashcut-plugin-host/src/view.rs` (row fields in its doc comment; unknown
+rows dropped, strings and lists capped). Any action may show a view: a stdout line that is a `bashcut-view/1` object
+replaces the job's view live, and `data.view` in the final `bashcut-result/1` sets it at the end (the result stays the
+last object on stdout). The job keeps it (`Job.view`, `hasView` in `bashcut.plugins.runs`); the Runs section draws it
+under the run (`bashcut_ui/view.rs`, ids `bashcut.view.<job>.<field>`). A button runs another action of the same
+plugin with the panel's values, its own `params` and, for a list row, `item`; only params the action declares are sent.
+Images: PNG files in the plugin's folder or the temp dir. Example: translate-captions `review` and the `data.view` of
+`translate` (bashcutpro-plugins). Typed values are kept per job across live updates.
+
+**Native sections as views later.** A section drawn natively through the plugin host (the Library section, #68) can be
+wrapped as a view without rewriting it: its plugin's list action returns `data.view` with a `list` (one row per asset,
+`Insert` / `Preview` row buttons naming its existing actions) and its filters as `input` / `select` rows; the native
+panel stays the default and the view is the fallback for plugins that ship without Rust code.
+
+**Codex adapter (#37).** `AgentSpec::codex` (`crates/bashcut-agent`): `codex exec --json --skip-git-repo-check`, the
+prompt on stdin (`-`), FilmCraft's MCP server as `-c mcp_servers.filmcraft.command='<cli>'` and
+`-c mcp_servers.filmcraft.args=['mcp','--bridge','<addr>']`, `resume <thread id>` for the next turn. Its JSONL events
+(`thread.started`, `item.*` for messages, MCP tool calls and shell commands, `turn.completed` / `turn.failed`) map onto
+the same events as Claude Code's stream-json (`codex_json.rs`), so the transcript and conversations are shared.
+`BASHCUT_CODEX` overrides the program. Flag order to re-check against the installed Codex in the build pass.
+
+**Pop-out windows (#37)** come back where they were, per monitor (`windows` in `<data dir>/bashcut/ui.json`, keyed by the
+monitor's size); moving the app to another monitor puts them where they were there.
+
 ## 8. Phases
 
 | Phase | Ships | Hooks used |

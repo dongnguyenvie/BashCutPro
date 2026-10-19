@@ -18,9 +18,9 @@ fn key() -> egui::Id {
     egui::Id::new("bashcut.agent.host")
 }
 
-/// Claude Code (`BASHCUT_CLAUDE` overrides the program) and the installed agent plugins.
+/// Claude Code (`BASHCUT_CLAUDE` overrides the program), Codex (`BASHCUT_CODEX`) and the installed agent plugins.
 fn agents(app: &FilmcraftApp, ctx: &egui::Context) -> Vec<AgentSpec> {
-    let mut v = vec![AgentSpec::claude_code(std::env::var("BASHCUT_CLAUDE").ok())];
+    let mut v = vec![AgentSpec::claude_code(std::env::var("BASHCUT_CLAUDE").ok()), AgentSpec::codex(std::env::var("BASHCUT_CODEX").ok())];
     let launches = plugins::with(app, ctx, |h| h.agents());
     v.extend(launches.into_iter().map(|a| AgentSpec {
         id: a.id,

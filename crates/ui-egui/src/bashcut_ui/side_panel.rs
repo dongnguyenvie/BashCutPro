@@ -88,28 +88,42 @@ fn body(app: &mut FilmcraftApp, ui: &mut egui::Ui, sec: &Section) {
     egui::ScrollArea::vertical().id_salt(("bashcut.scroll", sec.id)).auto_shrink([false, false]).show(ui, |ui| (sec.draw)(app, ui));
 }
 
-/// Popped-out sections, each in its own window with a Dock back button.
+/// The monitor the app's window is on, as `"<w>x<h>"` (pop-out positions are kept per monitor).
+pub fn monitor_key(ctx: &egui::Context) -> String {
+    ctx.input(|i| i.viewport().monitor_size)
+        .filter(|s| s.x.is_finite() && s.y.is_finite())
+        .map_or_else(|| "default".into(), |s| format!("{:.0}x{:.0}", s.x, s.y))
+}
+
+/// Popped-out sections, each in its own window with a Dock back button. Each window comes back where it was on this
+/// monitor; moving to another monitor puts it where it was there.
 pub fn floating(app: &mut FilmcraftApp, ctx: &egui::Context, st: &mut State) {
     let mut dock_back = None;
     let mut closed = Vec::new();
+    let monitor = monitor_key(ctx);
+    let last_id = egui::Id::new("bashcut.window.monitor");
+    let moved = ctx.data(|d| d.get_temp::<String>(last_id)).is_some_and(|m| m != monitor);
+    ctx.data_mut(|d| d.insert_temp(last_id, monitor.clone()));
     for sec in SECTIONS.iter().filter(|sec| st.popped.iter().any(|p| p == sec.id)) {
         let mut open = true;
-        let shown = egui::Window::new(s(sec.title))
-            .id(window_id(sec.id))
-            .open(&mut open)
-            .default_size(vec2(st.width, 520.0))
-            .min_width(MIN_WIDTH)
-            .collapsible(false)
-            .show(ctx, |ui| {
-                let r = ui.button(s("Dock back"));
-                app.auto.add_response(&format!("bashcut.window.{}.dock", sec.id), &r, s("Dock back"));
-                if r.clicked() {
-                    dock_back = Some(sec.id);
-                }
-                body(app, ui, sec);
-            });
+        let mut win =
+            egui::Window::new(s(sec.title)).id(window_id(sec.id)).open(&mut open).default_size(vec2(st.width, 520.0)).min_width(MIN_WIDTH).collapsible(false);
+        if let Some([x, y, w, h]) = st.window_rect(&monitor, sec.id) {
+            let r = Rect::from_min_size(pos2(x, y), vec2(w, h));
+            win = if moved { win.current_pos(r.min).default_size(r.size()) } else { win.default_rect(r) };
+        }
+        let shown = win.show(ctx, |ui| {
+            let r = ui.button(s("Dock back"));
+            app.auto.add_response(&format!("bashcut.window.{}.dock", sec.id), &r, s("Dock back"));
+            if r.clicked() {
+                dock_back = Some(sec.id);
+            }
+            body(app, ui, sec);
+        });
         if let Some(w) = shown {
-            app.auto.add(&format!("bashcut.window.{}", sec.id), w.response.rect, s(sec.title));
+            let r = w.response.rect;
+            app.auto.add(&format!("bashcut.window.{}", sec.id), r, s(sec.title));
+            st.remember_window(&monitor, sec.id, [r.min.x, r.min.y, r.width(), r.height()]);
         }
         if !open {
             closed.push(sec.id);

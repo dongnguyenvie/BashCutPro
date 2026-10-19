@@ -79,6 +79,8 @@ pub struct Job {
     pub elapsed_ms: u64,
     /// For a hand-off: the action the agent runs to finish (`handoff.then`).
     pub then: Option<String>,
+    /// The plugin's latest `bashcut-view/1` panel (a stdout line while it runs, or `data.view` of its result).
+    pub view: Option<crate::view::View>,
     #[serde(skip)]
     started: Instant,
 }
@@ -96,6 +98,7 @@ impl Job {
             outcome: None,
             elapsed_ms: 0,
             then: None,
+            view: None,
             started: Instant::now(),
         }
     }
@@ -421,7 +424,11 @@ impl Host {
                                 j.message = message.clone();
                                 j.push_log(message);
                             }
+                            Event::View(v) => j.view = Some(v),
                             Event::Done(o) => {
+                                if let Some(v) = o.result.as_ref().and_then(|r| r.data.get("view")).and_then(crate::view::parse) {
+                                    j.view = Some(v);
+                                }
                                 let msg = o.summary();
                                 j.finish(o.end.into(), msg);
                                 j.outcome = Some(o);
@@ -571,7 +578,7 @@ impl Host {
 
 /// A job without its log, for lists.
 pub fn job_summary(j: &Job) -> Value {
-    json!({"id": j.id, "kind": j.kind, "title": j.title, "state": j.state, "progress": j.progress, "message": j.message, "elapsedMs": j.elapsed_ms, "then": j.then})
+    json!({"id": j.id, "kind": j.kind, "title": j.title, "state": j.state, "progress": j.progress, "message": j.message, "elapsedMs": j.elapsed_ms, "then": j.then, "hasView": j.view.is_some()})
 }
 
 fn spawn_task(f: impl FnOnce() -> Task + Send + 'static) -> Result<Receiver<Task>> {
