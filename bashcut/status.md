@@ -36,6 +36,8 @@ _Last updated: 2026-10-20_
 - U1 (#31): `crates/bashcut-plugin-host` (manifests, registry, git installs into `<data dir>/bashcut-plugins/`,
   settings + OS key store, runner with progress, `bashcut-result/1`, hand-off, cancel, timeout, capped output) and
   the Plugins and Runs sections with `bashcut.plugins.*` commands; hook H4. Build + tests + live check pending.
+- Atomic edits (#44): `bashcut.batch` runs many commands as one undo step, all or nothing (no hook); plugins' `mcp.py`
+  and kit skills use it with `command_batch` as fallback. Build + tests pending (build pass).
 
 ## Next
 

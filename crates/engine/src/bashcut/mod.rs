@@ -6,6 +6,9 @@
 //! `bashcut.`; params strings state their units (seconds unless they say otherwise).
 
 pub mod analysis;
+pub mod batch;
+#[cfg(test)]
+mod batch_tests;
 mod data;
 pub mod profiles;
 #[cfg(test)]
@@ -24,6 +27,6 @@ use crate::commands::CommandSpec;
 /// Every `bashcut.*` engine command, in menu / listing order.
 pub fn commands() -> Vec<CommandSpec> {
     // one line per feature file, appended at the end: `<file>::commands(),`
-    let groups: Vec<Vec<CommandSpec>> = vec![templates::commands(), profiles::commands(), voice::commands(), analysis::commands()];
+    let groups: Vec<Vec<CommandSpec>> = vec![templates::commands(), profiles::commands(), voice::commands(), analysis::commands(), batch::commands()];
     groups.into_iter().flatten().collect()
 }
