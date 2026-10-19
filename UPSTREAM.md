@@ -60,6 +60,7 @@ the hook; the footprint check reports any inserted upstream line that no row cov
 | `crates/engine/src/lib.rs` | 1 | `pub mod bashcut; // BashCutPro: our engine commands (bashcut/extending-upstream.md)` | `bashcut.*` engine module | [in-app-ui.md](bashcut/in-app-ui.md) §3 H2 |
 | `crates/engine/src/commands.rs` | 1 | `v.extend(crate::bashcut::commands()); // BashCutPro: bashcut.* commands (bashcut/extending-upstream.md)` | registers `bashcut.*` commands after `captions` | [in-app-ui.md](bashcut/in-app-ui.md) §3 H3 |
 | `crates/engine/Cargo.toml` | 1 | `bashcut-analysis = { path = "../bashcut-analysis" } # BashCutPro: bashcut.* measurements (bashcut/extending-upstream.md)` | the engine uses our measurement crate | [in-app-ui.md](bashcut/in-app-ui.md) §3 H1 |
+| `packaging/windows/package.ps1` | 1 | `if (-not $env:BASHCUT_BRANDED -and $env:BASHCUT_PACKAGING_PLAIN -ne '1') { & (Join-Path $PSScriptRoot '..\..\bashcut\packaging\package.ps1') @PSBoundParameters; exit $LASTEXITCODE } # BashCutPro: Pro pieces in the installer (bashcut/extending-upstream.md)` | runs `bashcut/packaging/package.ps1` (Pro pieces, #64) unless already inside the generated copy | [bashcut/packaging/README.md](bashcut/packaging/README.md) |
 
 ## Carried edits
 

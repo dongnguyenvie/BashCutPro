@@ -24,6 +24,7 @@ param(
   [switch] $SkipBuild
 )
 $ErrorActionPreference = 'Stop'
+if (-not $env:BASHCUT_BRANDED -and $env:BASHCUT_PACKAGING_PLAIN -ne '1') { & (Join-Path $PSScriptRoot '..\..\bashcut\packaging\package.ps1') @PSBoundParameters; exit $LASTEXITCODE } # BashCutPro: Pro pieces in the installer (bashcut/extending-upstream.md)
 $Root = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
 
 function Invoke-Native([string] $What, [scriptblock] $Block) {
