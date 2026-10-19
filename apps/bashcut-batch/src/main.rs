@@ -37,7 +37,8 @@ USAGE
 RUN OPTIONS
   --cli PATH          filmcraft-cli to use (default: $BASHCUT_FILMCRAFT_CLI, the one next to this
                       program, else filmcraft-cli on PATH)
-  --concurrency N     items at once (overrides the pipeline)
+  --concurrency N     items at once (overrides the pipeline; free RAM and cores may allow fewer)
+  --no-keep-awake     let the machine sleep while the batch runs
   --data-dir DIR      FilmCraft data dir: presets, and --data-dir for filmcraft-cli
   --compact           one-line JSON
 
@@ -250,6 +251,7 @@ fn options(a: &Args) -> Result<Options, Fail> {
         o.concurrency = Some(n);
     }
     o.data_dir = a.opt("--data-dir").map(PathBuf::from);
+    o.keep_awake = !a.flag("--no-keep-awake");
     Ok(o)
 }
 

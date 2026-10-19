@@ -44,6 +44,9 @@ pub struct Pipeline {
     pub on_failure: OnFailure,
     #[serde(default = "one")]
     pub concurrency: usize,
+    /// RAM / CPU / disk limits for the runner (#61, [`crate::governor::Limits`]).
+    #[serde(default)]
+    pub resources: crate::governor::Limits,
     /// Item (and project file) name; `{stem}` is the input's file stem, `{index}` its 1-based
     /// number (001…). Default `{stem}`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -268,6 +271,7 @@ impl Pipeline {
                 return Err(format!("pipeline: step {}: empty command id, program or skill", i + 1));
             }
         }
+        self.resources.validate()?;
         if self.template.as_ref().is_some_and(|t| t.project.is_some() && !t.commands.is_empty()) {
             return Err("pipeline: template has both project and commands".into());
         }

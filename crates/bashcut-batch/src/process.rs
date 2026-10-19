@@ -25,7 +25,12 @@ pub enum Ended {
     Exited(Option<i32>),
     TimedOut,
     Cancelled,
+    /// Stopped by the watch (over the memory cap, #61), with why.
+    OverLimit(String),
 }
+
+/// A gap this long between two polls means the machine slept: it does not count toward a timeout.
+const SLEEP_GAP: Duration = Duration::from_secs(30);
 
 pub fn out_path(log: &Path) -> PathBuf {
     with_suffix(log, ".out")
@@ -41,8 +46,21 @@ fn with_suffix(p: &Path, suffix: &str) -> PathBuf {
     PathBuf::from(s)
 }
 
+#[cfg(test)]
 /// Start `spec`, report its pid through `started`, and wait. `cancelled` is asked every `poll`.
 pub fn run(spec: &Spec, poll: Duration, started: &mut dyn FnMut(u32), cancelled: &dyn Fn() -> bool) -> Result<Ended, ErrorInfo> {
+    run_watched(spec, poll, started, cancelled, &mut |_| None)
+}
+
+/// Start `spec`, report its pid through `started` and wait, also asking `watch` with the pid every `poll`: `Some(why)` stops the process
+/// ([`Ended::OverLimit`]). The timeout counts only time the machine was awake.
+pub fn run_watched(
+    spec: &Spec,
+    poll: Duration,
+    started: &mut dyn FnMut(u32),
+    cancelled: &dyn Fn() -> bool,
+    watch: &mut dyn FnMut(u32) -> Option<String>,
+) -> Result<Ended, ErrorInfo> {
     let Some((program, args)) = spec.argv.split_first() else {
         return Err(ErrorInfo::new(Category::Spawn, "empty command line"));
     };
@@ -59,9 +77,15 @@ pub fn run(spec: &Spec, poll: Duration, started: &mut dyn FnMut(u32), cancelled:
         cmd.env(k, v);
     }
     let mut child = cmd.spawn().map_err(|e| ErrorInfo::new(Category::Spawn, format!("{program}: {e}")))?;
-    started(child.id());
-    let start = Instant::now();
+    let pid = child.id();
+    started(pid);
+    let mut awake = Duration::ZERO;
+    let mut last = Instant::now();
     loop {
+        let gap = last.elapsed();
+        last = Instant::now();
+        // after a sleep only one poll counts
+        awake = awake.saturating_add(if gap >= SLEEP_GAP { poll } else { gap });
         match child.try_wait() {
             Ok(Some(status)) => return Ok(Ended::Exited(status.code())),
             Ok(None) => {}
@@ -76,10 +100,15 @@ pub fn run(spec: &Spec, poll: Duration, started: &mut dyn FnMut(u32), cancelled:
             let _ = child.wait();
             return Ok(Ended::Cancelled);
         }
-        if spec.timeout.is_some_and(|t| start.elapsed() >= t) {
+        if spec.timeout.is_some_and(|t| awake >= t) {
             let _ = child.kill();
             let _ = child.wait();
             return Ok(Ended::TimedOut);
+        }
+        if let Some(why) = watch(pid) {
+            let _ = child.kill();
+            let _ = child.wait();
+            return Ok(Ended::OverLimit(why));
         }
         std::thread::sleep(poll);
     }

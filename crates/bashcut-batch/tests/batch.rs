@@ -35,6 +35,8 @@ impl Bench {
     fn opts(&self) -> Options {
         let mut o = Options::new(FAKE);
         o.poll = Duration::from_millis(10);
+        // the machine's real RAM and cores must not change these tests (governor: tests/governor.rs)
+        o.probe = std::sync::Arc::new(bashcut_batch::FakeProbe::roomy());
         o.env.push(("FAKE_CLI_LOG".into(), self.log().to_string_lossy().into_owned()));
         o
     }

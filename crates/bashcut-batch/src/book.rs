@@ -62,6 +62,9 @@ pub enum Category {
     Handoff,
     /// Reading or writing files around the step.
     Io,
+    /// The step's process went over the memory cap and was stopped: the item runs again later
+    /// (`resume` / `retry`, #61).
+    Resources,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -171,6 +174,9 @@ pub struct Book {
     pub updated_at: u64,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub runner_pid: Option<u32>,
+    /// Why the running batch waits (low disk, #61); cleared when it goes on.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub paused: Option<String>,
     pub items: Vec<ItemState>,
 }
 
@@ -349,8 +355,17 @@ impl Job {
         std::fs::create_dir_all(dir.join("items")).map_err(|e| format!("{}: {e}", dir.display()))?;
         let job = Job { dir };
         let now = now_ms();
-        let book =
-            Book { schema: STATE_SCHEMA.into(), id, name: p.name.clone(), status: Status::Pending, created_at: now, updated_at: now, runner_pid: None, items };
+        let book = Book {
+            schema: STATE_SCHEMA.into(),
+            id,
+            name: p.name.clone(),
+            status: Status::Pending,
+            created_at: now,
+            updated_at: now,
+            runner_pid: None,
+            paused: None,
+            items,
+        };
         write_atomic(&job.pipeline_path(), &serde_json::to_vec_pretty(p).map_err(|e| e.to_string())?)?;
         job.save(&book)?;
         Ok(job)
@@ -484,6 +499,7 @@ mod tests {
             created_at: 0,
             updated_at: 0,
             runner_pid: None,
+            paused: None,
             items,
         }
     }
