@@ -13,6 +13,7 @@ const LAYERS: &[(&str, u8)] = &[
     ("bashcut-batch", 4),
     // apps
     ("bashcut-batch-cli", 6),
+    ("bashcut-doctor", 6),
 ];
 
 /// The layer of one of our crates, or `None` for any other crate.

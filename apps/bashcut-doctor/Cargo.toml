@@ -1,0 +1,18 @@
+[package]
+name = "bashcut-doctor"
+description = "BashCutPro doctor: setup checks before a run, update notices"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish = false
+
+[lints]
+workspace = true
+
+[[bin]]
+name = "bashcut-doctor"
+path = "src/main.rs"
+
+[dependencies]
+serde_json = { workspace = true }
+sha2 = "0.10"
