@@ -40,6 +40,7 @@ the hook; the footprint check reports any inserted upstream line that no row cov
 | `xtask/src/main.rs` | 1 | `bashcut::our_layer_first!(name); // BashCutPro: our crates first (bashcut/extending-upstream.md)` | first line of `layer_of` (H11; macro) | [in-app-ui.md](bashcut/in-app-ui.md) |
 | `crates/engine/src/lib.rs` | 1 | `pub mod bashcut; // BashCutPro: our engine commands (bashcut/extending-upstream.md)` | `bashcut.*` engine module | [in-app-ui.md](bashcut/in-app-ui.md) §3 H2 |
 | `crates/engine/src/commands.rs` | 1 | `v.extend(crate::bashcut::commands()); // BashCutPro: bashcut.* commands (bashcut/extending-upstream.md)` | registers `bashcut.*` commands after `captions` | [in-app-ui.md](bashcut/in-app-ui.md) §3 H3 |
+| `crates/engine/Cargo.toml` | 1 | `bashcut-analysis = { path = "../bashcut-analysis" } # BashCutPro: bashcut.* measurements (bashcut/extending-upstream.md)` | the engine uses our measurement crate | [in-app-ui.md](bashcut/in-app-ui.md) §3 H1 |
 
 ## Carried edits
 
@@ -54,6 +55,7 @@ re-applied by hand when a merge conflicts. Each `edits` row is an exception to t
 | `apps/filmcraft/build.rs` | edits | Windows exe icon and version info (5 lines; 1 commit in 30 days); `winresource` appends icons, so a second `set_icon` hook would not replace upstream's | keep while cold |
 | `packaging/**`, `omastore.toml` | edits | branding in packaging ([rebrand.md](bashcut/rebrand.md)); upstream's shared release workflow runs these scripts directly (no pre-step), all cold (≤ 5 commits in 30 days) | generator: #39 comment |
 | `NOTICE`, `LICENSE-MIT`, `ATTRIBUTION.md`, `.gitignore`, `AGENTS.md`, `CLAUDE.md` | additions | our copyright lines, asset rows, `.local/`, the pointer to `bashcut/README.md` | keep |
+| `Cargo.lock` | additions | lock entries of our `bashcut-*` crates | keep: on merge take upstream's file, `cargo check` re-adds ours |
 
 ## Footprint check
 

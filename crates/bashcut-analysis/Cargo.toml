@@ -1,0 +1,15 @@
+[package]
+name = "bashcut-analysis"
+description = "BashCutPro: read-only measurements over samples and frames (loudness, beats, picture checks)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+publish = false
+
+[lints]
+workspace = true
+
+# Layer 3 (xtask/src/bashcut.rs): depends only on L0–L1 crates, so the engine (L4) can use it.
+[dependencies]
+filmcraft-audio-dsp = { path = "../audio-dsp" }
