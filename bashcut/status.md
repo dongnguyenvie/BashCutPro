@@ -15,17 +15,22 @@ _Last updated: 2026-10-20_
 - Command inventory (#3): 701 commands in [commands.json](commands.json) / [commands.md](commands.md), per-skill
   needs in [skill-needs.md](skill-needs.md), [migration.md](migration.md) corrected. `filmcraft-cli` builds with and
   without `--features whisper`.
+- Kit (`bashcutpro-agent-kit`): scaffold + `setup` (#4), `check.py` validates every command id against
+  `scripts/commands.json`; 30 skills: edit-workflow, rough-cut, captions-text, effects, color-grade, audio-mix,
+  footage-survey, review, beat-cut, style-study, voiceover, stock-images, visual-plan, motion-graphics and 16 `vlog-*`
+  recipes (#5–#7, #9–#12, #15–#22); sub-agents surveyor, critic, voice.
+- Plugins (`bashcutpro-plugins`): translate-captions (#8), vieneu-tts (#13), resources (#14, credits opt-in),
+  image-gen (#20), hyperframes (#21). Plugin format decision copied into [decisions.md](decisions.md).
+- `bashcut-plugin-host` design note: [plugin-host.md](plugin-host.md) (#23), waiting for owner approval.
 
 ## Next
 
-The full migrate / skip list and its reasons: [migration.md](migration.md).
-
-1. **Scaffold `bashcutpro-agent-kit`**: README, skill layout, MCP setup for Claude Code / Codex, and
-   the first skill (`edit-workflow`) rewritten against FilmCraft commands.
-2. **First out-of-process plugin** in `bashcutpro-plugins` (candidates: caption translation, VieNeu
-   Vietnamese TTS) to prove the loop: read state over MCP → work outside → import back. Decide the
-   manifest (`bashcut-plugin.json`) and registry format from what it needs.
-3. **Later:** `crates/bashcut-plugin-host` for in-app panels and menus, only once plugins need UI.
+1. **Live tests**: every skill and plugin was checked statically only (kit `check.py`, plugin unit tests with
+   fakes). Run each issue's "Done when" against a `filmcraft-cli` build: rough-cut on a talking-head clip,
+   Vietnamese captions, grade + scopes, mix loudness, vieneu-tts line on the timeline, image-gen batch, hyperframes
+   card with alpha. Confirm `scopes.read` scale, `render_frame` max side, the Lumetri intensity param name.
+2. **Approve or change** [plugin-host.md](plugin-host.md), then build P1 of `crates/bashcut-plugin-host`.
+3. Vlog library pack (text styles, stickers, transitions) once `.fcgt` conversions exist.
 
 ## Open questions
 
