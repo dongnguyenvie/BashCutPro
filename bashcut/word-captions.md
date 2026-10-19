@@ -33,6 +33,11 @@ is a hot spot (40–54 upstream changes in 30 days), so the no-hook route comes 
 2. Split the caption at each word's start (`captions.split`, frame-snapped; a word shorter than the minimum
    caption length joins the previous segment).
 3. Upgrade the segments to graphics (`graphics.upgradeCaption`): one graphic clip per segment, same text, same place.
+   A graphic text layer is point text and does not wrap like the caption did, so the text is wrapped at spaces
+   (greedy, measured with the layer's own layout through `graphics.setText` / `graphics.list`) to 90 % of the frame
+   width (84 % with pop); a block in the lower half keeps its bottom edge. Spaces become line breaks, so every
+   character keeps its offset. Word starts are snapped to the nearest frame so neighbouring segments never overlap
+   (build pass, #119 / #130).
 4. In segment *k*, style word *k* (`graphics.setCharStyle`): highlight colour, **pop** as a larger size (and optional
    faux bold), and with **dim** the words after it at the base colour with lower alpha.
 5. Fold every step into one undo entry (`History` is public).

@@ -105,3 +105,38 @@ fn word_style_refuses_hostile_params() {
     let r = one.execute("bashcut.captions.wordStyle", json!({})).unwrap();
     assert!(r["captions"][0]["skipped"].is_string(), "{r}");
 }
+
+#[test]
+fn wrap_text_breaks_at_spaces_and_keeps_every_index() {
+    // 10 px per character
+    let width = |t: &str| Ok(t.chars().count() as f64 * 10.0);
+    let text = "Um, today I want to show you how";
+    let wrapped = super::word_captions::wrap_text(text, 120.0, width).unwrap();
+    assert_eq!(wrapped, "Um, today I\nwant to show\nyou how");
+    assert_eq!(wrapped.chars().count(), text.chars().count());
+    assert_eq!(word_ranges(&wrapped), word_ranges(text), "word ranges line up");
+    assert_eq!(super::word_captions::wrap_text("short", 120.0, width).unwrap(), "short");
+    // one word wider than the limit stays on its own line
+    assert_eq!(super::word_captions::wrap_text("a supercalifragilistic b", 120.0, width).unwrap(), "a\nsupercalifragilistic\nb");
+}
+
+#[test]
+fn a_long_caption_stays_inside_a_phone_frame() {
+    let mut s = Session::default();
+    s.execute("file.newSequence", json!({"width": 1080, "height": 1920, "fps": 30})).unwrap();
+    s.execute("captions.add", json!({"text": "Um, today I want to show you how we cut", "time": 0, "durationSeconds": 3.0})).unwrap();
+    let r = s.execute("bashcut.captions.wordStyle", json!({"style": {"preset": "pop"}, "useTranscript": false})).unwrap();
+    let clips: Vec<u64> = r["captions"][0]["clips"].as_array().unwrap().iter().map(|c| c.as_u64().unwrap()).collect();
+    assert_eq!(clips.len(), 10, "{r}");
+    for (k, c) in clips.iter().enumerate() {
+        let l = s.execute("graphics.list", json!({"clip": c})).unwrap()["layers"][0].clone();
+        let xs: Vec<f64> = l["quad"].as_array().unwrap().iter().map(|p| p[0].as_f64().unwrap()).collect();
+        assert!(xs.iter().all(|x| (0.0..=1080.0).contains(x)), "segment {k} leaves the frame: {l}");
+        assert!(l["text"].as_str().unwrap().contains('\n'), "{l}");
+        // the styled run is still the spoken word
+        let text = l["text"].as_str().unwrap();
+        let (a, b) = word_ranges(text)[k];
+        assert_eq!((l["styles"][0]["start"].as_u64(), l["styles"][0]["end"].as_u64()), (Some(a as u64), Some(b as u64)), "{l}");
+    }
+    assert_eq!(s.history.undo.last().map(|u| u.0.as_str()), Some("Word Caption Style"));
+}
