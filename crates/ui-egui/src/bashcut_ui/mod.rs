@@ -7,6 +7,7 @@
 //!
 //! Adding a section: one row in [`SECTIONS`] and a `draw` function in its own file.
 
+pub mod connect;
 pub mod palette;
 pub mod plugins;
 pub mod plugins_panel;
@@ -82,6 +83,7 @@ pub fn layout(app: &mut FilmcraftApp, ui: &mut egui::Ui, body: egui::Rect) -> eg
     st.load_once(dir.as_deref(), &known);
     strings::set_language(st.language.as_deref());
     plugins::poll(&ctx);
+    connect::publish(app, &ctx, dir.as_deref());
     let mut dock = body;
     if st.rail && app.ui.mode == crate::state::Mode::Edit {
         let rail_rect = egui::Rect::from_min_max(egui::pos2(body.max.x - rail::WIDTH, body.min.y), body.max);
