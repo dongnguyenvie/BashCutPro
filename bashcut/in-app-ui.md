@@ -179,16 +179,30 @@ labels or subclips (§1 rule 1). A project opened in upstream FilmCraft still wo
 
 ## 6. Agent panel in detail
 
-- **Start**: user picks an agent (from agent plugins: `kind: "agent"` in `bashcut-plugin.json`, with argv, how to
-  pass the MCP config, and the event format). The app starts its control channel if needed, writes a temporary MCP
-  config for `filmcraft-cli mcp --bridge`, and starts the agent with the kit's skills available.
-- **Turn**: the message plus a short context line (project, active sequence, selection, playhead) goes to the agent;
-  events stream back into the transcript. Edits the agent makes appear in History as normal commands, so Undo works.
-- **Gates**: the edit-workflow skill writes gates into `plan.json` (`{stage, summary, evidence, state}`); the panel
-  shows the pending one as a card. Approve / Change writes the answer back and sends it as the next user message.
-- **Stop**: ends the agent's turn (signal to the child); the project stays as it is.
+- **Start**: user picks an agent: Claude Code (`claude`, or `BASHCUT_CLAUDE`) or an agent plugin (`kind: "agent"`
+  in `bashcut-plugin.json`, with an `agent` section: `args`, `mcpConfig` (`{config}`), `resume` (`{session}`) and
+  `events`, only `claude-stream-json` so far). The app writes a temporary MCP config for
+  `filmcraft-cli mcp --bridge 127.0.0.1:<control port>` and starts the agent with the kit's skills available; without
+  `--control <port>` an agent that needs the app says so instead of starting.
+- **Turn** (`crates/bashcut-agent`, `process.rs`): one child process per turn. The message plus a short context line
+  (project, active sequence, selection, playhead) goes in as one stream-json user message, stdin closes, and events
+  stream back into the transcript (`stream_json.rs`, `transcript.rs`). The next turn resumes the agent's session
+  (`--resume <id>`). Edits the agent makes appear in History as normal commands, so Undo works. Tool calls with the
+  same command fold into one row ("edit.razor ×12"). Enter sends; Shift+Enter starts a new line.
+- **Conversations**: kept in `<project>.fcproj.bashcut/conversations/<id>.json` (`bashcut-conversation/1`: the
+  transcript and the agent's session id), listed newest first in the picker; an unsaved project keeps none.
+- **Gates**: the edit-workflow skill writes gates into `plan.json` (`{"gates": [{stage, summary, evidence, state}]}`,
+  `state` `pending` / `approved` / `changes`, other keys kept); the panel shows the first pending one as a card.
+  Approve / Ask for changes (a note is required) writes `state` and `note` back and sends the answer as the next
+  user message. The answer is written only when the turn can start.
+- **Stop**: ends the agent's turn (its process group); the project stays as it is.
+- **Plugin hand-offs**: Runs ▸ Send to agent (`bashcut.plugins.sendToAgent`) sends the run's result and the
+  plugin's `handoff.then` as the next message.
+- **Commands**: `bashcut.agent.{send, stop, state, transcript, conversations, open, new, agents, use, gate, approve,
+  change}`; automation ids `bashcut.agent.{input, send, stop, picker, conversations, new, transcript}`,
+  `bashcut.gate.{approve, change, note}`.
 - **Phase 1 adapters**: Claude Code (`claude -p --output-format stream-json --input-format stream-json`) and Codex
-  (`codex exec --json`); others as plugins later.
+  (`codex exec --json`, #37); others as plugins.
 
 ## 7. Plugin views
 
@@ -204,7 +218,7 @@ own research (spec 14) reached the same conclusion for most needs.
 |---|---|---|
 | U0 | `bashcut_ui` skeleton: rail + empty side panel, state, strings, tests; `xtask` layers | H4–H6, H10, H11 |
 | U1 | Plugins + Runs sections (P1 of #31), `bashcut.plugins.*` commands | H7–H9 |
-| U2 | Agent section with the Claude Code adapter, gates from `plan.json` | — |
+| U2 | Agent section with the Claude Code adapter, gates from `plan.json` (done, #35: `crates/bashcut-agent`, `bashcut_ui/{agent,agent_panel}.rs`) | H4 |
 | U3 | `bashcut-analysis` + engine commands (loudness, beats, picture checks) | H1–H3 |
 | U4 | Plugin views (`bashcut-view/1`), Codex adapter, pop-out windows | — |
 | B | Batch runner #45 → Batch section #46; templates #42, profiles #43 | H1–H3 (templates) |

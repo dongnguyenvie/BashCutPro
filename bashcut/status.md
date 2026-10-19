@@ -45,6 +45,10 @@ _Last updated: 2026-10-20_
 - Agent reads (#50): `bashcut.timeline.summary` (seconds, non-default fields only), `changed` + `createdId` from our edit
   commands, typed error codes and units notes applied to every `bashcut.*` command in `bashcut/errors.rs`; kit reads
   the summary. Build + tests pending (build pass).
+- U2 (#35): `crates/bashcut-agent` (Claude Code stream-json turns with resume, transcript, conversations in
+  `<project>.fcproj.bashcut/conversations/`, gates in `plan.json`) and the Agent section with `bashcut.agent.*`
+  commands; agent plugins (`kind: "agent"`); Runs ▸ Send to agent sends hand-offs. Build + tests + live check
+  pending. Follow-up: the kit's edit-workflow skill must write gates to `<project>.fcproj.bashcut/plan.json`.
 
 ## Next
 
@@ -53,7 +57,7 @@ _Last updated: 2026-10-20_
    Vietnamese captions, grade + scopes, mix loudness, vieneu-tts line on the timeline, image-gen batch, hyperframes
    card with alpha. Confirm `scopes.read` scale, `render_frame` max side, the Lumetri intensity param name.
 2. First upstream sync with the tooling (#63). Then the
-   in-app UI ([in-app-ui.md](in-app-ui.md)): U0 #34 → U1 #31 → U2 #35 → U4 #37; engine analysis U3 #36 in parallel.
+   in-app UI ([in-app-ui.md](in-app-ui.md)): U4 #37; engine analysis U3 #36 in parallel.
    Batch and quality (owner goals): batch runner #45 → Batch section #46, templates #42, output profiles #43,
    atomic edits #44, looks #47, voice polish #48, word captions #49, palette #52, agent reads #50, auto-connect #51,
    model manifest #53, smoke checks #54. Tracking #40.
