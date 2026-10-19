@@ -361,6 +361,11 @@ fn queue(app: &mut FilmcraftApp, ui: &mut egui::Ui, ctx: &egui::Context, v: &mut
     let r = ui.add(egui::ProgressBar::new(overall).desired_height(8.0).animate(running && book.status == Status::Running));
     app.auto.add_response("bashcut.batch.progress", &r, &summary);
     ui.label(egui::RichText::new(format!("{} · {summary}", s(status_label(book.status)))).size(10.5).color(t.text_dim));
+    // the runner waits (low disk) without failing anything: say so, or the queue looks stuck
+    if let Some(why) = book.paused.as_ref().filter(|_| running) {
+        let r = ui.label(egui::RichText::new(f("Waiting: {why}", &[("why", why)])).size(10.5).color(egui::Color32::from_rgb(0xe0, 0x6c, 0x5f)));
+        app.auto.add_response("bashcut.batch.paused", &r, why);
+    }
     ui.horizontal(|ui| {
         let failed =
             book.items.iter().any(|i| matches!(i.status, Status::Failed | Status::NeedsAttention | Status::NeedsFix | Status::Cancelled | Status::NotRun));
@@ -399,7 +404,9 @@ fn item_row(app: &mut FilmcraftApp, ui: &mut egui::Ui, ctx: &egui::Context, v: &
             app.auto.add_response(&format!("{id}.progress"), &r, current);
             ui.label(egui::RichText::new(current).size(10.5).color(t.text_dim));
         }
-        if let Some(e) = item.error.as_ref().or_else(|| item.steps.iter().rev().find_map(|s| s.error.as_ref())) {
+        // a step marked done by hand keeps its old error in the book; the item is fine now
+        let error = item.error.as_ref().or_else(|| item.steps.iter().rev().find_map(|s| s.error.as_ref())).filter(|_| item.status != Status::Done);
+        if let Some(e) = error {
             let r = ui.label(egui::RichText::new(&e.message).size(10.5).color(egui::Color32::from_rgb(0xe0, 0x6c, 0x5f)));
             app.auto.add_response(&format!("{id}.error"), &r, &e.message);
         }
@@ -408,11 +415,18 @@ fn item_row(app: &mut FilmcraftApp, ui: &mut egui::Ui, ctx: &egui::Context, v: &
                 call(app, ctx, v, "reveal", json!({"path": out}));
             }
         }
+        if item.status == Status::NeedsAttention {
+            ui.label(egui::RichText::new(s("This step needs you: open the project, finish it by hand, then click Mark done.")).size(10.5).color(t.text_dim));
+        }
         if item.status.is_final() {
             ui.horizontal(|ui| {
                 let made = std::path::Path::new(&item.project).is_file();
-                if button(app, ui, &format!("{id}.open"), s("Open to fix"), made) {
+                let open = if item.status == Status::Done { s("Open") } else { s("Open to fix") };
+                if button(app, ui, &format!("{id}.open"), open, made) {
                     call(app, ctx, v, "open", json!({"item": item.name}));
+                }
+                if item.status == Status::NeedsAttention && button(app, ui, &format!("{id}.markDone"), s("Mark done"), !running) {
+                    call(app, ctx, v, "markDone", json!({"items": [item.name]}));
                 }
                 if item.status != Status::Done && button(app, ui, &format!("{id}.retry"), s("Retry"), !running) {
                     call(app, ctx, v, "retry", json!({"items": [item.name]}));
