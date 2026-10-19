@@ -23,6 +23,7 @@ _Last updated: 2026-10-20_
   image-gen (#20), hyperframes (#21). Plugin format decision copied into [decisions.md](decisions.md).
 - Upstream-sync tooling (#38): `bashcut/scripts/upstream.sh` (`footprint`, `merge` with rerere, `setup`) and the
   Hooks / Carried edits ledger in `UPSTREAM.md`; `footprint --pr` is the check before every PR.
+- First upstream sync with the tooling (#63): already up to date, recorded in `UPSTREAM.md` "Sync records".
 - Branding out of hot upstream files (#39): `dialogs.rs`, `main.rs`, `header.rs` carry one hook each into
   `bashcut_brand`; cold `brand.rs`, `links.rs`, `build.rs` and packaging stay as listed carried edits.
 - Batch runner (#45): `crates/bashcut-batch` + `apps/bashcut-batch` ([batch.md](batch.md)); tested with a fake
@@ -56,7 +57,7 @@ _Last updated: 2026-10-20_
    fakes). Run each issue's "Done when" against a `filmcraft-cli` build: rough-cut on a talking-head clip,
    Vietnamese captions, grade + scopes, mix loudness, vieneu-tts line on the timeline, image-gen batch, hyperframes
    card with alpha. Confirm `scopes.read` scale, `render_frame` max side, the Lumetri intensity param name.
-2. First upstream sync with the tooling (#63). Then the
+2. Next upstream sync on the next tag or in 1–2 weeks (`upstream.sh merge`, record in `UPSTREAM.md`). Then the
    in-app UI ([in-app-ui.md](in-app-ui.md)): U4 #37; engine analysis U3 #36 in parallel.
    Batch and quality (owner goals): batch runner #45 → Batch section #46, templates #42, output profiles #43,
    atomic edits #44, looks #47, voice polish #48, word captions #49, palette #52, agent reads #50, auto-connect #51,

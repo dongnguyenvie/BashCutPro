@@ -416,6 +416,7 @@ def merge(args):
             raise Fail("branch %s exists; switch to it or pass --branch" % branch)
         git("switch", "-c", branch)
     print("Merging %s into %s (rerere on)" % (ref, branch), flush=True)
+    before = git("rev-parse", "HEAD").strip()
     if run(["git", "merge", "--no-ff", "-m", "Merge upstream %s" % ref, ref]) != 0:
         unmerged = git("diff", "--name-only", "--diff-filter=U").split()
         if "Cargo.lock" in unmerged:
@@ -434,6 +435,10 @@ def merge(args):
             return 1
         git("commit", "--no-edit")
         print("All conflicts resolved by rerere / upstream's Cargo.lock.")
+    if git("rev-parse", "HEAD").strip() == before:
+        print("\nAlready up to date with %s: nothing merged, no sync-log row (record the check if you like)." % ref)
+        return footprint(argparse.Namespace(pr=False, base=None, worktree=False, verbose=False, upstream=args.upstream,
+                                            origin=ORIGIN_REF, budget=RUST_BUDGET, hot=HOT_COMMITS))
     status = 0
     if not args.no_check:
         cmds = [["cargo", "check", "--workspace"]]
