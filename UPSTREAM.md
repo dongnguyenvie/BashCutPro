@@ -27,6 +27,9 @@ the hook; the footprint check reports any inserted upstream line that no row cov
 | File | Lines | First line | Why | Design |
 |---|---|---|---|---|
 | `crates/ui-egui/src/lib.rs` | 1 | `pub mod bashcut_brand; // BashCutPro: branded strings and links (bashcut/extending-upstream.md)` | brand lookup module | [rebrand.md](bashcut/rebrand.md) |
+| `crates/ui-egui/src/panels/dialogs.rs` | 1 | `let false = crate::bashcut_brand::about_tab(app, ui) else { return }; // BashCutPro: our About tab, no ArtCraft marks (bashcut/extending-upstream.md)` | About ▸ About drawn by `bashcut_brand::about_tab` | [rebrand.md](bashcut/rebrand.md) |
+| `crates/ui-egui/src/header.rs` | 1 | `let label = crate::bashcut_brand::community_button(label); // BashCutPro: our community button (bashcut/extending-upstream.md)` | header button label | [rebrand.md](bashcut/rebrand.md) |
+| `apps/filmcraft/src/main.rs` | 1 | `.with_icon(filmcraft_ui_egui::bashcut_brand::app_icon()) // BashCutPro: our app icon (bashcut/extending-upstream.md)` | window / Dock icon, set after upstream's | [rebrand.md](bashcut/rebrand.md) |
 | `crates/ui-egui/src/i18n/mod.rs` | 4 | `#[cfg(not(test))] // BashCutPro (bashcut/rebrand.md); upstream's catalog tests see upstream text` | `Language::tr` asks `bashcut_brand::text` first | [rebrand.md](bashcut/rebrand.md) |
 | `crates/ui-egui/src/lib.rs` | 1 | `pub mod bashcut_ui; // BashCutPro: rail and side panel (bashcut/extending-upstream.md)` | in-app UI module (H5) | [in-app-ui.md](bashcut/in-app-ui.md) |
 | `crates/ui-egui/src/lib.rs` | 1 | `let body = bashcut_ui::layout(self, ui, body); // BashCutPro: rail and side panel take the right edge (bashcut/extending-upstream.md)` | rail + side panel reserve the right edge of the body (H6) | [in-app-ui.md](bashcut/in-app-ui.md) |
@@ -46,19 +49,21 @@ re-applied by hand when a merge conflicts. Each `edits` row is an exception to t
 | Files | Kind | Why | Until |
 |---|---|---|---|
 | `.github/workflows/*.yml` | edits | workflows run manually only (`on:` blocks), `app-title` in `release.yml` | owner decision 2026-10-20: keep, re-apply on merge |
-| `apps/filmcraft/build.rs`, `apps/filmcraft/src/main.rs`, `crates/ui-egui/src/brand.rs`, `crates/ui-egui/src/header.rs`, `crates/ui-egui/src/links.rs`, `crates/ui-egui/src/panels/dialogs.rs` | edits | branding in code ([rebrand.md](bashcut/rebrand.md)) | #39 |
-| `packaging/**`, `omastore.toml` | edits | branding in packaging ([rebrand.md](bashcut/rebrand.md)) | #39 |
+| `crates/ui-egui/src/brand.rs` | edits | wordmark bytes: a hook would leave ArtCraft's PNGs compiled into our binary (2 lines; 1 upstream commit in 30 days) | keep while cold |
+| `crates/ui-egui/src/links.rs` | edits | our URLs: the constants also feed menu hints, the status line and command results, so one mapping hook can't cover them (5 lines + the scheme test; 4 commits in 30 days) | keep while cold |
+| `apps/filmcraft/build.rs` | edits | Windows exe icon and version info (5 lines; 1 commit in 30 days); `winresource` appends icons, so a second `set_icon` hook would not replace upstream's | keep while cold |
+| `packaging/**`, `omastore.toml` | edits | branding in packaging ([rebrand.md](bashcut/rebrand.md)); upstream's shared release workflow runs these scripts directly (no pre-step), all cold (≤ 5 commits in 30 days) | generator: #39 comment |
 | `NOTICE`, `LICENSE-MIT`, `ATTRIBUTION.md`, `.gitignore`, `AGENTS.md`, `CLAUDE.md` | additions | our copyright lines, asset rows, `.local/`, the pointer to `bashcut/README.md` | keep |
 
 ## Footprint check
 
 ```bash
-bashcut/scripts/upstream.sh footprint --pr   # before every PR: this branch's changes only
+bashcut/scripts/upstream.sh footprint --pr   # before every PR: the upstream files this branch touches
 bashcut/scripts/upstream.sh footprint        # all we carry since the last upstream merge (-v: every hunk)
 ```
 
-It diffs upstream files (our folders and new files left out: `bashcut/`, `crates/bashcut-*`, `apps/bashcut-*`,
-`*/bashcut/`, `bashcut_*`, this file), prints lines per file and each file's upstream commits in the last 30 days
+It diffs upstream files (our files and new files left out: any path part named `bashcut`, `bashcut_*`, `bashcut-*`
+or `bashcut.*`, and this file), prints lines per file and each file's upstream commits in the last 30 days
 (`HOT` at 20 or more: any edit there will conflict), and fails when a hunk is not allowed by the two tables above, a
 hook row is stale or has no marker, or the Rust lines changed in upstream files exceed 150. Its tests:
 `python3 bashcut/scripts/test_upstream.py`.

@@ -54,9 +54,9 @@ const APP_ID: &str = "ai.storyteller.filmcraft";
 /// size of other Dock icons; Windows and Linux get the full-bleed tile.
 fn app_icon() -> egui::IconData {
     #[cfg(target_os = "macos")]
-    let png: &[u8] = include_bytes!("../../../bashcut/brand/app-icon/bashcutpro-macos-512.png");
+    let png: &[u8] = include_bytes!("../../../assets/app-icon/filmcraft-macos-512.png");
     #[cfg(not(target_os = "macos"))]
-    let png: &[u8] = include_bytes!("../../../bashcut/brand/app-icon/hicolor/256x256/apps/ai.storyteller.filmcraft.png");
+    let png: &[u8] = include_bytes!("../../../assets/app-icon/hicolor/256x256/apps/ai.storyteller.filmcraft.png");
     eframe::icon_data::from_png_bytes(png).unwrap_or_default()
 }
 
@@ -177,6 +177,7 @@ fn native_options(agent: bool) -> eframe::NativeOptions {
             // Started for an agent (`--control`): open without taking the user's keyboard focus.
             .with_active(!agent)
             .with_icon(app_icon())
+            .with_icon(filmcraft_ui_egui::bashcut_brand::app_icon()) // BashCutPro: our app icon (bashcut/extending-upstream.md)
             // Wayland matches the window to `packaging/linux/ai.storyteller.filmcraft.desktop`.
             .with_app_id(APP_ID),
         event_loop_builder: agent_event_loop(agent),

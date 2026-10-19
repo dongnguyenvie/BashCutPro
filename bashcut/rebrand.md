@@ -39,15 +39,20 @@ re-apply ours.
 
 ## Upstream files touched
 
+Hooks and carried edits are also in `UPSTREAM.md`, which `bashcut/scripts/upstream.sh footprint` checks. Since #39 the
+files upstream changes often (`dialogs.rs`, `main.rs`, `header.rs`) carry one hook line each; `brand.rs`, `links.rs`,
+`build.rs` and packaging stay edited because upstream rarely touches them and a hook can't do the job (reasons in
+`UPSTREAM.md` "Carried edits").
+
 | File | Lines | What |
 |---|---|---|
 | `crates/ui-egui/src/brand.rs` | 2 | `include_bytes!` → our wordmarks |
-| `crates/ui-egui/src/lib.rs` | 1 | `pub mod bashcut_brand;` |
+| `crates/ui-egui/src/lib.rs` | 1 | `pub mod bashcut_brand; // BashCutPro…` (hook) |
 | `crates/ui-egui/src/i18n/mod.rs` | 4 | `Language::tr` asks `bashcut_brand::text` first (not in this crate's unit tests, so upstream's catalog tests stay as they are) |
 | `crates/ui-egui/src/links.rs` | 5 + test | URL constants; the scheme test checks our URLs |
-| `crates/ui-egui/src/header.rs` | 2 | community button label (`COMMUNITY_BUTTON`) and its automation label |
-| `crates/ui-egui/src/panels/dialogs.rs` | 3 | About: heading `NAME`, website label from `links::WEBSITE`, a NOTICE link (`about.notice`) |
-| `apps/filmcraft/src/main.rs` | 2 | runtime window / Dock icon → `bashcut/brand/app-icon/` |
+| `crates/ui-egui/src/header.rs` | 1 (hook) | community button label from `bashcut_brand::community_button` (the automation label stays upstream's) |
+| `crates/ui-egui/src/panels/dialogs.rs` | 1 (hook) | About ▸ About is drawn by `bashcut_brand::about_tab`: heading `NAME`, website label from `links::WEBSITE`, a NOTICE link (`about.notice`) |
+| `apps/filmcraft/src/main.rs` | 1 (hook) | `.with_icon(bashcut_brand::app_icon())` after upstream's: window / Dock icon from `bashcut/brand/app-icon/` |
 | `apps/filmcraft/build.rs` | 5 | Windows exe icon, ProductName, FileDescription, LegalCopyright |
 | `packaging/env.sh` | 3 | sources `bashcut/brand/packaging.env` (`BRAND_NAME`, `BRAND_SLUG`, `BRAND_ICON_DIR`); `copy_docs` also copies `NOTICE` |
 | `packaging/macos/package.sh` | 8 | `$BRAND_NAME.app`, executable, `.icns`, DMG volume, `$BRAND_SLUG-…` file names |

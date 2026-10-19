@@ -23,6 +23,8 @@ _Last updated: 2026-10-20_
   image-gen (#20), hyperframes (#21). Plugin format decision copied into [decisions.md](decisions.md).
 - Upstream-sync tooling (#38): `bashcut/scripts/upstream.sh` (`footprint`, `merge` with rerere, `setup`) and the
   Hooks / Carried edits ledger in `UPSTREAM.md`; `footprint --pr` is the check before every PR.
+- Branding out of hot upstream files (#39): `dialogs.rs`, `main.rs`, `header.rs` carry one hook each into
+  `bashcut_brand`; cold `brand.rs`, `links.rs`, `build.rs` and packaging stay as listed carried edits.
 - `bashcut-plugin-host` design note: [plugin-host.md](plugin-host.md) (#23), approved 2026-10-20.
 - In-app UI U0 (#34): `crates/ui-egui/src/bashcut_ui/` rail + side panel, state, strings (vi), hooks H5–H9, H11
   (ledger in `UPSTREAM.md`). Build + tests pending (build pass).
@@ -33,7 +35,7 @@ _Last updated: 2026-10-20_
    fakes). Run each issue's "Done when" against a `filmcraft-cli` build: rough-cut on a talking-head clip,
    Vietnamese captions, grade + scopes, mix loudness, vieneu-tts line on the timeline, image-gen batch, hyperframes
    card with alpha. Confirm `scopes.read` scale, `render_frame` max side, the Lumetri intensity param name.
-2. Upstream-sync hygiene: branding out of hot files (#39). Then the
+2. First upstream sync with the tooling (#63). Then the
    in-app UI ([in-app-ui.md](in-app-ui.md)): U0 #34 → U1 #31 → U2 #35 → U4 #37; engine analysis U3 #36 in parallel.
    Batch and quality (owner goals): batch runner #45 → Batch section #46, templates #42, output profiles #43,
    atomic edits #44, looks #47, voice polish #48, word captions #49, palette #52, agent reads #50, auto-connect #51,
