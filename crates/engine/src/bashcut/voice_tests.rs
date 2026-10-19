@@ -104,7 +104,7 @@ fn polish_lowers_the_noise_floor_and_lands_at_the_target() {
 
     let undo = s.history.undo.len();
     let r = s.execute("bashcut.audio.polish", json!({"clips": [clips[0].0], "amount": 0.7, "target": -16.0, "savePreset": true})).unwrap();
-    assert_eq!(r["chain"].as_array().unwrap().len(), 5, "{r}");
+    assert_eq!(r["chain"].as_array().unwrap().len(), 6, "{r}");
     let measured = loudness(&s, clips[0]);
     assert!((measured + 16.0).abs() <= 1.0, "speech at {measured:.2} LUFS, want -16 ±1");
     assert_eq!(s.history.undo.len(), undo + 1, "one undo step");
@@ -151,4 +151,36 @@ fn polish_refuses_hostile_params() {
     // out-of-range amounts clamp instead of failing
     assert!(s.execute("bashcut.audio.polish", json!({"clips": [c], "amount": 1e9, "loudness": false})).is_ok());
     assert!(s.execute("bashcut.audio.polish", json!({"clips": [c], "amount": -5})).is_ok());
+}
+
+#[test]
+fn a_quiet_voice_reaches_the_target_under_the_true_peak_and_polishing_again_replaces_the_chain() {
+    let dir = tmp_dir("bashcut-voice-quiet");
+    let speech = dir.join("quiet.wav");
+    // about -36 LUFS: the old route raised it ~22 dB with clip gain after the limiter, to +3 dBTP
+    let quiet: Vec<f32> = fixture(6.0, 0.05, true).iter().map(|x| x * 0.05).collect();
+    write_wav(&speech, &quiet);
+    let (mut s, clips) = session(&[speech.as_path()]);
+    let c = clips[0].0;
+    let effects = |s: &Session| s.active_sequence().unwrap().find_item(clips[0]).unwrap().1.effects.len();
+    let before = effects(&s);
+    // an Auto-Match gain from before (it plays after the effects) must not be stacked on the makeup gain
+    s.execute("essentialSound.setType", json!({"clips": [c], "type": "dialogue"})).unwrap();
+    s.execute("essentialSound.autoMatch", json!({"clips": [c], "target": -14.0})).unwrap();
+
+    s.execute("bashcut.audio.polish", json!({"clips": [c], "amount": 0.6, "profile": "tiktok"})).unwrap();
+    let m = s.execute("bashcut.audio.loudness", json!({"clip": c})).unwrap();
+    let (lufs, peak) = (m["integratedLufs"].as_f64().unwrap(), m["truePeakDbtp"].as_f64().unwrap());
+    assert!((lufs + 14.0).abs() <= 1.0, "at {lufs:.2} LUFS, want -14 ±1: {m}");
+    assert!(peak <= -1.0 + 0.3, "true peak {peak:.2} dBTP over the profile's -1: {m}");
+    assert_eq!(m["clippedSamples"], 0, "{m}");
+    let polished = effects(&s);
+    assert_eq!(polished, before + 6);
+
+    // a second polish replaces the chain, it does not stack another one
+    s.execute("bashcut.audio.polish", json!({"clips": [c], "amount": 0.3, "target": -16.0})).unwrap();
+    assert_eq!(effects(&s), polished);
+    let m = s.execute("bashcut.audio.loudness", json!({"clip": c})).unwrap();
+    assert!((m["integratedLufs"].as_f64().unwrap() + 16.0).abs() <= 1.0, "{m}");
+    assert!(m["truePeakDbtp"].as_f64().unwrap() <= -0.7, "{m}");
 }
