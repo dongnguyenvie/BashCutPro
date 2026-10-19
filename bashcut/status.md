@@ -28,6 +28,9 @@ _Last updated: 2026-10-20_
 - `bashcut-plugin-host` design note: [plugin-host.md](plugin-host.md) (#23), approved 2026-10-20.
 - In-app UI U0 (#34): `crates/ui-egui/src/bashcut_ui/` rail + side panel, state, strings (vi), hooks H5–H9, H11
   (ledger in `UPSTREAM.md`). Build + tests pending (build pass).
+- Engine measurements (#36): `crates/bashcut-analysis` (loudness, beats, picture checks) and `bashcut.audio.loudness`,
+  `bashcut.audio.beats`, `bashcut.review.pictureChecks` in `crates/engine/src/bashcut/`; kit skills use them. Build + tests
+  pending (build pass).
 
 ## Next
 
