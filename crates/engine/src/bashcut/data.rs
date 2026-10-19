@@ -4,14 +4,17 @@ use std::path::PathBuf;
 
 use serde_json::Value;
 
+use crate::Session;
 use crate::commands::str_p;
 
-/// `<data dir>/bashcut/<sub>`, or `p["dir"]` when the caller names a folder (tests, batch runs).
-pub fn folder(p: &Value, sub: &str) -> Option<PathBuf> {
+/// `<data dir>/bashcut/<sub>`, or `p["dir"]` when the caller names a folder (tests, batch runs). The data dir is the
+/// session's (where its export presets live: `filmcraft-cli --data-dir`, the app's own), else the default one.
+pub fn folder(s: &Session, p: &Value, sub: &str) -> Option<PathBuf> {
     if let Some(d) = str_p(p, "dir").filter(|d| !d.is_empty()) {
         return Some(PathBuf::from(d));
     }
-    crate::autosave::default_data_dir().map(|d| d.join("bashcut").join(sub))
+    let base = s.export_presets.dir().map(std::path::Path::to_path_buf).or_else(crate::autosave::default_data_dir)?;
+    Some(base.join("bashcut").join(sub))
 }
 
 /// A plain file or folder name (no separators, no `..`): safe to join under one of our folders.

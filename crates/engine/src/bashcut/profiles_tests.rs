@@ -89,3 +89,19 @@ fn profile_commands_refuse_hostile_params() {
     assert_eq!(r["preset"], "BashCut Reels");
     assert!(r["safeAreaPx"]["bottom"].as_f64().unwrap() > 0.0);
 }
+
+#[test]
+fn user_files_come_from_the_sessions_data_dir() {
+    // `filmcraft-cli --data-dir` (and the app) point the session's libraries at one data dir; our files follow it
+    let data = tmp_dir("bashcut-profiles-data-dir");
+    let folder = data.join("bashcut").join("profiles");
+    std::fs::create_dir_all(&folder).unwrap();
+    let mine = Profile { id: "mine".into(), name: "Mine".into(), ..Profile::default() };
+    std::fs::write(folder.join("mine.json"), serde_json::to_vec(&mine).unwrap()).unwrap();
+    let mut s = Session::default();
+    s.export_presets.set_dir(&data);
+    let all = s.execute("bashcut.profiles.list", json!({})).unwrap();
+    assert!(all["profiles"].as_array().unwrap().iter().any(|p| p["id"] == "mine"), "{all}");
+    let t = s.execute("bashcut.template.list", json!({})).unwrap();
+    assert_eq!(t["dir"].as_str().map(std::path::PathBuf::from), Some(data.join("bashcut").join("templates")), "{t}");
+}

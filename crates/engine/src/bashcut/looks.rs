@@ -707,7 +707,7 @@ fn thumb(s: &mut Session, p: &Value) -> Result<Value> {
     let on_frame = bool_p(p, "frame").unwrap_or(false);
     let fp = look.fingerprint(amount);
     // the picture thumbnail is cached in the data dir by fingerprint; a frame preview never is
-    let cached = if on_frame { None } else { data::folder(p, "looks").map(|d| d.join("thumbs").join(format!("{}-{fp}-{w}.png", look.id))) };
+    let cached = if on_frame { None } else { data::folder(s, p, "looks").map(|d| d.join("thumbs").join(format!("{}-{fp}-{w}.png", look.id))) };
     let path: Option<PathBuf> = str_p(p, "path").filter(|x| !x.is_empty()).map(PathBuf::from).or(cached.clone());
     let mut out = json!({"look": look.id, "intensity": amount, "fingerprint": fp, "frame": on_frame});
     if path.is_some() && path == cached && cached.as_ref().is_some_and(|c| c.is_file()) {

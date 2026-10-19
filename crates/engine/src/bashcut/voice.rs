@@ -83,7 +83,7 @@ fn polish(s: &mut Session, p: &Value) -> Result<Value> {
         Some(_) => f64_p(p, "amount").filter(|a| a.is_finite()).ok_or_else(|| bad(CMD, "`amount` must be a number 0–1"))?.clamp(0.0, 1.0),
     };
     let profile = match str_p(p, "profile") {
-        Some(key) => Some(profiles::find(p, key).ok_or_else(|| bad(CMD, format!("no output profile `{key}` (see bashcut.profiles.list)")))?),
+        Some(key) => Some(profiles::find(s, p, key).ok_or_else(|| bad(CMD, format!("no output profile `{key}` (see bashcut.profiles.list)")))?),
         None => None,
     };
     let target = match f64_p(p, "target") {

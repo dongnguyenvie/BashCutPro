@@ -274,9 +274,9 @@ impl Profile {
 }
 
 /// Built-ins plus the user's files (a file with a built-in's id replaces it). Bad files are skipped with a warning.
-pub fn all(p: &Value) -> Vec<Profile> {
+pub fn all(s: &Session, p: &Value) -> Vec<Profile> {
     let mut v = builtins();
-    let Some(dir) = data::folder(p, "profiles") else { return v };
+    let Some(dir) = data::folder(s, p, "profiles") else { return v };
     let Ok(rd) = std::fs::read_dir(&dir) else { return v };
     let mut files: Vec<_> = rd.flatten().map(|e| e.path()).filter(|f| f.extension().is_some_and(|x| x == "json")).take(MAX_FILES).collect();
     files.sort();
@@ -308,14 +308,14 @@ pub fn all(p: &Value) -> Vec<Profile> {
 }
 
 /// A profile by id or name (case-insensitive).
-pub fn find(p: &Value, key: &str) -> Option<Profile> {
+pub fn find(s: &Session, p: &Value, key: &str) -> Option<Profile> {
     let k = key.trim().to_ascii_lowercase();
-    all(p).into_iter().find(|x| x.id.to_ascii_lowercase() == k || x.name.to_ascii_lowercase() == k)
+    all(s, p).into_iter().find(|x| x.id.to_ascii_lowercase() == k || x.name.to_ascii_lowercase() == k)
 }
 
-fn profile_p(p: &Value, cmd: &str) -> Result<Profile> {
+fn profile_p(s: &Session, p: &Value, cmd: &str) -> Result<Profile> {
     let key = str_p(p, "profile").or_else(|| str_p(p, "id")).ok_or_else(|| bad(cmd, "need `profile` (see bashcut.profiles.list)"))?;
-    find(p, key).ok_or_else(|| bad(cmd, format!("no output profile `{key}` (see bashcut.profiles.list)")))
+    find(s, p, key).ok_or_else(|| bad(cmd, format!("no output profile `{key}` (see bashcut.profiles.list)")))
 }
 
 /// Seconds to estimate for: `seconds`, else the active sequence's duration.
@@ -344,7 +344,7 @@ pub fn commands() -> Vec<CommandSpec> {
             enabled: always,
             run: |s, p| {
                 let secs = seconds_p(s, p);
-                Ok(json!({"profiles": all(p).iter().map(|x| x.to_json(secs)).collect::<Vec<_>>()}))
+                Ok(json!({"profiles": all(s, p).iter().map(|x| x.to_json(secs)).collect::<Vec<_>>()}))
             },
             journal: false,
         },
@@ -356,7 +356,7 @@ pub fn commands() -> Vec<CommandSpec> {
             params: r#"{"profile":str,"seconds":f64?,"dir":str?}"#,
             enabled: always,
             run: |s, p| {
-                let pr = profile_p(p, "bashcut.profiles.get")?;
+                let pr = profile_p(s, p, "bashcut.profiles.get")?;
                 Ok(pr.to_json(seconds_p(s, p)))
             },
             journal: false,
@@ -370,8 +370,8 @@ pub fn commands() -> Vec<CommandSpec> {
             enabled: always,
             run: |s, p| {
                 let list = match str_p(p, "profile") {
-                    Some(_) => vec![profile_p(p, "bashcut.profiles.compile")?],
-                    None => all(p),
+                    Some(_) => vec![profile_p(s, p, "bashcut.profiles.compile")?],
+                    None => all(s, p),
                 };
                 let mut names = Vec::with_capacity(list.len());
                 for pr in &list {
@@ -397,7 +397,7 @@ pub fn commands() -> Vec<CommandSpec> {
 /// Compile the profile, then export with its preset (`file.exportMedia`, or `export.queue.add` with `queue`).
 fn apply(s: &mut Session, p: &Value) -> Result<Value> {
     const CMD: &str = "bashcut.profiles.apply";
-    let pr = profile_p(p, CMD)?;
+    let pr = profile_p(s, p, CMD)?;
     let preset = compile(s, &pr)?;
     let mut out = pr.to_json(seconds_p(s, p));
     out["preset"] = json!(preset);
