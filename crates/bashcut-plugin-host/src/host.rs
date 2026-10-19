@@ -454,7 +454,14 @@ impl Host {
                                 if let Some(v) = o.result.as_ref().and_then(|r| r.data.get("view")).and_then(View::from_value) {
                                     j.view = Some(v);
                                 }
-                                let msg = o.summary();
+                                let mut msg = o.summary();
+                                // a bare "exit status 2" says nothing: the plugin's last line says why
+                                if o.result.is_none()
+                                    && o.end == End::Failed
+                                    && let Some(last) = j.log.back().filter(|l| !l.trim().is_empty())
+                                {
+                                    msg = format!("{msg}: {}", last.trim());
+                                }
                                 j.finish(o.end.into(), msg);
                                 j.outcome = Some(o);
                             }
