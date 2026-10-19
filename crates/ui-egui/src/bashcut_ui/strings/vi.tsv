@@ -140,3 +140,39 @@ Needs attention	Cần xem lại
 Not run	Chưa chạy
 Stopped	Đã dừng
 {done} done · {failed} failed · {attention} need attention · {left} left	{done} xong · {failed} lỗi · {attention} cần xem lại · {left} còn lại
+# Library (BC-68)
+Your saved pieces and open media online, with the licence shown before download.	Tư liệu đã lưu của bạn và tư liệu mở trên mạng, hiện giấy phép trước khi tải.
+Mine	Của tôi
+Online	Trực tuyến
+Online Resources	Tài nguyên trực tuyến
+Install the {plugin} plugin to use this tab.	Cài plugin {plugin} để dùng thẻ này.
+Open Plugins	Mở Plugin
+Music	Nhạc
+Sound effects	Hiệu ứng âm thanh
+Photos	Ảnh
+Video	Video
+Icons	Biểu tượng
+Fonts	Phông chữ
+Everything	Tất cả
+Search	Tìm
+Type what you are looking for.	Nhập thứ bạn cần tìm.
+Credit lines in the project notes	Ghi nguồn vào ghi chú dự án
+Off by default: every file keeps its licence record either way.	Mặc định tắt: tệp nào cũng giữ hồ sơ giấy phép bên cạnh.
+Searching…	Đang tìm…
+Nothing found.	Không tìm thấy gì.
+Untitled	Không tên
+by {author}	của {author}
+Licence unknown: check before publishing	Chưa rõ giấy phép: kiểm tra trước khi đăng
+Licence: {licence}	Giấy phép: {licence}
+Preview	Xem trước
+Source	Nguồn
+Download	Tải về
+Add to bin	Thêm vào thư mục
+Place at playhead	Đặt tại đầu phát
+This result has no file to download.	Kết quả này không có tệp để tải.
+Downloading {title}…	Đang tải {title}…
+The file was not imported.	Tệp chưa được nhập.
+Font saved to {path}: install it in your system to use it in titles.	Đã lưu phông vào {path}: cài vào hệ thống để dùng cho tiêu đề.
+Placed {title} at the playhead	Đã đặt {title} tại đầu phát
+Added {title} to the project	Đã thêm {title} vào dự án
+Applying {title} (run {job})	Đang áp {title} (lượt chạy {job})

@@ -12,6 +12,7 @@ pub mod agent_panel;
 pub mod batch;
 pub mod batch_panel;
 pub mod connect;
+pub mod library_panel;
 pub mod looks_panel;
 pub mod palette;
 pub mod plugins;
@@ -66,6 +67,13 @@ pub const SECTIONS: &[Section] = &[
         icon: Icon::Sparkle,
         blurb: "Curated looks with a purpose each: preview, apply to the selection, favourite.",
         draw: looks_panel::draw,
+    },
+    Section {
+        id: "library",
+        title: "Library",
+        icon: Icon::Folder,
+        blurb: "Your saved pieces and open media online, with the licence shown before download.",
+        draw: library_panel::draw,
     },
     Section { id: "plugins", title: "Plugins", icon: Icon::Grid, blurb: "Installed plugins, their settings and actions.", draw: plugins_panel::draw },
     Section { id: "runs", title: "Runs", icon: Icon::Stopwatch, blurb: "Plugin runs and agent turns with progress and results.", draw: runs_panel::draw },
@@ -142,6 +150,9 @@ pub fn invoke(app: &mut FilmcraftApp, ctx: &egui::Context, id: &str, params: &Va
     }
     if let Some(name) = id.strip_prefix("bashcut.plugins.") {
         return Some(plugins::invoke(app, ctx, name, params));
+    }
+    if let Some(name) = id.strip_prefix("bashcut.ui.library.") {
+        return Some(library_panel::invoke(app, ctx, name, params));
     }
     if let Some(name) = id.strip_prefix("bashcut.ui.looks.") {
         return Some(looks_panel::invoke(app, ctx, name, params));
@@ -238,6 +249,7 @@ pub fn commands() -> Vec<CommandInfo> {
     v.extend(plugins::commands());
     v.extend(palette::commands());
     v.extend(looks_panel::commands());
+    v.extend(library_panel::commands());
     v.extend(agent::commands());
     v.extend(batch::commands());
     v
