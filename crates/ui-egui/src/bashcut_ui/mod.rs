@@ -119,12 +119,19 @@ pub fn layout(app: &mut FilmcraftApp, ui: &mut egui::Ui, body: egui::Rect) -> eg
         let rail_rect = egui::Rect::from_min_max(egui::pos2(body.max.x - rail::WIDTH, body.min.y), body.max);
         rail::show(app, ui, rail_rect, &mut st);
         dock.max.x = rail_rect.min.x - 1.0;
+        // Panels switch sections through `State::update` ("Open Plugins", "Send to agent");
+        // store our copy first and keep their switch, or the `put` below would undo it.
+        st.clone().put(&ctx);
+        let before = st.open.clone();
         if let Some(open) = st.open.clone()
             && let Some(sec) = section(&open)
         {
             dock = side_panel::show(app, ui, dock, sec, &mut st);
         }
         side_panel::floating(app, &ctx, &mut st);
+        if let Some(sec) = State::get(&ctx).open.filter(|s| before.as_deref() != Some(s.as_str())) {
+            st.show(&sec);
+        }
     }
     if !ctx.input(|i| i.pointer.any_down()) {
         st.save_if_changed(dir.as_deref());
