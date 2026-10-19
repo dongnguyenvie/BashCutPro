@@ -500,6 +500,7 @@ fn state_json(g: &Batch) -> Value {
         "job": g.job.as_ref().map(|j| j.dir.to_string_lossy().into_owned()),
         "status": g.book.as_ref().map(|b| b.status),
         "counts": g.book.as_ref().map(Book::counts),
+        "paused": g.book.as_ref().and_then(|b| b.paused.clone()),
         "items": items,
         "summary": g.summary,
         "error": g.error,
@@ -627,7 +628,7 @@ pub fn invoke(app: &mut FilmcraftApp, ctx: &egui::Context, name: &str, p: &Value
             job.request_cancel()?;
             Ok(json!({"cancelling": job.dir.to_string_lossy()}))
         }
-        "retry" => {
+        "retry" | "markDone" => {
             if g.is_running() {
                 return Err("wait for the batch to finish (or cancel it) before retrying".into());
             }
@@ -638,7 +639,8 @@ pub fn invoke(app: &mut FilmcraftApp, ctx: &egui::Context, name: &str, p: &Value
             let names: Vec<String> =
                 p.get("items").and_then(Value::as_array).map(|a| a.iter().filter_map(Value::as_str).map(str::to_string).collect()).unwrap_or_default();
             let names = if names.is_empty() { str_p(p, "item").map(|s| vec![s.to_string()]).unwrap_or_default() } else { names };
-            let reopened = job.retry(&names)?;
+            // markDone: the item's failed step was finished by hand (a hand-off); the steps after it run
+            let reopened = job.retry_with(&names, name == "markDone")?;
             let cli = cli_param(p, g.cli.clone().as_deref())?;
             g.cli = Some(cli.clone());
             start(ctx, &mut g, job, options(app, &cli))?;
@@ -722,6 +724,7 @@ pub fn commands() -> Vec<CommandInfo> {
         ("run", "Run Batch"),
         ("cancel", "Cancel Batch"),
         ("retry", "Retry Batch Items"),
+        ("markDone", "Mark Batch Items Done"),
         ("open", "Open Batch Item"),
         ("reveal", "Reveal Batch Output"),
         ("presets", "List Batch Presets"),
