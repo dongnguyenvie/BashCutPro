@@ -7,6 +7,8 @@
 //!
 //! Adding a section: one row in [`SECTIONS`] and a `draw` function in its own file.
 
+pub mod agent;
+pub mod agent_panel;
 pub mod connect;
 pub mod palette;
 pub mod plugins;
@@ -26,7 +28,6 @@ use crate::FilmcraftApp;
 use crate::icons::Icon;
 use crate::menus::MenuItem;
 pub use state::State;
-use strings::s;
 
 /// One rail section: an icon on the rail and what the side panel (or its floating window) draws.
 pub struct Section {
@@ -42,7 +43,13 @@ pub struct Section {
 
 /// The rail, top to bottom (`bashcut/in-app-ui.md` §1).
 pub const SECTIONS: &[Section] = &[
-    Section { id: "agent", title: "Agent", icon: Icon::Chat, blurb: "Chat with the editing agent (Claude Code, Codex) about this project.", draw: coming_soon },
+    Section {
+        id: "agent",
+        title: "Agent",
+        icon: Icon::Chat,
+        blurb: "Chat with the editing agent (Claude Code, Codex) about this project.",
+        draw: agent_panel::draw,
+    },
     Section { id: "plugins", title: "Plugins", icon: Icon::Grid, blurb: "Installed plugins, their settings and actions.", draw: plugins_panel::draw },
     Section { id: "runs", title: "Runs", icon: Icon::Stopwatch, blurb: "Plugin runs and agent turns with progress and results.", draw: runs_panel::draw },
 ];
@@ -58,11 +65,6 @@ fn is_section(id: &str) -> bool {
 
 pub fn section(id: &str) -> Option<&'static Section> {
     SECTIONS.iter().find(|s| s.id == id)
-}
-
-/// Placeholder body of a section whose ticket has not landed yet.
-fn coming_soon(app: &mut FilmcraftApp, ui: &mut egui::Ui) {
-    ui.label(egui::RichText::new(s("Coming soon")).color(app.tokens.text_dim));
 }
 
 /// The data directory our files go under (`<data dir>/bashcut/…`, `<data dir>/bashcut-plugins/…`):
@@ -84,6 +86,7 @@ pub fn layout(app: &mut FilmcraftApp, ui: &mut egui::Ui, body: egui::Rect) -> eg
     strings::set_language(st.language.as_deref());
     plugins::poll(&ctx);
     connect::publish(app, &ctx, dir.as_deref());
+    agent::poll(&ctx);
     let mut dock = body;
     if st.rail && app.ui.mode == crate::state::Mode::Edit {
         let rail_rect = egui::Rect::from_min_max(egui::pos2(body.max.x - rail::WIDTH, body.min.y), body.max);
@@ -124,6 +127,9 @@ pub fn invoke(app: &mut FilmcraftApp, ctx: &egui::Context, id: &str, params: &Va
     }
     if let Some(name) = id.strip_prefix("bashcut.palette.") {
         return Some(palette::invoke(app, ctx, name, params));
+    }
+    if let Some(name) = id.strip_prefix("bashcut.agent.") {
+        return Some(agent::invoke(app, ctx, name, params));
     }
     let known = section_ids();
     let section_param = || params.get("section").and_then(Value::as_str).filter(|s| is_section(s)).map(str::to_string);
@@ -207,6 +213,7 @@ pub fn commands() -> Vec<CommandInfo> {
     }
     v.extend(plugins::commands());
     v.extend(palette::commands());
+    v.extend(agent::commands());
     v
 }
 

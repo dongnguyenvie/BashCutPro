@@ -66,3 +66,21 @@ Look	Màu phim
 Profile	Hồ sơ xuất
 Template	Mẫu
 Recipe	Công thức
+Ask {agent} to edit this project.	Nhờ {agent} dựng dự án này.
+Gate {stage}: {state}	Cổng duyệt {stage}: {state}
+Gate: {stage}	Cổng duyệt: {stage}
+Approve	Duyệt
+approved	đã duyệt
+Ask for changes	Yêu cầu sửa
+changes requested	đã yêu cầu sửa
+Message the agent (Enter sends, Shift+Enter for a new line)	Nhắn trợ lý (Enter để gửi, Shift+Enter để xuống dòng)
+New conversation	Cuộc trò chuyện mới
+New	Mới
+No saved conversations.	Chưa có cuộc trò chuyện nào được lưu.
+Note (needed to ask for changes)	Ghi chú (bắt buộc khi yêu cầu sửa)
+Save the project to keep conversations and gates next to it.	Hãy lưu dự án để giữ các cuộc trò chuyện và cổng duyệt bên cạnh nó.
+Send	Gửi
+Stop	Dừng
+Stopping…	Đang dừng…
+Working…	Đang làm…
+You	Bạn

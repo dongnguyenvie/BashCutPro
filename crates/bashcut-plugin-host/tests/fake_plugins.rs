@@ -283,3 +283,28 @@ fn no_data_dir_means_nothing_to_install() {
     assert!(host.command("nope", &json!({}), &ctx).is_err());
     assert!(host.command("cancel", &json!({"job": 99}), &ctx).is_err());
 }
+
+#[test]
+fn agent_plugins_are_listed_for_the_agent_section() {
+    let data = scratch("agents");
+    let root = bashcut_plugin_host::plugins_dir(&data);
+    let mut m = manifest("test.agent");
+    m["kind"] = json!("agent");
+    m["entry"] = json!({"command": ["./chat", "--quiet"]});
+    m["agent"] = json!({"args": ["turn"], "mcpConfig": ["--mcp", "{config}"], "resume": ["--session", "{session}"]});
+    std::fs::create_dir_all(root.join("test.agent")).unwrap();
+    std::fs::write(root.join("test.agent").join("bashcut-plugin.json"), m.to_string()).unwrap();
+    std::fs::write(root.join("test.agent").join("settings.json"), r#"{"service":"b"}"#).unwrap();
+    write_plugin(&root.join("test.tool"), "test.tool");
+    let host = Host::new(Some(data.clone()), Arc::new(MemoryStore::default()));
+    let agents = host.agents();
+    assert_eq!(agents.len(), 1, "tool plugins are not agents");
+    let a = &agents[0];
+    assert_eq!((a.id.as_str(), a.name.as_str(), a.events.as_str()), ("test.agent", "Fake", "claude-stream-json"));
+    assert_eq!(Path::new(&a.argv[0]), root.join("test.agent").join("./chat"), "a relative program runs from the plugin folder");
+    assert_eq!(&a.argv[1..], ["--quiet", "turn"]);
+    assert_eq!(a.resume_args, ["--session", "{session}"]);
+    assert!(a.env.iter().any(|(k, v)| k == "FAKE_SERVICE" && v == "b"), "{:?}", a.env);
+    assert!(Host::new(None, Arc::new(MemoryStore::default())).agents().is_empty());
+    let _ = std::fs::remove_dir_all(&data);
+}

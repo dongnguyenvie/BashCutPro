@@ -63,7 +63,7 @@ pub fn bridge_address() -> Option<String> {
 }
 
 /// `filmcraft-cli` next to the running app, passed to plugins as `--cli`.
-fn cli_path() -> Option<String> {
+pub fn cli_path() -> Option<String> {
     let name = if cfg!(windows) { "filmcraft-cli.exe" } else { "filmcraft-cli" };
     let p = std::env::current_exe().ok()?.with_file_name(name);
     p.is_file().then(|| p.to_string_lossy().into_owned())
@@ -91,13 +91,25 @@ pub fn invoke(app: &mut FilmcraftApp, ctx: &egui::Context, name: &str, params: &
     r
 }
 
-/// Hand a finished run's result to the agent. The Agent section (#35) picks it up; until then the
-/// result is returned so a caller (or an agent over MCP) can use it.
+/// Hand a run's result to the agent as the next message: what ran, what the plugin asks the agent
+/// to do (`handoff.then`) and its result.
 fn send_to_agent(app: &mut FilmcraftApp, ctx: &egui::Context, params: &Value) -> Result<Value, String> {
     let job = params.get("job").and_then(Value::as_u64).ok_or("`job` (number) is required")?;
     let j = with(app, ctx, |h| h.job(job).cloned()).ok_or(format!("no job {job}"))?;
+    if j.state.is_running() {
+        return Err(format!("job {job} is still running"));
+    }
     let result = j.outcome.as_ref().and_then(|o| o.result.clone());
-    Ok(json!({"sent": false, "reason": "the Agent section is not built yet", "job": job, "then": j.then, "result": result}))
+    let mut text = format!("The plugin run \"{}\" ended: {}.", j.title, j.message);
+    if let Some(then) = &j.then {
+        text.push_str(&format!(" It hands off to you: {then}."));
+    }
+    if let Some(r) = &result {
+        let r = serde_json::to_string(r).unwrap_or_default();
+        text.push_str(&format!("\n\nResult (bashcut-result/1):\n{}", bashcut_agent::clip(&r, 48 * 1024)));
+    }
+    super::agent::send(app, ctx, &text)?;
+    Ok(json!({"sent": true, "job": job, "then": j.then}))
 }
 
 pub fn commands() -> Vec<CommandInfo> {

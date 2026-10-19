@@ -49,6 +49,11 @@ or a floating window. The workspace's `crates/*` glob picks the crate up, so the
 the one upstream line is the ui-egui dependency (H4). Views (`view.rs`) come with #37. Tests: unit tests per module
 and `tests/fake_plugins.rs` (fake Python plugins and a local git registry).
 
+Agent plugins (#35): a manifest with `"kind": "agent"` carries an `agent` section instead of being run as a tool:
+`args` (appended to the entry), `mcpConfig` (args that pass the MCP config file; must contain `{config}`), `resume`
+(must contain `{session}`) and `events` (`claude-stream-json`). `Host::agents()` lists them as `AgentLaunch`es with
+the plugin's settings as env; the Agent section offers them next to Claude Code ([in-app-ui.md](in-app-ui.md) §6).
+
 ## Touch points in upstream files (the whole core change)
 
 | File | Change |
