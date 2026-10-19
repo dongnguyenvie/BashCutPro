@@ -58,12 +58,12 @@ fn os_key() -> &'static str {
     }
 }
 
-/// The plugins folder: `pluginsDir`, else `<data dir>/bashcut-plugins`.
-fn plugins_dir(p: &Value) -> Option<PathBuf> {
+/// The plugins folder: `pluginsDir`, else `<data dir>/bashcut-plugins` (the session's data dir, as in `data.rs`).
+fn plugins_dir(s: &Session, p: &Value) -> Option<PathBuf> {
     if let Some(d) = str_p(p, "pluginsDir").filter(|d| !d.is_empty()) {
         return Some(PathBuf::from(d));
     }
-    crate::autosave::default_data_dir().map(|d| d.join("bashcut-plugins"))
+    s.export_presets.dir().map(Path::to_path_buf).or_else(crate::autosave::default_data_dir).map(|d| d.join("bashcut-plugins"))
 }
 
 /// Hooks for `event` declared by the installed plugins, in plugin-folder order.
@@ -187,7 +187,7 @@ pub fn fire(s: &Session, p: &Value, event: &str, context: Value, cmd: &str) -> R
     if !hooks_on(p) {
         return Ok(Value::Array(Vec::new()));
     }
-    let Some(dir) = plugins_dir(p) else { return Ok(Value::Array(Vec::new())) };
+    let Some(dir) = plugins_dir(s, p) else { return Ok(Value::Array(Vec::new())) };
     let mut rows = Vec::new();
     for hook in discover(&dir, event) {
         let row = run_hook(&hook, s.path.as_deref(), &context);
@@ -214,8 +214,8 @@ pub fn commands() -> Vec<CommandSpec> {
             shortcut: None,
             params: r#"{"event":"batch.beforeItem|batch.afterItem|import.after|export.before"?,"pluginsDir":str?}"#,
             enabled: always,
-            run: |_, p| {
-                let Some(dir) = plugins_dir(p) else { return Ok(json!({"hooks": []})) };
+            run: |s, p| {
+                let Some(dir) = plugins_dir(s, p) else { return Ok(json!({"hooks": []})) };
                 let events: Vec<&str> = match str_p(p, "event") {
                     Some(e) if EVENTS.contains(&e) => vec![e],
                     Some(e) => return Err(bad("bashcut.hooks.list", format!("unknown event `{e}` ({})", EVENTS.join(", ")))),
