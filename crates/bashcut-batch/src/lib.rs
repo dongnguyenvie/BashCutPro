@@ -6,6 +6,7 @@
 //! parallel, each step in its own `filmcraft-cli` process, and can stop, be cancelled and resume
 //! (see [`book`] for the tripwire). No workspace dependencies: it drives the CLI, not the engine.
 
+mod agent;
 pub mod book;
 pub mod governor;
 pub mod pipeline;
@@ -13,7 +14,7 @@ pub mod presets;
 mod process;
 pub mod runner;
 
-pub use book::{Book, Category, Counts, ErrorInfo, ItemState, Job, Status, StepState, list_jobs};
+pub use book::{AgentTotals, AgentUsage, Book, Category, Counts, ErrorInfo, ItemState, Job, Status, StepState, list_jobs};
 pub use governor::{FakeProbe, Limits, Probe, Report, SystemProbe};
 pub use pipeline::{Pipeline, SCHEMA};
 pub use process::pid_alive;

@@ -66,6 +66,11 @@ fn item<'a>(book: &'a bashcut_batch::Book, name: &str) -> &'a ItemState {
 
 /// The most fake-cli processes that ran at the same time, from the log.
 fn max_concurrent(log: &Path) -> i32 {
+    max_overlap(log, "start", "end")
+}
+
+/// The most `start` … `end` stretches of the log (by kind) that overlapped.
+fn max_overlap(log: &Path, start: &str, end: &str) -> i32 {
     let text = std::fs::read_to_string(log).unwrap_or_default();
     let mut events: Vec<(u128, i32)> = text
         .lines()
@@ -74,7 +79,13 @@ fn max_concurrent(log: &Path) -> i32 {
             let kind = w.next()?;
             let t: u128 = w.next()?.parse().ok()?;
             // at the same millisecond an end comes before a start
-            Some((t, if kind == "start" { 1 } else { -1 }))
+            if kind == start {
+                Some((t, 1))
+            } else if kind == end {
+                Some((t, -1))
+            } else {
+                None
+            }
         })
         .collect();
     events.sort();
@@ -350,4 +361,103 @@ fn an_existing_project_or_job_id_is_refused() {
     std::fs::remove_file(b.out("a.fcproj")).unwrap();
     Job::create(&p, Some("x")).unwrap();
     assert!(Job::create(&p, Some("x")).unwrap_err().contains("already exists"));
+}
+
+/// An agent step driven by the fake agent in `mode`.
+fn agent_pipeline(b: &Bench, mode: &str, extra: Value) -> Pipeline {
+    let mut agent = json!({"skill": "captions-text", "brief": "Fix the captions of {name}.", "argv": [FAKE, "fake-agent", "--mode", mode, "--prompt", "{prompt}", "--session", "{session}", "--project", "{project}"]});
+    if let (Some(m), Value::Object(e)) = (agent.as_object_mut(), extra) {
+        m.extend(e);
+    }
+    b.pipeline(json!({"steps": [{"agent": agent}]}))
+}
+
+#[test]
+fn an_agent_step_is_reviewed_and_fixed_in_a_resumed_round() {
+    let b = Bench::new("agent-ok", &["a"]);
+    let job = Job::create(&agent_pipeline(&b, "ok", json!({})), Some("agent")).unwrap();
+    let summary = run(&job, &b.opts()).unwrap();
+    assert_eq!(summary.status, Status::Done, "{summary:?}");
+    let book = job.book().unwrap();
+    let step = &item(&book, "a").steps[1];
+    let usage = step.agent.as_ref().unwrap();
+    assert_eq!((usage.agent.as_str(), usage.rounds, usage.turns, usage.input_tokens, usage.output_tokens), ("custom", 2, 6, 200, 40));
+    assert!((usage.cost_usd - 0.02).abs() < 1e-9);
+    assert_eq!(usage.transcripts.len(), 2);
+    assert!(usage.session.as_deref().is_some_and(|s| s.starts_with("sess-")));
+    assert_eq!(step.review.as_ref().map(|r| r["verdict"].clone()), Some(json!("pass")));
+    let project = b.read("a.fcproj");
+    assert!(project.contains("resume:sess-"), "the fix round resumed the session: {project}");
+    assert!(project.contains("fixed\n"));
+    assert_eq!((summary.agent.steps, summary.agent.rounds, summary.agent.turns), (1, 2, 6));
+    // the fix prompt named the finding
+    let fix = std::fs::read_to_string(job.item_dir("a").join("step-1.round-1.out")).unwrap_or_default();
+    assert!(fix.contains("\"type\":\"result\""), "{fix}");
+}
+
+#[test]
+fn a_clean_first_round_needs_no_fix_round() {
+    let b = Bench::new("agent-first", &["a"]);
+    let job = Job::create(&agent_pipeline(&b, "fixfirst", json!({})), Some("agent")).unwrap();
+    assert_eq!(run(&job, &b.opts()).unwrap().status, Status::Done);
+    let book = job.book().unwrap();
+    assert_eq!(item(&book, "a").steps[1].agent.as_ref().map(|u| u.rounds), Some(1));
+}
+
+#[test]
+fn an_agent_that_loops_hits_its_turn_limit() {
+    let b = Bench::new("agent-loop", &["a"]);
+    let job = Job::create(&agent_pipeline(&b, "loop", json!({"maxTurns": 3})), Some("agent")).unwrap();
+    let summary = run(&job, &b.opts()).unwrap();
+    assert_eq!(summary.status, Status::Failed);
+    let book = job.book().unwrap();
+    let e = item(&book, "a").error.clone().unwrap();
+    assert_eq!(e.category, Category::Limit);
+    assert!(e.message.contains("maxTurns (3)"), "{}", e.message);
+}
+
+#[test]
+fn an_agent_past_max_minutes_is_stopped() {
+    let b = Bench::new("agent-sleep", &["a"]);
+    let job = Job::create(&agent_pipeline(&b, "sleep", json!({"maxMinutes": 0.02})), Some("agent")).unwrap();
+    let start = Instant::now();
+    run(&job, &b.opts()).unwrap();
+    assert!(start.elapsed() < Duration::from_secs(6), "the 10 s agent was killed");
+    let book = job.book().unwrap();
+    assert_eq!(item(&book, "a").error.as_ref().map(|e| e.category), Some(Category::Timeout));
+}
+
+#[test]
+fn findings_left_after_the_fix_rounds_end_needs_fix() {
+    let b = Bench::new("agent-stubborn", &["a"]);
+    let job = Job::create(&agent_pipeline(&b, "stubborn", json!({"fixRounds": 1})), Some("agent")).unwrap();
+    let summary = run(&job, &b.opts()).unwrap();
+    assert_eq!(summary.status, Status::NeedsFix, "{summary:?}");
+    assert_eq!(summary.counts.needs_fix, 1);
+    let book = job.book().unwrap();
+    let a = item(&book, "a");
+    assert_eq!(a.status, Status::NeedsFix);
+    let e = a.error.clone().unwrap();
+    assert_eq!(e.category, Category::Review);
+    assert!(e.message.contains("captions.readingSpeed") && e.message.contains("1 fix round"), "{}", e.message);
+    assert_eq!(a.steps[1].agent.as_ref().map(|u| u.rounds), Some(2));
+    // retry reopens a needs-fix item
+    assert_eq!(job.retry(&[]).unwrap(), 1);
+}
+
+#[test]
+fn agent_steps_respect_agent_concurrency() {
+    let b = Bench::new("agent-cap", &["a", "b", "c"]);
+    let mut p = agent_pipeline(&b, "fixfirst", json!({"review": false}));
+    if let Some(a) = p.steps[0].agent.as_mut() {
+        a.argv.extend(["--sleep-ms".to_string(), "300".to_string()]);
+    }
+    p.concurrency = 3;
+    p.agent_concurrency = 1;
+    let job = Job::create(&p, Some("cap")).unwrap();
+    let summary = run(&job, &b.opts()).unwrap();
+    assert_eq!(summary.status, Status::Done);
+    assert_eq!(max_overlap(&b.log(), "agent-start", "agent-end"), 1, "one agent at a time");
+    let book = job.book().unwrap();
+    assert!(book.items.iter().all(|i| i.steps[1].review.is_none()), "review: false");
 }

@@ -6,16 +6,17 @@
 //! agent steps run their own command line with the item's placeholders. The app does not need to
 //! be open. One runner per job at a time (`runner.lock`).
 
-use crate::book::{self, Book, Category, ErrorInfo, Job, Status, StepRef, StepState, now_ms};
+use crate::agent;
+use crate::book::{self, AgentUsage, Book, Category, ErrorInfo, Job, Status, StepRef, StepState, now_ms};
 use crate::governor::{self, KeepAwake, Meter, Probe, SystemProbe};
-use crate::pipeline::{self, CommandLine, DEFAULT_AGENT_ARGV, OnFailure, Pipeline, StepKind, Vars};
+use crate::pipeline::{self, AgentStep, CommandLine, OnFailure, Pipeline, StepKind, Vars};
 use crate::process::{self, Ended, Spec};
 use serde::Serialize;
 use serde_json::Value;
 use std::io::Write;
 use std::path::{Component, Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, Mutex, PoisonError};
+use std::sync::{Arc, Condvar, Mutex, PoisonError};
 use std::time::{Duration, Instant};
 
 /// How much of a step's stdout / stderr goes into its error message.
@@ -40,6 +41,11 @@ pub struct Options {
     pub keep_awake: bool,
     /// How often a step's process memory is checked against the cap.
     pub watch_every: Duration,
+    /// `bashcut-mcp`, the MCP server agent steps get (writes limited to the item folder and the
+    /// outputs, #51); without it they get `filmcraft-cli mcp --project` directly.
+    pub mcp: Option<PathBuf>,
+    /// Overrides the pipeline's `agentConcurrency`.
+    pub agent_concurrency: Option<usize>,
 }
 
 impl Options {
@@ -53,6 +59,8 @@ impl Options {
             probe: Arc::new(SystemProbe::default()),
             keep_awake: false,
             watch_every: Duration::from_secs(2),
+            mcp: None,
+            agent_concurrency: None,
         }
     }
 }
@@ -64,6 +72,8 @@ pub struct Summary {
     pub job: String,
     pub status: Status,
     pub counts: book::Counts,
+    /// Agent steps' turns, tokens, cost and time.
+    pub agent: book::AgentTotals,
     /// Tripped steps and other things a person should look at.
     pub reports: Vec<String>,
     pub elapsed_ms: u64,
@@ -73,7 +83,16 @@ pub struct Summary {
 
 impl Summary {
     pub fn of(job: &Job, book: &Book, reports: Vec<String>, elapsed_ms: u64, resources: governor::Report) -> Summary {
-        Summary { id: book.id.clone(), job: job.dir.to_string_lossy().into_owned(), status: book.status, counts: book.counts(), reports, elapsed_ms, resources }
+        Summary {
+            id: book.id.clone(),
+            job: job.dir.to_string_lossy().into_owned(),
+            status: book.status,
+            counts: book.counts(),
+            agent: book.agent_totals(),
+            reports,
+            elapsed_ms,
+            resources,
+        }
     }
 }
 
@@ -116,6 +135,9 @@ pub fn run(job: &Job, opts: &Options) -> Result<Summary, String> {
         save_error: Mutex::new(None),
         max_items: workers,
         meter: Meter::default(),
+        agents: Mutex::new(0),
+        agents_free: Condvar::new(),
+        agent_cap: opts.agent_concurrency.unwrap_or(pipeline.agent_concurrency).clamp(1, pipeline::MAX_CONCURRENCY),
     };
     std::thread::scope(|s| {
         for _ in 0..workers {
@@ -199,6 +221,10 @@ struct Shared<'a> {
     /// Items at once at most (the governor may allow fewer).
     max_items: usize,
     meter: Meter,
+    /// Agent steps running now, at most `agent_cap` (`agentConcurrency`).
+    agents: Mutex<usize>,
+    agents_free: Condvar,
+    agent_cap: usize,
 }
 
 /// What a worker gets when it asks for an item.
@@ -207,6 +233,40 @@ enum Claim {
     /// Items are pending, but the machine has no room for one more now.
     Wait,
     None,
+}
+
+/// One of the `agentConcurrency` slots, given back on drop.
+struct AgentSlot<'a, 'b> {
+    sh: &'a Shared<'b>,
+}
+
+impl<'a, 'b> AgentSlot<'a, 'b> {
+    /// Wait for a free slot; `None` when the batch is cancelled meanwhile.
+    fn take(sh: &'a Shared<'b>) -> Option<Self> {
+        let mut n = sh.agents.lock().unwrap_or_else(PoisonError::into_inner);
+        loop {
+            if sh.cancelled() {
+                return None;
+            }
+            if *n < sh.agent_cap {
+                *n += 1;
+                return Some(AgentSlot { sh });
+            }
+            n = match sh.agents_free.wait_timeout(n, sh.opts.poll) {
+                Ok((g, _)) => g,
+                Err(e) => e.into_inner().0,
+            };
+        }
+    }
+}
+
+impl Drop for AgentSlot<'_, '_> {
+    fn drop(&mut self) {
+        let mut n = self.sh.agents.lock().unwrap_or_else(PoisonError::into_inner);
+        *n = n.saturating_sub(1);
+        drop(n);
+        self.sh.agents_free.notify_all();
+    }
 }
 
 impl Shared<'_> {
@@ -378,6 +438,7 @@ fn run_item(sh: &Shared, idx: usize) {
                     // over the memory cap: nothing is wrong with the step; it runs again later
                     Category::Resources => (Status::Pending, Status::NotRun),
                     Category::Handoff => (Status::Failed, Status::NeedsAttention),
+                    Category::Review => (Status::Failed, Status::NeedsFix),
                     _ => (Status::Failed, Status::Failed),
                 };
                 let err = e.clone();
@@ -457,22 +518,7 @@ fn run_step(sh: &Shared, idx: usize, s: usize, step: StepRef, ctx: &Ctx) -> Resu
                     let ended = spawn(sh, idx, s, &spec)?;
                     outcome(ended, &spec.log, &key).map(|()| Vec::new())
                 }
-                StepKind::Agent(a) => {
-                    let prompt =
-                        format!("Use the {} skill from the BashCutPro kit on the project {}. {}", a.skill, ctx.project.display(), ctx.vars.expand(&a.brief));
-                    let mut vars = ctx.vars.clone();
-                    vars.0.push(("prompt", prompt.trim().to_string()));
-                    let argv: Vec<String> = if a.argv.is_empty() {
-                        DEFAULT_AGENT_ARGV.iter().map(|x| vars.expand(x)).collect()
-                    } else {
-                        a.argv.iter().map(|x| vars.expand(x)).collect()
-                    };
-                    // the agent works in the project's folder (its allowed root, #51)
-                    let cwd = ctx.project.parent().map(Path::to_path_buf).unwrap_or_else(|| ctx.dir.clone());
-                    let spec = Spec { argv, cwd: Some(cwd), env: item_env(sh, ctx), timeout, log: ctx.dir.join(&key) };
-                    let ended = spawn(sh, idx, s, &spec)?;
-                    outcome(ended, &spec.log, &key).map(|()| Vec::new())
-                }
+                StepKind::Agent(a) => agent_step(sh, idx, s, ctx, &key, a),
             }
         }
         StepRef::Export(i) => {
@@ -550,6 +596,97 @@ fn create(sh: &Shared, idx: usize, s: usize, ctx: &Ctx) -> Result<(), ErrorInfo>
         }
     }
     std::fs::rename(&tmp, &ctx.project).map_err(|e| io(e, &ctx.project))
+}
+
+/// An agent step (#60): rounds of the agent, each followed by `bashcut.review.run`; blocking findings
+/// go back to the agent (resuming its session) at most `fixRounds` times, then the item needs fixing.
+/// `maxMinutes` covers the whole step, `maxTurns` each round; at most `agentConcurrency` agent steps
+/// run at once. Usage and transcripts go into the step's `agent`, the last review into `review`.
+fn agent_step(sh: &Shared, idx: usize, s: usize, ctx: &Ctx, key: &str, a: &AgentStep) -> Result<Vec<String>, ErrorInfo> {
+    let io = |e: std::io::Error, p: &Path| ErrorInfo::new(Category::Io, format!("{}: {e}", p.display()));
+    let Some(_slot) = AgentSlot::take(sh) else { return Err(ErrorInfo::new(Category::Cancelled, format!("{key}: cancelled"))) };
+    let start = Instant::now();
+    let limit = a.max_duration();
+    let roots = vec![ctx.dir.clone(), sh.pipeline.outputs_dir()];
+    let (program, args) = agent::mcp_server(&cli(sh), sh.opts.mcp.as_deref(), &ctx.project, &roots);
+    let config = ctx.dir.join(format!("{key}.mcp.json"));
+    std::fs::write(&config, agent::mcp_config(&program, &args).to_string()).map_err(|e| io(e, &config))?;
+    let mut usage = AgentUsage { agent: if a.argv.is_empty() { a.agent_name().to_string() } else { "custom".into() }, ..AgentUsage::default() };
+    let mut prompt = agent::first_prompt(a, &ctx.vars);
+    let rounds = a.fix_rounds();
+    let minutes = limit.as_secs_f64() / 60.0;
+    for round in 0..=rounds {
+        let remaining = limit.saturating_sub(start.elapsed());
+        if remaining.is_zero() {
+            return Err(ErrorInfo::new(Category::Timeout, format!("{key}: the agent ran past maxMinutes ({minutes:.1})")));
+        }
+        let log = ctx.dir.join(format!("{key}.round-{round}"));
+        let argv = agent::argv(&agent::Launch { step: a, vars: &ctx.vars, prompt: &prompt, session: usage.session.as_deref(), mcp_config: &config });
+        let cwd = ctx.project.parent().map(Path::to_path_buf).unwrap_or_else(|| ctx.dir.clone());
+        let spec = Spec { argv, cwd: Some(cwd), env: item_env(sh, ctx), timeout: Some(remaining), log: log.clone() };
+        let ended = spawn(sh, idx, s, &spec)?;
+        let r = agent::read_round(&process::out_path(&log));
+        usage.rounds = round.saturating_add(1);
+        usage.turns = usage.turns.saturating_add(r.turns);
+        usage.input_tokens = usage.input_tokens.saturating_add(r.input_tokens);
+        usage.output_tokens = usage.output_tokens.saturating_add(r.output_tokens);
+        usage.cost_usd += r.cost_usd;
+        usage.ms = u64::try_from(start.elapsed().as_millis()).unwrap_or(u64::MAX);
+        if r.session.is_some() {
+            usage.session = r.session.clone();
+        }
+        usage.transcripts.push(process::out_path(&log).to_string_lossy().into_owned());
+        let snapshot = usage.clone();
+        sh.step(idx, s, |st| st.agent = Some(snapshot));
+        match &ended {
+            Ended::TimedOut => return Err(ErrorInfo::new(Category::Timeout, format!("{key}: the agent ran past maxMinutes ({minutes:.1})"))),
+            Ended::Cancelled => return Err(ErrorInfo::new(Category::Cancelled, format!("{key}: cancelled"))),
+            // over the memory cap: `outcome` below reports it
+            Ended::Exited(_) | Ended::OverLimit(_) => {}
+        }
+        if r.hit_turn_limit {
+            return Err(ErrorInfo::new(Category::Limit, format!("{key}: the agent hit maxTurns ({}) without finishing", a.max_turns())));
+        }
+        outcome(ended, &log, key)?;
+        if r.failed {
+            return Err(ErrorInfo::new(Category::Command, format!("{key}: the agent reported a failure: {}", r.message)));
+        }
+        if !a.review {
+            return Ok(Vec::new());
+        }
+        let review = review_step(sh, idx, s, ctx, &format!("{key}.review-{round}"), a.review_profile.as_deref())?;
+        let summary = agent::review_summary(&review);
+        sh.step(idx, s, |st| st.review = Some(summary));
+        let blocking = agent::blocking_count(&review);
+        if blocking == 0 {
+            return Ok(Vec::new());
+        }
+        if round == rounds {
+            let checks: Vec<String> = agent::blocking(&review).iter().filter_map(|f| f["check"].as_str().map(str::to_string)).take(5).collect();
+            return Err(ErrorInfo::new(
+                Category::Review,
+                format!("{key}: {blocking} blocking review finding(s) left after {rounds} fix round(s): {}", checks.join(", ")),
+            ));
+        }
+        prompt = agent::fix_prompt(a, &ctx.vars, &review);
+    }
+    Ok(Vec::new())
+}
+
+/// `bashcut.review.run` on the item's project (saved: it writes its findings as markers).
+fn review_step(sh: &Shared, idx: usize, s: usize, ctx: &Ctx, key: &str, profile: Option<&str>) -> Result<Value, ErrorInfo> {
+    let mut params = serde_json::json!({});
+    if let Some(p) = profile {
+        params["profile"] = serde_json::json!(p);
+    }
+    let line = CommandLine { id: "bashcut.review.run".into(), params };
+    let script = write_script(ctx, key, std::slice::from_ref(&line))?;
+    let mut argv = vec![cli(sh), "run".into(), path_arg(&script), "--project".into(), path_arg(&ctx.project), "--save".into(), "--compact".into()];
+    argv.extend(data_dir_args(sh));
+    let spec = Spec { argv, cwd: Some(ctx.dir.clone()), env: sh.opts.env.clone(), timeout: None, log: ctx.dir.join(key) };
+    let ended = spawn(sh, idx, s, &spec)?;
+    outcome(ended, &spec.log, key)?;
+    agent::review_result(&process::out_path(&spec.log)).ok_or_else(|| ErrorInfo::new(Category::Command, format!("{key}: no bashcut.review.run result")))
 }
 
 fn engine_step(sh: &Shared, idx: usize, s: usize, ctx: &Ctx, key: &str, lines: &[CommandLine], timeout: Option<Duration>) -> Result<Vec<String>, ErrorInfo> {

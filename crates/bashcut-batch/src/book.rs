@@ -32,6 +32,8 @@ pub enum Status {
     NotRun,
     /// Job: stopped after a failure with items left.
     Stopped,
+    /// Item or job: the review still had blocking findings after the agent's fix rounds (#60).
+    NeedsFix,
 }
 
 impl Status {
@@ -60,6 +62,10 @@ pub enum Category {
     Tripped,
     /// A plugin needs the calling agent (exit 3, `bashcut-result/1`).
     Handoff,
+    /// An agent hit its turn limit.
+    Limit,
+    /// The review's blocking findings were not fixed in the rounds allowed.
+    Review,
     /// Reading or writing files around the step.
     Io,
     /// The step's process went over the memory cap and was stopped: the item runs again later
@@ -115,6 +121,45 @@ pub struct StepState {
     pub error: Option<ErrorInfo>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub outputs: Vec<String>,
+    /// Agent steps: what the agent used, summed over its rounds.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub agent: Option<AgentUsage>,
+    /// Agent steps: the last review's verdict, counts and findings (`bashcut.review.run`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub review: Option<serde_json::Value>,
+}
+
+/// An agent step's use, summed over its rounds.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AgentUsage {
+    pub agent: String,
+    /// The agent's session (resumed by fix rounds).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub session: Option<String>,
+    pub rounds: u32,
+    pub turns: u64,
+    pub input_tokens: u64,
+    pub output_tokens: u64,
+    /// As the agent reports it (Claude Code); 0 when it does not.
+    pub cost_usd: f64,
+    pub ms: u64,
+    /// Each round's event log (`items/<name>/<step>.round-N.out`).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub transcripts: Vec<String>,
+}
+
+/// Agent use over a job.
+#[derive(Clone, Debug, Default, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AgentTotals {
+    pub steps: usize,
+    pub rounds: u64,
+    pub turns: u64,
+    pub input_tokens: u64,
+    pub output_tokens: u64,
+    pub cost_usd: f64,
+    pub ms: u64,
 }
 
 impl StepState {
@@ -131,6 +176,8 @@ impl StepState {
             duration_ms: None,
             error: None,
             outputs: Vec::new(),
+            agent: None,
+            review: None,
         }
     }
 }
@@ -191,6 +238,8 @@ impl Book {
             Status::Cancelled
         } else if any(Status::NeedsAttention) {
             Status::NeedsAttention
+        } else if any(Status::NeedsFix) {
+            Status::NeedsFix
         } else if any(Status::NotRun) || any(Status::Pending) {
             Status::Stopped
         } else if any(Status::Failed) {
@@ -200,6 +249,23 @@ impl Book {
         }
     }
 
+    /// Agent use over every agent step.
+    pub fn agent_totals(&self) -> AgentTotals {
+        let mut t = AgentTotals::default();
+        for u in self.items.iter().flat_map(|i| i.steps.iter()).filter_map(|s| s.agent.as_ref()) {
+            t.steps += 1;
+            t.rounds = t.rounds.saturating_add(u64::from(u.rounds));
+            t.turns = t.turns.saturating_add(u.turns);
+            t.input_tokens = t.input_tokens.saturating_add(u.input_tokens);
+            t.output_tokens = t.output_tokens.saturating_add(u.output_tokens);
+            if u.cost_usd.is_finite() && u.cost_usd > 0.0 {
+                t.cost_usd += u.cost_usd;
+            }
+            t.ms = t.ms.saturating_add(u.ms);
+        }
+        t
+    }
+
     pub fn counts(&self) -> Counts {
         let mut c = Counts::default();
         for i in &self.items {
@@ -207,6 +273,7 @@ impl Book {
                 Status::Done => c.done += 1,
                 Status::Failed => c.failed += 1,
                 Status::NeedsAttention => c.needs_attention += 1,
+                Status::NeedsFix => c.needs_fix += 1,
                 Status::Cancelled => c.cancelled += 1,
                 Status::Running => c.running += 1,
                 Status::Pending => c.pending += 1,
@@ -257,7 +324,7 @@ impl Book {
         let mut count = 0;
         for item in &mut self.items {
             let pick = if names.is_empty() {
-                matches!(item.status, Status::Failed | Status::Cancelled | Status::NeedsAttention | Status::NotRun)
+                matches!(item.status, Status::Failed | Status::Cancelled | Status::NeedsAttention | Status::NeedsFix | Status::NotRun)
             } else {
                 names.contains(&item.name)
             };
@@ -287,6 +354,7 @@ pub struct Counts {
     pub done: usize,
     pub failed: usize,
     pub needs_attention: usize,
+    pub needs_fix: usize,
     pub cancelled: usize,
     pub running: usize,
     pub pending: usize,
@@ -545,6 +613,7 @@ mod tests {
         assert_eq!(s(&[Status::Done, Status::Failed]), Status::Failed);
         assert_eq!(s(&[Status::Failed, Status::NeedsAttention]), Status::NeedsAttention);
         assert_eq!(s(&[Status::Failed, Status::NotRun]), Status::Stopped);
+        assert_eq!(s(&[Status::Done, Status::NeedsFix]), Status::NeedsFix);
         assert_eq!(s(&[Status::Done, Status::Pending]), Status::Running);
         assert_eq!(book(vec![item("i", Status::Pending, vec![])]).derive_status(true), Status::Cancelled);
     }
