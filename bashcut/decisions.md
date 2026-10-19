@@ -3,6 +3,16 @@
 Newest first. Each entry: what was decided, why, and what it rules out. Add an entry when the owner
 decides something; don't change an old one, add a new one that supersedes it.
 
+## 2026-10-20: Port every BashCut capability, in Pro's own way
+
+- **Decided:** Pro covers what the Swift BashCut can do, but not by copying it: each capability is ported as a
+  similar or different feature that fits FilmCraft, and when it does not belong in the core it lives in a kit skill,
+  a plugin or our own module. This reverses the earlier "skip" for `library` and `self-learn` in
+  [migration.md](migration.md). Wave 3 tickets #66–#73 (self-learn, library, online browser, vision, variants,
+  script alignment, outcomes, doctor / hooks).
+- **Why:** owner: Pro must surpass the old app; "port qua tính năng tương tự hoặc khác đi, cho phù hợp… nếu k ở trong
+  core thì skill support".
+
 ## 2026-10-20: Upstream code is only added to, never modified
 
 - **Decided:** we never edit, delete or reorder upstream lines, signatures, structs, defaults, commands, tests or
