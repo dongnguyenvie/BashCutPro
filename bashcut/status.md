@@ -72,6 +72,9 @@ _Last updated: 2026-10-20_
 - U4 (#37): `bashcut-view/1` plugin views (live JSON lines from a `view` action, buttons run actions with the form's
   values, `bashcut.plugins.view` / `click`), the Codex adapter (`codex exec --json`), pop-out windows remembered per
   monitor; no new hook. Build + tests + live check pending; translate-captions view port is a follow-up in plugins.
+- Build pass, kit + plugins + bench (mac 02): kit catalogue refreshed from a build's `command_list` and skill examples
+  fixed (#113), plugins' live paths run without paid keys (#117), first bench scorecard, Pro side only, 3 of 6 jobs
+  on generated clips ([bench/2026-10-20.md](bench/2026-10-20.md)); engine follow-ups #127 (polish), #130 (word captions).
 
 ## Next
 
