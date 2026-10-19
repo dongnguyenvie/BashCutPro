@@ -96,7 +96,7 @@ them disappears from upstream's catalogs, so a renamed string can't silently bri
   installed files at package time plus one code line.
 - **Web build**: `apps/filmcraft-web/web/favicon.png` and the loading page still use FilmCraft's owl
   and name.
-- **The word "FilmCraft"** in the window title, menus, dialogs and messages (out of scope in #25; the
-  override table in `bashcut_brand.rs` is the place to do it if wanted).
+- **The word "FilmCraft"** in menus, dialogs and messages (out of scope in #25; the
+  override table in `bashcut_brand.rs` is the place to do it if wanted). The native window title says BashCutPro since #90.
 - `metainfo.xml.in` still points its screenshot at upstream's `docs/images/filmcraft-hero.png`.
 - Localised versions of the replaced strings (they show in English in every language).

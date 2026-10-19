@@ -19,10 +19,10 @@ pub const ISSUES: &str = "https://github.com/dongnguyenvie/BashCutPro/issues";
 
 /// (command id, label, url) for every link, in menu order.
 pub const ALL: [(&str, &str, &str); 5] = [
-    ("help.discord", "Join the ArtCraft Discord…", DISCORD),
-    ("help.website", "ArtCraft Website", WEBSITE),
-    ("help.appPage", "FilmCraft on getartcraft.com", APP_PAGE),
-    ("help.github", "FilmCraft on GitHub", GITHUB),
+    ("help.discord", "BashCutPro Discussions…", DISCORD),
+    ("help.website", "BashCut Website", WEBSITE),
+    ("help.appPage", "BashCutPro Releases", APP_PAGE),
+    ("help.github", "BashCutPro on GitHub", GITHUB),
     ("help.reportIssue", "Report an Issue…", ISSUES),
 ];
 

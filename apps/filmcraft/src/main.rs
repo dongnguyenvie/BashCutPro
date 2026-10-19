@@ -178,6 +178,7 @@ fn native_options(agent: bool) -> eframe::NativeOptions {
             .with_active(!agent)
             .with_icon(app_icon())
             .with_icon(filmcraft_ui_egui::bashcut_brand::app_icon()) // BashCutPro: our app icon (bashcut/extending-upstream.md)
+            .with_title(filmcraft_ui_egui::bashcut_brand::NAME) // BashCutPro: window title (bashcut/extending-upstream.md)
             // Wayland matches the window to `packaging/linux/ai.storyteller.filmcraft.desktop`.
             .with_app_id(APP_ID),
         event_loop_builder: agent_event_loop(agent),

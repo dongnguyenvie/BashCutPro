@@ -26,5 +26,4 @@ was launched and answered:
 
 Outputs go to `target/smoke/` (`--out`): app log, screenshot, CLI and MCP transcripts.
 
-Known on 2026-10-20: the native window title is still `FilmCraft` (`apps/filmcraft/src/main.rs`, `with_title`), so
-step 3 fails where the OS title is readable until the branding work covers the window title.
+The native window title is BashCutPro since #90 (`apps/filmcraft/src/main.rs`, one `with_title` hook after upstream's).
