@@ -29,6 +29,8 @@ pub struct Manifest {
     pub license: String,
     pub homepage: String,
     pub category: String,
+    /// `tool` (the default: actions) or `agent` (also a conversational agent, see [`AgentSection`]).
+    pub kind: String,
     pub platforms: Vec<String>,
     pub runtime: Runtime,
     pub entry: Entry,
@@ -38,7 +40,25 @@ pub struct Manifest {
     pub settings: Vec<Setting>,
     pub actions: Vec<Action>,
     pub skills: Vec<String>,
+    /// How the Agent section starts it, when `kind` is `agent`.
+    pub agent: Option<AgentSection>,
 }
+
+/// An agent plugin (`bashcut/in-app-ui.md` §6): the entry plus `args` runs one turn, reading one
+/// stream-json user message on stdin and printing `events` on stdout.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[serde(default, rename_all = "camelCase")]
+pub struct AgentSection {
+    pub args: Vec<String>,
+    /// Arguments passing the MCP config file (`{config}`); empty: the agent does not use the app.
+    pub mcp_config: Vec<String>,
+    /// Arguments resuming a session (`{session}`); empty: every turn starts fresh.
+    pub resume: Vec<String>,
+    /// stdout event format; only `claude-stream-json` for now.
+    pub events: String,
+}
+
+pub const AGENT_EVENTS: &str = "claude-stream-json";
 
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 #[serde(default, rename_all = "camelCase")]
@@ -214,10 +234,33 @@ impl Manifest {
             }
             seen.push(&a.id);
         }
+        match (self.kind.as_str(), &self.agent) {
+            ("" | "tool", None) => {}
+            ("agent", Some(a)) => {
+                if a.args.len() > MAX_ARGS || a.mcp_config.len() > MAX_ARGS || a.resume.len() > MAX_ARGS {
+                    return err(format!("{}: agent args are too long", self.id));
+                }
+                if !a.events.is_empty() && a.events != AGENT_EVENTS {
+                    return err(format!("{}: agent events `{}` are not {AGENT_EVENTS}", self.id, a.events));
+                }
+                if !a.mcp_config.iter().any(|x| x.contains("{config}")) && !a.mcp_config.is_empty() {
+                    return err(format!("{}: agent.mcpConfig must name {{config}}", self.id));
+                }
+                if !a.resume.iter().any(|x| x.contains("{session}")) && !a.resume.is_empty() {
+                    return err(format!("{}: agent.resume must name {{session}}", self.id));
+                }
+            }
+            ("agent", None) => return err(format!("{}: kind `agent` needs an `agent` section", self.id)),
+            (k, _) => return err(format!("{}: bad kind `{k}` (tool or agent; `agent` needs kind `agent`)", self.id)),
+        }
         if [&self.name, &self.summary, &self.homepage].iter().any(|t| t.len() > MAX_TEXT) {
             return err(format!("{}: text field too long", self.id));
         }
         Ok(())
+    }
+
+    pub fn is_agent(&self) -> bool {
+        self.kind == "agent" && self.agent.is_some()
     }
 
     pub fn action(&self, id: &str) -> Option<&Action> {
@@ -440,5 +483,27 @@ mod tests {
         assert!(Manifest::parse(&" ".repeat(MAX_BYTES as usize + 1)).is_err());
         assert_eq!(version_key("1.10.2"), (1, 10, 2));
         assert!(version_key("1.10.2") > version_key("1.9.9"));
+    }
+
+    #[test]
+    fn agent_plugins_are_checked() {
+        let mut v: Value = serde_json::from_str(&sample()).unwrap();
+        v["kind"] = json!("agent");
+        assert!(Manifest::parse(&v.to_string()).is_err(), "kind agent needs a section");
+        v["agent"] = json!({"args": ["chat"], "mcpConfig": ["--mcp", "{config}"], "resume": ["--session", "{session}"], "events": "claude-stream-json"});
+        let m = Manifest::parse(&v.to_string()).unwrap();
+        assert!(m.is_agent());
+        assert_eq!(m.agent.as_ref().map(|a| a.args.clone()), Some(vec!["chat".to_string()]));
+        for (key, bad) in [("events", json!("other")), ("resume", json!(["--session"])), ("mcpConfig", json!(["--mcp"]))] {
+            let mut b = v.clone();
+            b["agent"][key] = bad;
+            assert!(Manifest::parse(&b.to_string()).is_err(), "{key}");
+        }
+        let mut b = v.clone();
+        b["kind"] = json!("robot");
+        assert!(Manifest::parse(&b.to_string()).is_err());
+        b["kind"] = json!("tool");
+        assert!(Manifest::parse(&b.to_string()).is_err(), "an agent section needs kind agent");
+        assert!(!Manifest::parse(&sample()).unwrap().is_agent());
     }
 }

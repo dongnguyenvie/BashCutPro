@@ -17,7 +17,7 @@ pub mod registry;
 pub mod runner;
 pub mod settings;
 
-pub use host::{Host, Job, JobKind, JobState};
+pub use host::{AgentLaunch, Host, Job, JobKind, JobState};
 pub use manifest::Manifest;
 pub use registry::Registry;
 pub use runner::{Outcome, PluginResult, RunSpec};

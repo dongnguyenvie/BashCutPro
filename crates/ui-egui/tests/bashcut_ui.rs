@@ -215,3 +215,44 @@ fn plugins_and_runs_sections_draw_and_commands_answer() {
         assert!(ids.iter().any(|c| c == id), "{id} listed");
     }
 }
+
+#[test]
+fn agent_section_draws_and_gates_show_as_cards() {
+    let mut d = Driver::demo();
+    d.click("bashcut.rail.agent");
+    for id in ["bashcut.agent.input", "bashcut.agent.send", "bashcut.agent.stop", "bashcut.agent.picker", "bashcut.agent.transcript"] {
+        assert!(d.has(id), "{id}");
+    }
+    assert!(!d.has("bashcut.gate.approve"), "no plan, no gate");
+    let st = d.exec("bashcut.agent.state", json!({}));
+    assert_eq!(st["agent"]["id"], json!("claude-code"));
+    assert_eq!(st["status"]["state"], json!("idle"));
+    assert!(d.exec("bashcut.agent.agents", json!({})).as_array().is_some_and(|a| !a.is_empty()));
+    // no control channel in a headless test: Claude Code cannot be started, and nothing is shown for it
+    let v = d.call("engine.execute", json!({"command": "bashcut.agent.send", "params": {"text": "cut the intro"}}));
+    assert_ne!(v["ok"], json!(true), "{v}");
+    assert_eq!(d.exec("bashcut.agent.transcript", json!({}))["items"], json!([]));
+
+    // a saved project with a pending gate in its sidecar
+    let dir = std::env::temp_dir().join(format!("bashcut-ui-agent-{}", std::process::id()));
+    let project = dir.join("film.fcproj");
+    let side = dir.join("film.fcproj.bashcut");
+    std::fs::create_dir_all(&side).unwrap();
+    std::fs::write(side.join("plan.json"), r#"{"gates":[{"stage":"rough cut","summary":"9 clips","evidence":["cut list"],"state":"pending"}]}"#).unwrap();
+    d.harness.state_mut().session.path = Some(project.to_string_lossy().into_owned());
+    d.frames(3);
+    assert!(d.has("bashcut.gate.approve"), "gate card");
+    assert!(d.has("bashcut.gate.change"));
+    assert_eq!(d.exec("bashcut.agent.gate", json!({}))["stage"], json!("rough cut"));
+    // the answer is kept only when it can be sent
+    let v = d.call("engine.execute", json!({"command": "bashcut.agent.approve", "params": {}}));
+    assert_ne!(v["ok"], json!(true), "{v}");
+    assert_eq!(d.exec("bashcut.agent.gate", json!({}))["stage"], json!("rough cut"), "still pending");
+
+    let ids: Vec<String> = filmcraft_ui_egui::menus::external_commands().iter().map(|c| c.id.clone()).collect();
+    for id in ["bashcut.agent.send", "bashcut.agent.stop", "bashcut.agent.approve", "bashcut.agent.change", "bashcut.agent.conversations"] {
+        assert!(ids.iter().any(|c| c == id), "{id} listed");
+    }
+    assert!(d.harness.state().ui_error.is_none(), "{:?}", d.harness.state().ui_error);
+    let _ = std::fs::remove_dir_all(&dir);
+}

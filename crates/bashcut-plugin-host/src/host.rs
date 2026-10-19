@@ -127,6 +127,18 @@ enum Live {
     Task(Receiver<Task>),
 }
 
+/// How to start an agent plugin (`Host::agents`).
+#[derive(Clone, Debug, PartialEq)]
+pub struct AgentLaunch {
+    pub id: String,
+    pub name: String,
+    pub argv: Vec<String>,
+    pub mcp_args: Vec<String>,
+    pub resume_args: Vec<String>,
+    pub events: String,
+    pub env: Vec<(String, String)>,
+}
+
 /// What a run connects to, from the app.
 #[derive(Clone, Debug, Default)]
 pub struct RunContext {
@@ -203,6 +215,38 @@ impl Host {
         let have = self.plugin(id)?.manifest.as_ref()?.version.clone();
         let r = self.registry.as_ref()?.find(id)?;
         (version_key(&r.version) > version_key(&have)).then(|| r.version.clone())
+    }
+
+    /// The installed agent plugins that run here, as the Agent section starts them: the entry (a
+    /// relative program resolved in the plugin folder) plus `agent.args`, and the settings' env.
+    pub fn agents(&self) -> Vec<AgentLaunch> {
+        let Ok(dir) = self.plugins_dir() else { return Vec::new() };
+        self.installed
+            .iter()
+            .filter_map(|p| {
+                let m = p.manifest.as_ref().filter(|m| m.is_agent() && m.supports(crate::os()))?;
+                let a = m.agent.as_ref()?;
+                let mut argv = m.entry_for(crate::os()).to_vec();
+                if let Some(first) = argv.first_mut()
+                    && (first.starts_with("./") || first.starts_with(".\\"))
+                {
+                    *first = p.dir.join(first.as_str()).to_string_lossy().into_owned();
+                }
+                argv.extend(a.args.iter().cloned());
+                let values = settings::load(&dir, m);
+                let mut env = settings::env_for(m, &values, self.secrets.as_ref());
+                env.push(("BASHCUT_PLUGIN_HOST".into(), "1".into()));
+                Some(AgentLaunch {
+                    id: m.id.clone(),
+                    name: if m.name.is_empty() { m.id.clone() } else { m.name.clone() },
+                    argv,
+                    mcp_args: a.mcp_config.clone(),
+                    resume_args: a.resume.clone(),
+                    events: if a.events.is_empty() { crate::manifest::AGENT_EVENTS.to_string() } else { a.events.clone() },
+                    env,
+                })
+            })
+            .collect()
     }
 
     fn plugins_dir(&self) -> Result<PathBuf> {
