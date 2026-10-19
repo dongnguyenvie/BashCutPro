@@ -40,6 +40,7 @@ the hook; the footprint check reports any inserted upstream line that no row cov
 | `xtask/src/main.rs` | 1 | `bashcut::our_layer_first!(name); // BashCutPro: our crates first (bashcut/extending-upstream.md)` | first line of `layer_of` (H11; macro) | [in-app-ui.md](bashcut/in-app-ui.md) |
 | `crates/engine/src/lib.rs` | 1 | `pub mod bashcut; // BashCutPro: our engine commands (bashcut/extending-upstream.md)` | `bashcut.*` engine module | [in-app-ui.md](bashcut/in-app-ui.md) §3 H2 |
 | `crates/engine/src/commands.rs` | 1 | `v.extend(crate::bashcut::commands()); // BashCutPro: bashcut.* commands (bashcut/extending-upstream.md)` | registers `bashcut.*` commands after `captions` | [in-app-ui.md](bashcut/in-app-ui.md) §3 H3 |
+| `crates/engine/Cargo.toml` | 1 | `bashcut-analysis = { path = "../bashcut-analysis" } # BashCutPro: bashcut.* measurements (bashcut/extending-upstream.md)` | the engine uses our measurement crate | [in-app-ui.md](bashcut/in-app-ui.md) §3 H1 |
 
 ## Carried edits
 
