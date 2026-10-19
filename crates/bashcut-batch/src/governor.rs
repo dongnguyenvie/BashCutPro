@@ -103,8 +103,13 @@ pub fn allowed(probe: &dyn Probe, limits: &Limits, max: usize) -> usize {
     n
 }
 
-/// Whether one more item may start while `running` run (re-checked before every item).
-pub fn may_start(probe: &dyn Probe, limits: &Limits, max: usize, running: usize) -> bool {
+/// How long a started item counts as not holding its memory yet (its process is still loading).
+pub const SETTLE_MS: u64 = 10_000;
+
+/// Whether one more item may start while `running` run (re-checked before every item). `settling` of
+/// them started less than [`SETTLE_MS`] ago and may not hold their memory yet, so free RAM must cover
+/// them as well as the new item.
+pub fn may_start(probe: &dyn Probe, limits: &Limits, max: usize, running: usize, settling: usize) -> bool {
     if running == 0 {
         return true;
     }
@@ -115,7 +120,10 @@ pub fn may_start(probe: &dyn Probe, limits: &Limits, max: usize, running: usize)
         return false;
     }
     match probe.free_memory() {
-        Some(free) if limits.memory_per_item_gb > 0.0 => free >= Limits::bytes(limits.memory_per_item_gb),
+        Some(free) if limits.memory_per_item_gb > 0.0 => {
+            let items = settling.min(running).saturating_add(1) as f64;
+            free >= Limits::bytes(limits.memory_per_item_gb * items)
+        }
         _ => true,
     }
 }
@@ -470,12 +478,15 @@ mod tests {
             s.cores = 6;
         });
         assert_eq!(allowed(&p, &l, 8), 3, "half the cores; unknown RAM does not limit");
-        assert!(may_start(&p, &l, 8, 0));
-        assert!(may_start(&p, &l, 8, 2));
-        assert!(!may_start(&p, &l, 8, 3));
+        assert!(may_start(&p, &l, 8, 0, 0));
+        assert!(may_start(&p, &l, 8, 2, 0));
+        assert!(!may_start(&p, &l, 8, 3, 0));
         p.set(|s| s.free_memory = Some(2 << 30));
-        assert!(!may_start(&p, &l, 8, 1), "less than 3 GB free");
-        assert!(may_start(&p, &l, 8, 0), "an empty batch always starts one");
+        assert!(!may_start(&p, &l, 8, 1, 0), "less than 3 GB free");
+        assert!(may_start(&p, &l, 8, 0, 0), "an empty batch always starts one");
+        p.set(|s| s.free_memory = Some(4 << 30));
+        assert!(may_start(&p, &l, 8, 1, 0), "a settled item already holds its memory");
+        assert!(!may_start(&p, &l, 8, 1, 1), "a settling item still needs its 3 GB");
     }
 
     #[test]

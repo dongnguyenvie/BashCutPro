@@ -121,6 +121,8 @@ impl Job {
     }
 }
 
+// one message per background task, moved once through a channel: boxing buys nothing
+#[allow(clippy::large_enum_variant)]
 enum Task {
     Registry(Result<Registry>),
     Install(Result<Installed>),

@@ -293,7 +293,9 @@ impl Shared<'_> {
             return Claim::None;
         }
         let running = b.items.iter().filter(|i| i.status == Status::Running).count();
-        if !governor::may_start(self.opts.probe.as_ref(), &self.pipeline.resources, self.max_items, running) {
+        let since = now_ms().saturating_sub(governor::SETTLE_MS);
+        let settling = b.items.iter().filter(|i| i.status == Status::Running && i.started_at.is_some_and(|t| t >= since)).count();
+        if !governor::may_start(self.opts.probe.as_ref(), &self.pipeline.resources, self.max_items, running, settling) {
             return Claim::Wait;
         }
         let Some(item) = b.items.iter_mut().find(|i| i.status == Status::Pending) else { return Claim::None };
