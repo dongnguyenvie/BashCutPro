@@ -105,16 +105,17 @@ Every hook is an **inserted** line; no upstream line is edited (rules: [extendin
 | H1 | `crates/engine/Cargo.toml` | `bashcut-analysis = { path = "../bashcut-analysis" }` | dependency list, low |
 | H2 | `crates/engine/src/lib.rs` | `pub mod bashcut; // BashCutPro` | mod list, low |
 | H3 | `crates/engine/src/commands.rs` (`build()`) | inserted right after `v.extend(crate::captions::commands());` (the old head of the list): `v.extend(crate::bashcut::commands());` | 1 change at that neighbour (the tail changed 3×: upstream appends there) |
-| H4 | `crates/ui-egui/Cargo.toml` | `bashcut-plugin-host`, `bashcut-agent` path deps | low |
+| H4 | `crates/ui-egui/Cargo.toml` | `bashcut-plugin-host`, `bashcut-agent`, `bashcut-batch` path deps | low |
 | H5 | `crates/ui-egui/src/lib.rs` | `pub mod bashcut_ui;` next to `pub mod bashcut_brand;` | already ours |
 | H6 | `crates/ui-egui/src/lib.rs` (`ui()`) | right after `let body = …`: `let body = bashcut_ui::layout(self, ui, body);` | 2 changes |
 | H7 | `crates/ui-egui/src/menus.rs` (`invoke`) | first line: `crate::bashcut_ui::route!(app, ctx, id, &params);` (a macro in our file that returns early, so `cargo fmt` keeps it one line) | 4 changes (highest; rerere replays the resolution) |
 | H8 | `crates/ui-egui/src/menus.rs` (`external_commands`) | `v.extend(crate::bashcut_ui::commands());` before `v` | 3 changes |
 | H9 | `crates/ui-egui/src/menus.rs` (`menu_items_for`) | `out.extend(crate::bashcut_ui::menu_items(session));` before `out` | 2 changes |
 | H10 | `crates/ui-egui/src/i18n/mod.rs` | **not needed** (#34): our strings are translated by `bashcut_ui::strings::s`, which reads the interface language or our own override (Vietnamese is not an upstream language) | — |
+| H12 | `crates/ui-egui/src/lib.rs` (`frame()`) | before `self.handle_drops(&ctx);`: `bashcut_ui::batch::take_drops(self, &ctx);` (files dropped on the Batch section's drop zone become batch inputs instead of project imports, #46) | low |
 | H11 | `xtask/src/main.rs` | `mod bashcut;` and, as the first line of `layer_of`: `bashcut::our_layer_first!(name);` (macro, as H7) | 2 changes |
 
-About **15 lines in 8 upstream files**, all marked `// BashCutPro`, all listed in `UPSTREAM.md`.
+About **16 lines in 8 upstream files**, all marked `// BashCutPro`, all listed in `UPSTREAM.md`.
 `Cargo.lock` conflicts are resolved by taking upstream's file and running `cargo check` (it re-adds our crates).
 
 What `bashcut_ui::layout` does in H6, in order: read our state; if the rail is hidden (setting or Import/Export
@@ -219,6 +220,24 @@ labels or subclips (§1 rule 1). A project opened in upstream FilmCraft still wo
 - **Phase 1 adapters**: Claude Code (`claude -p --output-format stream-json --input-format stream-json`) and Codex
   (`codex exec --json`, #37); others as plugins.
 
+### 6a. Batch section in detail (#46)
+
+- **Build**: inputs (drop zone, Add files…, Add folder…; drops on the zone are taken by hook H12 before upstream's
+  import sees them), steps (search over engine commands, plugin actions and kit recipes; each row opens its JSON),
+  outputs (output profiles, exported with their loudness and caption rules, or export presets), name, items at once, on failure
+  go on / stop, projects folder (default `batch/` next to the first input). Plugin steps keep the action's command
+  line with absolute program paths and its non-secret settings as environment; secrets never go into a pipeline.
+- **Start from elsewhere**: "Run on many files…" on a plugin action (Plugins section) and on an agent tool row
+  prefill a draft with that step (`bashcut.batch.prefill`) and open the section.
+- **Run**: `bashcut_batch::run` on a background thread (under `catch_unwind`) with the app's data folder; the panel
+  re-reads the job book every 500 ms. Per item: status, the running step, a progress bar weighted by learned step
+  times (kept in `<data dir>/bashcut/batch.json` with recent jobs), errors, outputs, **Open to fix / Retry / Reveal**.
+  Retry failed, Cancel, Reveal folder for the whole batch. Presets save the draft as a `bashcut-batch` preset.
+- **Commands**: `bashcut.batch.{state, draft, clear, addInput, removeInput, addStep, prefill, setStep, removeStep,
+  moveStep, addOutput, removeOutput, set, run, cancel, retry, open, reveal, presets, savePreset, loadPreset,
+  deletePreset, recent, openJob, durations}`; `run` / `retry` take `cli` (default: `filmcraft-cli` next to the app).
+- **Not yet**: output thumbnails (outputs are listed by file name).
+
 ## 7. Plugin views
 
 `bashcut-view/1` is declarative JSON the plugin prints (initially) and updates (one JSON object per line on
@@ -236,7 +255,7 @@ own research (spec 14) reached the same conclusion for most needs.
 | U2 | Agent section with the Claude Code adapter, gates from `plan.json` (done, #35: `crates/bashcut-agent`, `bashcut_ui/{agent,agent_panel}.rs`) | H4 |
 | U3 | `bashcut-analysis` + engine commands (loudness, beats, picture checks) | H1–H3 |
 | U4 | Plugin views (`bashcut-view/1`), Codex adapter, pop-out windows | — |
-| B | Batch runner #45 → Batch section #46; templates #42, profiles #43 | H1–H3 (templates) |
+| B | Batch runner #45 → Batch section #46 (§6a; `bashcut_ui/{batch,batch_panel}.rs`); templates #42, profiles #43 | H1–H3 (templates), H4, H12 |
 | Q | Looks #47, voice polish #48, word captions #49 (design note first) | H1–H3; #49 may add one render hook |
 | P | Command palette #52 | — (inside H6 / H8) |
 

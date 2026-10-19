@@ -99,3 +99,44 @@ Favourite	Yêu thích
 Applied	Đang dùng
 Apply	Áp dụng
 Applied {look} to {n} clips	Đã áp {look} cho {n} clip
+# Batch section (#46)
+Run steps on many files at once, watch them and fix the ones that fail.	Chạy các bước trên nhiều tệp cùng lúc, theo dõi và sửa những tệp bị lỗi.
+Run on many files…	Chạy trên nhiều tệp…
+Inputs	Đầu vào
+Steps	Các bước
+Outputs	Đầu ra
+Queue	Hàng đợi
+Presets	Mẫu thiết lập
+Recent batches	Các lượt gần đây
+Drop files or folders here, or add them below.	Thả tệp hoặc thư mục vào đây, hoặc thêm ở bên dưới.
+Add files…	Thêm tệp…
+Add folder…	Thêm thư mục…
+Each input gets its own project; then these run on it in order.	Mỗi đầu vào có dự án riêng; sau đó các bước này chạy lần lượt trên nó.
+＋ Add step: search commands, plugins, recipes	＋ Thêm bước: tìm lệnh, plugin, công thức
+Step JSON: {error}	JSON của bước: {error}
+No exports: the projects are the result.	Không xuất tệp: kết quả là các dự án.
+＋ Add output	＋ Thêm đầu ra
+Output profiles	Hồ sơ xuất
+Export presets	Thiết lập xuất
+Name	Tên
+At once	Cùng lúc
+When an item fails	Khi một mục lỗi
+go on	tiếp tục
+stop	dừng
+Projects: {folder}	Dự án: {folder}
+next to the first input, in batch/	cạnh đầu vào đầu tiên, trong batch/
+Choose…	Chọn…
+Run batch	Chạy hàng loạt
+Retry failed	Chạy lại mục lỗi
+Reveal folder	Mở thư mục
+Retry	Chạy lại
+Reveal	Mở vị trí
+Open to fix	Mở để sửa
+Save as preset	Lưu thành mẫu
+preset-name	ten-mau
+Waiting	Đang chờ
+Interrupted	Bị gián đoạn
+Needs attention	Cần xem lại
+Not run	Chưa chạy
+Stopped	Đã dừng
+{done} done · {failed} failed · {attention} need attention · {left} left	{done} xong · {failed} lỗi · {attention} cần xem lại · {left} còn lại

@@ -254,6 +254,10 @@ fn action_row(app: &mut FilmcraftApp, ui: &mut egui::Ui, ctx: &egui::Context, d:
         if a.needs == "project" {
             ui.label(egui::RichText::new(s("uses the open project")).size(10.5).color(t.text_dim));
         }
+        // with parameters, the button sits in the form so the batch takes their values
+        if a.needs == "project" && a.params.is_empty() {
+            batch_button(app, ui, ctx, d, m, a);
+        }
     });
     if !is_open {
         return;
@@ -269,14 +273,42 @@ fn action_row(app: &mut FilmcraftApp, ui: &mut egui::Ui, ctx: &egui::Context, d:
                 field(app, ui, &id, &ptitle, &p.kind, p.choices.as_deref(), text);
             });
         }
-        if button(app, ui, &format!("bashcut.plugins.{}.{}.run", m.id, a.id), s("Run"), true) {
-            start(app, ctx, d, m, a);
-        }
+        ui.horizontal(|ui| {
+            if button(app, ui, &format!("bashcut.plugins.{}.{}.run", m.id, a.id), s("Run"), true) {
+                start(app, ctx, d, m, a);
+            }
+            if a.needs == "project" {
+                batch_button(app, ui, ctx, d, m, a);
+            }
+        });
     });
+}
+
+/// "Run on many files…": the action, with the form's params, becomes a step of the Batch section's
+/// draft (#46), which opens.
+fn batch_button(app: &mut FilmcraftApp, ui: &mut egui::Ui, ctx: &egui::Context, d: &mut Drafts, m: &Manifest, a: &Action) {
+    if !button(app, ui, &format!("bashcut.plugins.{}.{}.batch", m.id, a.id), s("Run on many files…"), true) {
+        return;
+    }
+    let params = form_params(d, m, a);
+    match super::batch::invoke(app, ctx, "prefill", &json!({"plugin": m.id, "action": a.id, "params": params})) {
+        Ok(_) => d.open = None,
+        Err(e) => d.status = Some((false, e)),
+    }
 }
 
 /// Start `a` with the form's params (empty ones are left to the plugin's defaults).
 fn start(app: &mut FilmcraftApp, ctx: &egui::Context, d: &mut Drafts, m: &Manifest, a: &Action) {
+    let params = form_params(d, m, a);
+    if let Some(v) = run(app, ctx, d, "run", json!({"plugin": m.id, "action": a.id, "params": params})) {
+        let job = v.get("job").and_then(Value::as_u64).unwrap_or_default();
+        d.status = Some((true, f("Started run {job}", &[("job", &job.to_string())])));
+        d.open = None;
+    }
+}
+
+/// The action form's params (empty ones are left to the plugin's defaults).
+fn form_params(d: &Drafts, m: &Manifest, a: &Action) -> Map<String, Value> {
     let mut params = Map::new();
     for p in &a.params {
         let text = d.params.get(&format!("{}/{}/{}", m.id, a.id, p.id)).cloned().unwrap_or_default();
@@ -284,11 +316,7 @@ fn start(app: &mut FilmcraftApp, ctx: &egui::Context, d: &mut Drafts, m: &Manife
             params.insert(p.id.clone(), v);
         }
     }
-    if let Some(v) = run(app, ctx, d, "run", json!({"plugin": m.id, "action": a.id, "params": params})) {
-        let job = v.get("job").and_then(Value::as_u64).unwrap_or_default();
-        d.status = Some((true, f("Started run {job}", &[("job", &job.to_string())])));
-        d.open = None;
-    }
+    params
 }
 
 /// A form's text as the param's JSON value; `None` when left empty.

@@ -9,6 +9,8 @@
 
 pub mod agent;
 pub mod agent_panel;
+pub mod batch;
+pub mod batch_panel;
 pub mod connect;
 pub mod looks_panel;
 pub mod palette;
@@ -51,7 +53,20 @@ pub const SECTIONS: &[Section] = &[
         blurb: "Chat with the editing agent (Claude Code, Codex) about this project.",
         draw: agent_panel::draw,
     },
-    Section { id: "looks", title: "Looks", icon: Icon::Sparkle, blurb: "Curated looks with a purpose each: preview, apply to the selection, favourite.", draw: looks_panel::draw },
+    Section {
+        id: "batch",
+        title: "Batch",
+        icon: Icon::ListView,
+        blurb: "Run steps on many files at once, watch them and fix the ones that fail.",
+        draw: batch_panel::draw,
+    },
+    Section {
+        id: "looks",
+        title: "Looks",
+        icon: Icon::Sparkle,
+        blurb: "Curated looks with a purpose each: preview, apply to the selection, favourite.",
+        draw: looks_panel::draw,
+    },
     Section { id: "plugins", title: "Plugins", icon: Icon::Grid, blurb: "Installed plugins, their settings and actions.", draw: plugins_panel::draw },
     Section { id: "runs", title: "Runs", icon: Icon::Stopwatch, blurb: "Plugin runs and agent turns with progress and results.", draw: runs_panel::draw },
 ];
@@ -89,6 +104,7 @@ pub fn layout(app: &mut FilmcraftApp, ui: &mut egui::Ui, body: egui::Rect) -> eg
     plugins::poll(&ctx);
     connect::publish(app, &ctx, dir.as_deref());
     agent::poll(&ctx);
+    batch::poll(&ctx, dir.as_deref());
     let mut dock = body;
     if st.rail && app.ui.mode == crate::state::Mode::Edit {
         let rail_rect = egui::Rect::from_min_max(egui::pos2(body.max.x - rail::WIDTH, body.min.y), body.max);
@@ -135,6 +151,9 @@ pub fn invoke(app: &mut FilmcraftApp, ctx: &egui::Context, id: &str, params: &Va
     }
     if let Some(name) = id.strip_prefix("bashcut.agent.") {
         return Some(agent::invoke(app, ctx, name, params));
+    }
+    if let Some(name) = id.strip_prefix("bashcut.batch.") {
+        return Some(batch::invoke(app, ctx, name, params));
     }
     let known = section_ids();
     let section_param = || params.get("section").and_then(Value::as_str).filter(|s| is_section(s)).map(str::to_string);
@@ -220,6 +239,7 @@ pub fn commands() -> Vec<CommandInfo> {
     v.extend(palette::commands());
     v.extend(looks_panel::commands());
     v.extend(agent::commands());
+    v.extend(batch::commands());
     v
 }
 

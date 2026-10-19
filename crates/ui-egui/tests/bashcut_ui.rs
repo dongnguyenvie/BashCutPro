@@ -256,3 +256,127 @@ fn agent_section_draws_and_gates_show_as_cards() {
     assert!(d.harness.state().ui_error.is_none(), "{:?}", d.harness.state().ui_error);
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+/// A stand-in for `filmcraft-cli` in Python: `run <script>` with `--save-as` / `--project --save`,
+/// `export <out>`. Script id `fake.needs` fails (exit 1, a failed JSON line) while `params.file`
+/// is missing; every other id succeeds.
+#[cfg(unix)]
+const FAKE_CLI: &str = r#"#!/usr/bin/env python3
+import json, os, sys
+VALUED = {"--project", "--save-as", "--preset", "--format", "--settings", "--data-dir"}
+pos, opts, args = [], {}, sys.argv[1:]
+i = 0
+while i < len(args):
+    a = args[i]
+    if a in VALUED:
+        opts[a] = args[i + 1] if i + 1 < len(args) else ""
+        i += 2
+        continue
+    if a.startswith("--"):
+        opts[a] = True
+    else:
+        pos.append(a)
+    i += 1
+project = open(opts["--project"]).read() if "--project" in opts else ""
+if pos[:1] == ["run"]:
+    for n, line in enumerate(l for l in open(pos[1]).read().splitlines() if l.strip()):
+        v = json.loads(line)
+        if v.get("id") == "fake.needs" and not os.path.exists(v.get("params", {}).get("file", "")):
+            print(json.dumps({"line": n + 1, "id": v["id"], "ok": False, "error": "fake failure"}))
+            sys.exit(1)
+        print(json.dumps({"line": n + 1, "id": v.get("id"), "ok": True, "result": None}))
+        project += str(v.get("id")) + "\n"
+    target = opts.get("--save-as") or (opts.get("--project") if "--save" in opts else None)
+    if target:
+        open(target, "w").write(project)
+    sys.exit(0)
+if pos[:1] == ["export"]:
+    open(pos[1], "w").write("export\n" + project)
+    print(json.dumps({"path": pos[1]}))
+    sys.exit(0)
+sys.exit(2)
+"#;
+
+#[cfg(unix)]
+#[test]
+fn batch_section_runs_a_batch_with_a_fake_cli() {
+    use std::os::unix::fs::PermissionsExt;
+    if std::process::Command::new("python3").arg("--version").output().is_err() {
+        eprintln!("python3 not found: skipped");
+        return;
+    }
+    let dir = std::env::temp_dir().join(format!("bashcut-ui-batch-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(dir.join("clips")).unwrap();
+    for c in ["a", "b"] {
+        std::fs::write(dir.join("clips").join(format!("{c}.mp4")), b"media").unwrap();
+    }
+    // `a` may go on, `b` fails until its file appears
+    std::fs::write(dir.join("a.ok"), b"").unwrap();
+    let cli = dir.join("fake-cli");
+    std::fs::write(&cli, FAKE_CLI).unwrap();
+    std::fs::set_permissions(&cli, std::fs::Permissions::from_mode(0o755)).unwrap();
+    let cli = cli.to_string_lossy().into_owned();
+
+    let mut d = Driver::demo();
+    d.click("bashcut.rail.batch");
+    for id in ["bashcut.panel.batch", "bashcut.batch.drop", "bashcut.batch.run", "bashcut.batch.step.search"] {
+        assert!(d.has(id), "{id}");
+    }
+    let v = d.call("engine.execute", json!({"command": "bashcut.batch.run", "params": {"cli": cli}}));
+    assert_ne!(v["ok"], json!(true), "no inputs: {v}");
+    let v = d.call("engine.execute", json!({"command": "bashcut.batch.addStep", "params": {"command": "no.such.command"}}));
+    assert_ne!(v["ok"], json!(true), "only engine commands: {v}");
+
+    let clips = dir.join("clips");
+    let added = d.exec("bashcut.batch.addInput", json!({"paths": [clips.join("a.mp4"), clips.join("b.mp4")]}));
+    assert_eq!(added["added"], json!(2));
+    let needs = dir.join("{name}.ok").to_string_lossy().into_owned();
+    d.exec("bashcut.batch.addStep", json!({"step": {"command": "fake.needs", "params": {"file": needs}}, "label": "Check"}));
+    d.exec("bashcut.batch.addOutput", json!({"output": {"name": "{name}.mp4"}}));
+    d.exec("bashcut.batch.set", json!({"name": "ui", "projectsFolder": dir.join("out").to_string_lossy()}));
+    assert!(d.has("bashcut.batch.step.0"), "step row");
+    assert!(d.has("bashcut.batch.output.0.remove"), "output row");
+
+    let finished = |d: &mut Driver| {
+        for _ in 0..600 {
+            let st = d.exec("bashcut.batch.state", json!({}));
+            if st["running"] == json!(false) {
+                return st;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(50));
+        }
+        panic!("the batch did not finish");
+    };
+    d.exec("bashcut.batch.run", json!({"cli": cli}));
+    let st = finished(&mut d);
+    assert_eq!(st["counts"]["done"], json!(1), "{st}");
+    assert_eq!(st["counts"]["failed"], json!(1), "{st}");
+    let b = st["items"].as_array().unwrap().iter().find(|i| i["name"] == json!("b")).unwrap().clone();
+    assert_eq!(b["status"], json!("failed"), "{b}");
+    d.frames(3);
+    assert!(d.has("bashcut.batch.item.b.error"), "the failure is shown");
+    assert!(d.has("bashcut.batch.item.b.retry"), "retry on the failed item");
+    assert!(d.has("bashcut.batch.item.a.reveal"));
+
+    // a finished item reveals its output
+    d.exec("bashcut.batch.reveal", json!({"item": "a"}));
+    assert!(!d.harness.state().ui.extras.opened.is_empty(), "revealed");
+
+    std::fs::write(dir.join("b.ok"), b"").unwrap();
+    let r = d.exec("bashcut.batch.retry", json!({"items": ["b"]}));
+    assert_eq!(r["reopened"], json!(1), "{r}");
+    let st = finished(&mut d);
+    assert_eq!(st["counts"]["done"], json!(2), "{st}");
+    let b = st["items"].as_array().unwrap().iter().find(|i| i["name"] == json!("b")).unwrap().clone();
+    assert!(b["outputs"].as_array().is_some_and(|o| o.iter().filter_map(Value::as_str).any(|o| std::path::Path::new(o).exists())), "{b}");
+    let v = d.call("engine.execute", json!({"command": "bashcut.batch.open", "params": {"item": "nope"}}));
+    assert_ne!(v["ok"], json!(true), "unknown item: {v}");
+
+    let ids: Vec<String> = filmcraft_ui_egui::menus::external_commands().iter().map(|c| c.id.clone()).collect();
+    for id in ["bashcut.batch.run", "bashcut.batch.cancel", "bashcut.batch.retry", "bashcut.batch.addInput", "bashcut.batch.prefill"] {
+        assert!(ids.iter().any(|c| c == id), "{id} listed");
+    }
+    assert!(d.harness.state().ui_error.is_none(), "{:?}", d.harness.state().ui_error);
+    let _ = std::fs::remove_dir_all(&dir);
+}
