@@ -163,19 +163,23 @@ fn apply(s: &mut Session, p: &Value, clips: &[ClipId], amount: f64, target: Opti
         }
         let target = target.unwrap_or_else(|| s.prefs.audio.loudness_target(filmcraft_project::AudioType::Dialogue)).clamp(-60.0, 0.0);
         let mut report = Vec::new();
-        let mut trim = Vec::new();
         for clip in clips {
-            match boost_to(s, *clip, target)? {
-                Some(l) if l >= target - 0.05 => trim.push(clip.0),
-                Some(l) => report.push(json!({"clip": clip.0, "measuredLufs": l, "targetLufs": target,
-                    "short": format!("{:.1} LU under the target: louder would need more limiting than the polish allows (or more than +54 dB of gain); raise `amount` or pick a lower target", target - l)})),
+            // the target is the level in the mix; a clip's own measurement reads a mono clip as one channel
+            let offset = mix_offset(s, *clip);
+            let own = target - offset;
+            match boost_to(s, *clip, own)? {
+                // the last fraction down with the clip gain (after the limiter, so it can't clip)
+                Some(l) if l >= own - 0.05 => {
+                    let matched = s.execute("essentialSound.autoMatch", json!({"clips": [clip.0], "target": own}))?;
+                    for mut row in matched.get("clips").and_then(Value::as_array).cloned().unwrap_or_default() {
+                        row["mixOffsetLu"] = json!(offset);
+                        report.push(row);
+                    }
+                }
+                Some(l) => report.push(json!({"clip": clip.0, "measuredLufs": l, "targetLufs": own, "mixOffsetLu": offset,
+                    "short": format!("{:.1} LU under the target: louder would need more limiting than the polish allows (or more than +54 dB of gain); raise `amount` or pick a lower target", own - l)})),
                 None => report.push(json!({"clip": clip.0, "skipped": "silent"})),
             }
-        }
-        // the last fraction down with the clip gain (after the limiter, so it can't clip)
-        if !trim.is_empty() {
-            let matched = s.execute("essentialSound.autoMatch", json!({"clips": trim, "target": target}))?;
-            report.extend(matched.get("clips").and_then(Value::as_array).cloned().unwrap_or_default());
         }
         loudness = json!({"clips": report, "targetLufs": target, "truePeakDbtp": true_peak});
     }
@@ -197,6 +201,16 @@ fn apply(s: &mut Session, p: &Value, clips: &[ClipId], amount: f64, target: Opti
 fn clip_lufs(s: &Session, clip: ClipId) -> Result<Option<f64>> {
     let (a, b) = target_range(s, Target::Clip(clip), CMD)?;
     Ok(measure(s, Target::Clip(clip), a, b, CMD)?.0.and_then(|l| l.integrated_lufs).filter(|v| v.is_finite()))
+}
+
+/// How much louder a clip reads in the stereo mix than in its own measurement, LU: a mono clip (Auto-Match and
+/// [`measure`] read it as one channel, as BS.1770 reads a mono programme) plays on both channels, +3 LU.
+fn mix_offset(s: &Session, clip: ClipId) -> f64 {
+    let mono = s.active_sequence().and_then(|q| q.find_item(clip)).and_then(|(_, it)| {
+        let provider = s.media.provider(s.project.clone(), s.services.clone());
+        filmcraft_render::audio::clip_is_mono(it, &provider)
+    });
+    if mono == Some(true) { 10.0 * 2f64.log10() } else { 0.0 }
 }
 
 /// Most makeup gain before the limiter: its Input Boost, then Amplify, dB.

@@ -12,6 +12,8 @@ Platform-correct exports without tuning. Code: `crates/engine/src/bashcut/profil
 - **Compile:** each profile becomes the user export preset `BashCut <name>` (category `BashCutPro`) through
   `export.presets.save`, so upstream's library persists it in `<data dir>/export-presets.json` and
   `filmcraft-cli export out.mp4 --preset "BashCut TikTok"`, the export queue and Quick Export use it. No upstream edit.
+  The preset's loudness normalisation uses `loudnessLufs` and a true-peak ceiling 0.5 dB under `truePeakDbtp`: AAC
+  encoding overshoots the limiter by a few tenths of a dB (a TikTok export measured -0.75 dBTP with a -1 ceiling, #127).
 
 | Command | Params | Result |
 |---|---|---|

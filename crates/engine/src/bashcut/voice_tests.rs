@@ -81,6 +81,12 @@ fn session(files: &[&Path]) -> (Session, Vec<ClipId>) {
     (s, clips)
 }
 
+/// Integrated loudness of the sequence mix over `[a, b)` seconds: what the review gate and exports measure.
+fn mix(s: &mut Session, a: f64, b: f64) -> f64 {
+    let m = s.execute("bashcut.audio.loudness", json!({"range": {"start": a, "end": b}})).unwrap();
+    m["integratedLufs"].as_f64().unwrap()
+}
+
 fn loudness(s: &Session, clip: ClipId) -> f64 {
     let seq = s.active_sequence().unwrap();
     let (_, it) = seq.find_item(clip).unwrap();
@@ -105,15 +111,19 @@ fn polish_lowers_the_noise_floor_and_lands_at_the_target() {
     let undo = s.history.undo.len();
     let r = s.execute("bashcut.audio.polish", json!({"clips": [clips[0].0], "amount": 0.7, "target": -16.0, "savePreset": true})).unwrap();
     assert_eq!(r["chain"].as_array().unwrap().len(), 6, "{r}");
-    let measured = loudness(&s, clips[0]);
-    assert!((measured + 16.0).abs() <= 1.0, "speech at {measured:.2} LUFS, want -16 ±1");
+    // the fixture is mono: -16 in the (stereo) mix is -19 as its own one-channel measurement
+    let measured = mix(&mut s, 0.0, 4.0);
+    assert!((measured + 16.0).abs() <= 1.0, "speech at {measured:.2} LUFS in the mix, want -16 ±1");
+    let own = loudness(&s, clips[0]);
+    assert!((own + 19.0).abs() <= 1.0, "speech at {own:.2} LUFS on its own, want -19 ±1");
     assert_eq!(s.history.undo.len(), undo + 1, "one undo step");
     assert_eq!(s.history.undo.last().map(|u| u.0.as_str()), Some("Voice Polish"));
     assert!(s.presets.find("BashCut Voice Polish 70%").is_some(), "saved as an effect preset");
 
     // the output profile's loudness when no target is given
     s.execute("bashcut.audio.polish", json!({"clips": [clips[0].0], "amount": 0.3, "profile": "facebook-square"})).unwrap();
-    assert!((loudness(&s, clips[0]) + 16.0).abs() <= 1.0);
+    let measured = mix(&mut s, 0.0, 4.0);
+    assert!((measured + 16.0).abs() <= 1.0, "{measured:.2}");
 }
 
 #[test]
@@ -169,7 +179,7 @@ fn a_quiet_voice_reaches_the_target_under_the_true_peak_and_polishing_again_repl
     s.execute("essentialSound.autoMatch", json!({"clips": [c], "target": -14.0})).unwrap();
 
     s.execute("bashcut.audio.polish", json!({"clips": [c], "amount": 0.6, "profile": "tiktok"})).unwrap();
-    let m = s.execute("bashcut.audio.loudness", json!({"clip": c})).unwrap();
+    let m = s.execute("bashcut.audio.loudness", json!({})).unwrap();
     let (lufs, peak) = (m["integratedLufs"].as_f64().unwrap(), m["truePeakDbtp"].as_f64().unwrap());
     assert!((lufs + 14.0).abs() <= 1.0, "at {lufs:.2} LUFS, want -14 ±1: {m}");
     assert!(peak <= -1.0 + 0.3, "true peak {peak:.2} dBTP over the profile's -1: {m}");
@@ -177,10 +187,16 @@ fn a_quiet_voice_reaches_the_target_under_the_true_peak_and_polishing_again_repl
     let polished = effects(&s);
     assert_eq!(polished, before + 6);
 
+    // the same polish again changes nothing that can be heard
+    s.execute("bashcut.audio.polish", json!({"clips": [c], "amount": 0.6, "profile": "tiktok"})).unwrap();
+    let again = s.execute("bashcut.audio.loudness", json!({})).unwrap();
+    assert!((again["integratedLufs"].as_f64().unwrap() - lufs).abs() <= 0.3, "{m} then {again}");
+    assert_eq!(effects(&s), polished);
+
     // a second polish replaces the chain, it does not stack another one
     s.execute("bashcut.audio.polish", json!({"clips": [c], "amount": 0.3, "target": -16.0})).unwrap();
     assert_eq!(effects(&s), polished);
-    let m = s.execute("bashcut.audio.loudness", json!({"clip": c})).unwrap();
+    let m = s.execute("bashcut.audio.loudness", json!({})).unwrap();
     assert!((m["integratedLufs"].as_f64().unwrap() + 16.0).abs() <= 1.0, "{m}");
     assert!(m["truePeakDbtp"].as_f64().unwrap() <= -0.7, "{m}");
 }
