@@ -59,6 +59,10 @@ _Last updated: 2026-10-20_
 - Batch resources (#61): `crates/bashcut-batch/src/governor.rs` sets concurrency from free RAM and cores, stops steps over
   the memory cap for a later retry, pauses on low disk, keeps the machine awake, reports peak memory and throughput.
   Build + tests pending (build pass).
+- Batch section (#46): `bashcut_ui/{batch,batch_panel}.rs` builds, runs, watches and retries `bashcut-batch` jobs
+  (drop zone through hook H12, steps from commands / plugin actions / recipes, output profiles, learned step times,
+  Open to fix / Retry / Reveal, presets, recent jobs); "Run on many files…" from plugins and agent tool rows. Build +
+  tests + live check pending; output thumbnails not yet.
 
 ## Next
 
@@ -68,7 +72,7 @@ _Last updated: 2026-10-20_
    card with alpha. Confirm `scopes.read` scale, `render_frame` max side, the Lumetri intensity param name.
 2. Next upstream sync on the next tag or in 1–2 weeks (`upstream.sh merge`, record in `UPSTREAM.md`). Then the
    in-app UI ([in-app-ui.md](in-app-ui.md)): U4 #37; engine analysis U3 #36 in parallel.
-   Batch and quality (owner goals): batch runner #45 → Batch section #46, templates #42, output profiles #43,
+   Batch and quality (owner goals): batch runner #45, Batch section #46 (done), templates #42, output profiles #43,
    atomic edits #44, looks #47, voice polish #48, word captions #49, palette #52, agent reads #50, auto-connect #51,
    model manifest #53, smoke checks #54. Tracking #40.
 3. Vlog library pack (text styles, stickers, transitions) once `.fcgt` conversions exist.

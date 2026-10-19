@@ -1820,6 +1820,7 @@ impl FilmcraftApp {
             }
         }
         self.sync_timeline_view();
+        bashcut_ui::batch::take_drops(self, &ctx); // BashCutPro: files dropped on the Batch section become batch inputs (bashcut/extending-upstream.md)
         self.handle_drops(&ctx);
         if let Some(rx) = self.command_inbox.take() {
             while let Ok(id) = rx.try_recv() {

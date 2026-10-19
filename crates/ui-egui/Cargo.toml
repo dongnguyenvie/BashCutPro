@@ -39,6 +39,7 @@ unicode-bidi = "0.3.18"
 image = { version = "0.25", default-features = false, features = ["png"] }
 bashcut-plugin-host = { path = "../bashcut-plugin-host" } # BashCutPro: plugin host for the Plugins and Runs sections (bashcut/extending-upstream.md)
 bashcut-agent = { path = "../bashcut-agent" } # BashCutPro: agent sessions for the Agent section (bashcut/extending-upstream.md)
+bashcut-batch = { path = "../bashcut-batch" } # BashCutPro: batch runner for the Batch section (bashcut/extending-upstream.md)
 
 # Thread/process CPU clocks for frame-job profiling (safe wrappers; see frames.rs).
 [target.'cfg(unix)'.dependencies]
