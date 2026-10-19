@@ -67,6 +67,47 @@ pub fn load(data_dir: &Path, name: &str, base: &Path) -> Result<Pipeline, String
     Pipeline::parse(&read(data_dir, name)?, base)
 }
 
+/// Install presets from a pack (`bashcutpro-plugins/packs/batch/`): `src` is one pipeline file or
+/// a folder of them (`*.json`, not recursive); each is checked and saved under its file stem,
+/// replacing a preset of that name. Returns the names installed.
+pub fn install(data_dir: &Path, src: &Path) -> Result<Vec<String>, String> {
+    let files: Vec<PathBuf> = if src.is_dir() {
+        let rd = std::fs::read_dir(src).map_err(|e| format!("{}: {e}", src.display()))?;
+        let mut v: Vec<PathBuf> = rd.filter_map(|e| e.ok().map(|e| e.path())).filter(|p| p.is_file() && p.extension().is_some_and(|x| x == "json")).collect();
+        v.sort();
+        v
+    } else {
+        vec![src.to_path_buf()]
+    };
+    if files.is_empty() {
+        return Err(format!("{}: no .json presets", src.display()));
+    }
+    // check every file before saving any, so a bad pack installs nothing
+    let mut checked = Vec::with_capacity(files.len());
+    for f in &files {
+        let name = f.file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_default();
+        preset_path(data_dir, &name)?;
+        let text = pipeline::read_capped(f)?;
+        Pipeline::parse(&text, Path::new(".")).map_err(|e| format!("{}: {e}", f.display()))?;
+        checked.push((name, text));
+    }
+    let mut names = Vec::with_capacity(checked.len());
+    for (name, text) in checked {
+        save(data_dir, &name, &text)?;
+        names.push(name);
+    }
+    Ok(names)
+}
+
+/// The preset's one-line description (empty when it has none or does not parse).
+pub fn description(data_dir: &Path, name: &str) -> String {
+    read(data_dir, name)
+        .ok()
+        .and_then(|t| serde_json::from_str::<serde_json::Value>(&t).ok())
+        .and_then(|v| v.get("description").and_then(|d| d.as_str()).map(str::to_string))
+        .unwrap_or_default()
+}
+
 pub fn delete(data_dir: &Path, name: &str) -> Result<(), String> {
     let path = preset_path(data_dir, name)?;
     std::fs::remove_file(&path).map_err(|e| format!("{}: {e}", path.display()))
@@ -89,6 +130,18 @@ mod tests {
         let p = load(&dir, "captions-draft", Path::new("/work")).unwrap();
         assert_eq!(p.projects_dir(), Path::new("/work").join("out"));
         delete(&dir, "captions-draft").unwrap();
+        // a pack folder: all checked first, then installed
+        let pack = dir.join("pack");
+        std::fs::create_dir_all(&pack).unwrap();
+        let described = r#"{"schema": "bashcut-batch/1", "description": "Clean audio", "inputs": ["."], "projectsFolder": "out"}"#;
+        std::fs::write(pack.join("clean-audio.json"), described).unwrap();
+        std::fs::write(pack.join("bad.json"), "{}").unwrap();
+        assert!(install(&dir, &pack).is_err());
+        assert!(list(&dir).is_empty(), "a bad pack installs nothing");
+        std::fs::remove_file(pack.join("bad.json")).unwrap();
+        assert_eq!(install(&dir, &pack).unwrap(), vec!["clean-audio".to_string()]);
+        assert_eq!(description(&dir, "clean-audio"), "Clean audio");
+        delete(&dir, "clean-audio").unwrap();
         assert!(list(&dir).is_empty());
         assert!(read(&dir, "captions-draft").is_err());
         let _ = std::fs::remove_dir_all(&dir);

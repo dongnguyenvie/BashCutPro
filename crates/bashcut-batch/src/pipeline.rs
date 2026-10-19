@@ -28,6 +28,9 @@ pub struct Pipeline {
     pub schema: String,
     #[serde(default)]
     pub name: String,
+    /// One line for preset lists.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub description: String,
     /// Files, folders (their media files, not recursive) and `.fcproj` projects.
     pub inputs: Vec<String>,
     /// How each item's project starts (default: a new project that imports the input).
@@ -196,7 +199,9 @@ pub struct Output {
     /// ExportSettings JSON merged over the preset.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub settings: Option<Value>,
-    /// An output profile (#43); not supported until profiles exist.
+    /// An output profile (#43: `tiktok`, `reels`, `shorts`, `youtube`, …): exported with
+    /// `bashcut.profiles.apply`, which also applies the profile's loudness and caption rules.
+    /// Instead of `preset` / `format` / `settings`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub profile: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -270,8 +275,11 @@ impl Pipeline {
             if o.name.trim().is_empty() {
                 return Err(format!("pipeline: output {}: name is required", i + 1));
             }
-            if o.profile.is_some() {
-                return Err(format!("pipeline: output {}: output profiles (#43) are not supported yet; use preset", i + 1));
+            if o.profile.as_ref().is_some_and(|p| p.trim().is_empty()) {
+                return Err(format!("pipeline: output {}: empty profile", i + 1));
+            }
+            if o.profile.is_some() && (o.preset.is_some() || o.format.is_some() || o.settings.is_some()) {
+                return Err(format!("pipeline: output {}: a profile replaces preset, format and settings", i + 1));
             }
         }
         Ok(())
@@ -446,6 +454,8 @@ mod tests {
         assert_eq!(p.concurrency, 1);
         assert_eq!(p.on_failure, OnFailure::Skip);
         assert_eq!(p.steps[0].describe(), "captions.auto");
+        let p = Pipeline::parse(&minimal(json!({"description": "d", "outputs": [{"name": "{name}.mp4", "profile": "tiktok"}]})), Path::new("/")).unwrap();
+        assert_eq!((p.description.as_str(), p.outputs[0].profile.as_deref()), ("d", Some("tiktok")));
     }
 
     #[test]
@@ -458,7 +468,8 @@ mod tests {
             json!({"steps": [{"command": "a", "plugin": {"argv": ["x"]}}]}),
             json!({"steps": [{"plugin": {"argv": []}}]}),
             json!({"outputs": [{"name": "", "preset": "x"}]}),
-            json!({"outputs": [{"name": "a.mp4", "profile": "tiktok"}]}),
+            json!({"outputs": [{"name": "a.mp4", "profile": "tiktok", "preset": "x"}]}),
+            json!({"outputs": [{"name": "a.mp4", "profile": " "}]}),
             json!({"template": {"project": "t.fcproj", "commands": [{"id": "x"}]}}),
         ];
         for b in bad {

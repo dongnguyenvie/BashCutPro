@@ -29,7 +29,7 @@ library.
     {"plugin": {"argv": ["python3", "../bashcutpro-plugins/plugins/translate-captions/run.py", "apply", "--project", "{project}"]}},
     {"agent": {"skill": "rough-cut", "brief": "Keep it under 60 s."}}
   ],
-  "outputs": [{"name": "{name}-tiktok.mp4", "preset": "TikTok 1080x1920"}, {"name": "yt/{name}.mp4", "preset": "YouTube 1080p"}],
+  "outputs": [{"name": "{name}-tiktok.mp4", "profile": "tiktok"}, {"name": "yt/{name}.mp4", "preset": "YouTube 1080p Full HD"}],
   "onFailure": "skip",
   "concurrency": 2,
   "outputName": "{index}-{stem}",
@@ -49,10 +49,14 @@ library.
   `env`: any program; it connects to the project itself, `bashcut-result/1` on stdout, exit 3 = hand-off) or
   `agent` (`skill`, `brief`, optional `argv`, default `claude -p {prompt}`; #60 adds review rounds and caps).
   `timeoutSeconds` on any step.
-- **outputs**: `name` (inside the outputs folder, may have subfolders), `preset`, `format`, `settings`
-  (ExportSettings JSON). `profile` (#43) is refused until profiles exist.
+- **outputs**: `name` (inside the outputs folder, may have subfolders), and either a `profile` (#43: `tiktok`,
+  `reels`, `shorts`, `youtube`, `youtube-4k`, `facebook-square`… exported with `bashcut.profiles.apply`, which also
+  applies the profile's loudness and caption rules) or `preset`, `format`, `settings` (ExportSettings JSON).
+- **description**: one line shown by `presets list`.
 - **placeholders** in params, argv, env and output names: `{input}`, `{media}`, `{name}`, `{project}`, `{itemDir}`,
-  `{outputs}`; `{prompt}` in agent argv. `outputName` takes `{stem}` and `{index}`.
+  `{outputs}`, `{cli}` (the filmcraft-cli in use) and `{plugins}` (`<data dir>/bashcut-plugins`, where the plugin
+  host installs plugins: `{plugins}/bashcut.translate-captions/plugin.py`); `{prompt}` in agent argv. `outputName`
+  takes `{stem}` and `{index}`.
 - **onFailure**: `skip` (the item stops, the others go on) or `stop` (nothing new starts; running items stop before
   their next step and become `notRun`).
 
@@ -65,7 +69,7 @@ Each item has the steps `create`, `step-1`…, `export-1`…:
 | create | copy (template / input project), or `filmcraft-cli run create.jsonl --save-as <tmp>`; renamed to `<name>.fcproj` when done, so a half-made project never takes the name |
 | engine step | `filmcraft-cli run step-N.jsonl --project <name>.fcproj --save --compact` (the CLI stops at the first failing line, before saving) |
 | plugin / agent | its argv in the item folder (agent: in the project's folder), env `BASHCUT_PROJECT`, `BASHCUT_FILMCRAFT_CLI`, `BASHCUT_BATCH_ITEM`, `BASHCUT_BATCH_JOB` |
-| export | `filmcraft-cli export <out> --project … --preset … --compact` |
+| export | `filmcraft-cli export <out> --project … --preset … --compact`; with a profile, `filmcraft-cli run` on one `bashcut.profiles.apply {profile, path, wait: true}` line |
 
 Exit statuses map to error categories: 0 ok, 1 `command` (`offlineMedia` for an export that drew placeholders), 2
 `usage`, 3 `handoff` (item `needsAttention`), anything else or a signal `crashed`; plus `timeout`, `cancelled`,
@@ -94,12 +98,20 @@ bashcut-batch retry <job> [--items a,b]
 bashcut-batch cancel <job>
 bashcut-batch list <projectsFolder>
 bashcut-batch validate pipeline.json     # the items it would make
-bashcut-batch presets [list | show NAME | save NAME FILE | delete NAME]   # <data dir>/bashcut/batch-presets/
+bashcut-batch presets [list | show NAME | save NAME FILE | install FILE|FOLDER | delete NAME]
+                                         # <data dir>/bashcut/batch-presets/
+bashcut-batch presets install ../bashcutpro-plugins/packs/batch    # the built-in presets (#59)
 ```
 
 Output is JSON; exit 0 when every item is done, 1 when the job ended failed, stopped, cancelled or needing
 attention, 2 on usage errors. `filmcraft-cli` is `--cli`, else `$BASHCUT_FILMCRAFT_CLI`, else the one next to
 `bashcut-batch`, else `filmcraft-cli` on `PATH`.
+
+## Built-in presets (#59)
+
+`bashcutpro-plugins/packs/batch/`: `vietsub-folder`, `podcast-shorts`, `every-platform`, `captions-draft`,
+`clean-audio`, installed with `presets install`, run with `run --preset NAME --input <folder> --projects <out>`.
+Their recipes and limits are in that folder's README.
 
 ## Decisions and open items
 
