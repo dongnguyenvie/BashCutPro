@@ -17,6 +17,9 @@ mod hooks_tests;
 pub mod profiles;
 #[cfg(test)]
 mod profiles_tests;
+pub mod review;
+#[cfg(test)]
+mod review_tests;
 pub mod summary;
 #[cfg(test)]
 mod summary_tests;
@@ -46,6 +49,7 @@ pub fn commands() -> Vec<CommandSpec> {
         hooks::commands(),
         summary::commands(),
         word_captions::commands(),
+        review::commands(),
     ];
     // typed errors (`notFound: …`) and a units note on every command (errors.rs)
     errors::wrap(groups.into_iter().flatten().collect())
