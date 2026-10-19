@@ -3,6 +3,17 @@
 Newest first. Each entry: what was decided, why, and what it rules out. Add an entry when the owner
 decides something; don't change an old one, add a new one that supersedes it.
 
+## 2026-10-20: One-way upstream sync, no contributions upstream
+
+- **Decided:** BashCutPro is a separate fork. We pull `upstream/main` (FilmCraft) into it from time to time and
+  never open PRs or issues against `storytold/filmcraft`.
+- **Why:** owner's call: the two projects stay separate; upstream keeps developing fast and we only take its changes.
+- **How:** engine or UI features we need (loudness meter, beat detection, picture checks, word-by-word captions,
+  plugin host) live in new `bashcut`-prefixed crates or files. Upstream files get at most a one-line hook at a spot
+  upstream rarely edits, recorded in `UPSTREAM.md`. Sync with `.local/scripts/upstream.sh` on upstream tags or every
+  1–2 weeks, with `git rerere` on, then `cargo check` and the `bashcut-*` tests.
+- **Rules out:** upstreaming the engine gaps in [skill-needs.md](skill-needs.md) as a way to avoid carrying them.
+
 ## 2026-10-20: bashcut-plugin-host design approved
 
 - **Decided:** the owner approved [plugin-host.md](plugin-host.md). P1–P2 show plugins in a floating egui window
