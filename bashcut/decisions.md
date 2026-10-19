@@ -3,6 +3,14 @@
 Newest first. Each entry: what was decided, why, and what it rules out. Add an entry when the owner
 decides something; don't change an old one, add a new one that supersedes it.
 
+## 2026-10-20: bashcut-plugin-host design approved
+
+- **Decided:** the owner approved [plugin-host.md](plugin-host.md). P1–P2 show plugins in a floating egui window
+  (no new `PanelKind`), and plugins install only from `registry.json` at a git ref (no local-folder install).
+- **Why:** a `PanelKind` variant touches upstream's dock and workspace files on every merge; a single install
+  source keeps what runs reviewable.
+- **Next:** P1 code (list / install / run / settings) in `crates/bashcut-plugin-host`.
+
 ## 2026-10-20: Plugin manifest and registry format
 
 - **Decided:** a plugin is a folder in `bashcutpro-plugins/plugins/<name>/` with a `bashcut-plugin.json`
