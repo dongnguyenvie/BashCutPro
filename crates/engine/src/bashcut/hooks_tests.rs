@@ -113,3 +113,17 @@ fn hook_commands_refuse_hostile_input() {
     assert_eq!(statuses(&r["hooks"]), ["failed"], "a program that does not start fails, the rest are skipped: {r}");
     assert!(s.execute("bashcut.hooks.list", json!({"pluginsDir": root.join("none").to_string_lossy()})).is_ok());
 }
+
+#[test]
+fn plugins_come_from_the_sessions_data_dir() {
+    let data = tmp_dir("bashcut-hooks-data-dir");
+    let plugin = data.join("bashcut-plugins").join("p");
+    std::fs::create_dir_all(&plugin).unwrap();
+    let manifest = json!({"schema": "bashcut-plugin/1", "id": "t.p", "entry": {"command": ["x"]},
+        "actions": [{"id": "a", "args": ["a"]}], "hooks": [{"event": "import.after", "action": "a"}]});
+    std::fs::write(plugin.join("bashcut-plugin.json"), manifest.to_string()).unwrap();
+    let mut s = Session::default();
+    s.export_presets.set_dir(&data);
+    let v = s.execute("bashcut.hooks.list", json!({})).unwrap();
+    assert_eq!(v["hooks"][0]["plugin"], "t.p", "{v}");
+}
