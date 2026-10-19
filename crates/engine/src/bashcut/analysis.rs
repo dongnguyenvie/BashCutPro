@@ -243,7 +243,9 @@ fn beats_cmd(s: &mut Session, p: &Value) -> Result<Value> {
     let beats_t: Vec<Tick> = found.beats.iter().map(|k| at(*k)).collect();
     let downs: Vec<Tick> = found.downbeats.iter().map(|k| at(*k)).collect();
     let mut markers = 0usize;
+    let mut changed = Value::Null;
     if write {
+        let before = super::summary::active(s);
         let bpm = found.bpm;
         let list: Vec<(Tick, bool)> = beats_t.iter().take(MAX_MARKERS).map(|t| (*t, downs.contains(t))).collect();
         markers = list.len();
@@ -261,6 +263,9 @@ fn beats_cmd(s: &mut Session, p: &Value) -> Result<Value> {
             }
             Ok(())
         })?;
+        if let (Some(b), Some(a)) = (before, super::summary::active(s)) {
+            changed = super::summary::changes(&b, &a);
+        }
     }
     Ok(json!({
         "clip": c.0,
@@ -270,6 +275,7 @@ fn beats_cmd(s: &mut Session, p: &Value) -> Result<Value> {
         "beats": beats_t.iter().map(|t| secs(*t)).collect::<Vec<_>>(),
         "downbeats": downs.iter().map(|t| secs(*t)).collect::<Vec<_>>(),
         "markers": markers,
+        "changed": changed,
         "truncated": truncated,
         "units": {"time": "sequence seconds", "tempo": "BPM"},
     }))
