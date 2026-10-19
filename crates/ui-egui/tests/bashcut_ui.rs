@@ -210,6 +210,12 @@ fn plugins_and_runs_sections_draw_and_commands_answer() {
     d.click("bashcut.rail.runs");
     assert!(d.has("bashcut.panel.runs"));
     assert!(!d.has("bashcut.runs.clear"), "nothing ran");
+    // the empty state points somewhere, and the button really switches sections
+    d.click("bashcut.runs.openPlugins");
+    assert!(d.has("bashcut.panel.plugins"), "Open Plugins switched to Plugins");
+    assert!(!d.has("bashcut.panel.runs"));
+    d.click("bashcut.panel.close");
+    assert!(!d.has("bashcut.panel.plugins"), "close still closes");
     let ids: Vec<String> = filmcraft_ui_egui::menus::external_commands().iter().map(|c| c.id.clone()).collect();
     for id in ["bashcut.plugins.list", "bashcut.plugins.run", "bashcut.plugins.cancel", "bashcut.plugins.sendToAgent"] {
         assert!(ids.iter().any(|c| c == id), "{id} listed");

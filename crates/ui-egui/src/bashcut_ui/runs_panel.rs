@@ -50,6 +50,10 @@ pub fn draw(app: &mut FilmcraftApp, ui: &mut egui::Ui) {
     }
     if jobs.is_empty() {
         ui.label(egui::RichText::new(s("Nothing has run yet.")).size(11.0).color(t.text_dim));
+        ui.label(egui::RichText::new(s("Run a plugin action from Plugins and it shows up here.")).size(11.0).color(t.text_dim));
+        if button(app, ui, "bashcut.runs.openPlugins", s("Open Plugins"), true) {
+            super::State::update(&ctx, |st| st.show("plugins"));
+        }
     } else if button(app, ui, "bashcut.runs.clear", s("Clear finished"), jobs.iter().any(|j| !j.state.is_running())) {
         call(app, &mut v, "clear", json!({}));
     }
@@ -57,10 +61,13 @@ pub fn draw(app: &mut FilmcraftApp, ui: &mut egui::Ui) {
     for j in &jobs {
         ui.add_space(4.0);
         let frame = egui::Frame::group(ui.style()).show(ui, |ui| {
+            // State first from the right, so a long title truncates instead of running under it.
             ui.horizontal(|ui| {
-                ui.label(egui::RichText::new(&j.title).color(t.text));
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     ui.label(egui::RichText::new(s(state_label(j.state))).size(11.0).color(if j.state == JobState::Succeeded { t.accent } else { t.text_dim }));
+                    ui.with_layout(egui::Layout::left_to_right(egui::Align::Center), |ui| {
+                        ui.add(egui::Label::new(egui::RichText::new(&j.title).color(t.text)).truncate()).on_hover_text(&j.title);
+                    });
                 });
             });
             if j.state.is_running() {
