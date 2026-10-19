@@ -50,6 +50,9 @@ _Last updated: 2026-10-20_
   `<project>.fcproj.bashcut/conversations/`, gates in `plan.json`) and the Agent section with `bashcut.agent.*`
   commands; agent plugins (`kind: "agent"`); Runs ▸ Send to agent sends hand-offs. Build + tests + live check
   pending. Follow-up: the kit's edit-workflow skill must write gates to `<project>.fcproj.bashcut/plan.json`.
+- Review gate (#57): `bashcut.review.run` measures sound, picture, captions and edit, writes findings as Review markers
+  (one undo step), scores each category and returns `verdict` (`needsFix` on blocking findings); kit review and critic
+  start from it. Not measured yet: music over speech, caption safe area and contrast. Build + tests pending.
 
 ## Next
 
