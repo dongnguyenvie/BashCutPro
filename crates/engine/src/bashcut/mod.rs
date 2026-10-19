@@ -5,11 +5,16 @@
 //! Each feature lives in its own file here and appends its specs in [`commands`]. Command ids start with
 //! `bashcut.`; params strings state their units (seconds unless they say otherwise).
 
+mod data;
+pub mod templates;
+#[cfg(test)]
+mod templates_tests;
+
 use crate::commands::CommandSpec;
 
 /// Every `bashcut.*` engine command, in menu / listing order.
 pub fn commands() -> Vec<CommandSpec> {
     // one line per feature file, appended at the end: `<file>::commands(),`
-    let groups: Vec<Vec<CommandSpec>> = vec![];
+    let groups: Vec<Vec<CommandSpec>> = vec![templates::commands()];
     groups.into_iter().flatten().collect()
 }
