@@ -54,9 +54,9 @@ const APP_ID: &str = "ai.storyteller.filmcraft";
 /// size of other Dock icons; Windows and Linux get the full-bleed tile.
 fn app_icon() -> egui::IconData {
     #[cfg(target_os = "macos")]
-    let png: &[u8] = include_bytes!("../../../assets/app-icon/filmcraft-macos-512.png");
+    let png: &[u8] = include_bytes!("../../../bashcut/brand/app-icon/bashcutpro-macos-512.png");
     #[cfg(not(target_os = "macos"))]
-    let png: &[u8] = include_bytes!("../../../assets/app-icon/hicolor/256x256/apps/ai.storyteller.filmcraft.png");
+    let png: &[u8] = include_bytes!("../../../bashcut/brand/app-icon/hicolor/256x256/apps/ai.storyteller.filmcraft.png");
     eframe::icon_data::from_png_bytes(png).unwrap_or_default()
 }
 

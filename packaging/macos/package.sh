@@ -39,9 +39,9 @@ export MACOSX_DEPLOYMENT_TARGET=11.0
 IDENTITY="${MACOS_SIGN_IDENTITY:--}"
 SHORT_VERSION="${VERSION%%-*}"
 WORK="$CARGO_TARGET_DIR/macos-package"
-APP="$WORK/FilmCraft.app"
-DMG="$DIST/filmcraft-$VERSION-macos-$ARCH.dmg"
-CLI_ZIP="$DIST/filmcraft-cli-$VERSION-macos-$ARCH.zip"
+APP="$WORK/$BRAND_NAME.app"
+DMG="$DIST/$BRAND_SLUG-$VERSION-macos-$ARCH.dmg"
+CLI_ZIP="$DIST/$BRAND_SLUG-cli-$VERSION-macos-$ARCH.zip"
 
 NOTARIZE=0
 if [ "$IDENTITY" = "-" ]; then
@@ -101,8 +101,8 @@ notarize() {
 echo "==> assembling $APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 # Executable and icon carry the display name (CFBundleExecutable / CFBundleIconFile).
-cp "$WORK/bin/filmcraft" "$APP/Contents/MacOS/FilmCraft"
-cp "$ROOT/assets/app-icon/filmcraft.icns" "$APP/Contents/Resources/FilmCraft.icns"
+cp "$WORK/bin/filmcraft" "$APP/Contents/MacOS/$BRAND_NAME"
+cp "$BRAND_ICON_DIR/bashcutpro.icns" "$APP/Contents/Resources/$BRAND_NAME.icns"
 sed -e "s/@VERSION@/$VERSION/g" -e "s/@SHORT_VERSION@/$SHORT_VERSION/g" \
   -e "s/@BUILD_SHA@/${FILMCRAFT_BUILD_SHA:-unknown}/g" \
   "$HERE/Info.plist.in" >"$APP/Contents/Info.plist"
@@ -113,7 +113,7 @@ copy_font_licences "$APP/Contents/Resources"
 
 # Sign inside-out: nested code first, then the bundle itself (no --deep on the final signature).
 # Today the only nested code is the main executable; frameworks/helpers would be signed here too.
-sign --options runtime --entitlements "$HERE/entitlements.plist" "$APP/Contents/MacOS/FilmCraft"
+sign --options runtime --entitlements "$HERE/entitlements.plist" "$APP/Contents/MacOS/$BRAND_NAME"
 sign --options runtime --entitlements "$HERE/entitlements.plist" "$APP"
 codesign --verify --strict --deep --verbose=2 "$APP"
 
@@ -129,7 +129,7 @@ fi
 echo "==> building $DMG"
 STAGE="$WORK/dmg"
 mkdir -p "$STAGE"
-ditto "$APP" "$STAGE/FilmCraft.app"
+ditto "$APP" "$STAGE/$BRAND_NAME.app"
 ln -s /Applications "$STAGE/Applications"
 # Finder window layout: background, icon size and positions (packaging/macos/dmg/README.md).
 mkdir -p "$STAGE/.background"
@@ -139,7 +139,7 @@ rm -f "$DMG" "$WORK/raw.dmg"
 # makehybrid + convert builds the image without attaching a device, unlike `create -srcfolder`,
 # which is flaky on CI runners ("Resource busy") and hangs in sandboxed sessions.
 # The volume name has no version: .DS_Store finds the background through an alias that includes it.
-hdiutil makehybrid -hfs -hfs-volume-name "FilmCraft" -hfs-openfolder "$STAGE" -o "$WORK/raw.dmg" "$STAGE"
+hdiutil makehybrid -hfs -hfs-volume-name "$BRAND_NAME" -hfs-openfolder "$STAGE" -o "$WORK/raw.dmg" "$STAGE"
 hdiutil convert "$WORK/raw.dmg" -format UDZO -imagekey zlib-level=9 -o "$DMG"
 rm -f "$WORK/raw.dmg"
 sign "$DMG"
@@ -153,7 +153,7 @@ fi
 
 # ---- CLI ---------------------------------------------------------------------------------------
 echo "==> building $CLI_ZIP"
-CLI_DIR="$WORK/filmcraft-cli-$VERSION-macos-$ARCH"
+CLI_DIR="$WORK/$BRAND_SLUG-cli-$VERSION-macos-$ARCH"
 mkdir -p "$CLI_DIR"
 cp "$WORK/bin/filmcraft-cli" "$CLI_DIR/"
 copy_docs "$CLI_DIR"

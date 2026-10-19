@@ -11,6 +11,8 @@
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 export ROOT
+# BashCutPro: BRAND_NAME, BRAND_SLUG, BRAND_ICON_DIR (bashcut/rebrand.md)
+. "$ROOT/bashcut/brand/packaging.env"
 
 # The version lives in exactly one place: `[workspace.package] version` in the root Cargo.toml.
 # (`cargo xtask version` prints the same thing; awk avoids compiling xtask here.)
@@ -48,7 +50,7 @@ warn() {
 # craft-fonts fonts the build embedded (only when built with CRAFT_FONTS_DIR).
 copy_docs() {
   local dest="$1" f
-  for f in README.md LICENSE LICENSE-MIT LICENSE-APACHE COPYRIGHT; do
+  for f in README.md LICENSE LICENSE-MIT LICENSE-APACHE COPYRIGHT NOTICE; do
     if [ -f "$ROOT/$f" ]; then cp "$ROOT/$f" "$dest/"; fi
   done
   copy_font_licences "$dest"

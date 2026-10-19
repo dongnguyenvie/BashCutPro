@@ -30,6 +30,7 @@ macro_rules! tlf {
 }
 
 pub mod automation;
+pub mod bashcut_brand;
 pub mod brand;
 pub mod calc;
 mod cjk;

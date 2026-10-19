@@ -10,6 +10,8 @@ _Last updated: 2026-10-20_
 - All GitHub Actions switched to manual (`fc3cd05c`).
 - Created the empty repos `bashcutpro-agent-kit` and `bashcutpro-plugins` (cloned beside this repo).
 - Wrote this folder (`bashcut/`): overview, decisions, status.
+- Rebrand (#25): builds show BashCutPro's name, icon, wordmark and links instead of the ArtCraft marks
+  ([rebrand.md](rebrand.md), [brand/](brand/README.md)). Left: DMG window, Linux app id, web favicon.
 
 ## Next
 
