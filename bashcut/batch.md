@@ -121,3 +121,29 @@ Their recipes and limits are in that folder's README.
 - A `batch` skill for the kit (when to batch, writing a pipeline, checking results) belongs in
   `bashcutpro-agent-kit`; it is left to the kit worker (not in this PR).
 - Live check pending: 3 short clips → captions → two exports at `concurrency 2` against a real `filmcraft-cli`.
+
+## Resources (#61)
+
+`resources` in the pipeline (all optional): `memoryPerItemGb` (3), `maxItemMemoryGb` (8; 0 = no cap),
+`minFreeDiskGb` (2), `exportReserveGb` (1), `halfCores` (true), `agentConcurrency` (1, #60). Code:
+`crates/bashcut-batch/src/governor.rs`.
+
+- **Concurrency**: before every item the runner asks the governor whether one more may start: at most
+  `concurrency`, half the cores, and only while `memoryPerItemGb` of RAM is free (one item always runs). Workers above
+  that wait and re-check, so the batch widens again when memory frees up.
+- **Memory cap**: every 2 s a step's process memory is read; over `maxItemMemoryGb` the process is
+  stopped, the step goes back to `pending` and the item to `notRun` with the category `resources`; the run's summary
+  says so and `resume` runs it again (by then with fewer items at once if RAM is short). Engine steps save only when
+  they finish, so stopping one loses nothing.
+- **Disk**: before an item's project is created and before each export, the projects and outputs volumes need
+  `minFreeDiskGb` (+ `exportReserveGb` for an export). When low, the job book's `paused` says why and the batch waits;
+  it goes on by itself once space is freed, or stops on `cancel`.
+- **Sleep**: `bashcut-batch run` keeps the machine awake while it runs (`caffeinate`, `systemd-inhibit`,
+  `SetThreadExecutionState`; `--no-keep-awake` turns it off). Timeouts count only time the machine was awake (a gap
+  of 30 s or more between two polls is a sleep). After a restart, `resume` continues through the job book (tripwire).
+- **Report**: the run's summary has `resources`: peak process memory, items finished, items per hour, the
+  concurrency the machine allowed at start, and the count and total / average time of every step label.
+- Probes (no extra crates): `/proc` and `df` on Linux, `vm_stat`, `ps` and `df` on macOS, PowerShell / CIM and
+  `tasklist` on Windows; an unknown value never limits anything.
+- **Not done here** (follow-ups): hardware encoders and proxies for 4K inputs (they belong to the export presets /
+  output profiles and the proxy commands), GPU encoder slots in the concurrency.

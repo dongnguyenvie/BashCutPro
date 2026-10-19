@@ -7,12 +7,14 @@
 //! (see [`book`] for the tripwire). No workspace dependencies: it drives the CLI, not the engine.
 
 pub mod book;
+pub mod governor;
 pub mod pipeline;
 pub mod presets;
 mod process;
 pub mod runner;
 
 pub use book::{Book, Category, Counts, ErrorInfo, ItemState, Job, Status, StepState, list_jobs};
+pub use governor::{FakeProbe, Limits, Probe, Report, SystemProbe};
 pub use pipeline::{Pipeline, SCHEMA};
 pub use process::pid_alive;
 pub use runner::{Options, Summary, run};

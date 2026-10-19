@@ -56,6 +56,9 @@ _Last updated: 2026-10-20_
 - Looks (#47): 26 curated looks (Lumetri params with purpose, tags, one knob and safe range) as `bashcut.looks.*`, the
   Looks section with engine thumbnails, golden + damage checks; no new hook. Build + tests + golden bless + live check
   pending (build pass).
+- Batch resources (#61): `crates/bashcut-batch/src/governor.rs` sets concurrency from free RAM and cores, stops steps over
+  the memory cap for a later retry, pauses on low disk, keeps the machine awake, reports peak memory and throughput.
+  Build + tests pending (build pass).
 
 ## Next
 

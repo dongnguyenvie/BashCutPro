@@ -7,6 +7,7 @@
 //! be open. One runner per job at a time (`runner.lock`).
 
 use crate::book::{self, Book, Category, ErrorInfo, Job, Status, StepRef, StepState, now_ms};
+use crate::governor::{self, KeepAwake, Meter, Probe, SystemProbe};
 use crate::pipeline::{self, CommandLine, DEFAULT_AGENT_ARGV, OnFailure, Pipeline, StepKind, Vars};
 use crate::process::{self, Ended, Spec};
 use serde::Serialize;
@@ -14,7 +15,7 @@ use serde_json::Value;
 use std::io::Write;
 use std::path::{Component, Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Mutex, PoisonError};
+use std::sync::{Arc, Mutex, PoisonError};
 use std::time::{Duration, Instant};
 
 /// How much of a step's stdout / stderr goes into its error message.
@@ -33,11 +34,26 @@ pub struct Options {
     pub poll: Duration,
     /// Extra environment for every process the runner starts.
     pub env: Vec<(String, String)>,
+    /// Reads free RAM, cores, disk and process memory (#61; tests pass a [`crate::FakeProbe`]).
+    pub probe: Arc<dyn Probe>,
+    /// Keep the machine from idle-sleeping while the batch runs (the command line turns it on).
+    pub keep_awake: bool,
+    /// How often a step's process memory is checked against the cap.
+    pub watch_every: Duration,
 }
 
 impl Options {
     pub fn new(cli: impl Into<PathBuf>) -> Self {
-        Options { cli: cli.into(), concurrency: None, data_dir: None, poll: Duration::from_millis(200), env: Vec::new() }
+        Options {
+            cli: cli.into(),
+            concurrency: None,
+            data_dir: None,
+            poll: Duration::from_millis(200),
+            env: Vec::new(),
+            probe: Arc::new(SystemProbe::default()),
+            keep_awake: false,
+            watch_every: Duration::from_secs(2),
+        }
     }
 }
 
@@ -51,11 +67,13 @@ pub struct Summary {
     /// Tripped steps and other things a person should look at.
     pub reports: Vec<String>,
     pub elapsed_ms: u64,
+    /// Peak memory, time per step, throughput (#61).
+    pub resources: governor::Report,
 }
 
 impl Summary {
-    pub fn of(job: &Job, book: &Book, reports: Vec<String>, elapsed_ms: u64) -> Summary {
-        Summary { id: book.id.clone(), job: job.dir.to_string_lossy().into_owned(), status: book.status, counts: book.counts(), reports, elapsed_ms }
+    pub fn of(job: &Job, book: &Book, reports: Vec<String>, elapsed_ms: u64, resources: governor::Report) -> Summary {
+        Summary { id: book.id.clone(), job: job.dir.to_string_lossy().into_owned(), status: book.status, counts: book.counts(), reports, elapsed_ms, resources }
     }
 }
 
@@ -83,7 +101,11 @@ pub fn run(job: &Job, opts: &Options) -> Result<Summary, String> {
     job.save(&book)?;
 
     let pending = book.items.iter().filter(|i| i.status == Status::Pending).count();
-    let workers = opts.concurrency.unwrap_or(pipeline.concurrency).clamp(1, pipeline::MAX_CONCURRENCY).min(pending.max(1));
+    let max_items = opts.concurrency.unwrap_or(pipeline.concurrency).clamp(1, pipeline::MAX_CONCURRENCY);
+    let workers = max_items.min(pending.max(1));
+    // what the machine allows now; workers above it wait until RAM frees up (re-checked per item)
+    let first = governor::allowed(opts.probe.as_ref(), &pipeline.resources, workers);
+    let _awake = opts.keep_awake.then(KeepAwake::start);
     let shared = Shared {
         job,
         pipeline: &pipeline,
@@ -92,6 +114,8 @@ pub fn run(job: &Job, opts: &Options) -> Result<Summary, String> {
         stop: AtomicBool::new(false),
         cancel: AtomicBool::new(false),
         save_error: Mutex::new(None),
+        max_items: workers,
+        meter: Meter::default(),
     };
     std::thread::scope(|s| {
         for _ in 0..workers {
@@ -113,15 +137,22 @@ pub fn run(job: &Job, opts: &Options) -> Result<Summary, String> {
             item.status = if cancelled { Status::Cancelled } else { Status::NotRun };
         }
     }
+    for item in &book.items {
+        if item.status == Status::NotRun && item.error.as_ref().is_some_and(|e| e.category == Category::Resources) {
+            reports.push(format!("{}: stopped over the memory cap; resume runs it again (fewer items at once when RAM is short)", item.name));
+        }
+    }
     book.status = book.derive_status(cancelled);
     book.runner_pid = None;
+    book.paused = None;
     book.updated_at = now_ms();
     job.save(&book)?;
     if let Some(e) = save_error {
         reports.push(format!("the job book could not be saved during the run: {e}"));
     }
     let elapsed = u64::try_from(start.elapsed().as_millis()).unwrap_or(u64::MAX);
-    Ok(Summary::of(job, &book, reports, elapsed))
+    let resources = shared.meter.report(elapsed, first);
+    Ok(Summary::of(job, &book, reports, elapsed, resources))
 }
 
 /// `runner.lock` holds the runner's pid while it runs; a lock whose process is gone is taken over.
@@ -165,6 +196,17 @@ struct Shared<'a> {
     stop: AtomicBool,
     cancel: AtomicBool,
     save_error: Mutex<Option<String>>,
+    /// Items at once at most (the governor may allow fewer).
+    max_items: usize,
+    meter: Meter,
+}
+
+/// What a worker gets when it asks for an item.
+enum Claim {
+    Item(String),
+    /// Items are pending, but the machine has no room for one more now.
+    Wait,
+    None,
 }
 
 impl Shared<'_> {
@@ -177,6 +219,34 @@ impl Shared<'_> {
             *self.save_error.lock().unwrap_or_else(PoisonError::into_inner) = Some(e);
         }
         r
+    }
+
+    /// Read the book without saving it.
+    fn peek<R>(&self, f: impl FnOnce(&Book) -> R) -> R {
+        f(&self.book.lock().unwrap_or_else(PoisonError::into_inner))
+    }
+
+    /// The next pending item, if the governor lets one more start now (saved only when claimed).
+    fn claim(&self) -> Claim {
+        let mut b = self.book.lock().unwrap_or_else(PoisonError::into_inner);
+        if !b.items.iter().any(|i| i.status == Status::Pending) {
+            return Claim::None;
+        }
+        let running = b.items.iter().filter(|i| i.status == Status::Running).count();
+        if !governor::may_start(self.opts.probe.as_ref(), &self.pipeline.resources, self.max_items, running) {
+            return Claim::Wait;
+        }
+        let Some(item) = b.items.iter_mut().find(|i| i.status == Status::Pending) else { return Claim::None };
+        item.status = Status::Running;
+        item.error = None;
+        item.started_at = Some(now_ms());
+        item.ended_at = None;
+        let name = item.name.clone();
+        b.updated_at = now_ms();
+        if let Err(e) = self.job.save(&b) {
+            *self.save_error.lock().unwrap_or_else(PoisonError::into_inner) = Some(e);
+        }
+        Claim::Item(name)
     }
 
     fn step<R>(&self, idx: usize, s: usize, f: impl FnOnce(&mut StepState) -> R) -> Option<R> {
@@ -204,15 +274,14 @@ fn worker(sh: &Shared) {
         if sh.cancelled() || sh.stopping() {
             return;
         }
-        let claimed = sh.with(|b| {
-            let item = b.items.iter_mut().find(|i| i.status == Status::Pending)?;
-            item.status = Status::Running;
-            item.error = None;
-            item.started_at = Some(now_ms());
-            item.ended_at = None;
-            Some(item.name.clone())
-        });
-        let Some(name) = claimed else { return };
+        let name = match sh.claim() {
+            Claim::Item(name) => name,
+            Claim::Wait => {
+                std::thread::sleep(sh.opts.poll.max(Duration::from_millis(10)));
+                continue;
+            }
+            Claim::None => return,
+        };
         let idx = sh.with(|b| b.items.iter().position(|i| i.name == name));
         if let Some(idx) = idx {
             run_item(sh, idx);
@@ -273,6 +342,11 @@ fn run_item(sh: &Shared, idx: usize) {
             finish_item(sh, idx, Status::NotRun, None);
             return;
         }
+        if matches!(step_ref, StepRef::Create | StepRef::Export(_)) && !wait_for_disk(sh, matches!(step_ref, StepRef::Export(_))) {
+            sh.step(idx, s, |st| st.status = Status::Cancelled);
+            finish_item(sh, idx, Status::Cancelled, Some(ErrorInfo::new(Category::Cancelled, "cancelled")));
+            return;
+        }
         let started = now_ms();
         sh.step(idx, s, |st| {
             st.status = Status::Running;
@@ -288,6 +362,8 @@ fn run_item(sh: &Shared, idx: usize) {
         let ended = now_ms();
         match result {
             Ok(outputs) => {
+                let label = sh.peek(|b| b.items.get(idx).and_then(|i| i.steps.get(s)).map(|x| x.label.clone())).unwrap_or_default();
+                sh.meter.step(&label, ended.saturating_sub(started));
                 sh.step(idx, s, |st| {
                     st.status = Status::Done;
                     st.outputs = outputs;
@@ -299,6 +375,8 @@ fn run_item(sh: &Shared, idx: usize) {
             Err(e) => {
                 let (step_status, item_status) = match e.category {
                     Category::Cancelled => (Status::Cancelled, Status::Cancelled),
+                    // over the memory cap: nothing is wrong with the step; it runs again later
+                    Category::Resources => (Status::Pending, Status::NotRun),
                     Category::Handoff => (Status::Failed, Status::NeedsAttention),
                     _ => (Status::Failed, Status::Failed),
                 };
@@ -319,6 +397,29 @@ fn run_item(sh: &Shared, idx: usize) {
         }
     }
     finish_item(sh, idx, Status::Done, None);
+    sh.meter.item_done();
+}
+
+/// Wait while the projects or outputs disk is low (the book says why in `paused`). False when the
+/// batch is cancelled while waiting.
+fn wait_for_disk(sh: &Shared, export: bool) -> bool {
+    let paths = [sh.pipeline.projects_dir(), sh.pipeline.outputs_dir()];
+    let pause = (sh.opts.poll * 5).clamp(Duration::from_millis(10), Duration::from_secs(2));
+    loop {
+        let low = governor::disk_low(sh.opts.probe.as_ref(), &sh.pipeline.resources, &paths, export);
+        let shown = sh.peek(|b| b.paused.clone());
+        if shown != low {
+            let l = low.clone();
+            sh.with(|b| b.paused = l);
+        }
+        if low.is_none() {
+            return true;
+        }
+        if sh.cancelled() {
+            return false;
+        }
+        std::thread::sleep(pause);
+    }
 }
 
 fn finish_item(sh: &Shared, idx: usize, status: Status, error: Option<ErrorInfo>) {
@@ -474,14 +575,28 @@ fn write_script(ctx: &Ctx, key: &str, lines: &[CommandLine]) -> Result<PathBuf, 
 }
 
 /// Start a step's process, recording its pid in the book first thing (the tripwire).
+/// The process's memory is checked every `watch_every` against the cap (#61).
 fn spawn(sh: &Shared, idx: usize, s: usize, spec: &Spec) -> Result<Ended, ErrorInfo> {
-    process::run(
+    let cap = sh.pipeline.resources.memory_cap();
+    let mut checked: Option<Instant> = None;
+    process::run_watched(
         spec,
         sh.opts.poll,
         &mut |pid| {
             sh.step(idx, s, |st| st.pid = Some(pid));
         },
         &|| sh.cancelled(),
+        &mut |pid| {
+            if checked.is_some_and(|t| t.elapsed() < sh.opts.watch_every) {
+                return None;
+            }
+            checked = Some(Instant::now());
+            let used = sh.opts.probe.process_memory(pid)?;
+            sh.meter.memory(used);
+            let cap = cap?;
+            let gb = |b: u64| b as f64 / (1u64 << 30) as f64;
+            (used > cap).then(|| format!("used {:.1} GB, over the {:.1} GB cap; stopped to retry later", gb(used), gb(cap)))
+        },
     )
 }
 
@@ -492,6 +607,7 @@ fn outcome(ended: Ended, log: &Path, what: &str) -> Result<(), ErrorInfo> {
         Ended::Exited(Some(0)) => return Ok(()),
         Ended::TimedOut => return Err(ErrorInfo::new(Category::Timeout, format!("{what}: timed out"))),
         Ended::Cancelled => return Err(ErrorInfo::new(Category::Cancelled, format!("{what}: cancelled"))),
+        Ended::OverLimit(why) => return Err(ErrorInfo::new(Category::Resources, format!("{what}: {why}"))),
         Ended::Exited(code) => code,
     };
     let out = process::tail(&process::out_path(log), LOG_TAIL);
