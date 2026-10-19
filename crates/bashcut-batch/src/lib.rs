@@ -12,6 +12,7 @@ pub mod governor;
 pub mod pipeline;
 pub mod presets;
 mod process;
+mod python;
 pub mod runner;
 
 pub use book::{AgentTotals, AgentUsage, Book, Category, Counts, ErrorInfo, ItemState, Job, Status, StepState, list_jobs};

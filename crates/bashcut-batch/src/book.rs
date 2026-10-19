@@ -316,6 +316,20 @@ impl Book {
     /// needs-attention and not-run item). Their failed, tripped and cancelled steps go back to
     /// pending; finished steps stay done. Returns how many items were reopened.
     pub fn reopen(&mut self, names: &[String]) -> Result<usize, String> {
+        self.reopen_as(names, Status::Pending)
+    }
+
+    /// Like [`Book::reopen`] for the named items, but their failed and tripped steps count as done:
+    /// a person or an agent finished them by hand (a hand-off, a step checked after a crash), so the
+    /// next run goes on with the steps after them.
+    pub fn mark_done(&mut self, names: &[String]) -> Result<usize, String> {
+        if names.is_empty() {
+            return Err("name the items whose failed step was finished by hand (--items a,b)".into());
+        }
+        self.reopen_as(names, Status::Done)
+    }
+
+    fn reopen_as(&mut self, names: &[String], failed_to: Status) -> Result<usize, String> {
         for n in names {
             if !self.items.iter().any(|i| &i.name == n) {
                 return Err(format!("no item named {n}"));
@@ -332,7 +346,10 @@ impl Book {
                 continue;
             }
             for s in &mut item.steps {
-                if matches!(s.status, Status::Failed | Status::Tripped | Status::Cancelled | Status::Running) {
+                if matches!(s.status, Status::Failed | Status::Tripped) {
+                    s.status = failed_to;
+                    s.pid = None;
+                } else if matches!(s.status, Status::Cancelled | Status::Running) {
                     s.status = Status::Pending;
                     s.pid = None;
                 }
@@ -492,8 +509,13 @@ impl Job {
 
     /// Reopen items (see [`Book::reopen`]); `run` then picks them up.
     pub fn retry(&self, names: &[String]) -> Result<usize, String> {
+        self.retry_with(names, false)
+    }
+
+    /// [`Job::retry`], or with `done` [`Book::mark_done`]: the failed steps were finished by hand.
+    pub fn retry_with(&self, names: &[String], done: bool) -> Result<usize, String> {
         let mut book = self.book()?;
-        let n = book.reopen(names)?;
+        let n = if done { book.mark_done(names)? } else { book.reopen(names)? };
         book.status = book.derive_status(false);
         book.updated_at = now_ms();
         self.save(&book)?;
@@ -604,6 +626,20 @@ mod tests {
         assert_eq!(b.items[2].status, Status::Failed, "not named");
         assert_eq!(b.reopen(&[]).unwrap(), 1, "only c is left to reopen");
         assert_eq!(b.items[1].status, Status::Done);
+    }
+
+    #[test]
+    fn mark_done_skips_a_step_finished_by_hand() {
+        let mut b = book(vec![item(
+            "a",
+            Status::NeedsAttention,
+            vec![step("create", Status::Done), step("step-1", Status::Failed), step("export-1", Status::Pending)],
+        )]);
+        assert!(b.mark_done(&[]).is_err(), "only named items");
+        assert_eq!(b.mark_done(&["a".into()]).unwrap(), 1);
+        assert_eq!(b.items[0].status, Status::Pending);
+        assert_eq!(b.items[0].steps[1].status, Status::Done);
+        assert_eq!(b.items[0].steps[2].status, Status::Pending);
     }
 
     #[test]

@@ -51,6 +51,12 @@ impl Roots {
     }
 }
 
+/// `p` for people to read: without the `\\?\` verbatim prefix Windows' canonicalize adds.
+pub fn shown(p: &Path) -> String {
+    let s = p.to_string_lossy();
+    if let Some(unc) = s.strip_prefix(r"\\?\UNC\") { format!(r"\\{unc}") } else { s.strip_prefix(r"\\?\").unwrap_or(&s).to_string() }
+}
+
 /// `p` against `cwd`, with `.` and `..` resolved lexically.
 pub fn absolute(p: &Path, cwd: &Path) -> PathBuf {
     let joined = if p.is_absolute() { p.to_path_buf() } else { cwd.join(p) };
@@ -90,6 +96,13 @@ fn resolve(p: &Path) -> PathBuf {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn shown_paths_drop_the_verbatim_prefix() {
+        assert_eq!(shown(Path::new(r"\\?\C:\proj")), r"C:\proj");
+        assert_eq!(shown(Path::new(r"\\?\UNC\server\share")), r"\\server\share");
+        assert_eq!(shown(Path::new("/home/me/proj")), "/home/me/proj");
+    }
 
     fn tmp(tag: &str) -> PathBuf {
         let d = std::env::temp_dir().join(format!("bashcut-connect-roots-{tag}-{}", std::process::id()));

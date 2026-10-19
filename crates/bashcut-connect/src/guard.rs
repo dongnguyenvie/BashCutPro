@@ -80,7 +80,7 @@ fn violation(msg: &Value, roots: &Roots, cwd: &Path) -> Option<String> {
         let mut paths = Vec::new();
         collect_paths(p, 0, &mut paths);
         if let Some(bad) = paths.iter().find(|p| !roots.allows(p, cwd)) {
-            let allowed = roots.list().iter().map(|r| r.display().to_string()).collect::<Vec<_>>().join(", ");
+            let allowed = roots.list().iter().map(|r| crate::roots::shown(r)).collect::<Vec<_>>().join(", ");
             return Some(format!(
                 "refused by bashcut-mcp: {id} would write {bad}, outside the folders agents may write to ({allowed}). Write inside the project folder, or add the folder to BASHCUTPRO_ROOTS."
             ));

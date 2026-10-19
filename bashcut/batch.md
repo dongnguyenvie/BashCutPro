@@ -44,11 +44,12 @@ library.
 - **inputs**: files, folders (their media files, not recursive; `extensions` overrides the list) and `.fcproj`
   projects. Relative paths resolve against the pipeline file's folder (a preset's against the working folder).
 - **template**: `{"project": …}` is copied for every item; `{"commands": […]}` builds a new project instead. Without
-  one, a media input gets `file.import {paths: ["{media}"]}` then `file.newSequenceFromClip` (to confirm in the first
-  live run). A `.fcproj` input is copied, never edited in place.
+  one, a media input gets `file.import {paths: ["{media}"]}` then `file.newSequenceFromClip {items: [1]}` (the first item imported into a new project; headless there is no
+  Project panel selection). A `.fcproj` input is copied, never edited in place.
 - **steps**: exactly one of `command` (+ `params`), `commands` (one process: all saved or none), `plugin` (`argv`,
   `env`: any program; it connects to the project itself, `bashcut-result/1` on stdout, exit 3 = hand-off) or
-  `agent` (see [Agent steps](#agent-steps)).
+  `agent` (see [Agent steps](#agent-steps)). On Windows a plugin argv starting with `python3` (the Microsoft Store
+  stub there) runs with the first of `python3`, `py -3`, `python` that answers.
   `timeoutSeconds` on any step.
 - **outputs**: `name` (inside the outputs folder, may have subfolders), and either a `profile` (#43: `tiktok`,
   `reels`, `shorts`, `youtube`, `youtube-4k`, `facebook-square`… exported with `bashcut.profiles.apply`, which also
@@ -74,7 +75,8 @@ Each item has the steps `create`, `step-1`…, `export-1`…:
 | export | `filmcraft-cli export <out> --project … --preset … --compact`; with a profile, `filmcraft-cli run` on one `bashcut.profiles.apply {profile, path, wait: true}` line |
 
 Exit statuses map to error categories: 0 ok, 1 `command` (`offlineMedia` for an export that drew placeholders), 2
-`usage`, 3 `handoff` (item `needsAttention`), anything else or a signal `crashed`; plus `timeout`, `cancelled`,
+`usage`, 3 `handoff` (item `needsAttention`; once a person or agent has done that step, `retry --items <name>
+--done` goes on after it), anything else or a signal `crashed`; plus `timeout`, `cancelled`,
 `spawn`, `io`, `tripped`. The message is the last `"ok": false` result line, else the last stderr line.
 
 ## Agent steps
@@ -117,10 +119,12 @@ the project, then `retry` runs it. Items that were between two steps simply cont
 
 ```bash
 bashcut-batch run pipeline.json [--id ID] [--concurrency N] [--cli path/to/filmcraft-cli]
-bashcut-batch run --preset captions-draft --input clips/ --projects out/
+bashcut-batch run --preset captions-draft --input clips/ --projects out/   # exports in out/exports
+bashcut-batch run --preset captions-draft --input clips/ --projects out/ --outputs done/
 bashcut-batch status <job> [--wait]      # job folder printed by run / list
 bashcut-batch resume <job>
 bashcut-batch retry <job> [--items a,b]
+bashcut-batch retry <job> --items a --done   # a's failed / tripped step was finished by hand: go on after it
 bashcut-batch cancel <job>
 bashcut-batch list <projectsFolder>
 bashcut-batch validate pipeline.json     # the items it would make

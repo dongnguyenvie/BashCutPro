@@ -513,7 +513,7 @@ fn run_step(sh: &Shared, idx: usize, s: usize, step: StepRef, ctx: &Ctx) -> Resu
                 }
                 StepKind::Commands(lines) => engine_step(sh, idx, s, ctx, &key, lines, timeout),
                 StepKind::Plugin(p) => {
-                    let argv: Vec<String> = p.argv.iter().map(|a| ctx.vars.expand(a)).collect();
+                    let argv = crate::python::resolve(p.argv.iter().map(|a| ctx.vars.expand(a)).collect());
                     let mut env: Vec<(String, String)> = p.env.iter().map(|(k, v)| (k.clone(), ctx.vars.expand(v))).collect();
                     env.extend(item_env(sh, ctx));
                     let spec = Spec { argv, cwd: Some(ctx.dir.clone()), env, timeout, log: ctx.dir.join(&key) };
@@ -767,10 +767,13 @@ fn outcome(ended: Ended, log: &Path, what: &str) -> Result<(), ErrorInfo> {
     Err(ErrorInfo::new(category, message))
 }
 
-/// The error in the last JSON result line that says `"ok": false` (a `filmcraft-cli run` line or
-/// a `bashcut-result/1` object).
+/// The error in the last JSON result that says `"ok": false` (a `filmcraft-cli run` line or a
+/// `bashcut-result/1` object, which plugins may pretty-print over several lines).
 fn reported_error(out: &str) -> Option<String> {
-    out.lines().rev().filter_map(|l| serde_json::from_str::<Value>(l.trim()).ok()).find(|v| v.get("ok") == Some(&Value::Bool(false))).map(|v| {
+    let failed = |v: &Value| v.get("ok") == Some(&Value::Bool(false));
+    let stream = serde_json::Deserializer::from_str(out).into_iter::<Value>().map_while(|v| v.ok()).filter(|v| failed(v)).last();
+    let found = stream.or_else(|| out.lines().rev().filter_map(|l| serde_json::from_str::<Value>(l.trim()).ok()).find(|v| failed(v)));
+    found.map(|v| {
         let text = |x: Option<&Value>| x.and_then(Value::as_str).map(str::to_string);
         text(v.get("error")).or_else(|| text(v.get("message"))).or_else(|| text(v.get("error").and_then(|e| e.get("message")))).unwrap_or_else(|| v.to_string())
     })
@@ -820,6 +823,15 @@ mod tests {
         assert_eq!(reported_error("{\"ok\":false,\"message\":\"needs a key\"}").as_deref(), Some("needs a key"));
         assert_eq!(reported_error("{\"ok\":false,\"error\":{\"message\":\"x\"}}").as_deref(), Some("x"));
         assert_eq!(reported_error("plain text"), None);
+        let pretty = "{
+ \"ok\": false,
+ \"error\": {
+  \"code\": \"no_cli\",
+  \"message\": \"filmcraft-cli not found\"
+ }
+}
+";
+        assert_eq!(reported_error(pretty).as_deref(), Some("filmcraft-cli not found"), "a pretty-printed plugin result");
     }
 
     #[test]

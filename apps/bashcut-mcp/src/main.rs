@@ -119,7 +119,7 @@ fn main() -> ExitCode {
             "mode": d.mode,
             "argv": d.argv,
             "project": d.project.as_ref().map(|p| p.to_string_lossy().into_owned()),
-            "roots": d.roots.list().iter().map(|r| r.to_string_lossy().into_owned()).collect::<Vec<_>>(),
+            "roots": d.roots.list().iter().map(|r| bashcut_connect::roots::shown(r)).collect::<Vec<_>>(),
             "guard": guarded,
             "notes": d.notes,
         });

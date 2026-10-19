@@ -14,19 +14,21 @@ const HELP: &str = "\
 bashcut-batch: BashCutPro batch pipelines through filmcraft-cli (headless; the app need not be open)
 
 USAGE
-  bashcut-batch run <pipeline.json> [--id ID] [--input PATH]... [--projects DIR] [RUN OPTIONS]
-  bashcut-batch run --preset NAME   [--id ID] [--input PATH]... [--projects DIR] [RUN OPTIONS]
-                                 make a job (one project per input) and run it to the end
+  bashcut-batch run <pipeline.json> [--id ID] [--input PATH]... [--projects DIR] [--outputs DIR] [RUN OPTIONS]
+  bashcut-batch run --preset NAME   [--id ID] [--input PATH]... [--projects DIR] [--outputs DIR] [RUN OPTIONS]
+                                 make a job (one project per input) and run it to the end; with a preset,
+                                 --projects alone puts the exports in DIR/exports
   bashcut-batch resume <job>      continue a stopped or interrupted job; steps that were running
                                  when it stopped are reported (tripped), not run again
-  bashcut-batch retry <job> [--items a,b]
-                                 reopen failed / tripped / cancelled items (or the named ones) and run
+  bashcut-batch retry <job> [--items a,b] [--done]
+                                 reopen failed / tripped / cancelled items (or the named ones) and run;
+                                 --done: their failed step was finished by hand (a hand-off), go on after it
   bashcut-batch cancel <job>      ask the job's runner to stop (running steps are killed)
   bashcut-batch status <job> [--wait] [--timeout S]
                                  the job book; --wait blocks until no runner holds the job
   bashcut-batch list <projects-folder>
                                  jobs in that folder
-  bashcut-batch validate <pipeline.json | --preset NAME> [--input PATH]... [--projects DIR]
+  bashcut-batch validate <pipeline.json | --preset NAME> [--input PATH]... [--projects DIR] [--outputs DIR]
                                  check a pipeline and print the items it would make
   bashcut-batch presets [list | show NAME | save NAME FILE | install FILE|FOLDER | delete NAME]
                                  saved pipelines in <data dir>/bashcut/batch-presets/; install takes a
@@ -51,7 +53,7 @@ EXIT STATUS
 ";
 
 const VALUED: &[&str] =
-    &["--preset", "--id", "--input", "--projects", "--cli", "--concurrency", "--agent-concurrency", "--mcp", "--data-dir", "--items", "--timeout"];
+    &["--preset", "--id", "--input", "--projects", "--outputs", "--cli", "--concurrency", "--agent-concurrency", "--mcp", "--data-dir", "--items", "--timeout"];
 
 struct Args {
     pos: Vec<String>,
@@ -133,7 +135,7 @@ fn real_main(a: &Args) -> Result<u8, Fail> {
             let job = open_job(a)?;
             let items: Vec<String> =
                 a.opt("--items").map(|s| s.split(',').map(|x| x.trim().to_string()).filter(|x| !x.is_empty()).collect()).unwrap_or_default();
-            let n = job.retry(&items).map_err(usage)?;
+            let n = job.retry_with(&items, a.flag("--done")).map_err(usage)?;
             if n == 0 {
                 let _ = writeln!(std::io::stderr(), "bashcut-batch: no item to retry; resuming");
             }
@@ -196,7 +198,10 @@ fn real_main(a: &Args) -> Result<u8, Fail> {
                 .map(|(i, n)| json!({"name": n, "input": i.path.to_string_lossy(), "project": p.projects_dir().join(format!("{n}.{}", pipeline::PROJECT_EXTENSION)).to_string_lossy()}))
                 .collect();
             let steps: Vec<String> = p.steps.iter().map(|s| s.describe()).collect();
-            print(a, &json!({"ok": true, "items": items, "steps": steps, "outputs": p.outputs, "concurrency": p.concurrency}));
+            print(
+                a,
+                &json!({"ok": true, "items": items, "steps": steps, "outputs": p.outputs, "outputsFolder": p.outputs_dir().to_string_lossy(), "concurrency": p.concurrency}),
+            );
             Ok(0)
         }
         Some("presets") => presets_cmd(a),
@@ -227,7 +232,8 @@ fn data_dir(a: &Args) -> Result<PathBuf, Fail> {
     a.opt("--data-dir").map(PathBuf::from).or_else(presets::default_data_dir).ok_or_else(|| usage("no data dir: pass --data-dir"))
 }
 
-/// The pipeline from `pos(at)` or `--preset`, with `--input` / `--projects` applied.
+/// The pipeline from `pos(at)` or `--preset`, with `--input` / `--projects` / `--outputs` applied. A preset run
+/// with `--projects` and no `--outputs` exports into `<projects>/exports`, so everything lands where asked.
 fn load_pipeline(a: &Args, at: usize) -> Result<Pipeline, Fail> {
     let cwd = pipeline::absolute(Path::new("."));
     let mut p = match (a.opt("--preset"), a.pos(at)) {
@@ -241,6 +247,12 @@ fn load_pipeline(a: &Args, at: usize) -> Result<Pipeline, Fail> {
     }
     if let Some(dir) = a.opt("--projects") {
         p.projects_folder = pipeline::absolute(Path::new(dir)).to_string_lossy().into_owned();
+        if a.opt("--preset").is_some() {
+            p.outputs_folder = None;
+        }
+    }
+    if let Some(dir) = a.opt("--outputs") {
+        p.outputs_folder = Some(pipeline::absolute(Path::new(dir)).to_string_lossy().into_owned());
     }
     p.validate().map_err(usage)?;
     Ok(p)
@@ -282,7 +294,9 @@ fn find_mcp(a: &Args) -> Option<PathBuf> {
 
 fn find_cli(a: &Args) -> PathBuf {
     if let Some(c) = a.opt("--cli") {
-        return PathBuf::from(c);
+        // plugin and agent steps run in the item's folder, so a relative path must not stay relative
+        let c = Path::new(c);
+        return if c.components().count() > 1 { pipeline::absolute(c) } else { c.to_path_buf() };
     }
     if let Some(c) = std::env::var_os("BASHCUT_FILMCRAFT_CLI").filter(|v| !v.is_empty()) {
         return PathBuf::from(c);
