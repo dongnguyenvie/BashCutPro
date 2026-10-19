@@ -18,6 +18,7 @@
 //! - `ico <out.ico> <in.png>…`: pack PNGs into a Windows `.ico` (used by `packaging/icons.sh`).
 //! - `ci`: fmt check, clippy -D warnings, tests, layers, assets, wasm.
 
+mod bashcut; // BashCutPro: layers of our crates (bashcut/extending-upstream.md)
 mod ico;
 mod parity;
 mod version;
@@ -116,6 +117,7 @@ fn short(name: &str) -> &str {
 }
 
 fn layer_of(name: &str) -> Option<u8> {
+    bashcut::our_layer_first!(name); // BashCutPro: our crates first (bashcut/extending-upstream.md)
     LAYERS.iter().find(|(n, _)| *n == short(name)).map(|(_, l)| *l)
 }
 

@@ -32,7 +32,8 @@ It does not copy BashCut's Swift UI. It is built for FilmCraft's egui shell and 
 
 - **Rail**: a 36 px strip on the right edge, always there. One icon per section, top to bottom: **Agent**,
   **Batch**, **Looks**, **Plugins**, **Runs** (§1a). Plugins that declare a panel add their own icon below. Click
-  toggles the side panel; Cmd/Ctrl+Shift+A focuses Agent; **Cmd/Ctrl+K opens the command palette** (§1a).
+  toggles the side panel; Cmd/Ctrl+Alt+Shift+A focuses Agent (Cmd/Ctrl+Shift+A is upstream's Deselect All);
+  **the command palette** (§1a) has its own shortcut (#52; Cmd/Ctrl+K is upstream's Add Edit).
 - **Side panel** (left of the rail): resizable (240–720 px), collapsible, width and open section remembered.
   It takes width from the dock area, so it behaves like a docked panel without being in FilmCraft's dock tree.
   Any section can pop out into a floating window (for a second monitor) and dock back.
@@ -107,11 +108,11 @@ Every hook is an **inserted** line; no upstream line is edited (rules: [extendin
 | H4 | `crates/ui-egui/Cargo.toml` | `bashcut-plugin-host`, `bashcut-agent` path deps | low |
 | H5 | `crates/ui-egui/src/lib.rs` | `pub mod bashcut_ui;` next to `pub mod bashcut_brand;` | already ours |
 | H6 | `crates/ui-egui/src/lib.rs` (`ui()`) | right after `let body = …`: `let body = bashcut_ui::layout(self, ui, body);` | 2 changes |
-| H7 | `crates/ui-egui/src/menus.rs` (`invoke`) | first line: `if let Some(r) = crate::bashcut_ui::invoke(app, ctx, id, &params) { return r; }` | 4 changes (highest; rerere replays the resolution) |
+| H7 | `crates/ui-egui/src/menus.rs` (`invoke`) | first line: `crate::bashcut_ui::route!(app, ctx, id, &params);` (a macro in our file that returns early, so `cargo fmt` keeps it one line) | 4 changes (highest; rerere replays the resolution) |
 | H8 | `crates/ui-egui/src/menus.rs` (`external_commands`) | `v.extend(crate::bashcut_ui::commands());` before `v` | 3 changes |
 | H9 | `crates/ui-egui/src/menus.rs` (`menu_items_for`) | `out.extend(crate::bashcut_ui::menu_items(session));` before `out` | 2 changes |
-| H10 | `crates/ui-egui/src/i18n/mod.rs` | existing `bashcut_brand::text` hook gains the language: `bashcut_brand::text(self, text)` | already ours |
-| H11 | `xtask/src/main.rs` | `mod bashcut;` and, as the first line of `layer_of`: `if let Some(l) = bashcut::layer_of(name) { return Some(l); }` | 2 changes |
+| H10 | `crates/ui-egui/src/i18n/mod.rs` | **not needed** (#34): our strings are translated by `bashcut_ui::strings::s`, which reads the interface language or our own override (Vietnamese is not an upstream language) | — |
+| H11 | `xtask/src/main.rs` | `mod bashcut;` and, as the first line of `layer_of`: `bashcut::our_layer_first!(name);` (macro, as H7) | 2 changes |
 
 About **15 lines in 8 upstream files**, all marked `// BashCutPro`, all listed in `UPSTREAM.md`.
 `Cargo.lock` conflicts are resolved by taking upstream's file and running `cargo check` (it re-adds our crates).
@@ -123,6 +124,13 @@ the shrunk rect for the dock. One call per frame covers docked, floating and ove
 
 ## 4. State, settings, automation, strings
 
+Built in #34: `bashcut_ui/{mod,rail,side_panel,state,strings}.rs`. Sections are rows of `bashcut_ui::SECTIONS`
+(id, title, icon, blurb, `draw` fn); a later ticket adds its row and a `draw` in its own file. Commands so far:
+`bashcut.ui.state`, `toggleRail`, `focusAgent` (Cmd/Ctrl+Alt+Shift+A), `section {section, open?}`, `closePanel`,
+`setWidth {width}`, `popOut {section?}`, `dockBack {section}`, `setLanguage {language}`, `show.<section>`
+(Window ▸ BashCutPro). Our files go under `<data dir>` = the session's auto-save data dir (`bashcut_ui::data_dir`);
+with no persistence (headless tests) nothing is read or written.
+
 - **UI state** (open section, width, popped-out sections, panel scroll, draft message) is a `bashcut_ui::State`
   kept in egui's context data (`ctx.data_mut(|d| d.get_temp_mut_or_default::<State>(id))`), so `FilmcraftApp`
   gains no field. It is saved to `<data dir>/bashcut/ui.json` when it changes, not in upstream's workspace files.
@@ -132,8 +140,9 @@ the shrunk rect for the dock. One call per frame covers docked, floating and ove
 - **Automation ids**: every widget registers in `app.auto` with ids under `bashcut.` (`bashcut.rail.agent`,
   `bashcut.agent.input`, `bashcut.gate.approve`, `bashcut.plugins.<id>.run`), so `ui.inspect` / `ui.click` drive
   them like upstream widgets.
-- **Strings**: English in code, translations in `bashcut_ui/strings/<lang>.tsv` (Vietnamese first), looked up by the
-  H10 hook before upstream's catalogs. Upstream's `.tsv` files are never edited.
+- **Strings**: English in code, translations in `bashcut_ui/strings/<lang>.tsv` (Vietnamese first), looked up by
+  `bashcut_ui::strings::s` (interface language, or our own override `bashcut.ui.setLanguage {language:"vi"}`).
+  Upstream's `.tsv` files are never edited and no i18n hook is needed.
 - **Theme and icons**: upstream `Tokens` (dark/light follow upstream); our icons are drawn in `bashcut_ui` (no
   edit to upstream's `icons.rs` enum).
 

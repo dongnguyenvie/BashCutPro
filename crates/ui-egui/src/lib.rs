@@ -31,6 +31,7 @@ macro_rules! tlf {
 
 pub mod automation;
 pub mod bashcut_brand; // BashCutPro: branded strings and links (bashcut/extending-upstream.md)
+pub mod bashcut_ui; // BashCutPro: rail and side panel (bashcut/extending-upstream.md)
 pub mod brand;
 pub mod calc;
 mod cjk;
@@ -1852,6 +1853,7 @@ impl FilmcraftApp {
         }
         let status_h = if self.ui.show_status_bar { 20.0 } else { 0.0 };
         let body = egui::Rect::from_min_max(egui::pos2(full.min.x + 1.0, header.max.y + 1.0), egui::pos2(full.max.x - 1.0, full.max.y - status_h - 2.0));
+        let body = bashcut_ui::layout(self, ui, body); // BashCutPro: rail and side panel take the right edge (bashcut/extending-upstream.md)
         match self.ui.mode {
             state::Mode::Edit => self.dock_area(ui, body),
             state::Mode::Import => panels::import_mode::show(self, ui, body),
