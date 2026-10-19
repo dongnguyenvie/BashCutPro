@@ -301,7 +301,10 @@ impl Manifest {
         let Some(a) = self.action(action) else { return err(format!("{} has no action `{action}`", self.id)) };
         let mut argv: Vec<String> = self.entry_for(os).to_vec();
         argv.extend(a.args.iter().cloned());
+        // an action that needs nothing gets no connection arguments (its parser may have none)
+        let none = a.needs == "none";
         match conn {
+            _ if none => {}
             Connection::Bridge(addr) if !self.connect.bridge.is_empty() => argv.extend(fill(&self.connect.bridge, "{address}", addr)),
             Connection::Project(path) if !self.connect.project.is_empty() => argv.extend(fill(&self.connect.project, "{project}", path)),
             Connection::None if a.needs == "project" => return err(format!("`{}` needs the open project: start BashCutPro with --control <port>", a.title)),
@@ -309,7 +312,7 @@ impl Manifest {
             _ if a.needs != "project" => {}
             _ => return err(format!("{} cannot connect this way", self.id)),
         }
-        if let Some(cli) = cli.filter(|_| !self.connect.cli.is_empty()) {
+        if let Some(cli) = cli.filter(|_| !none && !self.connect.cli.is_empty()) {
             argv.extend(fill(&self.connect.cli, "{cli}", cli));
         }
         for key in params.keys() {
@@ -468,6 +471,9 @@ mod tests {
         assert!(m.command_line("linux", "go", &bridge, None, &BTreeMap::new()).is_err(), "answer is required");
         assert!(m.command_line("linux", "go", &Connection::None, None, &p("n", json!(1))).is_err(), "needs a project");
         assert!(m.command_line("linux", "ping", &Connection::None, None, &BTreeMap::new()).is_ok());
+        // an action that needs nothing gets no connection arguments, even with the app open
+        let ping = m.command_line("linux", "ping", &Connection::Bridge("127.0.0.1:9876".into()), Some("/bin/filmcraft-cli"), &BTreeMap::new()).unwrap();
+        assert_eq!(ping, ["python3", "plugin.py", "ping"]);
         assert!(m.command_line("linux", "nope", &bridge, None, &BTreeMap::new()).is_err());
     }
 

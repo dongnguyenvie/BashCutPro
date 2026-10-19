@@ -52,6 +52,9 @@ elif mode == "big":
     sys.stdout.write("\n" + json.dumps({"ok": True, "message": "big"}) + "\n")
 elif mode == "garbage":
     print("not json at all")
+elif mode == "usage":
+    print("fake: error: unrecognized arguments: --nope", file=sys.stderr, flush=True)
+    sys.exit(2)
 elif mode == "crash":
     os.kill(os.getpid(), 9)
 "#;
@@ -68,7 +71,7 @@ fn manifest(id: &str) -> Value {
             {"id": "service", "title": "Service", "type": "enum", "choices": ["a", "b"], "default": "a", "env": ["FAKE_SERVICE"]},
             {"id": "apiKey", "title": "Key", "type": "secret", "env": ["FAKE_KEY"], "optional": true}
         ],
-        "actions": [mode("ok"), mode("error"), {"id": "handoff", "title": "Hand off", "args": ["handoff"], "needs": "none", "params": [], "handoff": {"exit": 3, "then": "apply"}}, mode("hang"), mode("big"), mode("garbage"), mode("crash"),
+        "actions": [mode("ok"), mode("error"), {"id": "handoff", "title": "Hand off", "args": ["handoff"], "needs": "none", "params": [], "handoff": {"exit": 3, "then": "apply"}}, mode("hang"), mode("big"), mode("garbage"), mode("crash"), mode("usage"),
             {"id": "edit", "title": "Edit", "args": ["ok"], "needs": "project", "params": []}]
     })
 }
@@ -214,7 +217,7 @@ fn install_settings_run_update_remove() {
     assert!(data.join("bashcut-plugins/test.fake/bashcut-plugin.json").is_file());
     assert!(!data.join("bashcut-plugins/test.fake/.git").exists());
 
-    // settings and secrets reach the run as env; params as flags; the bridge address is passed
+    // settings and secrets reach the run as env; params as flags; an action that needs nothing gets no bridge
     host.command("settings", &json!({"plugin": "test.fake", "values": {"service": "b"}}), &ctx).unwrap();
     assert!(host.command("settings", &json!({"plugin": "test.fake", "values": {"apiKey": "x"}}), &ctx).is_err());
     let s = host.command("setSecret", &json!({"plugin": "test.fake", "setting": "apiKey", "value": "sk-test"}), &ctx).unwrap();
@@ -225,9 +228,18 @@ fn install_settings_run_update_remove() {
     let data_out = &j["outcome"]["result"]["data"];
     assert_eq!(data_out["key"], json!("sk-test"));
     assert_eq!(data_out["service"], json!("b"));
-    assert_eq!(data_out["args"], json!(["--bridge", "127.0.0.1:9", "--word", "hi"]));
+    assert_eq!(data_out["args"], json!(["--word", "hi"]));
     assert_eq!(j["progress"], json!(1.0));
     assert!(j["log"].as_array().unwrap().len() >= 2);
+    // one that needs the project gets the bridge address
+    let job = host.command("run", &json!({"plugin": "test.fake", "action": "edit"}), &ctx).unwrap()["job"].as_u64().unwrap();
+    assert_eq!(wait_job(&mut host, job), JobState::Succeeded);
+    assert_eq!(host.job(job).unwrap().outcome.as_ref().unwrap().result.as_ref().unwrap().data["args"], json!(["--bridge", "127.0.0.1:9"]));
+    // a failure with no result says why, not only the exit status
+    let job = host.command("run", &json!({"plugin": "test.fake", "action": "usage"}), &ctx).unwrap()["job"].as_u64().unwrap();
+    assert_eq!(wait_job(&mut host, job), JobState::Failed);
+    let msg = host.job(job).unwrap().message.clone();
+    assert!(msg.starts_with("exit status 2") && msg.contains("unrecognized arguments: --nope"), "{msg}");
 
     // hand-off names the follow-up action; bad params never start a process
     let job = host.command("run", &json!({"plugin": "test.fake", "action": "handoff"}), &ctx).unwrap()["job"].as_u64().unwrap();
