@@ -491,6 +491,31 @@ pub fn run(app: &mut FilmcraftApp, ctx: &egui::Context, item: &Item, params: Opt
     Ok(r)
 }
 
+/// An engine error as a person reads it: no error code or command id
+/// (`badParams: invalid parameters for \`bashcut.looks.apply\`: select clips first` → "Select a clip in the timeline first.").
+pub fn plain_error(e: &str) -> String {
+    let mut m = e.trim();
+    if let Some((code, rest)) = m.split_once(": ")
+        && !code.is_empty()
+        && code.chars().all(|c| c.is_ascii_alphanumeric())
+    {
+        m = rest;
+    }
+    for (prefix, sep) in [("invalid parameters for `", "`: "), ("command `", "` is not available right now: ")] {
+        if let Some((_, msg)) = m.strip_prefix(prefix).and_then(|rest| rest.split_once(sep)) {
+            m = msg;
+        }
+    }
+    if m == "select clips first" {
+        return s("Select a clip in the timeline first.").to_string();
+    }
+    let mut out: String = m.chars().take(1).flat_map(char::to_uppercase).chain(m.chars().skip(1)).collect();
+    if !out.is_empty() && !out.ends_with(['.', '!', '?', ')']) {
+        out.push('.');
+    }
+    out
+}
+
 fn open(app: &mut FilmcraftApp, ctx: &egui::Context, query: Option<&str>) {
     let items = Arc::new(collect(app, ctx));
     let dir = super::data_dir(app);
@@ -668,6 +693,7 @@ pub fn show(app: &mut FilmcraftApp, ctx: &egui::Context) {
             p.error = None;
             put(ctx, p);
             if let Err(e) = run(app, ctx, &it, params) {
+                let e = plain_error(&e);
                 let mut again = back;
                 again.recent = get(ctx).recent;
                 again.error = Some(e.clone());
@@ -805,6 +831,15 @@ mod tests {
         let mut it = command_item(id, label, &[], "{}", None, enabled);
         it.key = key.into();
         it
+    }
+
+    #[test]
+    fn engine_errors_read_plainly() {
+        assert_eq!(plain_error("badParams: invalid parameters for `bashcut.looks.apply`: select clips first"), "Select a clip in the timeline first.");
+        assert_eq!(plain_error("disabled: command `edit.cut` is not available right now: nothing selected"), "Nothing selected.");
+        assert_eq!(plain_error("no active sequence"), "No active sequence.");
+        assert_eq!(plain_error("Teal & Orange is not available now"), "Teal & Orange is not available now.");
+        assert_eq!(plain_error(""), "");
     }
 
     #[test]
