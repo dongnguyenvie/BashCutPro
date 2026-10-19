@@ -101,3 +101,4 @@ One row per run of `bashcut/scripts/smoke.sh` / `smoke.ps1` ([smoke.md](smoke.md
 
 | Date | Machine | Commit | Result |
 |---|---|---|---|
+| 2026-10-20 | geekomT (Windows 11, AMD64) | 1c720a2a (dev build) | `smoke: 6 passed, 0 failed` with `-NoIsa`; ISA scan of release binaries pending (release checklist) |

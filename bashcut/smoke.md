@@ -21,7 +21,10 @@ was launched and answered:
 5. `app.quit` (control method: no save prompt); the process must exit within 15 s.
 6. Instruction-set scan of the app and CLI when they are x86-64: no `ymm` (AVX / AVX2) or `zmm` / opmask (AVX-512)
    registers outside the functions matched by `bashcut/scripts/isa-allow.txt` (runtime-dispatched code only). Needs
-   `llvm-objdump` (`rustup component add llvm-tools`) or `objdump`; on Windows `dumpbin` also works. `--isa-only` /
+   `llvm-objdump` (`rustup component add llvm-tools`) or `objdump`; on Windows `dumpbin` also works. On Windows the function
+   names live in the PDB, which `llvm-objdump` does not read, so each hit is named through `llvm-symbolizer` (next to
+   `llvm-objdump`). Scan **release** binaries: in a dev build intrinsics and small generics are not inlined, so their
+   own copies show up as AVX functions; use `-NoIsa` / `--no-isa` for dev builds. `--isa-only` /
    `-IsaOnly` scans binaries without launching anything.
 
 Outputs go to `target/smoke/` (`--out`): app log, screenshot, CLI and MCP transcripts.

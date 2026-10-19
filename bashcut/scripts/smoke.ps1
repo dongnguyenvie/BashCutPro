@@ -81,15 +81,37 @@ function Invoke-IsaScan([string]$bin) {
     }
     $wide = 'ymm\d|zmm\d|%k[1-7]\b|\{k[1-7]\}'
     $fn = "?"
-    $seen = @{}
+    $hits = New-Object System.Collections.Generic.List[object]
     foreach ($l in $lines) {
         if ($l -match $header) { $fn = $Matches[1]; continue }
         if ($l -notmatch $wide) { continue }
         $kind = "AVX/AVX2"
         if ($l -match 'zmm\d|%k[1-7]\b|\{k[1-7]\}') { $kind = "AVX-512" }
+        $addr = if ($l -match '^\s*([0-9a-f]+):') { $Matches[1] } else { "" }
+        $hits.Add(@{ kind = $kind; fn = $fn; addr = $addr })
+    }
+    # A PE keeps its function names in the PDB, which llvm-objdump does not read: it only prints
+    # section headers (`<.text>`). Name each hit through llvm-symbolizer, which reads the PDB.
+    $sections = @($hits | Where-Object { $_.fn -match '^\.' -and $_.addr })
+    if ($dis.kind -eq "llvm" -and $sections.Count -gt 0) {
+        $sym = Get-Command llvm-symbolizer -ErrorAction SilentlyContinue
+        $symPath = if ($sym) { $sym.Source } else { Join-Path (Split-Path $dis.path) "llvm-symbolizer.exe" }
+        if (Test-Path $symPath) {
+            $names = ($sections | ForEach-Object { "0x$($_.addr)" }) | & $symPath "--obj=$bin" --functions=linkage --no-inlines --output-style=GNU 2>$null
+            $i = 0
+            foreach ($n in @($names)) {
+                if ($i % 2 -eq 0 -and ($i / 2) -lt $sections.Count -and $n -and $n -ne "??") { $sections[$i / 2].fn = $n }
+                $i++
+            }
+        } else {
+            Note "isa: no llvm-symbolizer next to $($dis.path): hits are named by section only"
+        }
+    }
+    $seen = @{}
+    foreach ($h in $hits) {
         $ok = $false
-        foreach ($p in $patterns) { if ($fn -match $p) { $ok = $true; break } }
-        if (-not $ok) { $seen["$kind`t$fn"] = $true }
+        foreach ($p in $patterns) { if ($h.fn -match $p) { $ok = $true; break } }
+        if (-not $ok) { $seen["$($h.kind)`t$($h.fn)"] = $true }
     }
     if ($seen.Count -eq 0) {
         Pass "isa: $bin has no AVX/AVX2/AVX-512 outside allowed functions"
@@ -200,6 +222,8 @@ function Invoke-Limited([string]$exe, [string[]]$argv, [string]$outFile, [string
     $p = @{ FilePath = $exe; ArgumentList = $argv; PassThru = $true; NoNewWindow = $true; RedirectStandardOutput = $outFile; RedirectStandardError = "$outFile.err" }
     if ($inFile) { $p.RedirectStandardInput = $inFile }
     $q = Start-Process @p
+    # Windows PowerShell 5.1 only keeps ExitCode for a process whose handle was read while it ran
+    $null = $q.Handle
     if (-not $q.WaitForExit($seconds * 1000)) { Stop-Process -Id $q.Id -Force -ErrorAction SilentlyContinue; return 124 }
     return $q.ExitCode
 }

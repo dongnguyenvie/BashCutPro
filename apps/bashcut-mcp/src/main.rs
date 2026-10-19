@@ -176,6 +176,9 @@ fn decide(a: &Args, cwd: &Path) -> Result<Decision, String> {
         }
         let project = wproject.or(project);
         let roots = Roots::new(project.as_deref(), roots_env.as_deref(), &extra, cwd);
+        if roots.is_empty() {
+            notes.push("the window has no saved project open: writes are not limited (save the project, or set BASHCUTPRO_ROOTS)".into());
+        }
         let argv = vec![cli, "mcp".into(), "--bridge".into(), addr];
         return Ok(Decision { mode: "bridge", argv, project, roots, notes });
     }
