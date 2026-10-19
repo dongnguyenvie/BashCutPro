@@ -283,11 +283,12 @@ pub struct Output {
 }
 
 /// The commands that make a new project from a media input when the pipeline has no template:
-/// import the file, then a sequence from it (matching its size and rate).
+/// import the file, then a sequence from it (matching its size and rate). Headless there is no
+/// Project panel selection, so the clip is named: the first item imported into a new project is 1.
 pub fn default_create_commands() -> Vec<CommandLine> {
     vec![
         CommandLine { id: "file.import".into(), params: serde_json::json!({"paths": ["{media}"]}) },
-        CommandLine { id: "file.newSequenceFromClip".into(), params: empty_object() },
+        CommandLine { id: "file.newSequenceFromClip".into(), params: serde_json::json!({"items": [1]}) },
     ]
 }
 
