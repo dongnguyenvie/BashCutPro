@@ -7,7 +7,10 @@
 //!
 //! Adding a section: one row in [`SECTIONS`] and a `draw` function in its own file.
 
+pub mod plugins;
+pub mod plugins_panel;
 pub mod rail;
+pub mod runs_panel;
 pub mod side_panel;
 pub mod state;
 pub mod strings;
@@ -38,8 +41,8 @@ pub struct Section {
 /// The rail, top to bottom (`bashcut/in-app-ui.md` §1).
 pub const SECTIONS: &[Section] = &[
     Section { id: "agent", title: "Agent", icon: Icon::Chat, blurb: "Chat with the editing agent (Claude Code, Codex) about this project.", draw: coming_soon },
-    Section { id: "plugins", title: "Plugins", icon: Icon::Grid, blurb: "Installed plugins, their settings and actions.", draw: coming_soon },
-    Section { id: "runs", title: "Runs", icon: Icon::Stopwatch, blurb: "Plugin runs and agent turns with progress and results.", draw: coming_soon },
+    Section { id: "plugins", title: "Plugins", icon: Icon::Grid, blurb: "Installed plugins, their settings and actions.", draw: plugins_panel::draw },
+    Section { id: "runs", title: "Runs", icon: Icon::Stopwatch, blurb: "Plugin runs and agent turns with progress and results.", draw: runs_panel::draw },
 ];
 
 /// The ids of [`SECTIONS`].
@@ -77,6 +80,7 @@ pub fn layout(app: &mut FilmcraftApp, ui: &mut egui::Ui, body: egui::Rect) -> eg
     let mut st = State::get(&ctx);
     st.load_once(dir.as_deref(), &known);
     strings::set_language(st.language.as_deref());
+    plugins::poll(&ctx);
     let mut dock = body;
     if st.rail && app.ui.mode == crate::state::Mode::Edit {
         let rail_rect = egui::Rect::from_min_max(egui::pos2(body.max.x - rail::WIDTH, body.min.y), body.max);
@@ -111,7 +115,9 @@ pub fn invoke(app: &mut FilmcraftApp, ctx: &egui::Context, id: &str, params: &Va
     if !id.starts_with("bashcut.") {
         return None;
     }
-    let _ = app;
+    if let Some(name) = id.strip_prefix("bashcut.plugins.") {
+        return Some(plugins::invoke(app, ctx, name, params));
+    }
     let known = section_ids();
     let section_param = || params.get("section").and_then(Value::as_str).filter(|s| is_section(s)).map(str::to_string);
     let r = match id {
@@ -192,6 +198,7 @@ pub fn commands() -> Vec<CommandInfo> {
     for sec in SECTIONS {
         v.push(CommandInfo::new(&format!("bashcut.ui.show.{}", sec.id), sec.title, &["Window", "BashCutPro"], None));
     }
+    v.extend(plugins::commands());
     v
 }
 

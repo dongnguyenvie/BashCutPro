@@ -31,6 +31,9 @@ _Last updated: 2026-10-20_
 - Engine measurements (#36): `crates/bashcut-analysis` (loudness, beats, picture checks) and `bashcut.audio.loudness`,
   `bashcut.audio.beats`, `bashcut.review.pictureChecks` in `crates/engine/src/bashcut/`; kit skills use them. Build + tests
   pending (build pass).
+- U1 (#31): `crates/bashcut-plugin-host` (manifests, registry, git installs into `<data dir>/bashcut-plugins/`,
+  settings + OS key store, runner with progress, `bashcut-result/1`, hand-off, cancel, timeout, capped output) and
+  the Plugins and Runs sections with `bashcut.plugins.*` commands; hook H4. Build + tests + live check pending.
 
 ## Next
 

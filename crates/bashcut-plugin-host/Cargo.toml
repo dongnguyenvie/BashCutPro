@@ -1,0 +1,15 @@
+[package]
+name = "bashcut-plugin-host"
+description = "BashCutPro plugin host: bashcut-plugin/1 manifests, bashcut-registry/1 install, out-of-process runner (fork-only; bashcut/plugin-host.md)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+serde = { workspace = true }
+serde_json = { workspace = true }
+log = { workspace = true }

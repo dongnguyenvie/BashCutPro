@@ -131,6 +131,18 @@ Built in #34: `bashcut_ui/{mod,rail,side_panel,state,strings}.rs`. Sections are 
 (Window ▸ BashCutPro). Our files go under `<data dir>` = the session's auto-save data dir (`bashcut_ui::data_dir`);
 with no persistence (headless tests) nothing is read or written.
 
+Built in #31 (U1): `bashcut_ui/plugins.rs` keeps one `bashcut_plugin_host::Host` in context data (key
+`bashcut.plugins.host`), polled by `layout` each frame; `plugins_panel.rs` and `runs_panel.rs` draw the sections.
+Commands `bashcut.plugins.{list, registry {location?}, install|update {plugin}, remove {plugin}, settings {plugin,
+values?}, setSecret {plugin, setting, value?}, run {plugin, action, params?, timeoutSeconds?, bridge?}, runs, job
+{job}, cancel {job}, clear, sendToAgent {job}}` all go through `Host::command`, so the buttons, the control channel
+and MCP share one code path (`sendToAgent` answers `sent: false` until the Agent section, #35). Runs connect with
+`--bridge 127.0.0.1:<port>` when the app was started with `--control <port>` (or `FILMCRAFT_CONTROL_PORT`), and get
+`--cli` = `filmcraft-cli` next to the app. Automation ids: `bashcut.plugins.registry.refresh`,
+`bashcut.plugins.<id>[.install|.update|.remove]`, `bashcut.plugins.<id>.settings.<setting>` / `.settings.save`,
+`bashcut.plugins.<id>.secret.<setting>[.save|.clear]`, `bashcut.plugins.<id>.action.<action>[.param.<param>]`,
+`bashcut.plugins.<id>.<action>.run`, `bashcut.runs.<job>[.progress|.cancel|.log|.agent]`, `bashcut.runs.clear`.
+
 - **UI state** (open section, width, popped-out sections, panel scroll, draft message) is a `bashcut_ui::State`
   kept in egui's context data (`ctx.data_mut(|d| d.get_temp_mut_or_default::<State>(id))`), so `FilmcraftApp`
   gains no field. It is saved to `<data dir>/bashcut/ui.json` when it changes, not in upstream's workspace files.
