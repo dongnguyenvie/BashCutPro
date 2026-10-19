@@ -59,7 +59,7 @@ pub fn commands() -> Vec<CommandSpec> {
             shortcut: None,
             params: r#"{"dir":str?}"#,
             enabled: always,
-            run: |_, p| list(p),
+            run: |s, p| list(s, p),
             journal: false,
         },
     ]
@@ -70,10 +70,10 @@ fn err(cmd: &str, msg: impl Into<String>) -> EngineError {
 }
 
 /// A template folder from `path` / `template` (a folder) or a plain name under `<data dir>/bashcut/templates`.
-fn bundle_dir(p: &Value, key: &str, cmd: &str) -> Result<PathBuf> {
+fn bundle_dir(s: &Session, p: &Value, key: &str, cmd: &str) -> Result<PathBuf> {
     let v = str_p(p, key).or_else(|| str_p(p, "name")).filter(|v| !v.is_empty()).ok_or_else(|| err(cmd, format!("need `{key}`")))?;
     if data::plain_name(v) && !Path::new(v).is_dir() {
-        let root = data::folder(p, "templates").ok_or_else(|| err(cmd, "no data directory"))?;
+        let root = data::folder(s, p, "templates").ok_or_else(|| err(cmd, "no data directory"))?;
         return Ok(root.join(v));
     }
     Ok(PathBuf::from(v))
@@ -90,7 +90,7 @@ fn slot_kind(kind: MediaKind, has_video: bool) -> &'static str {
 
 fn save(s: &mut Session, p: &Value) -> Result<Value> {
     const CMD: &str = "bashcut.template.save";
-    let dir = bundle_dir(p, "path", CMD)?;
+    let dir = bundle_dir(s, p, "path", CMD)?;
     let manifest = dir.join(MANIFEST);
     if manifest.exists() && !bool_p(p, "overwrite").unwrap_or(false) {
         return Err(err(CMD, format!("{} already holds a template (pass overwrite:true)", dir.display())));
@@ -179,7 +179,7 @@ fn read_manifest(dir: &Path, cmd: &str) -> Result<(Value, Vec<Slot>)> {
 
 fn instantiate(s: &mut Session, p: &Value) -> Result<Value> {
     const CMD: &str = "bashcut.template.instantiate";
-    let dir = bundle_dir(p, "template", CMD)?;
+    let dir = bundle_dir(s, p, "template", CMD)?;
     let (doc, slots) = read_manifest(&dir, CMD)?;
     let project_rel = doc.get("project").and_then(Value::as_str).filter(|r| data::plain_name(r)).unwrap_or(PROJECT);
     let project_path = dir.join(project_rel);
@@ -194,7 +194,10 @@ fn instantiate(s: &mut Session, p: &Value) -> Result<Value> {
     for f in &fills {
         let key = f.get("slot").and_then(Value::as_str).ok_or_else(|| err(CMD, "each fill needs `slot`"))?;
         let file = f.get("file").and_then(Value::as_str).filter(|x| !x.is_empty()).ok_or_else(|| err(CMD, format!("fill `{key}` needs `file`")))?;
-        let slot = slots.iter().find(|x| x.id == key || x.name == key).ok_or_else(|| err(CMD, format!("no slot `{key}`")))?;
+        let slot = slots.iter().find(|x| x.id.eq_ignore_ascii_case(key.trim()) || x.name.eq_ignore_ascii_case(key.trim())).ok_or_else(|| {
+            let names: Vec<String> = slots.iter().map(|x| format!("`{}` ({})", x.id, x.name)).collect();
+            err(CMD, format!("no slot `{key}`; this template has {}", names.join(", ")))
+        })?;
         if chosen.iter().any(|c| c.0 == slot.item) {
             return Err(err(CMD, format!("slot `{key}` is filled twice")));
         }
@@ -253,8 +256,8 @@ fn fold_history(s: &mut Session, steps: usize) {
     }
 }
 
-fn list(p: &Value) -> Result<Value> {
-    let Some(root) = data::folder(p, "templates") else { return Ok(json!({"templates": []})) };
+fn list(s: &Session, p: &Value) -> Result<Value> {
+    let Some(root) = data::folder(s, p, "templates") else { return Ok(json!({"templates": []})) };
     let mut out = Vec::new();
     if let Ok(rd) = std::fs::read_dir(&root) {
         for e in rd.flatten().take(1000) {

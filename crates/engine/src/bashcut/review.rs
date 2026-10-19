@@ -493,7 +493,7 @@ fn run(s: &mut Session, p: &Value) -> Result<Value> {
     let mut profile_id = Value::Null;
     if let Some(key) = p.get("profile").filter(|v| !v.is_null()) {
         let key = key.as_str().ok_or_else(|| bad(CMD, "`profile` must be a profile id or name"))?;
-        let pr = super::profiles::find(p, key).ok_or_else(|| fail(Code::NotFound, CMD, format!("no output profile `{key}` (see bashcut.profiles.list)")))?;
+        let pr = super::profiles::find(s, p, key).ok_or_else(|| fail(Code::NotFound, CMD, format!("no output profile `{key}` (see bashcut.profiles.list)")))?;
         l.lufs = pr.loudness_lufs;
         l.true_peak = pr.true_peak_dbtp;
         profile_id = json!(pr.id);
