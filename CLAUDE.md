@@ -1,5 +1,7 @@
 # FilmCraft — instructions for agents
 
+> **BashCutPro fork:** read [`bashcut/README.md`](bashcut/README.md) first (fork overview, decisions, status). Everything below is upstream FilmCraft's and still applies.
+
 FilmCraft is a clean-room, open-source, pure-Rust non-linear video editor targeting Adobe Premiere Pro parity (and beyond). Native on macOS, Windows, Linux; web via WASM. Sibling of `../photocraft` (Photoshop), `../pdfcraft` (Acrobat) and `../vectorcraft` (Illustrator; formerly DrawCraft), with the same conventions.
 
 ## Start every session here

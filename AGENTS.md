@@ -1,5 +1,7 @@
 # FilmCraft — rules for agents and contributors
 
+> **BashCutPro fork:** read [`bashcut/README.md`](bashcut/README.md) first (fork overview, decisions, status). Everything below is upstream FilmCraft's and still applies.
+
 These rules apply to every human and AI contributor. `CLAUDE.md` holds the working instructions; this
 file holds the rules that must never be broken. When the two disagree, this file wins.
 
