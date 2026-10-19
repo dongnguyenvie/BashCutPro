@@ -25,6 +25,8 @@ _Last updated: 2026-10-20_
   Hooks / Carried edits ledger in `UPSTREAM.md`; `footprint --pr` is the check before every PR.
 - Branding out of hot upstream files (#39): `dialogs.rs`, `main.rs`, `header.rs` carry one hook each into
   `bashcut_brand`; cold `brand.rs`, `links.rs`, `build.rs` and packaging stay as listed carried edits.
+- Batch runner (#45): `crates/bashcut-batch` + `apps/bashcut-batch` ([batch.md](batch.md)); tested with a fake
+  `filmcraft-cli`, live run pending.
 - `bashcut-plugin-host` design note: [plugin-host.md](plugin-host.md) (#23), approved 2026-10-20.
 - In-app UI U0 (#34): `crates/ui-egui/src/bashcut_ui/` rail + side panel, state, strings (vi), hooks H5–H9, H11
   (ledger in `UPSTREAM.md`). Build + tests pending (build pass).

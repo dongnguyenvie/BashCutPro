@@ -34,6 +34,8 @@ MARKER = "BashCutPro"
 RUST_BUDGET = 150
 HOT_COMMITS = 20
 HOT_DAYS = 30
+# Generated files: on a sync take upstream's and regenerate (cargo adds our crates back).
+GENERATED = ("Cargo.lock",)
 
 
 class Fail(Exception):
@@ -303,6 +305,8 @@ def footprint(args):
         ledger.hooks = [h for h in ledger.hooks if h.path in touched]
 
     problems = list(ledger.errors)
+    generated = [f.path for f in files if f.path in GENERATED]
+    files = [f for f in files if f.path not in GENERATED]
     upstream_files = [f for f in files if not is_ours(f.path) and f.status != "A"]
     new_files = [f.path for f in files if not is_ours(f.path) and f.status == "A"]
     hot = hot_counts(args.upstream, [f.path for f in upstream_files])
@@ -350,6 +354,8 @@ def footprint(args):
         print("30-day churn: unknown (no %s; run upstream.py setup)" % args.upstream)
     if new_files:
         print("New files outside our folders (no conflict risk): %s" % ", ".join(new_files))
+    if generated:
+        print("Generated (take upstream's on a sync, then regenerate): %s" % ", ".join(generated))
     print("Ledger: %d hook rows, %d carried-edit globs" % (len(ledger.hooks), len(ledger.carried)))
     if problems:
         print("\nFAIL: %d problem(s)" % len(problems))
