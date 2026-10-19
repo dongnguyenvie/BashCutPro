@@ -160,6 +160,7 @@ pub fn empty_draft() -> Pipeline {
         outputs: Vec::new(),
         on_failure: OnFailure::Skip,
         concurrency: 2,
+        agent_concurrency: 1,
         output_name: None,
         projects_folder: String::new(),
         outputs_folder: None,
@@ -375,7 +376,11 @@ pub fn step_from(app: &mut FilmcraftApp, ctx: &egui::Context, p: &Value) -> Resu
     } else if let Some(recipe) = str_p(p, "recipe") {
         let (id, title, _) = RECIPES.iter().find(|(id, ..)| *id == recipe).ok_or(format!("no recipe {recipe}"))?;
         let brief = str_p(p, "brief").unwrap_or_default().to_string();
-        Step { label: Some(title.to_string()), agent: Some(AgentStep { skill: id.to_string(), brief, argv: Vec::new() }), ..Step::default() }
+        Step {
+            label: Some(title.to_string()),
+            agent: Some(AgentStep { skill: id.to_string(), brief, review: true, ..AgentStep::default() }),
+            ..Step::default()
+        }
     } else {
         return Err("give `command`, `plugin` + `action`, `recipe` or `step`".into());
     };

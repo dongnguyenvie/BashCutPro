@@ -70,6 +70,14 @@ impl Driver {
         self.frames(3);
     }
 
+    /// Types into the search box, so the card is in view (the list scrolls; a click lands where the widget is).
+    fn search(&mut self, text: &str) {
+        self.click("bashcut.looks.filter");
+        self.ok("ui.key", json!({"key": "A", "command": true}));
+        self.ok("ui.type", json!({"text": text}));
+        self.frames(3);
+    }
+
     fn first_clip(&mut self) -> u64 {
         let q = self.exec("sequence.inspect", json!({}));
         q["video"].as_array().unwrap().iter().flat_map(|t| t["items"].as_array().unwrap().iter()).next().expect("a video clip")["clip"].as_u64().unwrap()
@@ -95,8 +103,10 @@ fn looks_section_lists_and_applies_to_the_selection() {
     let clip = d.first_clip();
     d.exec("timeline.select", json!({"clips": [clip]}));
     d.frames(3);
+    d.search("teal");
     d.click("bashcut.looks.teal-orange.apply");
     assert_eq!(d.looks_on(clip), 1, "applied through the panel");
+    d.search("golden");
     d.click("bashcut.looks.golden-hour.apply");
     assert_eq!(d.looks_on(clip), 1, "a second look replaces the first");
     d.exec("edit.undo", json!({}));

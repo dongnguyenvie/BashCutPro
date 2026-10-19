@@ -219,13 +219,11 @@ pub fn invoke(app: &mut FilmcraftApp, ctx: &egui::Context, id: &str, params: &Va
             State::update(ctx, |st| st.language = lang.clone());
             Ok(json!(lang))
         }
-        _ => match id.strip_prefix("bashcut.ui.show.").filter(|s| is_section(s)) {
-            Some(sec) => {
-                State::update(ctx, |st| st.show(sec));
-                Ok(json!(sec))
-            }
-            None => return None,
-        },
+        _ => {
+            let sec = id.strip_prefix("bashcut.ui.show.").filter(|s| is_section(s))?;
+            State::update(ctx, |st| st.show(sec));
+            Ok(json!(sec))
+        }
     };
     Some(r)
 }
