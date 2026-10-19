@@ -1,0 +1,10 @@
+BashCutPro brand files (everything under bashcut/brand/: app icon, mark and wordmarks)
+
+Copyright (c) 2026 Dong Nguyen and the BashCutPro contributors.
+
+Licensed under the MIT License or the Apache License, Version 2.0, at your option
+(LICENSE-MIT and LICENSE-APACHE at the root of this repository), like the rest of BashCutPro.
+
+The mark is BashCut's (dongnguyenvie/BashCut, BashCut/Views/BashCutLogo.swift, MIT). The wordmark
+text is set in Inter Bold (The Inter Project Authors, SIL Open Font License 1.1,
+assets/fonts/OFL-Inter.txt), converted to outlines; the font itself is not included in these files.

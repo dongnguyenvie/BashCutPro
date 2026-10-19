@@ -91,10 +91,10 @@ Copy-Item (Join-Path $Bin 'filmcraft.exe'), (Join-Path $Bin 'filmcraft-cli.exe')
 & (Join-Path $PSScriptRoot 'sign.ps1') (Join-Path $Stage 'filmcraft.exe') (Join-Path $Stage 'filmcraft-cli.exe')
 
 # ---- MSI ---------------------------------------------------------------------------------------
-$Msi = Join-Path $Dist "filmcraft-$Version-windows-$Arch.msi"
+$Msi = Join-Path $Dist "bashcutpro-$Version-windows-$Arch.msi"
 Invoke-Native 'wix build' {
   wix build (Join-Path $PSScriptRoot 'filmcraft.wxs') -arch $Arch `
-    -d "Version=$MsiVersion" -d "BinDir=$Stage" -d "IconPath=$(Join-Path $Root 'assets\app-icon\filmcraft.ico')" `
+    -d "Version=$MsiVersion" -d "BinDir=$Stage" -d "IconPath=$(Join-Path $Root 'bashcut\brand\app-icon\bashcutpro.ico')" `
     -o $Msi
 }
 # wix writes its debug symbols (.wixpdb) next to the MSI; keep them out of the release assets.
@@ -102,7 +102,7 @@ Remove-Item -Force -ErrorAction SilentlyContinue ([IO.Path]::ChangeExtension($Ms
 & (Join-Path $PSScriptRoot 'sign.ps1') $Msi
 
 # ---- portable zip ------------------------------------------------------------------------------
-$Portable = Join-Path $TargetDir "windows-package\filmcraft-$Version-windows-$Arch-portable"
+$Portable = Join-Path $TargetDir "windows-package\bashcutpro-$Version-windows-$Arch-portable"
 Remove-Item -Recurse -Force $Portable -ErrorAction SilentlyContinue
 New-Item -ItemType Directory -Force -Path $Portable | Out-Null
 Copy-Item (Join-Path $Stage '*.exe') $Portable
@@ -111,7 +111,7 @@ Set-Content -Encoding ascii -Path (Join-Path $Portable 'portable.txt') -Value @(
   'FilmCraft portable: preferences, presets, logs and crash recovery are kept in the data folder',
   'next to filmcraft.exe. Delete this file to use %APPDATA%\FilmCraft instead.'
 )
-foreach ($f in 'README.md', 'LICENSE', 'LICENSE-MIT', 'LICENSE-APACHE') {
+foreach ($f in 'README.md', 'LICENSE', 'LICENSE-MIT', 'LICENSE-APACHE', 'NOTICE') {
   $p = Join-Path $Root $f
   if (Test-Path $p) { Copy-Item $p $Portable }
 }
@@ -121,7 +121,7 @@ if ($env:CRAFT_FONTS_DIR) {
     Copy-Item $lic.FullName (Join-Path $Portable "OFL-$($lic.Directory.Name).txt")
   }
 }
-$Zip = Join-Path $Dist "filmcraft-$Version-windows-$Arch-portable.zip"
+$Zip = Join-Path $Dist "bashcutpro-$Version-windows-$Arch-portable.zip"
 Remove-Item -Force $Zip -ErrorAction SilentlyContinue
 Compress-Archive -Path $Portable -DestinationPath $Zip
 

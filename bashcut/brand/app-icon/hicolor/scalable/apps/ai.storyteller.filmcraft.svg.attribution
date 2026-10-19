@@ -1,0 +1,8 @@
+asset:        ai.storyteller.filmcraft.svg
+title:        BashCutPro app icon, Linux hicolor theme scalable vector
+author:       Dong Nguyen (BashCut and BashCutPro owner)
+source:       original work (the BashCut mark from dongnguyenvie/BashCut, BashCut/Views/BashCutLogo.swift)
+license:      MIT OR Apache-2.0
+license-file: bashcut/brand/LICENSE.txt
+added:        2026-10-20 by Claude (agent) for Dong Nguyen
+notes:        Copy of bashcut/brand/app-icon/bashcutpro.svg (bashcut/brand/render.sh). See bashcut/brand/README.md.

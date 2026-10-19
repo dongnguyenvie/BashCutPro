@@ -78,7 +78,7 @@ install -m 644 "$LINUX/$APP_ID.desktop" "$STAGE/share/applications/$APP_ID.deskt
 install -m 644 "$LINUX/$APP_ID.mime.xml" "$STAGE/share/mime/packages/$APP_ID.xml"
 sed -e "s/@VERSION@/$VERSION/g" -e "s/@DATE@/$FILMCRAFT_BUILD_DATE/g" \
   "$LINUX/$APP_ID.metainfo.xml.in" >"$STAGE/share/metainfo/$APP_ID.metainfo.xml"
-cp -R "$ROOT/assets/app-icon/hicolor" "$STAGE/share/icons/"
+cp -R "$BRAND_ICON_DIR/hicolor" "$STAGE/share/icons/"
 copy_docs "$STAGE/share/doc/filmcraft"
 for f in NOTICE ATTRIBUTION.md; do
   if [ -f "$ROOT/$f" ]; then install -m 644 "$ROOT/$f" "$STAGE/share/doc/filmcraft/"; fi

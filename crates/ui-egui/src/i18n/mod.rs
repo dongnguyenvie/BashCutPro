@@ -179,6 +179,10 @@ impl Language {
 
     /// Translate an English UI string; unknown strings come back unchanged.
     pub fn tr(self, text: &str) -> &str {
+        #[cfg(not(test))] // BashCutPro (bashcut/rebrand.md); upstream's catalog tests see upstream text
+        if let Some(branded) = crate::bashcut_brand::text(text) {
+            return branded;
+        }
         self.catalog().and_then(|c| c.plain(text)).unwrap_or(text)
     }
 

@@ -10,6 +10,8 @@ and its own docs (`CLAUDE.md`, `AGENTS.md`, `docs/`) still apply in full.
 | [decisions.md](decisions.md) | decisions already made, with the reason; don't re-open them without the owner |
 | [migration.md](migration.md) | what to port from BashCut's kit and plugins, what to skip, and the order |
 | [status.md](status.md) | where the work stands and the next steps; update it when you finish something |
+| [rebrand.md](rebrand.md) | how builds show BashCutPro instead of FilmCraft / ArtCraft, and every upstream file that touches |
+| [brand/](brand/README.md) | BashCutPro's app icon, mark and wordmarks, and the scripts that render them |
 | [commands.md](commands.md), [commands.json](commands.json) | FilmCraft's live command catalogue (`command_list`) and the ids that matter for agents |
 | [skill-needs.md](skill-needs.md) | what each BashCut skill needs, need by need: available, compose, plugin, or new engine command |
 

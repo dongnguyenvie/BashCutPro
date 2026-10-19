@@ -8,42 +8,42 @@
 -->
 <Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
   <Package
-      Name="FilmCraft"
-      Manufacturer="Learning Machines LLC"
+      Name="BashCutPro"
+      Manufacturer="Birch Apps"
       Version="$(var.Version)"
-      UpgradeCode="31E6FB14-9DBC-41DD-B24B-26B71FB31B62"
+      UpgradeCode="B6658EBC-E524-4423-AA52-C08E9B38AACB"
       Scope="perMachine"
       Compressed="yes"
       Language="1033">
-    <SummaryInformation Description="FilmCraft video editor" Manufacturer="Learning Machines LLC" />
+    <SummaryInformation Description="BashCutPro video editor" Manufacturer="Birch Apps" />
     <!-- Same-version upgrades let successive pre-releases of one X.Y.Z replace each other
          (MSI versions are numeric, so 1.2.3-rc.1 and 1.2.3-rc.2 are both 1.2.3). -->
     <MajorUpgrade AllowSameVersionUpgrades="yes"
-        DowngradeErrorMessage="A newer version of FilmCraft is already installed." />
+        DowngradeErrorMessage="A newer version of BashCutPro is already installed." />
     <MediaTemplate EmbedCab="yes" CompressionLevel="high" />
 
     <Icon Id="FilmcraftIcon.ico" SourceFile="$(var.IconPath)" />
     <Property Id="ARPPRODUCTICON" Value="FilmcraftIcon.ico" />
-    <Property Id="ARPURLINFOABOUT" Value="https://getartcraft.com/apps/filmcraft" />
-    <Property Id="ARPURLUPDATEINFO" Value="https://getartcraft.com/apps/filmcraft" />
-    <Property Id="ARPHELPLINK" Value="https://discord.gg/artcraft" />
+    <Property Id="ARPURLINFOABOUT" Value="https://github.com/dongnguyenvie/BashCutPro" />
+    <Property Id="ARPURLUPDATEINFO" Value="https://github.com/dongnguyenvie/BashCutPro/releases" />
+    <Property Id="ARPHELPLINK" Value="https://github.com/dongnguyenvie/BashCutPro/issues" />
 
     <StandardDirectory Id="ProgramFiles6432Folder">
-      <Directory Id="INSTALLFOLDER" Name="FilmCraft" />
+      <Directory Id="INSTALLFOLDER" Name="BashCutPro" />
     </StandardDirectory>
     <StandardDirectory Id="ProgramMenuFolder" />
 
-    <Feature Id="Main" Title="FilmCraft" Level="1">
+    <Feature Id="Main" Title="BashCutPro" Level="1">
       <ComponentGroupRef Id="FilmcraftFiles" />
     </Feature>
   </Package>
 
   <Fragment>
     <ComponentGroup Id="FilmcraftFiles" Directory="INSTALLFOLDER">
-      <Component Id="FilmcraftApp" Guid="15933017-925B-4963-8992-52000EB26AAA">
+      <Component Id="FilmcraftApp" Guid="6CC6F18C-6F88-42A5-84B3-20911704768F">
         <File Id="FilmcraftExe" Source="$(var.BinDir)\filmcraft.exe" KeyPath="yes">
-          <Shortcut Id="StartMenuShortcut" Directory="ProgramMenuFolder" Name="FilmCraft"
-              Description="FilmCraft video editor" WorkingDirectory="INSTALLFOLDER" Advertise="yes"
+          <Shortcut Id="StartMenuShortcut" Directory="ProgramMenuFolder" Name="BashCutPro"
+              Description="BashCutPro video editor" WorkingDirectory="INSTALLFOLDER" Advertise="yes"
               Icon="FilmcraftIcon.ico" IconIndex="0" />
         </File>
 

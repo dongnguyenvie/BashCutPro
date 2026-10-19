@@ -1,0 +1,8 @@
+asset:        bashcutpro.ico
+title:        BashCutPro app icon, Windows .ico (16-256 px)
+author:       Dong Nguyen (BashCut and BashCutPro owner)
+source:       original work (the BashCut mark from dongnguyenvie/BashCut, BashCut/Views/BashCutLogo.swift)
+license:      MIT OR Apache-2.0
+license-file: bashcut/brand/LICENSE.txt
+added:        2026-10-20 by Claude (agent) for Dong Nguyen
+notes:        Rendered from the SVG in this folder by bashcut/brand/render.sh. See bashcut/brand/README.md.

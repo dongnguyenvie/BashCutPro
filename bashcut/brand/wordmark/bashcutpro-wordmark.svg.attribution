@@ -1,0 +1,8 @@
+asset:        bashcutpro-wordmark.svg
+title:        BashCutPro wordmark, dark ink (for light themes), vector
+author:       Dong Nguyen (BashCut and BashCutPro owner)
+source:       original work (the BashCut mark from dongnguyenvie/BashCut, BashCut/Views/BashCutLogo.swift)
+license:      MIT OR Apache-2.0
+license-file: bashcut/brand/LICENSE.txt
+added:        2026-10-20 by Claude (agent) for Dong Nguyen
+notes:        Written by bashcut/brand/generate.py: the BashCut mark transcribed from BashCut/Views/BashCutLogo.swift (dongnguyenvie/BashCut); text is Inter Bold (OFL-1.1) converted to outlines. See bashcut/brand/README.md.
