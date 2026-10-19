@@ -1,6 +1,7 @@
 # Design: BashCutPro's in-app UI and how it extends FilmCraft
 
-Status: **accepted** (2026-10-20); tickets #34 (U0), #31 (U1), #35 (U2), #36 (U3), #37 (U4), tracking #40. Extends [plugin-host.md](plugin-host.md) (#23, #31) and follows the one-way
+Status: **accepted** (2026-10-20); tickets #34 (U0), #31 (U1), #35 (U2), #36 (U3), #37 (U4); batch and quality
+additions #42–#54 (§1a); tracking #40. Extends [plugin-host.md](plugin-host.md) (#23, #31) and follows the one-way
 upstream sync decision in [decisions.md](decisions.md): everything below is ours, lives in our own files, and
 reaches upstream code only through a short list of one-line hooks.
 
@@ -29,8 +30,9 @@ It does not copy BashCut's Swift UI. It is built for FilmCraft's egui shell and 
                                                       side panel ↑        rail ↑
 ```
 
-- **Rail**: a 36 px strip on the right edge, always there. One icon per section: **Agent**, **Plugins**, **Runs**.
-  Plugins that declare a panel add their own icon. Click toggles the side panel; Cmd/Ctrl+Shift+A focuses Agent.
+- **Rail**: a 36 px strip on the right edge, always there. One icon per section, top to bottom: **Agent**,
+  **Batch**, **Looks**, **Plugins**, **Runs** (§1a). Plugins that declare a panel add their own icon below. Click
+  toggles the side panel; Cmd/Ctrl+Shift+A focuses Agent; **Cmd/Ctrl+K opens the command palette** (§1a).
 - **Side panel** (left of the rail): resizable (240–720 px), collapsible, width and open section remembered.
   It takes width from the dock area, so it behaves like a docked panel without being in FilmCraft's dock tree.
   Any section can pop out into a floating window (for a second monitor) and dock back.
@@ -41,6 +43,27 @@ It does not copy BashCut's Swift UI. It is built for FilmCraft's egui shell and 
   manifest (secrets go to the OS key store), actions with a params form, and the plugin's own view when it has one.
 - **Runs**: plugin runs and agent turns with progress (from the plugin's stderr), result, log, Cancel, and
   "Send to agent" for a hand-off result (`bashcut-result/1`, exit 3).
+
+### 1a. Built for batch and for better results (2026-10-20)
+
+Owner's goals for Pro: batch runs must be smooth and first-class, and finished videos must be better than the old
+BashCut's. The UI follows from that:
+
+- **Batch** (#46, runner #45): a batch is a list of inputs, steps and output profiles; each input becomes its own
+  project; items run **in parallel and headless** (one `filmcraft-cli` per item), so the window stays free and a
+  batch survives closing the app (resumable job book). The section shows one row per item with a staged progress
+  bar that learns step durations, output thumbnails, and **Open to fix / Retry / Reveal**. Any plugin action or tool
+  can start one ("Run on many files…"). Templates with slots (#42) are the usual starting point.
+- **Quality by default, visible**: output profiles per platform (#43) set size, bitrate, loudness and captions so
+  every export is platform-correct; **Looks** (#47) is a curated pack with a one-line purpose per look, engine-rendered
+  thumbnails and golden checks; one-knob voice polish (#48); word-by-word caption styles (#49). Review findings
+  appear as markers (rule 1 below) and in the Agent section's gate cards with the measurement behind them.
+- **Command palette** (#52): one search over commands, plugin actions, looks, profiles, recipes and batch presets,
+  with current shortcuts; the fastest path for users who do not want the agent.
+- **Long jobs never block**: every run (plugin, batch item, agent turn) shows in Runs with honest staged progress;
+  sections are non-modal and follow the current selection.
+- **Agents see less, act surer**: compact timeline summary and typed errors (#50), atomic grouped edits as one undo
+  step (#44), auto-connect to the open window with a project lock (#51).
 
 Rules that keep it out of upstream's way:
 
@@ -56,9 +79,10 @@ Rules that keep it out of upstream's way:
 |---|---|---|
 | `crates/bashcut-plugin-host/` | L4 (no workspace deps) | manifests (`bashcut-plugin/1`), registry (`bashcut-registry/1`), install into `<data dir>/bashcut-plugins/`, runner (spawn with connect args, stderr progress, `bashcut-result/1` parse, cancel, timeout, capped output), view model (`bashcut-view/1`). No egui, no OS crates; testable headless. |
 | `crates/bashcut-agent/` | L4 (no workspace deps) | agent sessions: start an agent CLI as a child process with an MCP config pointing at the app (`filmcraft-cli mcp --bridge 127.0.0.1:<control port>`), parse its event stream into a transcript model (message, tool call, gate, error), stop, resume; conversations saved in the project sidecar (§5). Adapters per agent (Claude Code `stream-json`, Codex) behind one trait. |
+| `crates/bashcut-batch/`, `apps/bashcut-batch/` | L4 (no workspace deps) / app | batch pipelines, parallel headless items through `filmcraft-cli`, job book, presets (#45). `apps/*` glob: no upstream edit. |
 | `crates/bashcut-analysis/` | L3 | read-only measurements for the engine gaps in [skill-needs.md](skill-needs.md): loudness (wraps `filmcraft-audio-dsp` BS.1770), beats / tempo (wraps `audio-dsp`'s remix onset analysis), black / frozen frames (its own frame-difference math over frames the engine adapter decodes). Depends only on L0–L1 crates (`time`, `frame`, `audio-dsp`), so the engine (L4) can depend on it without a same-layer edge; pure functions, wasm-safe. |
 | `crates/engine/src/bashcut/` | (engine) | `mod.rs` with `commands() -> Vec<CommandSpec>`: `bashcut.audio.loudness`, `bashcut.audio.beats`, `bashcut.review.pictureChecks`, … They read the `Session`, call `bashcut-analysis`, return JSON. Headless MCP gets them for free because they are engine commands. |
-| `crates/ui-egui/src/bashcut_ui/` | L5 | `mod.rs` (the hooks' entry points), `rail.rs`, `side_panel.rs`, `agent_panel.rs`, `plugins_panel.rs`, `runs_panel.rs`, `view.rs` (renders `bashcut-view/1` with egui widgets), `state.rs`, `strings/` (our i18n). Uses upstream's `Tokens`, `widgets` and automation registry read-only. |
+| `crates/ui-egui/src/bashcut_ui/` | L5 | `mod.rs` (the hooks' entry points), `rail.rs`, `side_panel.rs`, `agent_panel.rs`, `plugins_panel.rs`, `runs_panel.rs`, `batch_panel.rs`, `looks_panel.rs`, `palette.rs`, `view.rs` (renders `bashcut-view/1` with egui widgets), `state.rs`, `strings/` (our i18n). Uses upstream's `Tokens`, `widgets` and automation registry read-only. |
 | `crates/ui-egui/tests/bashcut_ui.rs` | test | headless scripted UI tests for the rail and panels (new file). |
 | `xtask/src/bashcut.rs` | tool | the layers of our crates (`bashcut-analysis` 3, `bashcut-plugin-host` 4, `bashcut-agent` 4), so `cargo xtask layers` knows them; the plugin host and agent depend on no workspace crate, and only `ui-egui` (L5) uses them. |
 
@@ -148,6 +172,9 @@ own research (spec 14) reached the same conclusion for most needs.
 | U2 | Agent section with the Claude Code adapter, gates from `plan.json` | — |
 | U3 | `bashcut-analysis` + engine commands (loudness, beats, picture checks) | H1–H3 |
 | U4 | Plugin views (`bashcut-view/1`), Codex adapter, pop-out windows | — |
+| B | Batch runner #45 → Batch section #46; templates #42, profiles #43 | H1–H3 (templates) |
+| Q | Looks #47, voice polish #48, word captions #49 (design note first) | H1–H3; #49 may add one render hook |
+| P | Command palette #52 | — (inside H6 / H8) |
 
 Each phase: `cargo test -p` for our crates and `crates/ui-egui/tests/bashcut_ui.rs`, `cargo xtask layers`,
 one manual look at the app through `ui.screenshot`. No release build per phase.

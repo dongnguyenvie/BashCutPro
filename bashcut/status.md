@@ -31,7 +31,9 @@ _Last updated: 2026-10-20_
    card with alpha. Confirm `scopes.read` scale, `render_frame` max side, the Lumetri intensity param name.
 2. Upstream-sync hygiene first: footprint check + hook ledger (#38), branding out of hot files (#39). Then the
    in-app UI ([in-app-ui.md](in-app-ui.md)): U0 #34 → U1 #31 → U2 #35 → U4 #37; engine analysis U3 #36 in parallel.
-   Tracking #40.
+   Batch and quality (owner goals): batch runner #45 → Batch section #46, templates #42, output profiles #43,
+   atomic edits #44, looks #47, voice polish #48, word captions #49, palette #52, agent reads #50, auto-connect #51,
+   model manifest #53, smoke checks #54. Tracking #40.
 3. Vlog library pack (text styles, stickers, transitions) once `.fcgt` conversions exist.
 
 ## Open questions
