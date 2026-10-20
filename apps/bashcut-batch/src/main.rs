@@ -47,14 +47,29 @@ RUN OPTIONS
   --mcp PATH          bashcut-mcp for agent steps (default: $BASHCUT_MCP, else the one next to this
                       program; without it agents get filmcraft-cli mcp, writes not limited)
   --data-dir DIR      FilmCraft data dir: presets, and --data-dir for filmcraft-cli
+  --speech-model ID   the speech model for transcribe steps that name none (default: the one picked
+                      in Settings when downloaded, else the engine's default, else the downloaded one)
   --compact           one-line JSON
 
 EXIT STATUS
   0 every item done · 1 the job ended failed, stopped, cancelled or needing attention · 2 usage or error
 ";
 
-const VALUED: &[&str] =
-    &["--preset", "--id", "--input", "--projects", "--outputs", "--cli", "--concurrency", "--agent-concurrency", "--mcp", "--data-dir", "--items", "--timeout"];
+const VALUED: &[&str] = &[
+    "--preset",
+    "--id",
+    "--input",
+    "--projects",
+    "--outputs",
+    "--cli",
+    "--concurrency",
+    "--agent-concurrency",
+    "--mcp",
+    "--data-dir",
+    "--items",
+    "--timeout",
+    "--speech-model",
+];
 
 struct Args {
     pos: Vec<String>,
@@ -276,6 +291,7 @@ fn options(a: &Args) -> Result<Options, Fail> {
         o.agent_concurrency = Some(n);
     }
     o.data_dir = a.opt("--data-dir").map(PathBuf::from);
+    o.speech_model = a.opt("--speech-model").map(str::to_string);
     o.keep_awake = !a.flag("--no-keep-awake");
     o.mcp = find_mcp(a);
     Ok(o)

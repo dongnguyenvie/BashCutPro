@@ -461,3 +461,38 @@ fn agent_steps_respect_agent_concurrency() {
     let book = job.book().unwrap();
     assert!(book.items.iter().all(|i| i.steps[1].review.is_none()), "review: false");
 }
+
+#[test]
+fn transcribe_steps_use_the_settings_speech_model_when_downloaded() {
+    // filmcraft-cli does not read preferences.json: the runner passes the Settings model (#172)
+    let b = Bench::new("speech", &["a"]);
+    let data = b.dir.join("data");
+    std::fs::create_dir_all(&data).unwrap();
+    std::fs::write(data.join("preferences.json"), r#"{"mediaAnalysis": {"whisperModel": "whisper-small"}}"#).unwrap();
+    let models = |installed: &[&str]| {
+        let list: Vec<Value> =
+            ["whisper-tiny", "whisper-base", "whisper-small"].iter().map(|id| json!({"id": id, "installed": installed.contains(id)})).collect();
+        json!({"available": true, "default": "whisper-base", "models": list}).to_string()
+    };
+    let p = b.pipeline(json!({"steps": [
+        {"command": "sequence.transcribe", "params": {"language": "auto"}},
+        {"commands": [{"id": "sequence.transcribe", "params": {"model": "whisper-base"}}]}
+    ]}));
+    let run_with = |id: &str, installed: &[&str], flag: Option<&str>| {
+        let _ = std::fs::remove_file(b.out("a.fcproj"));
+        let job = Job::create(&p, Some(id)).unwrap();
+        let mut o = b.opts();
+        o.data_dir = Some(data.clone());
+        o.env.push(("FAKE_CLI_MODELS".into(), models(installed)));
+        o.speech_model = flag.map(str::to_string);
+        assert_eq!(run(&job, &o).unwrap().status, Status::Done);
+        b.read("a.fcproj")
+    };
+    let steps = |model: &str| format!("file.import\nfile.newSequenceFromClip\nsequence.transcribe model={model}\nsequence.transcribe model=whisper-base\n");
+    // the Settings choice is downloaded: used; a step that names its model keeps it
+    assert_eq!(run_with("s1", &["whisper-base", "whisper-small"], None), steps("whisper-small"));
+    // only another model is downloaded: that one
+    assert_eq!(run_with("s2", &["whisper-tiny"], None), steps("whisper-tiny"));
+    // --speech-model wins
+    assert_eq!(run_with("s3", &["whisper-small"], Some("whisper-tiny")), steps("whisper-tiny"));
+}

@@ -51,6 +51,9 @@ library.
   `agent` (see [Agent steps](#agent-steps)). On Windows a plugin argv starting with `python3` (the Microsoft Store
   stub there) runs with the first of `python3`, `py -3`, `python` that answers.
   `timeoutSeconds` on any step.
+  Transcribe steps (`sequence.transcribe`, `transcript.generate`) that name no `model` get one from the runner
+  (#172; `filmcraft-cli` does not read the app's Settings): `--speech-model`, else Settings ▸ Speech model when it
+  is downloaded, else the engine's default when downloaded, else the downloaded model.
 - **outputs**: `name` (inside the outputs folder, may have subfolders), and either a `profile` (#43: `tiktok`,
   `reels`, `shorts`, `youtube`, `youtube-4k`, `facebook-square`… exported with `bashcut.profiles.apply`, which also
   applies the profile's loudness and caption rules) or `preset`, `format`, `settings` (ExportSettings JSON).
