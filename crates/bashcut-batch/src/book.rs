@@ -345,8 +345,19 @@ impl Book {
             if !pick || item.status == Status::Running {
                 continue;
             }
+            // an agent step that ran out of turns (#219) is done with a note: retry runs it and every
+            // step after it again (the exports were made from its unfinished project); mark-done keeps it
+            let mut rerun = false;
             for s in &mut item.steps {
-                if matches!(s.status, Status::Failed | Status::Tripped) {
+                if s.status == Status::Done && s.error.as_ref().is_some_and(|e| e.category == Category::Limit) {
+                    s.error = None;
+                    rerun = failed_to == Status::Pending;
+                    if rerun {
+                        s.status = Status::Pending;
+                    }
+                } else if rerun && s.status == Status::Done {
+                    s.status = Status::Pending;
+                } else if matches!(s.status, Status::Failed | Status::Tripped) {
                     s.status = failed_to;
                     s.pid = None;
                 } else if matches!(s.status, Status::Cancelled | Status::Running) {

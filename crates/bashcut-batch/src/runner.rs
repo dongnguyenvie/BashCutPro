@@ -471,6 +471,14 @@ fn run_item(sh: &Shared, idx: usize) {
             }
         }
     }
+    // an agent step that ran out of turns (#219) still let the item finish: it needs a look
+    let limited = sh.peek(|b| {
+        b.items.get(idx).and_then(|i| i.steps.iter().find_map(|st| st.error.clone().filter(|e| st.status == Status::Done && e.category == Category::Limit)))
+    });
+    if let Some(note) = limited {
+        finish_item(sh, idx, Status::NeedsAttention, Some(note));
+        return;
+    }
     finish_item(sh, idx, Status::Done, None);
     sh.meter.item_done();
 }
@@ -666,8 +674,18 @@ fn agent_step(sh: &Shared, idx: usize, s: usize, ctx: &Ctx, key: &str, a: &Agent
             // over the memory cap: `outcome` below reports it
             Ended::Exited(_) | Ended::OverLimit(_) => {}
         }
-        if r.hit_turn_limit {
-            return Err(ErrorInfo::new(Category::Limit, format!("{key}: the agent hit maxTurns ({}) without finishing", a.max_turns())));
+        // out of turns (#219): the rest of the item (exports included) runs on the project as the agent
+        // last saved it, and the item ends `needsAttention` with this note instead of with nothing
+        if r.hit_turn_limit && !matches!(ended, Ended::OverLimit(_)) {
+            let note = ErrorInfo::new(
+                Category::Limit,
+                format!(
+                    "{key}: the agent hit maxTurns ({}) without finishing; the item was exported from its last saved project: check it, then retry (or mark it done)",
+                    a.max_turns()
+                ),
+            );
+            sh.step(idx, s, |st| st.error = Some(note));
+            return Ok(Vec::new());
         }
         outcome(ended, &log, key)?;
         if r.failed {

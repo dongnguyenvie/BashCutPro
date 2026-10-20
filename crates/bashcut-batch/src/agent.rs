@@ -259,7 +259,8 @@ pub fn first_prompt(step: &AgentStep, vars: &Vars) -> String {
     vars.expand(&format!(
         "Use the {skill} skill from the BashCutPro kit on the project {{project}} (MCP server `{SERVER}`).{kit} {brief} \
          Work only on this project and write files only inside {{itemDir}} or {{outputs}}. Save the project (command \
-         file.save) before you finish.",
+         file.save) after each finished part and before you finish: if you run out of turns, the item is exported \
+         from the last save.",
         skill = step.skill,
     ))
     .trim()

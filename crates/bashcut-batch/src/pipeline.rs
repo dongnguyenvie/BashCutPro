@@ -153,7 +153,7 @@ pub struct AgentStep {
     /// stream-json or Codex `--json` events to read usage from.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub argv: Vec<String>,
-    /// Turns per round (Claude Code `--max-turns`; default 40).
+    /// Turns per round (Claude Code `--max-turns`; default 120).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub max_turns: Option<u32>,
     /// Wall time for the whole step, every round included (default 30).
@@ -177,7 +177,9 @@ pub struct AgentStep {
     pub allowed_tools: Vec<String>,
 }
 
-pub const DEFAULT_MAX_TURNS: u32 = 40;
+/// Per round. Measured (bashcut/bench/2026-10-20-rescore.md): one-skill jobs take 39-115 turns, a tutorial
+/// (cut, cards, zooms, captions) about 150 over two rounds; 40 stopped most of them half way (#219).
+pub const DEFAULT_MAX_TURNS: u32 = 120;
 pub const DEFAULT_MAX_MINUTES: f64 = 30.0;
 pub const DEFAULT_FIX_ROUNDS: u32 = 2;
 pub const MAX_FIX_ROUNDS: u32 = 5;
