@@ -1,0 +1,7 @@
+asset:        talking-head-short.jpg
+title:        Bench contact sheet, talking head to a vertical short: frames of the Pro and BashCut edits (re-score, round 2), sides A/B hidden
+author:       footage by Kizzume; edits by the BashCutPro and BashCut agents in the bench run
+source:       frames of edits made from https://youtu.be/InXjOKOhzKc (0-180 s) (YouTube, Creative Commons Attribution), extracted with ffmpeg (external tool) and tiled
+license:      CC-BY-3.0
+added:        2026-10-20 by Claude (agent) for Dong Nguyen, bench #58 re-score
+notes:        Low-resolution stills for the owner's blind pick; no footage committed. Key: blind-key.json in this folder. See bashcut/bench/2026-10-20-rescore.md.
