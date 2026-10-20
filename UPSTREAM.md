@@ -68,7 +68,7 @@ the hook; the footprint check reports any inserted upstream line that no row cov
 ## Carried edits
 
 Upstream files we change beyond hooks. `additions`: only inserted lines (no hook row needed), `edits`: any change,
-re-applied by hand when a merge conflicts. Each `edits` row is an exception to the rules and should shrink.
+re-applied by hand (or `rerere`) when a merge conflicts. Keep `edits` rows small and in cold files (bashcut/extending-upstream.md §1).
 
 | Files | Kind | Why | Until |
 |---|---|---|---|

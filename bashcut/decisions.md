@@ -13,7 +13,17 @@ decides something; don't change an old one, add a new one that supersedes it.
 - **Why:** owner: Pro must surpass the old app; "port qua tính năng tương tự hoặc khác đi, cho phù hợp… nếu k ở trong
   core thì skill support".
 
-## 2026-10-20: Upstream code is only added to, never modified
+## 2026-10-20 (later): Upstream edits allowed when they stay under control
+
+- **Decided:** additions stay the default, but upstream files may be edited when that is simpler, as long as the
+  edit stays under our control: small, preferably in a cold file, recorded as a `UPSTREAM.md` Carried edits row, and
+  re-applied by merge + `rerere` at each sync. Hot files and high-churn structs still go through hooks and our own
+  files. Sync stays merge-based (no rebase of the fork onto upstream). Rules: [extending-upstream.md](extending-upstream.md) §1.
+- **Why:** owner: "no need to be that strict, as long as it stays within our control". Strict add-only made some changes
+  (branding, CLI naming) costlier than the conflicts they avoid.
+- **Supersedes:** the strict wording of "Upstream code is only added to, never modified" below.
+
+## 2026-10-20: Upstream code is only added to, never modified (superseded: see above)
 
 - **Decided:** we never edit, delete or reorder upstream lines, signatures, structs, defaults, commands, tests or
   docs. Our behaviour comes from new files, new `bashcut.*` commands that wrap originals, extension `impl`s / traits,
