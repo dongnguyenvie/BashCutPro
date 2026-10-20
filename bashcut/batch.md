@@ -62,7 +62,8 @@ library.
 - **description**: one line shown by `presets list`.
 - **placeholders** in params, argv, env and output names: `{input}`, `{media}`, `{name}`, `{project}`, `{itemDir}`,
   `{outputs}`, `{cli}` (the engine in use: `bashcutpro` or `filmcraft-cli`) and `{plugins}` (`<data dir>/bashcut-plugins`, where the plugin
-  host installs plugins: `{plugins}/bashcut.translate-captions/plugin.py`); `{prompt}`, `{session}`, `{mcpConfig}` in
+  host installs plugins: `{plugins}/bashcut.translate-captions/plugin.py`), `{kit}` (the agent kit, `--kit`; empty without
+  one, see [Agent steps](#agent-steps)); `{prompt}`, `{session}`, `{mcpConfig}` in
   an agent's own argv. `outputName`
   takes `{stem}` and `{index}`.
 - **onFailure**: `skip` (the item stops, the others go on) or `stop` (nothing new starts; running items stop before
@@ -87,7 +88,7 @@ Exit statuses map to error categories: 0 ok, 1 `command` (`offlineMedia` for an 
 ## Agent steps
 
 Issue #60. `{"agent": {"skill", "brief", "agent"?, "argv"?, "maxTurns"?, "maxMinutes"?, "review"?, "reviewProfile"?,
-"fixRounds"?}}` runs a kit skill headless against the item's project:
+"fixRounds"?, "kit"?, "allowedTools"?}}` runs a kit skill headless against the item's project:
 
 1. **Start.** `agent: "claude"` (default) runs `claude -p <prompt> --output-format stream-json --verbose --max-turns N
    --mcp-config <items/name/step-N.mcp.json> --allowedTools mcp__bashcutpro`; `agent: "codex"` runs `codex exec --json
@@ -96,6 +97,19 @@ Issue #60. `{"agent": {"skill", "brief", "agent"?, "argv"?, "maxTurns"?, "maxMin
    the runner has one (`--mcp`, `$BASHCUT_MCP` or next to `bashcut-batch`), else `filmcraft-cli mcp --project`. The
    agent works in the projects folder; the prompt names the skill, the brief, the project, where it may write, and asks
    it to save.
+   **The kit (#204).** The kit's skills measure with their own scripts (`captions_fit.py`, `loudness.py`,
+   `contact_sheet.py` …), so an agent needs the kit and the tools to run them. `bashcut-batch run --kit
+   <bashcutpro-agent-kit folder>` (else `$BASHCUT_KIT`, else `<data dir>/bashcut-kit` when it is there; a named folder
+   without `skills/` is a usage error) gives every agent step, unless it says `"kit": false`:
+   - Claude Code: `--plugin-dir <kit>` (the `bcp:*` skills, no install needed) and, besides `mcp__bashcutpro`,
+     `Skill`, `Read`, `Glob`, `Grep`, `Write`, `Edit`, `Bash(python3:*)`, `Bash(python:*)`, `Bash(ffmpeg:*)`,
+     `Bash(ffprobe:*)` (`agent::KIT_TOOLS`); the prompt still keeps writes in the item folder and the outputs;
+   - every agent (Codex too): a prompt line naming `<kit>/skills/<name>/SKILL.md` and how to run its scripts, and
+     `BASHCUT_KIT` in its environment.
+   `allowedTools` adds entries (with or without a kit). The kit is also `{kit}` in every step and `BASHCUT_KIT` for
+   plugin steps, so a pipeline can run a kit script as a plugin step (`["python3",
+   "{kit}/skills/captions-text/captions_fit.py", "apply", "--cli", "{cli}", "--project", "{project}"]`); such a step
+   without a kit fails as `usage` with "pass --kit … or set BASHCUT_KIT".
 2. **Review.** Unless `review: false`, `bashcut.review.run` (#57, `reviewProfile` as its profile) runs on the saved
    project (its markers are saved too), on **every sequence the agent made** (#195): the sequences in the project when
    the step first started are kept in `items/<name>/<step>.sequences.json` (so a retry still reviews the agent's own),

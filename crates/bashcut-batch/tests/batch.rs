@@ -492,6 +492,37 @@ fn findings_left_in_any_sequence_end_needs_fix_and_survive_a_retry() {
 }
 
 #[test]
+fn the_kit_reaches_agent_and_plugin_steps() {
+    // #204: `--kit` is `{kit}`, `BASHCUT_KIT` and a line of the agent's prompt
+    let b = Bench::new("kit", &["a"]);
+    let kit = b.dir.join("kit");
+    std::fs::create_dir_all(kit.join("skills")).unwrap();
+    let mut p = agent_pipeline(&b, "fixfirst", json!({"review": false}));
+    p.steps.push(
+        serde_json::from_value(
+            json!({"plugin": {"argv": [FAKE, "fake-agent", "--mode", "x", "--prompt", "{kit}/skills/<name>/SKILL.md", "--project", "{project}"]}}),
+        )
+        .unwrap(),
+    );
+    let mut o = b.opts();
+    o.kit = Some(kit.clone());
+    let summary = run(&Job::create(&p, Some("kit")).unwrap(), &o).unwrap();
+    assert_eq!(summary.status, Status::Done, "{summary:?}");
+    let project = b.read("a.fcproj");
+    assert_eq!(project.matches(&format!("kit-env:{}\n", kit.display())).count(), 2, "{project}");
+    assert_eq!(project.matches("kit-in-prompt\n").count(), 2, "{project}");
+    // without a kit, a step that needs one says how to give it
+    let b = Bench::new("nokit", &["a"]);
+    let p = b.pipeline(json!({"steps": [{"plugin": {"argv": ["python3", "{kit}/skills/captions-text/captions_fit.py", "apply"]}}]}));
+    let summary = run(&Job::create(&p, Some("nokit")).unwrap(), &b.opts()).unwrap();
+    assert_eq!(summary.status, Status::Failed, "{summary:?}");
+    let book = Job::open(b.dir.join("out/.bashcut-batch/nokit")).unwrap().book().unwrap();
+    let err = item(&book, "a").steps[1].error.clone().unwrap();
+    assert_eq!(err.category, Category::Usage);
+    assert!(err.message.contains("--kit"), "{}", err.message);
+}
+
+#[test]
 fn agent_steps_respect_agent_concurrency() {
     let b = Bench::new("agent-cap", &["a", "b", "c"]);
     let mut p = agent_pipeline(&b, "fixfirst", json!({"review": false}));

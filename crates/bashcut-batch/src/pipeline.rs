@@ -168,6 +168,13 @@ pub struct AgentStep {
     /// Rounds that send blocking findings back to the agent (default 2, at most 5).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub fix_rounds: Option<u32>,
+    /// Give the agent the kit (`--kit`, `$BASHCUT_KIT`): Claude Code gets it as `--plugin-dir` and may
+    /// run its scripts ([`crate::agent::KIT_TOOLS`]); every agent is told where it is (default true, #204).
+    #[serde(default = "yes")]
+    pub kit: bool,
+    /// More tools the agent may use (Claude Code `--allowedTools` entries such as `"Bash(ffmpeg:*)"`).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub allowed_tools: Vec<String>,
 }
 
 pub const DEFAULT_MAX_TURNS: u32 = 40;
@@ -450,6 +457,11 @@ impl Pipeline {
 pub struct Vars(pub Vec<(&'static str, String)>);
 
 impl Vars {
+    /// The value of `key`, when set and not empty.
+    pub fn get(&self, key: &str) -> Option<&str> {
+        self.0.iter().find(|(k, _)| *k == key).map(|(_, v)| v.as_str()).filter(|v| !v.is_empty())
+    }
+
     /// `s` with every `{key}` replaced; other braces are left alone.
     pub fn expand(&self, s: &str) -> String {
         let mut out = s.to_string();

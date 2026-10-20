@@ -47,6 +47,8 @@ RUN OPTIONS
   --mcp PATH          bashcut-mcp for agent steps (default: $BASHCUT_MCP, else the one next to this
                       program; without it agents get filmcraft-cli mcp, writes not limited)
   --data-dir DIR      FilmCraft data dir: presets, and --data-dir for filmcraft-cli
+  --kit DIR           the agent kit (bashcutpro-agent-kit): `{kit}` in steps, and agent steps get its
+                      skills and scripts (default: $BASHCUT_KIT, else <data dir>/bashcut-kit if there)
   --speech-model ID   the speech model for transcribe steps that name none (default: the one picked
                       in Settings when downloaded, else the engine's default, else the downloaded one)
   --compact           one-line JSON
@@ -69,6 +71,7 @@ const VALUED: &[&str] = &[
     "--items",
     "--timeout",
     "--speech-model",
+    "--kit",
 ];
 
 struct Args {
@@ -294,7 +297,23 @@ fn options(a: &Args) -> Result<Options, Fail> {
     o.speech_model = a.opt("--speech-model").map(str::to_string);
     o.keep_awake = !a.flag("--no-keep-awake");
     o.mcp = find_mcp(a);
+    o.kit = find_kit(a)?;
     Ok(o)
+}
+
+/// The agent kit (#204): `--kit`, `$BASHCUT_KIT`, else `<data dir>/bashcut-kit` when it is there. A
+/// folder named on purpose that is not a kit (no `skills/`) is an error; the default is skipped quietly.
+fn find_kit(a: &Args) -> Result<Option<PathBuf>, Fail> {
+    let named = a.opt("--kit").map(PathBuf::from).or_else(|| std::env::var_os("BASHCUT_KIT").filter(|v| !v.is_empty()).map(PathBuf::from));
+    if let Some(k) = named {
+        let k = pipeline::absolute(&k);
+        if !k.join("skills").is_dir() {
+            return Err(usage(format!("{} is not the agent kit (it has no skills folder): pass --kit <bashcutpro-agent-kit folder>", k.display())));
+        }
+        return Ok(Some(k));
+    }
+    let default = a.opt("--data-dir").map(PathBuf::from).or_else(presets::default_data_dir).map(|d| d.join("bashcut-kit"));
+    Ok(default.filter(|k| k.join("skills").is_dir()))
 }
 
 /// `bashcut-mcp` for agent steps: `--mcp`, `$BASHCUT_MCP`, else next to this program.

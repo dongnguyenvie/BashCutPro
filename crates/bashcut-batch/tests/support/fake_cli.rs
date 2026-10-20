@@ -33,7 +33,8 @@ fn now_ms() -> u128 {
 fn log(what: &str) {
     let Some(path) = std::env::var_os("FAKE_CLI_LOG") else { return };
     if let Ok(mut f) = std::fs::OpenOptions::new().create(true).append(true).open(path) {
-        let _ = writeln!(f, "{what} {} {}", now_ms(), std::process::id());
+        // one write per line: `writeln!` writes in pieces, and concurrent processes interleaved them
+        let _ = f.write_all(format!("{what} {} {}\n", now_ms(), std::process::id()).as_bytes());
     }
 }
 
@@ -182,6 +183,13 @@ fn real_main() -> i32 {
                 project.push_str(&format!("resume:{s}\n"));
             }
             project.push_str("agent\n");
+            // the kit (#204): what the runner passed in the environment and the prompt
+            if let Some(k) = std::env::var_os("BASHCUT_KIT") {
+                project.push_str(&format!("kit-env:{}\n", k.to_string_lossy()));
+            }
+            if prompt.contains("/skills/<name>/SKILL.md") {
+                project.push_str("kit-in-prompt\n");
+            }
             let fix_round = prompt.contains("found blocking problems");
             if mode.starts_with("clips") && !project.contains("sequence:3:") {
                 project.push_str("sequence:3:clip-1:blocking\nsequence:4:clip-2\nsequence:5:clip-3:blocking\nsequence.open item=4\n");

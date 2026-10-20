@@ -9,6 +9,10 @@
 //!   limit of its own: `maxMinutes` caps it.
 //! - a pipeline's own `argv` with `{prompt}`, `{session}`, `{mcpConfig}`.
 //!
+//! With the kit (`--kit`, `$BASHCUT_KIT`, #204), Claude Code also gets `--plugin-dir <kit>` and may use
+//! [`KIT_TOOLS`] (the kit's skills, its Python scripts, ffmpeg) besides the MCP tools; every agent's
+//! prompt says where the kit's skills and scripts are. A step's `allowedTools` adds to the list.
+//!
 //! The MCP server the agent gets is `bashcut-mcp --headless --project <item> --roots <item folder,
 //! outputs>` when the runner knows a `bashcut-mcp` (writes only there, #51), else `filmcraft-cli mcp
 //! --project <item>`.
@@ -20,6 +24,10 @@ use std::path::{Path, PathBuf};
 
 /// The MCP server name in the agent's config (Claude Code tool names: `mcp__bashcutpro__*`).
 pub const SERVER: &str = "bashcutpro";
+/// What a Claude Code agent with the kit may use besides the MCP tools: the kit's skills, reading
+/// and writing its files (the prompt keeps writes in the item folder and the outputs), the kit's
+/// Python scripts and ffmpeg / ffprobe for measuring.
+pub const KIT_TOOLS: &[&str] = &["Skill", "Read", "Glob", "Grep", "Write", "Edit", "Bash(python3:*)", "Bash(python:*)", "Bash(ffmpeg:*)", "Bash(ffprobe:*)"];
 /// Event logs above this are read from their end only.
 const MAX_LOG: u64 = 16 << 20;
 /// Findings listed in a fix prompt.
@@ -101,6 +109,14 @@ pub fn argv(l: &Launch) -> Vec<String> {
                 "--allowedTools".into(),
                 format!("mcp__{SERVER}"),
             ];
+            let kit = kit(l.step, l.vars);
+            if kit.is_some() {
+                v.extend(KIT_TOOLS.iter().map(|t| t.to_string()));
+            }
+            v.extend(l.step.allowed_tools.iter().cloned());
+            if let Some(k) = kit {
+                v.extend(["--plugin-dir".to_string(), k.to_string()]);
+            }
             if let Some(s) = l.session {
                 v.extend(["--resume".to_string(), s.to_string()]);
             }
@@ -226,11 +242,22 @@ fn cap(s: &str, max: usize) -> String {
     if s.chars().count() <= max { s.to_string() } else { s.chars().take(max).collect::<String>() + "…" }
 }
 
+/// The kit folder this step's agent gets, if any.
+fn kit<'a>(step: &AgentStep, vars: &'a Vars) -> Option<&'a str> {
+    vars.get("kit").filter(|_| step.kit)
+}
+
 /// The first round's prompt.
 pub fn first_prompt(step: &AgentStep, vars: &Vars) -> String {
     let brief = vars.expand(&step.brief);
+    let kit = match kit(step, vars) {
+        Some(_) => " The kit is in {kit}: each skill is {kit}/skills/<name>/SKILL.md, and its scripts run with python3 \
+                    (for example python3 {kit}/skills/captions-text/captions_fit.py)."
+            .to_string(),
+        None => String::new(),
+    };
     vars.expand(&format!(
-        "Use the {skill} skill from the BashCutPro kit on the project {{project}} (MCP server `{SERVER}`). {brief} \
+        "Use the {skill} skill from the BashCutPro kit on the project {{project}} (MCP server `{SERVER}`).{kit} {brief} \
          Work only on this project and write files only inside {{itemDir}} or {{outputs}}. Save the project (command \
          file.save) before you finish.",
         skill = step.skill,
@@ -472,6 +499,28 @@ mod tests {
         assert!(!first.contains(&"--resume".to_string()));
         let next = argv(&Launch { step: &s, vars: &v, prompt: "fix", session: Some("abc"), mcp_config: &cfg });
         assert!(next.windows(2).any(|w| w[0] == "--resume" && w[1] == "abc"));
+    }
+
+    #[test]
+    fn the_kit_is_a_plugin_dir_with_its_tools_and_named_in_the_prompt() {
+        let s = step(json!({"skill": "captions-text", "allowedTools": ["Bash(sox:*)"]}));
+        let mut v = vars();
+        v.0.push(("kit", "/k".into()));
+        let cfg = PathBuf::from("/c.json");
+        let a = argv(&Launch { step: &s, vars: &v, prompt: "go", session: None, mcp_config: &cfg });
+        assert!(a.windows(2).any(|w| w[0] == "--plugin-dir" && w[1] == "/k"));
+        let tools = &a[a.iter().position(|x| x == "--allowedTools").unwrap() + 1..];
+        assert!(tools.starts_with(&["mcp__bashcutpro".to_string(), "Skill".into()]));
+        assert!(tools.contains(&"Bash(python3:*)".to_string()) && tools.contains(&"Bash(sox:*)".to_string()));
+        let p = first_prompt(&s, &v);
+        assert!(p.contains("/k/skills/<name>/SKILL.md") && p.contains("python3 /k/skills/captions-text/captions_fit.py"), "{p}");
+        // no kit, or the step opts out: MCP tools only (plus the step's own), no plugin dir
+        let off = step(json!({"skill": "x", "kit": false}));
+        let a = argv(&Launch { step: &off, vars: &v, prompt: "go", session: None, mcp_config: &cfg });
+        assert!(!a.contains(&"--plugin-dir".to_string()) && !a.contains(&"Skill".to_string()));
+        assert!(!first_prompt(&off, &v).contains("/k"));
+        let a = argv(&Launch { step: &s, vars: &vars(), prompt: "go", session: None, mcp_config: &cfg });
+        assert!(!a.contains(&"--plugin-dir".to_string()) && a.contains(&"Bash(sox:*)".to_string()));
     }
 
     #[test]
