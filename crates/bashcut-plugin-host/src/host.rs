@@ -150,7 +150,8 @@ pub struct AgentLaunch {
 pub struct RunContext {
     /// `127.0.0.1:<port>` of the app's control channel, when it serves one.
     pub bridge: Option<String>,
-    /// `filmcraft-cli` next to the app, passed as `--cli`.
+    /// The engine next to the app (`bashcutpro`, else `filmcraft-cli`, #154), passed as `--cli` and
+    /// as `BASHCUTPRO_CLI`.
     pub cli: Option<String>,
     /// The running build's command ids (checked against `app.commands`); empty skips the check.
     pub known_commands: Vec<String>,
@@ -377,6 +378,9 @@ impl Host {
         let mut spec = RunSpec::new(dir, argv);
         spec.env = settings::env_for(&m, &values, self.secrets.as_ref());
         spec.env.push(("BASHCUT_PLUGIN_HOST".into(), "1".into()));
+        if let Some(cli) = &ctx.cli {
+            spec.env.push(("BASHCUTPRO_CLI".into(), cli.clone()));
+        }
         if let Some(t) = timeout {
             spec.timeout = t;
         }

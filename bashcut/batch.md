@@ -56,7 +56,7 @@ library.
   applies the profile's loudness and caption rules) or `preset`, `format`, `settings` (ExportSettings JSON).
 - **description**: one line shown by `presets list`.
 - **placeholders** in params, argv, env and output names: `{input}`, `{media}`, `{name}`, `{project}`, `{itemDir}`,
-  `{outputs}`, `{cli}` (the filmcraft-cli in use) and `{plugins}` (`<data dir>/bashcut-plugins`, where the plugin
+  `{outputs}`, `{cli}` (the engine in use: `bashcutpro` or `filmcraft-cli`) and `{plugins}` (`<data dir>/bashcut-plugins`, where the plugin
   host installs plugins: `{plugins}/bashcut.translate-captions/plugin.py`); `{prompt}`, `{session}`, `{mcpConfig}` in
   an agent's own argv. `outputName`
   takes `{stem}` and `{index}`.
@@ -71,7 +71,7 @@ Each item has the steps `create`, `step-1`…, `export-1`…:
 |---|---|
 | create | copy (template / input project), or `filmcraft-cli run create.jsonl --save-as <tmp>`; renamed to `<name>.fcproj` when done, so a half-made project never takes the name |
 | engine step | `filmcraft-cli run step-N.jsonl --project <name>.fcproj --save --compact` (the CLI stops at the first failing line, before saving) |
-| plugin / agent | its argv in the item folder (agent: in the project's folder), env `BASHCUT_PROJECT`, `BASHCUT_FILMCRAFT_CLI`, `BASHCUT_BATCH_ITEM`, `BASHCUT_BATCH_JOB` |
+| plugin / agent | its argv in the item folder (agent: in the project's folder), env `BASHCUT_PROJECT`, `BASHCUTPRO_CLI` and `BASHCUT_FILMCRAFT_CLI` (the engine), `BASHCUT_BATCH_ITEM`, `BASHCUT_BATCH_JOB` |
 | export | `filmcraft-cli export <out> --project … --preset … --compact`; with a profile, `filmcraft-cli run` on one `bashcut.profiles.apply {profile, path, wait: true}` line |
 
 Exit statuses map to error categories: 0 ok, 1 `command` (`offlineMedia` for an export that drew placeholders), 2
@@ -134,8 +134,10 @@ bashcut-batch presets install ../bashcutpro-plugins/packs/batch    # the built-i
 ```
 
 Output is JSON; exit 0 when every item is done, 1 when the job ended failed, stopped, cancelled or needing
-attention, 2 on usage errors. `filmcraft-cli` is `--cli`, else `$BASHCUT_FILMCRAFT_CLI`, else the one next to
-`bashcut-batch`, else `filmcraft-cli` on `PATH`.
+attention, 2 on usage errors. The engine is `--cli`, else `$BASHCUTPRO_CLI` (or the older `$BASHCUT_FILMCRAFT_CLI`,
+then `$FILMCRAFT_CLI`), else `bashcutpro` or `filmcraft-cli` next to `bashcut-batch`, else the same on `PATH`
+(`crates/bashcut-batch/src/cli.rs`, #154). On Windows a step runs the `filmcraft-cli` beside a `bashcutpro`, so the
+memory watch and Cancel reach the engine itself (the wrapper cannot replace itself there as it does on Unix).
 
 ## Built-in presets (#59)
 

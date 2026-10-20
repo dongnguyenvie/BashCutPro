@@ -3,7 +3,7 @@
 //! An agent (Claude Code, or an agent plugin) runs as a child process, one per turn: the user's
 //! message plus a context line goes in as a stream-json user message, events stream back into a
 //! [`Transcript`], and the next turn resumes the agent's session. The agent edits through
-//! `filmcraft-cli mcp --bridge <app>` (a temporary MCP config), so its edits land in History like any
+//! `bashcutpro mcp --bridge <app>` (a temporary MCP config), so its edits land in History like any
 //! other command. Gates come from `<project>.fcproj.bashcut/plan.json`; conversations are kept in
 //! `<project>.fcproj.bashcut/conversations/`. Depends on no workspace crate.
 //!

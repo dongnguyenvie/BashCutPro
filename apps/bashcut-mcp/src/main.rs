@@ -1,4 +1,4 @@
-//! `bashcut-mcp`: start `filmcraft-cli mcp` for an agent (#51, `bashcut/agent-connect.md`).
+//! `bashcut-mcp`: start `bashcutpro mcp` (or `filmcraft-cli mcp`) for an agent (#51, `bashcut/agent-connect.md`).
 //!
 //! - When the BashCutPro window runs its control channel it publishes
 //!   `<data dir>/bashcut/automation.json`; if that process is alive and the port answers, the agent
@@ -18,8 +18,8 @@ use std::process::{Command, ExitCode, Stdio};
 use std::time::Duration;
 
 const HELP: &str = "\
-bashcut-mcp: filmcraft-cli's MCP server for an agent, bridged to the open BashCutPro window when
-there is one, headless otherwise
+bashcut-mcp: the engine's MCP server (bashcutpro mcp) for an agent, bridged to the open
+BashCutPro window when there is one, headless otherwise
 
 USAGE
   bashcut-mcp [--project P.fcproj] [--headless] [--bridge 127.0.0.1:PORT] [--cli PATH]
@@ -31,8 +31,8 @@ USAGE
                  the agent may write. A second engine on the same project is refused.
   --headless     never bridge; refused when the window has this project open
   --bridge ADDR  bridge to this control address (also BASHCUTPRO_BRIDGE)
-  --cli PATH     filmcraft-cli (default: $BASHCUT_FILMCRAFT_CLI, the one next to this program, else
-                 filmcraft-cli on PATH)
+  --cli PATH     the engine (default: $BASHCUTPRO_CLI, $BASHCUT_FILMCRAFT_CLI or $FILMCRAFT_CLI,
+                 else bashcutpro or filmcraft-cli next to this program, else the same on PATH)
   --data-dir DIR FilmCraft data dir (default: FILMCRAFT_DATA_DIR or the platform's)
   --roots LIST   more folders the agent may write to (path-list separator: ':' Unix, ';' Windows);
                  BASHCUTPRO_ROOTS adds to them
@@ -208,17 +208,18 @@ fn decide(a: &Args, cwd: &Path) -> Result<Decision, String> {
     Ok(Decision { mode: "headless", argv, project, roots, notes })
 }
 
+/// The engine (#154): `--cli`, `$BASHCUTPRO_CLI` (or the older `$BASHCUT_FILMCRAFT_CLI`, then
+/// `$FILMCRAFT_CLI`), else `bashcutpro` or `filmcraft-cli` next to this program, else the same on PATH.
 fn find_cli(a: &Args) -> String {
-    if let Some(c) = a.opt("--cli").map(str::to_string).or_else(|| env("BASHCUT_FILMCRAFT_CLI")) {
+    let named = a.opt("--cli").map(str::to_string).or_else(|| ["BASHCUTPRO_CLI", "BASHCUT_FILMCRAFT_CLI", "FILMCRAFT_CLI"].iter().find_map(|k| env(k)));
+    if let Some(c) = named {
         return c;
     }
-    let name = format!("filmcraft-cli{}", std::env::consts::EXE_SUFFIX);
-    std::env::current_exe()
-        .ok()
-        .and_then(|e| e.parent().map(|d| d.join(&name)))
-        .filter(|p| p.is_file())
-        .map(|p| p.to_string_lossy().into_owned())
-        .unwrap_or(name)
+    let names: Vec<String> = ["bashcutpro", "filmcraft-cli"].iter().map(|n| format!("{n}{}", std::env::consts::EXE_SUFFIX)).collect();
+    let beside = std::env::current_exe().ok().and_then(|e| e.parent().and_then(|d| names.iter().map(|n| d.join(n)).find(|p| p.is_file())));
+    let path: Vec<PathBuf> = std::env::var_os("PATH").map(|p| std::env::split_paths(&p).collect()).unwrap_or_default();
+    let on_path = || names.iter().find_map(|n| path.iter().map(|d| d.join(n)).find(|p| p.is_file()));
+    beside.or_else(on_path).map(|p| p.to_string_lossy().into_owned()).unwrap_or_else(|| names.last().cloned().unwrap_or_default())
 }
 
 /// Run the MCP server; with `roots`, every agent line passes [`guard::check`] first. Returns the

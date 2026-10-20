@@ -34,7 +34,15 @@ class GenerateTest(unittest.TestCase):
             text = self.read(rel)
             for b in generate.PRO_BINS:
                 self.assertIn(b, text, rel)
-        self.assertIn("bashcut-mcp.exe", self.read("windows/filmcraft.wxs"))
+        wxs = self.read("windows/filmcraft.wxs")
+        self.assertIn("bashcut-mcp.exe", wxs)
+        # the Pro command line ships under both names, filmcraft-cli stays beside it (#154)
+        for b in ("bashcutpro", "bcpro", "filmcraft-cli"):
+            self.assertIn("\\%s.exe" % b, wxs)
+            self.assertIn("/usr/bin/%s" % b, self.read("linux/nfpm.yaml"))
+        self.assertIn('Component Id="BashcutDoctor"', wxs)
+        self.assertIn('File Id="BcproExe"', wxs)
+        self.assertIn("-p bashcut-cli", self.read("windows/package.ps1"))
         self.assertIn("/usr/bin/bashcut-doctor", self.read("linux/nfpm.yaml"))
         self.assertIn("BASHCUT_ROOT", self.read("env.sh"))
         # upstream's own files are untouched

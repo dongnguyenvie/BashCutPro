@@ -1,0 +1,29 @@
+[package]
+name = "bashcut-cli"
+description = "bashcutpro (alias bcpro): the BashCutPro command line, runs the filmcraft-cli engine beside it with the same arguments"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+publish = false
+
+[lints]
+workspace = true
+
+[[bin]]
+name = "bashcutpro"
+path = "src/main.rs"
+
+# The short alias: the same program under a second name (#154).
+[[bin]]
+name = "bcpro"
+path = "src/bin/bcpro.rs"
+
+# A stand-in for filmcraft-cli that the integration tests drive (tests/wrapper.rs); never shipped.
+[[bin]]
+name = "bashcut-cli-fake-engine"
+path = "tests/support/fake_engine.rs"
+test = false
+doc = false
+
+[dependencies]

@@ -7,7 +7,7 @@ scripts for them.
 
 | Piece | macOS (.app / CLI zip) | Windows (MSI / portable zip) | Linux (tar, deb, rpm, AppImage) / FreeBSD |
 |---|---|---|---|
-| `bashcut-doctor`, `bashcut-batch`, `bashcut-mcp` | `Contents/MacOS/`; CLI zip | install folder; portable zip | `/usr/bin` (FreeBSD: `bin/`) |
+| `bashcutpro` and its alias `bcpro` (#154, beside `filmcraft-cli`), `bashcut-doctor`, `bashcut-batch`, `bashcut-mcp` | `Contents/MacOS/`; CLI zip | install folder; portable zip | `/usr/bin` (FreeBSD: `bin/`) |
 | first-run setup `bashcut-setup.sh` / `.ps1` | `Contents/Resources/bashcut/`; CLI zip | install folder; portable zip | `/usr/share/bashcutpro/` (FreeBSD: `share/bashcutpro/`) |
 
 Profiles, templates and looks are built into the binaries (`bashcut.profiles.*`, `bashcut.template.*`,
@@ -22,7 +22,7 @@ Profiles, templates and looks are built into the binaries (`bashcut.profiles.*`,
 2. Windows: one inserted hook line in `packaging/windows/package.ps1` (row in `UPSTREAM.md`) runs
    `bashcut/packaging/package.ps1`, which does the same for PowerShell.
 3. `generate.py` applies exact-match substitutions (`SUBS`): build our packages with the app
-   (`-p bashcut-doctor -p bashcut-batch-cli -p bashcut-mcp`), stage, strip and sign the binaries, add them to
+   (`-p bashcut-cli -p bashcut-doctor -p bashcut-batch-cli -p bashcut-mcp`), stage, strip and sign the binaries, add them to
    `nfpm.yaml`, the WiX source and the Linux tarball installer, copy `share/`. A substitution that no longer matches
    upstream's text fails the packaging run with the file and line to update; it never ships silently without our tools.
 4. `BASHCUT_PACKAGING_PLAIN=1` packages upstream's files unchanged (for comparing).

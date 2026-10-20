@@ -5,7 +5,7 @@ use std::path::PathBuf;
 use bashcut_doctor::{Options, RealEnv, run_checks, updates};
 
 const HELP: &str = "\
-bashcut-doctor: check filmcraft-cli, the kit, plugins, models, agent CLIs, disk, memory and GPU
+bashcut-doctor: check bashcutpro (or filmcraft-cli), the kit, plugins, models, agent CLIs, disk, memory and GPU
 
 USAGE
   bashcut-doctor [--json] [--updates] [--no-hash] [--cli <path>] [--data-dir <dir>] [--kit <dir>]

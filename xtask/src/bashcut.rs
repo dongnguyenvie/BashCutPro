@@ -13,6 +13,7 @@ const LAYERS: &[(&str, u8)] = &[
     ("bashcut-batch", 4),
     ("bashcut-connect", 4),
     // apps
+    ("bashcut-cli", 6),
     ("bashcut-batch-cli", 6),
     ("bashcut-doctor", 6),
     ("bashcut-mcp", 6),

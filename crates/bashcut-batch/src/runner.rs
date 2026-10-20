@@ -25,7 +25,7 @@ const MAX_MESSAGE: usize = 600;
 
 #[derive(Clone, Debug)]
 pub struct Options {
-    /// The `filmcraft-cli` to run.
+    /// The engine to run: `bashcutpro` or `filmcraft-cli` ([`crate::cli`]).
     pub cli: PathBuf,
     /// Overrides the pipeline's `concurrency`.
     pub concurrency: Option<usize>,
@@ -784,6 +784,7 @@ fn item_env(sh: &Shared, ctx: &Ctx) -> Vec<(String, String)> {
     env.extend([
         ("BASHCUT_PROJECT".into(), ctx.project.to_string_lossy().into_owned()),
         ("BASHCUT_FILMCRAFT_CLI".into(), cli(sh)),
+        ("BASHCUTPRO_CLI".into(), cli(sh)),
         ("BASHCUT_BATCH_ITEM".into(), ctx.name.clone()),
         ("BASHCUT_BATCH_JOB".into(), sh.job.dir.to_string_lossy().into_owned()),
     ]);
@@ -791,7 +792,7 @@ fn item_env(sh: &Shared, ctx: &Ctx) -> Vec<(String, String)> {
 }
 
 fn cli(sh: &Shared) -> String {
-    path_arg(&sh.opts.cli)
+    path_arg(&crate::cli::engine(&sh.opts.cli))
 }
 
 /// `<data dir>/bashcut-plugins`, where the plugin host installs plugins (`{plugins}`).

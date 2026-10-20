@@ -37,7 +37,7 @@ def progress(m):
 if mode == "ok":
     progress("10% starting")
     progress("90% almost")
-    print(json.dumps({"ok": True, "message": "done", "data": {"args": args, "key": os.environ.get("FAKE_KEY"), "service": os.environ.get("FAKE_SERVICE")}}))
+    print(json.dumps({"ok": True, "message": "done", "data": {"args": args, "key": os.environ.get("FAKE_KEY"), "service": os.environ.get("FAKE_SERVICE"), "cli": os.environ.get("BASHCUTPRO_CLI")}}))
 elif mode == "error":
     print(json.dumps({"ok": False, "error": {"code": "bad_input", "message": "no captions"}}))
     sys.exit(1)
@@ -203,7 +203,7 @@ fn install_settings_run_update_remove() {
     let repo = registry_repo("0.1.0");
     let secrets = Arc::new(MemoryStore::default());
     let mut host = Host::new(Some(data.clone()), secrets);
-    let ctx = RunContext { bridge: Some("127.0.0.1:9".into()), cli: None, known_commands: Vec::new() };
+    let ctx = RunContext { bridge: Some("127.0.0.1:9".into()), cli: Some("/apps/bashcutpro".into()), known_commands: Vec::new() };
 
     host.command("registry", &json!({"location": format!("{}@main", repo.display())}), &ctx).unwrap();
     let job = host.jobs().last().unwrap().id;
@@ -228,6 +228,7 @@ fn install_settings_run_update_remove() {
     let data_out = &j["outcome"]["result"]["data"];
     assert_eq!(data_out["key"], json!("sk-test"));
     assert_eq!(data_out["service"], json!("b"));
+    assert_eq!(data_out["cli"], json!("/apps/bashcutpro"), "the engine reaches plugins as BASHCUTPRO_CLI (#154)");
     assert_eq!(data_out["args"], json!(["--word", "hi"]));
     assert_eq!(j["progress"], json!(1.0));
     assert!(j["log"].as_array().unwrap().len() >= 2);
