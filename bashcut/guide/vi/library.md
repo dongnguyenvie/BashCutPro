@@ -4,6 +4,8 @@
 Resources*, **Của tôi** (Mine) cần plugin *Library* (cài trong **Plugin**; thẻ sẽ báo khi thiếu và nút **Mở Plugin**
 đưa bạn tới đó).
 
+![Mục Thư viện (Library), thẻ Trực tuyến](../img/library.png)
+
 ## Trực tuyến
 
 Tìm nhạc, hiệu ứng âm thanh, ảnh, video, biểu tượng và phông chữ bạn được phép dùng, không cần rời ứng dụng.

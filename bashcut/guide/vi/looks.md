@@ -4,6 +4,8 @@
 even: talking head" – trung tính, dịu sắc đỏ để gương mặt đều màu: video nói trước máy quay), có nhãn thể loại và một
 núm **Cường độ** (Intensity).
 
+![Mục Màu phim (Looks)](../img/looks.png)
+
 1. Chọn các clip trên timeline.
 2. Mở **Màu phim**. Lọc bằng ô tìm kiếm hoặc một nhãn (*talking-head*, *travel*, *food*, *product-ad*, *tutorial*,
    *news*, *daily*, *cinematic*, *shorts*, *mono*, *fix*…).

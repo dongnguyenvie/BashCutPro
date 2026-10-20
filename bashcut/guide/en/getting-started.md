@@ -29,6 +29,8 @@ side panel: **Agent**, **Batch**, **Looks**, **Library**, **Plugins**, **Runs** 
 again to close it. Drag the panel's left edge to make it wider (240–720 px). The rail hides in Import and Export
 mode, and **Window ▸ BashCutPro ▸ Show Rail** turns it off and on.
 
+![The BashCutPro window: the rail on the right edge, the Batch section open beside it](../img/window.png)
+
 ## 4. Find anything: the command palette
 
 Press **Cmd+Shift+P**. Type a few letters of what you want: a command ("razor", "export"), a look ("teal"), an output
@@ -37,12 +39,15 @@ closes. Things you use often move to the top. Some commands need values: **Tab**
 small editor with them; change the values and press **Cmd+Enter**. Everything the palette runs can be undone with
 **Cmd+Z** like any edit.
 
+![The command palette searching for "razor"](../img/palette.png)
+
 (**Cmd+K** stays FilmCraft's *Add Edit*, so the palette has its own key. You can change any shortcut in
 **Edit ▸ Keyboard Shortcuts**.)
 
 ## 5. Vietnamese
 
 BashCutPro's own panels can be shown in Vietnamese: open the palette, type **BashCutPro Language**, press **Tab**,
-replace `{}` with `{"language": "vi"}` and press **Cmd+Enter**. Running it with `{}` goes back to the app's language.
+replace `{}` with `{"language": "vi"}` (the line above the box lists the choices, `en` and `vi`) and press
+**Cmd+Enter**. Running it with `{}` goes back to the app's language.
 
 Next: [The rail](rail.md).

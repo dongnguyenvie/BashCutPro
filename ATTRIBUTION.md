@@ -194,3 +194,16 @@ The fork's own brand files (`bashcut/brand/`, see `bashcut/brand/README.md` and 
 | `bashcut/brand/wordmark/bashcutpro-wordmark-white.svg` | Dong Nguyen (BashCut and BashCutPro owner) | Original work: BashCutPro wordmark, white ink (for dark themes), vector; the BashCut mark from BashCut (`BashCut/Views/BashCutLogo.swift`), text in Inter Bold (OFL-1.1) as outlines | MIT OR Apache-2.0 (`bashcut/brand/LICENSE.txt`) |
 | `bashcut/brand/wordmark/bashcutpro-wordmark.png` | Dong Nguyen (BashCut and BashCutPro owner) | Original work: BashCutPro wordmark, dark ink (for light themes), 512 px tall; the BashCut mark from BashCut (`BashCut/Views/BashCutLogo.swift`), text in Inter Bold (OFL-1.1) as outlines | MIT OR Apache-2.0 (`bashcut/brand/LICENSE.txt`) |
 | `bashcut/brand/wordmark/bashcutpro-wordmark.svg` | Dong Nguyen (BashCut and BashCutPro owner) | Original work: BashCutPro wordmark, dark ink (for light themes), vector; the BashCut mark from BashCut (`BashCut/Views/BashCutLogo.swift`), text in Inter Bold (OFL-1.1) as outlines | MIT OR Apache-2.0 (`bashcut/brand/LICENSE.txt`) |
+
+Screenshots in the user guide (`bashcut/guide/img/`), taken from the app itself on the built-in demo project (generated media).
+
+| Asset | Author | Source | Licence |
+|---|---|---|---|
+| `bashcut/guide/img/agent.png` | BashCutPro contributors | Original work: screenshot of BashCutPro (`ui.screenshot`), cropped and scaled | MIT OR Apache-2.0 (`LICENSE-MIT`, `LICENSE-APACHE`) |
+| `bashcut/guide/img/batch.png` | BashCutPro contributors | Original work: screenshot of BashCutPro (`ui.screenshot`), cropped and scaled | MIT OR Apache-2.0 (`LICENSE-MIT`, `LICENSE-APACHE`) |
+| `bashcut/guide/img/library.png` | BashCutPro contributors | Original work: screenshot of BashCutPro (`ui.screenshot`), cropped and scaled | MIT OR Apache-2.0 (`LICENSE-MIT`, `LICENSE-APACHE`) |
+| `bashcut/guide/img/looks.png` | BashCutPro contributors | Original work: screenshot of BashCutPro (`ui.screenshot`), cropped and scaled | MIT OR Apache-2.0 (`LICENSE-MIT`, `LICENSE-APACHE`) |
+| `bashcut/guide/img/palette.png` | BashCutPro contributors | Original work: screenshot of BashCutPro (`ui.screenshot`), cropped and scaled | MIT OR Apache-2.0 (`LICENSE-MIT`, `LICENSE-APACHE`) |
+| `bashcut/guide/img/plugins.png` | BashCutPro contributors | Original work: screenshot of BashCutPro (`ui.screenshot`), cropped and scaled | MIT OR Apache-2.0 (`LICENSE-MIT`, `LICENSE-APACHE`) |
+| `bashcut/guide/img/runs.png` | BashCutPro contributors | Original work: screenshot of BashCutPro (`ui.screenshot`), cropped and scaled | MIT OR Apache-2.0 (`LICENSE-MIT`, `LICENSE-APACHE`) |
+| `bashcut/guide/img/window.png` | BashCutPro contributors | Original work: screenshot of BashCutPro (`ui.screenshot`), cropped and scaled | MIT OR Apache-2.0 (`LICENSE-MIT`, `LICENSE-APACHE`) |

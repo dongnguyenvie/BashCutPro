@@ -6,8 +6,8 @@
 # 1. Looks: the curated look pack as .cube LUTs + looks.json in <data dir>/bashcut/looks (bashcut.looks.export).
 # 2. Output profiles: compiled into export presets "BashCut <name>" (bashcut.profiles.compile).
 # 3. Agent kit: detects claude / codex and offers to clone bashcutpro-agent-kit (needs git and access).
-# 4. Plugins and models: nothing installed here; plugins come from the registry in the app (Window > BashCut
-#    Plugins) and each plugin downloads its models, checked against models.json, on first use.
+# 4. Plugins and models: nothing installed here; plugins come from the registry in the app (Plugins on the rail) and
+#    each plugin downloads its models, checked against models.json, on first use.
 # 5. bashcut-doctor: checks the machine and prints fixes.
 set -u
 yes=0 skip_looks=0 skip_profiles=0 skip_kit=0 skip_doctor=0
@@ -64,7 +64,7 @@ if [ "$skip_kit" = 0 ]; then
       || echo "  kit: clone failed (skipped)"
   fi
 fi
-echo "Plugins: install them in the app (Window > BashCut Plugins); models download on first use."
+echo "Plugins: install them in the app (the Plugins icon on the right-hand rail, or Window > BashCutPro > Plugins); models download on first use."
 doctor="$(find_tool bashcut-doctor || true)"
 if [ "$skip_doctor" = 0 ] && [ -n "$doctor" ]; then
   echo "Checking this machine (bashcut-doctor):"

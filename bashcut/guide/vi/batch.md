@@ -4,6 +4,8 @@ Chạy hàng loạt áp cùng các bước cho nhiều tệp. **Mỗi tệp thà
 nền (ứng dụng vẫn rảnh tay, và việc vẫn chạy tiếp kể cả khi bạn đóng ứng dụng), mỗi bước xong đều được lưu, nên hàng
 loạt bị dừng sẽ chạy tiếp từ chỗ cũ.
 
+![Mục Hàng loạt (Batch)](../img/batch.png)
+
 ## Tạo một lượt hàng loạt
 
 Mở **Hàng loạt** (Batch) trên thanh bên (hoặc **Chạy trên nhiều tệp…** từ một thao tác plugin hay từ trợ lý).

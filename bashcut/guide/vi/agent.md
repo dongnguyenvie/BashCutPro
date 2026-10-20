@@ -4,6 +4,8 @@ BashCutPro có thể được một trợ lý AI dựng, bằng chính các lệ
 năng (cắt thô theo câu nói, phụ đề, chỉnh màu theo số đo, độ lớn âm thanh cho từng nền tảng, kiểm tra trước khi
 xuất…) và dừng ở mỗi chặng để bạn duyệt.
 
+![Mục Trợ lý (Agent)](../img/agent.png)
+
 ## Trong ứng dụng: mục Trợ lý
 
 Bạn cần **Claude Code** đã cài và đăng nhập trên máy (lệnh `claude`). Nếu cài ở chỗ lạ, đặt biến môi trường

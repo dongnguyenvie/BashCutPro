@@ -4,6 +4,8 @@
 *Library* plugin (install them in **Plugins**; the tab tells you when one is missing and **Open Plugins** takes you
 there).
 
+![The Library section, Online tab](../img/library.png)
+
 ## Online
 
 Find music, sound effects, photos, video, icons and fonts that you are allowed to use, without leaving the app.

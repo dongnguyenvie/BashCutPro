@@ -4,6 +4,8 @@ BashCutPro can be edited by an AI agent that uses the same commands you do. It f
 skills (rough cut by quote, captions, colour by measurement, loudness for each platform, review before export…) and
 stops at each stage for your approval.
 
+![The Agent section](../img/agent.png)
+
 ## In the app: the Agent section
 
 You need **Claude Code** installed and signed in on this computer (the `claude` command). If it is installed somewhere

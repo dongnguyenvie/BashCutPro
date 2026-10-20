@@ -3,6 +3,8 @@
 **Looks** on the rail holds 26 colour looks. Each one says in one line what it is for ("Neutral; calms reds so a face
 reads even: talking head"), carries genre tags, and has one **Intensity** knob.
 
+![The Looks section](../img/looks.png)
+
 1. Select the clips on the timeline.
 2. Open **Looks**. Narrow the list with the search box or a tag (*talking-head*, *travel*, *food*, *product-ad*,
    *tutorial*, *news*, *daily*, *cinematic*, *shorts*, *mono*, *fix*…).
