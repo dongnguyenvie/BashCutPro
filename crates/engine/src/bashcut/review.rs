@@ -288,6 +288,7 @@ fn picture(s: &Session, q: &Sequence, a: Tick, b: Tick, per_second: f64, l: &Lim
     }
     let fd = q.settings.frame_rate.sane().frame_duration();
     let short = Tick(fd.0.saturating_mul(l.short_frames));
+    let cue_gap = Tick(fd.0.saturating_mul(CUE_GAP_FRAMES));
     for t in &q.video_tracks {
         let mut items: Vec<_> = t.items.iter().collect();
         items.sort_by_key(|i| i.start);
@@ -311,7 +312,10 @@ fn picture(s: &Session, q: &Sequence, a: Tick, b: Tick, per_second: f64, l: &Lim
             }
             if let Some(next) = items.get(k + 1) {
                 let gap = next.start - it.end();
-                if gap > Tick::ZERO && gap < short {
+                // between two caption cues (text graphics) a gap of 2 frames is the subtitle standard; only a shorter
+                // one flickers (#214)
+                let limit = if is_caption_cue(it) && is_caption_cue(next) { cue_gap } else { short };
+                if gap > Tick::ZERO && gap < limit {
                     out.push(Finding {
                         category: "picture",
                         check: "shortGap",
@@ -338,6 +342,16 @@ const SPEECH_PAD_SECONDS: f64 = 0.5;
 
 /// Where someone talks in the sequence: transcript words (widened over short pauses) and enabled caption cues (a
 /// subtitled interview may have captions but no transcript), merged and sorted.
+/// Gaps between caption cues shorter than this many frames flicker; 2 frames is the usual minimum between subtitles.
+const CUE_GAP_FRAMES: i64 = 2;
+
+/// A caption cue on a video track: a graphic clip of text layers only (`graphics.upgradeCaption`,
+/// `bashcut.captions.wordStyle`).
+fn is_caption_cue(it: &filmcraft_project::TrackItem) -> bool {
+    let mut layers = it.effects.iter().filter(|e| filmcraft_project::graphic::is_layer(e)).peekable();
+    layers.peek().is_some() && layers.all(|e| e.effect == filmcraft_project::graphic::TEXT_LAYER)
+}
+
 fn speech_spans(s: &Session, q: &Sequence) -> Vec<(Tick, Tick)> {
     let pad = Tick::from_seconds_f64(SPEECH_PAD_SECONDS);
     let mut spans: Vec<(Tick, Tick)> = crate::transcript::sequence_words(s).iter().map(|w| (w.start - pad, w.end + pad)).collect();

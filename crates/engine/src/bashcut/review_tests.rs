@@ -271,3 +271,29 @@ fn a_subtitled_still_interview_is_info() {
     assert!(!f.is_empty());
     assert!(f.iter().all(|f| f["severity"] == "info"), "{:?}", severities(&f));
 }
+
+#[test]
+fn a_two_frame_gap_between_caption_cues_is_not_a_short_gap() {
+    // #214: captions.create leaves 2 frames between cues (the subtitle standard); as graphics they were shortGap
+    let mut s = Session::default();
+    s.execute("file.newSequence", json!({"name": "cues", "width": 320, "height": 180, "fps": 30})).unwrap();
+    let frame = |n: i64| Tick::from_units(n, 30).0;
+    // cue gaps: 2 frames (fine), then 1 frame (flicker)
+    for (text, at) in [("One", 0), ("Two", 32), ("Three", 63)] {
+        s.execute("captions.add", json!({"text": text, "time": frame(at), "durationSeconds": 1.0})).unwrap();
+    }
+    let cues: Vec<u64> = s.active_sequence().unwrap().caption_tracks.iter().flat_map(|t| t.captions.iter().map(|c| c.id.0)).collect();
+    assert_eq!(cues.len(), 3);
+    s.execute("graphics.upgradeCaption", json!({"captions": cues})).unwrap();
+    // pictures keep the 3-frame rule: a 2-frame gap between two mattes is still a short gap
+    for at in [0, 32] {
+        let item = s.execute("file.newColorMatte", json!({"color": "#909090", "seconds": 1.0})).unwrap()["item"].as_u64().unwrap();
+        s.execute("timeline.place", json!({"item": item, "track": "V3", "frame": at, "audio": false})).unwrap();
+    }
+    let v = s.execute("bashcut.review.run", json!({"checks": ["picture"], "writeMarkers": false})).unwrap();
+    let mut gaps: Vec<(f64, f64)> = findings(&v, "shortGap").into_iter().map(range).collect();
+    gaps.sort_by(|a, b| a.partial_cmp(b).unwrap());
+    assert_eq!(gaps.len(), 2, "{v}");
+    assert!((gaps[0].0 - 1.0).abs() < 0.01 && (gaps[0].1 - 32.0 / 30.0).abs() < 0.01, "the matte gap: {v}");
+    assert!((gaps[1].0 - 62.0 / 30.0).abs() < 0.01 && (gaps[1].1 - 2.1).abs() < 0.01, "the 1-frame cue gap: {v}");
+}
