@@ -97,10 +97,14 @@ Issue #60. `{"agent": {"skill", "brief", "agent"?, "argv"?, "maxTurns"?, "maxMin
    agent works in the projects folder; the prompt names the skill, the brief, the project, where it may write, and asks
    it to save.
 2. **Review.** Unless `review: false`, `bashcut.review.run` (#57, `reviewProfile` as its profile) runs on the saved
-   project (its markers are saved too).
-3. **Fix rounds.** Blocking findings go back to the agent (Claude Code: `--resume <session>`, Codex: `exec resume`),
-   at most `fixRounds` times (default 2, at most 5). Findings left after that end the item **needsFix** (category
-   `review`), which `retry` reopens.
+   project (its markers are saved too), on **every sequence the agent made** (#195): the sequences in the project when
+   the step first started are kept in `items/<name>/<step>.sequences.json` (so a retry still reviews the agent's own),
+   and each newer one is opened (`sequence.open`) and reviewed, then the active sequence is opened again. The reviews
+   merge into one (counts summed, each score the worst sequence's, findings tagged `sequence` / `sequenceName`,
+   per-sequence verdicts under `sequences`). An agent that made no sequence has the active one reviewed.
+3. **Fix rounds.** Blocking findings of any sequence go back to the agent (Claude Code: `--resume <session>`, Codex:
+   `exec resume`), each naming its sequence, at most `fixRounds` times (default 2, at most 5). Findings left in any
+   sequence after that end the item **needsFix** (category `review`), which `retry` reopens.
 4. **Caps.** `maxTurns` per round (default 40; hitting it fails the item, category `limit`), `maxMinutes` for the whole
    step (default 30, every round included; `timeout`), and at most `agentConcurrency` agent steps at once across items
    (default 1, separate from `concurrency`).
