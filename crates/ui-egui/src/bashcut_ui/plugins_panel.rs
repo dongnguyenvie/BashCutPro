@@ -50,6 +50,11 @@ pub fn button(app: &mut FilmcraftApp, ui: &mut egui::Ui, id: &str, label: &str, 
     r.clicked()
 }
 
+/// Manifest prose as plain text: the panel draws no markdown, so code spans lose their backticks.
+fn plain(text: &str) -> String {
+    text.replace('`', "")
+}
+
 /// Run `bashcut.plugins.<name>` and keep its outcome for the status line.
 fn run(app: &mut FilmcraftApp, ctx: &egui::Context, d: &mut Drafts, name: &str, params: Value) -> Option<Value> {
     match plugins::invoke(app, ctx, name, &params) {
@@ -139,7 +144,7 @@ fn registry_row(app: &mut FilmcraftApp, ui: &mut egui::Ui, ctx: &egui::Context, 
         }
     });
     if !e.summary.is_empty() {
-        ui.label(egui::RichText::new(&e.summary).size(11.0).color(t.text_dim));
+        ui.label(egui::RichText::new(plain(&e.summary)).size(11.0).color(t.text_dim));
     }
 }
 
@@ -162,7 +167,7 @@ fn plugin_card(app: &mut FilmcraftApp, ui: &mut egui::Ui, ctx: &egui::Context, d
         .open(view.as_ref().and_then(|(job, _)| (d.shown_view.insert(p.id.clone(), *job) != Some(*job)).then_some(true)))
         .show(ui, |ui| {
             if !m.summary.is_empty() {
-                ui.label(egui::RichText::new(&m.summary).size(11.0).color(t.text_dim));
+                ui.label(egui::RichText::new(plain(&m.summary)).size(11.0).color(t.text_dim));
             }
             ui.horizontal(|ui| {
                 if let Some(v) = &update
@@ -243,7 +248,7 @@ fn settings_form(app: &mut FilmcraftApp, ui: &mut egui::Ui, ctx: &egui::Context,
             });
         }
         if !st.help.is_empty() {
-            ui.label(egui::RichText::new(&st.help).size(10.5).color(t.text_dim));
+            ui.label(egui::RichText::new(plain(&st.help)).size(10.5).color(t.text_dim));
         }
     }
     if m.settings.iter().any(|st| !st.is_secret()) && button(app, ui, &format!("bashcut.plugins.{}.settings.save", m.id), s("Save settings"), true) {
@@ -268,9 +273,12 @@ fn action_row(app: &mut FilmcraftApp, ui: &mut egui::Ui, ctx: &egui::Context, d:
     let t = app.tokens;
     let title = if a.title.is_empty() { a.id.clone() } else { a.title.clone() };
     let is_open = d.open.as_ref().is_some_and(|(p, x)| *p == m.id && *x == a.id);
-    ui.horizontal(|ui| {
+    // wrapped, so a long action title stays inside the panel
+    ui.horizontal_wrapped(|ui| {
         let label = if a.params.is_empty() { format!("▶ {title}") } else { title.clone() };
-        if button(app, ui, &format!("bashcut.plugins.{}.action.{}", m.id, a.id), &label, true) {
+        let r = ui.add(egui::Button::new(label.as_str()).wrap());
+        app.auto.add_response(&format!("bashcut.plugins.{}.action.{}", m.id, a.id), &r, &label);
+        if r.clicked() {
             if a.params.is_empty() {
                 start(app, ctx, d, m, a);
             } else {
@@ -382,4 +390,15 @@ fn field(app: &mut FilmcraftApp, ui: &mut egui::Ui, id: &str, label: &str, kind:
         ui.add(egui::TextEdit::singleline(text).desired_width(160.0))
     };
     app.auto.add_response(id, &r, label);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::plain;
+
+    #[test]
+    fn manifest_prose_drops_code_backticks() {
+        assert_eq!(plain("empty = the one `setup` installed"), "empty = the one setup installed");
+        assert_eq!(plain("no code here"), "no code here");
+    }
 }

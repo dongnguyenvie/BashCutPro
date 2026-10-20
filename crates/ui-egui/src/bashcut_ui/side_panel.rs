@@ -100,7 +100,12 @@ pub fn floating(app: &mut FilmcraftApp, ctx: &egui::Context, st: &mut State) {
         let mut window = egui::Window::new(s(sec.title)).id(window_id(sec.id));
         window = match st.window_rect(sec.id, monitor) {
             Some(r) => window.default_pos(r.min).default_size(r.size()),
-            None => window.default_size(vec2(st.width, 520.0)),
+            // first time: where the docked panel was, clear of the header and the rail
+            None => {
+                let screen = ctx.content_rect();
+                let x = (screen.max.x - super::rail::WIDTH - st.width - 16.0).max(screen.min.x);
+                window.default_pos(pos2(x, screen.min.y + 56.0)).default_size(vec2(st.width, 520.0))
+            }
         };
         let shown = window.open(&mut open).min_width(MIN_WIDTH).collapsible(false).show(ctx, |ui| {
             let r = ui.button(s("Dock back"));

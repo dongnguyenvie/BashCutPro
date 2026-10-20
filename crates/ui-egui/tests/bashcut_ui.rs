@@ -130,6 +130,8 @@ fn click_opens_resizes_pops_out_docks_back_and_closes() {
     d.click("bashcut.panel.popout");
     assert!(!d.has("bashcut.panel.runs"));
     assert!(d.has("bashcut.window.runs"), "floating window");
+    let w = d.rect("bashcut.window.runs").unwrap();
+    assert!(w[1] >= 40.0 && w[0] + w[2] <= W - 36.0, "first pop-out sits where the panel was, clear of header and rail: {w:?}");
     assert_eq!(d.state()["popped"], json!(["runs"]));
     d.click("bashcut.window.runs.dock");
     assert!(d.has("bashcut.panel.runs"));
