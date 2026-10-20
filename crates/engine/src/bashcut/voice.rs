@@ -106,11 +106,10 @@ fn polish(s: &mut Session, p: &Value) -> Result<Value> {
         return Ok(json!({"amount": 0.0, "clips": clips.iter().map(|c| c.0).collect::<Vec<_>>(), "changed": false}));
     }
 
-    let undo_before = s.history.undo.len();
+    let group = super::undo::UndoGroup::start(s);
     let result = apply(s, p, &clips, amount, target, true_peak);
     // one undo step for the whole polish, also when a later stage failed part-way
-    let steps = s.history.undo.len().saturating_sub(undo_before);
-    fold_history(s, steps);
+    group.finish(s, UNDO_LABEL);
     result
 }
 
@@ -255,18 +254,4 @@ fn boost_to(s: &mut Session, clip: ClipId, target: f64) -> Result<Option<f64>> {
         level = clip_lufs(s, clip)?;
     }
     Ok(level)
-}
-
-/// Fold the last `steps` undo entries into one labelled [`UNDO_LABEL`].
-fn fold_history(s: &mut Session, steps: usize) {
-    let len = s.history.undo.len();
-    let steps = steps.min(len);
-    if steps == 0 {
-        return;
-    }
-    let first = len - steps;
-    s.history.undo.truncate(first + 1);
-    if let Some(step) = s.history.undo.get_mut(first) {
-        step.0 = UNDO_LABEL.to_string();
-    }
 }

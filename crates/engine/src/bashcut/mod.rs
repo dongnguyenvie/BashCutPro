@@ -42,6 +42,7 @@ mod tests;
 pub mod transcript_clean;
 #[cfg(test)]
 mod transcript_clean_tests;
+mod undo;
 pub mod voice;
 #[cfg(test)]
 mod voice_tests;
