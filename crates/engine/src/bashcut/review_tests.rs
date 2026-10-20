@@ -166,3 +166,39 @@ fn hostile_params_are_typed_errors() {
         assert!(super::errors::tagged(&e).is_some(), "{p}: {e}");
     }
 }
+
+/// A 7 s colour matte (a long still) on V1 of a `w`×`h` sequence, and the review's longStill findings.
+fn long_still(w: u32, h: u32, profile: Option<&str>, words: bool) -> Vec<Value> {
+    let mut s = Session::default();
+    s.execute("file.newSequence", json!({"name": "still", "video": 2, "audio": 2, "width": w, "height": h})).unwrap();
+    let matte = s.execute("file.newColorMatte", json!({"color": "#808080", "seconds": 7.0})).unwrap()["item"].as_u64().unwrap();
+    s.execute("timeline.place", json!({"item": matte, "track": "V1", "seconds": 0.0, "audio": false})).unwrap();
+    if words {
+        // someone talks over the still (a locked-off interview)
+        let item = import_wav(&mut s, "voice", &tone(-20.0, 7.0));
+        let t = |x: f64| Tick::from_seconds_f64(x).0;
+        let words: Vec<Value> = (0..12).map(|i| json!({"text": "word", "start": t(0.5 * i as f64 + 0.2), "end": t(0.5 * i as f64 + 0.6)})).collect();
+        s.execute("transcript.set", json!({"item": item, "transcript": {"language": "en", "words": words}})).unwrap();
+        s.execute("timeline.place", json!({"item": item, "audioTrack": "A1", "seconds": 0.0, "video": false})).unwrap();
+    }
+    let mut p = json!({"checks": ["picture"], "samplesPerSecond": 4, "writeMarkers": false});
+    if let Some(pr) = profile {
+        p["profile"] = json!(pr);
+    }
+    let v = s.execute("bashcut.review.run", p).unwrap();
+    findings(&v, "longStill").into_iter().cloned().collect()
+}
+
+#[test]
+fn a_silent_long_still_warns_in_short_form_only() {
+    // #185: the vlog's last 6 s were a near-still shot under an end card; a reels review called it info
+    let vertical = long_still(180, 320, Some("reels"), false);
+    assert_eq!(vertical.len(), 1, "{vertical:?}");
+    assert_eq!(vertical[0]["severity"], "warning");
+    // no profile: the sequence's shape decides
+    assert_eq!(long_still(180, 320, None, false)[0]["severity"], "warning");
+    // landscape, or someone talking over it (#178): still info
+    assert_eq!(long_still(320, 180, Some("youtube"), false)[0]["severity"], "info");
+    assert_eq!(long_still(320, 180, None, false)[0]["severity"], "info");
+    assert_eq!(long_still(180, 320, Some("reels"), true)[0]["severity"], "info");
+}

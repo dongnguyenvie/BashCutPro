@@ -40,6 +40,10 @@ _Last updated: 2026-10-20_
   on footage with no speech) and `bashcut.transcript.clean` in `crates/engine/src/bashcut/transcript_clean.rs`; the
   batch runner cleans after every transcribe step. Live: whisper-base on 25 s of wind and birds wrote 106 words of
   "I'm going to go back to the next video." → 0 words and a no-speech warning; a 68-word TTS talk kept all 68.
+- Bench vlog fixes (#185): `bashcut.profiles.apply`'s true-peak check re-exports up to 3 times with the loudness target
+  0.25 LU lower each time (a lower ceiling made AAC overshoot worse), keeps the best attempt and warns if none is
+  under; `bashcut.review.run` makes a `longStill` with nothing said over it a warning in vertical edits (the vlog's
+  last 6 s were a near-still punch-in under the end card, reported as info).
 - U1 (#31): `crates/bashcut-plugin-host` (manifests, registry, git installs into `<data dir>/bashcut-plugins/`,
   settings + OS key store, runner with progress, `bashcut-result/1`, hand-off, cancel, timeout, capped output) and
   the Plugins and Runs sections with `bashcut.plugins.*` commands; hook H4. Build + tests + live check pending.

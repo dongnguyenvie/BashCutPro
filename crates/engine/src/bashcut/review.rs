@@ -49,6 +49,8 @@ struct Limits {
     short_frames: i64,
     /// Margin inside a word that a cut must not fall into (seconds).
     word_margin: f64,
+    /// A vertical (short-form) output: a long still with nothing said over it is a warning, not info (#185).
+    short_form: bool,
 }
 
 impl Default for Limits {
@@ -66,6 +68,7 @@ impl Default for Limits {
             lines: 2,
             short_frames: 3,
             word_margin: 0.02,
+            short_form: false,
         }
     }
 }
@@ -239,6 +242,10 @@ fn picture(s: &Session, q: &Sequence, a: Tick, b: Tick, per_second: f64, l: &Lim
     let edge = Tick::from_seconds_f64(0.5);
     // video transitions (a dip to black is meant to be black)
     let transitions: Vec<(Tick, Tick)> = q.video_tracks.iter().flat_map(|t| t.transitions.iter()).map(|t| (t.start, t.end())).collect();
+    // a long still is fine under someone talking (a locked-off interview, #178); in a short-form edit with nothing
+    // said over it, it is dead air on screen (#185: a vlog's end card over 6 s of a near-still shot)
+    let words = if l.short_form { crate::transcript::sequence_words(s) } else { Vec::new() };
+    let spoken = |a: Tick, b: Tick| words.iter().any(|w| w.start < b && w.end > a);
     for x in &found {
         use bashcut_analysis::picture::Kind;
         let (start, end) = (Tick(x.start), Tick(x.end));
@@ -249,6 +256,12 @@ fn picture(s: &Session, q: &Sequence, a: Tick, b: Tick, per_second: f64, l: &Lim
             Kind::Black if in_transition => ("black", Severity::Info, "black inside a transition", "fine for a dip to black; else change the transition"),
             Kind::Black => ("black", Severity::Blocking, "black frames inside the edit", "close the gap or fill it (sequence.closeGap)"),
             Kind::Frozen => ("frozen", Severity::Warning, "the picture does not move", "a frame hold or a stuck source: replace or cut it"),
+            Kind::LongStill if l.short_form && !spoken(start, end) => (
+                "longStill",
+                Severity::Warning,
+                "a still picture with nothing said over it",
+                "cut it to 2-4 s, punch in or move it (Motion keyframes), or cover it with another shot (bcp:beat-cut)",
+            ),
             Kind::LongStill => ("longStill", Severity::Info, "a long static shot", "fine for a locked-off interview; else punch in or cut (bcp:beat-cut)"),
             Kind::Flash => ("flash", Severity::Warning, "a sudden bright flash", "soften it (a dissolve) or cut it; flashes can hurt viewers"),
         };
@@ -496,6 +509,7 @@ fn run(s: &mut Session, p: &Value) -> Result<Value> {
         let pr = super::profiles::find(s, p, key).ok_or_else(|| fail(Code::NotFound, CMD, format!("no output profile `{key}` (see bashcut.profiles.list)")))?;
         l.lufs = pr.loudness_lufs;
         l.true_peak = pr.true_peak_dbtp;
+        l.short_form = pr.height > pr.width;
         profile_id = json!(pr.id);
     }
     let checks: Vec<&str> = match p.get("checks") {
@@ -519,6 +533,9 @@ fn run(s: &mut Session, p: &Value) -> Result<Value> {
         Some(v) => v.as_f64().filter(|f| f.is_finite() && (0.5..=60.0).contains(f)).ok_or_else(|| bad(CMD, "`samplesPerSecond` must be 0.5 … 60"))?,
     };
     let q = s.active_sequence().ok_or(EngineError::NoSequence)?.clone();
+    if profile_id.is_null() {
+        l.short_form = q.settings.height > q.settings.width;
+    }
     let (a, b) = range_p(p, CMD, Tick::ZERO, q.duration())?;
 
     let mut found = Vec::new();
