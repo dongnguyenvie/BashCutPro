@@ -32,8 +32,11 @@ pub struct SafeArea {
 
 /// Headroom under the true-peak limit for the lossy audio codec, dB.
 pub const CODEC_HEADROOM_DB: f64 = 0.5;
-/// Extra headroom, dB, on the one re-export after an encoded file measured over its true-peak limit (#184).
-pub const PEAK_RETRY_MARGIN_DB: f64 = 0.3;
+/// How much lower, LU, each re-export sets the loudness target after an encoded file measured over its true-peak
+/// limit (#185).
+pub const PEAK_RETRY_LU: f64 = 0.25;
+/// Re-exports at most after an encoded file measured over its true-peak limit.
+pub const MAX_PEAK_RETRIES: usize = 3;
 /// Exported files above this size are not read back for the true-peak check.
 const MAX_PEAK_CHECK_BYTES: u64 = 2 << 30;
 /// At most this much of an exported file's audio is measured, seconds.
@@ -448,7 +451,7 @@ fn apply(s: &mut Session, p: &Value) -> Result<Value> {
         s.execute("file.exportMedia", q.clone())?
     };
     // AAC can overshoot the limiter by more than CODEC_HEADROOM_DB on dense music (#184): measure the encoded file
-    // and export once more with the ceiling lowered by the overshoot
+    // and export again with the ceiling lowered by the overshoot
     if waited && let Some(v) = peak_check(s, &pr, &q, path)? {
         out["peakCheck"] = v;
     }
@@ -456,30 +459,77 @@ fn apply(s: &mut Session, p: &Value) -> Result<Value> {
 }
 
 /// The true-peak check of a waited export: `None` when the file has no audio to measure.
+///
+/// AAC spikes over the limiter on a few frames of dense, hard-limited music, and how much is chaotic (#185): a lower
+/// ceiling drives the limiter harder to keep the loudness target and can land further over (-0.92, then -0.51 dBTP
+/// for a -1 limit), while a loudness target a quarter LU lower removed the spikes. So up to [`MAX_PEAK_RETRIES`]
+/// re-exports each lower the loudness target by [`PEAK_RETRY_LU`] at the profile's own ceiling (at most 0.75 LU, inside
+/// the platforms' ±1 LU); when none lands under the limit, the attempt with the lowest peak is exported again and a
+/// warning says so.
 fn peak_check(s: &mut Session, pr: &Profile, q: &Value, path: &str) -> Result<Option<Value>> {
     let Some(first) = file_true_peak(s, std::path::Path::new(path)) else { return Ok(None) };
-    let Some(limit) = retry_limit(pr.true_peak_dbtp, first) else {
+    if !over_limit(pr.true_peak_dbtp, first) {
         return Ok(Some(json!({"truePeakDbtp": first, "limitDbtp": pr.true_peak_dbtp, "reexported": false})));
-    };
-    let mut lowered = pr.clone();
-    lowered.true_peak_dbtp = limit;
-    compile(s, &lowered)?;
-    let again = s.execute("file.exportMedia", q.clone());
-    // the saved preset goes back to the profile's own ceiling whatever the second export did
-    compile(s, pr)?;
-    again?;
-    let after = file_true_peak(s, std::path::Path::new(path));
-    Ok(Some(json!({
-        "truePeakDbtp": after, "limitDbtp": pr.true_peak_dbtp, "reexported": true, "firstTruePeakDbtp": first,
-        "limiterCeilingDbtp": lowered.limiter_ceiling_dbtp(),
-    })))
+    }
+    let mut attempts = vec![json!({"loudnessLufs": pr.loudness_lufs, "truePeakDbtp": first})];
+    // (loudness target, peak) of the lowest peak so far, and the last target tried
+    let mut best = (pr.loudness_lufs, first);
+    let mut last = pr.loudness_lufs;
+    for k in 1..=MAX_PEAK_RETRIES {
+        let lufs = pr.loudness_lufs - PEAK_RETRY_LU * k as f64;
+        let peak = export_with_target(s, pr, q, lufs, path)?;
+        last = lufs;
+        attempts.push(json!({"loudnessLufs": lufs, "truePeakDbtp": peak}));
+        // an unreadable file counts as over: try lower
+        let peak = peak.unwrap_or(f64::INFINITY);
+        if peak < best.1 {
+            best = (lufs, peak);
+        }
+        if !over_limit(pr.true_peak_dbtp, peak) {
+            break;
+        }
+    }
+    // the file on disk is the last attempt; put the best one back when it is not
+    let mut peak = best.1;
+    if last != best.0 {
+        peak = if best.0 == pr.loudness_lufs {
+            s.execute("file.exportMedia", q.clone())?;
+            file_true_peak(s, std::path::Path::new(path))
+        } else {
+            export_with_target(s, pr, q, best.0, path)?
+        }
+        .unwrap_or(best.1);
+    }
+    let within = !over_limit(pr.true_peak_dbtp, peak);
+    let mut out = json!({
+        "truePeakDbtp": peak, "limitDbtp": pr.true_peak_dbtp, "reexported": true, "firstTruePeakDbtp": first,
+        "loudnessLufs": best.0, "withinLimit": within, "attempts": attempts,
+    });
+    if !within {
+        out["warning"] = json!(format!(
+            "the encoded audio still peaks at {peak:.2} dBTP, over the profile's {:.1} dBTP after {} re-exports (AAC overshoot on              hard-limited music); lower the music bed a little (bcp:audio-mix) and export again",
+            pr.true_peak_dbtp, MAX_PEAK_RETRIES
+        ));
+    }
+    Ok(Some(out))
 }
 
-/// The profile limit to export again with when the encoded file measured `measured` dBTP: lowered by the overshoot
-/// plus [`PEAK_RETRY_MARGIN_DB`] (at least -9). `None` when the file is within `limit` or the measurement is not finite.
-pub(crate) fn retry_limit(limit: f64, measured: f64) -> Option<f64> {
-    let over = measured - limit;
-    (over.is_finite() && over > 0.0).then(|| (limit - over - PEAK_RETRY_MARGIN_DB).max(-9.0))
+/// `measured` dBTP is over `limit` (a non-finite measurement is not).
+pub(crate) fn over_limit(limit: f64, measured: f64) -> bool {
+    measured.is_finite() && measured > limit
+}
+
+/// Export `q` with the profile's loudness target set to `lufs`, put the saved preset back to the profile's own target,
+/// and measure the file: its true peak, `None` when it cannot be read.
+fn export_with_target(s: &mut Session, pr: &Profile, q: &Value, lufs: f64, path: &str) -> Result<Option<f64>> {
+    let mut quieter = pr.clone();
+    quieter.loudness_lufs = lufs;
+    compile(s, &quieter)?;
+    let again = s.execute("file.exportMedia", q.clone());
+    // the saved preset goes back to the profile's own target whatever the export did
+    compile(s, pr)?;
+    again?;
+    Ok(file_true_peak(s, std::path::Path::new(path)))
 }
 
 /// True peak, dBTP, of a file's first audio stream (opened through the session's registered decoders); `None` when it has none or cannot be read.

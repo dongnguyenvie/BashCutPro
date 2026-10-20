@@ -4,7 +4,7 @@ use serde_json::json;
 
 use std::sync::Arc;
 
-use super::profiles::{Profile, builtins, file_true_peak, retry_limit};
+use super::profiles::{Profile, builtins, file_true_peak, over_limit};
 use crate::Session;
 use crate::media_test_util::tmp_dir;
 
@@ -163,15 +163,14 @@ fn a_profile_export_lands_under_its_true_peak_limit() {
 }
 
 #[test]
-fn an_overshoot_lowers_the_limit_by_the_overshoot_plus_a_margin() {
+fn only_a_finite_measurement_over_the_limit_triggers_a_reexport() {
     // the bench's vlog: -0.41 dBTP after AAC for a -1 dBTP limit (#184)
-    let l = retry_limit(-1.0, -0.41).unwrap();
-    assert!((l - (-1.0 - 0.59 - 0.3)).abs() < 1e-9, "{l}");
-    assert_eq!(retry_limit(-1.0, -1.0), None);
-    assert_eq!(retry_limit(-1.0, -3.0), None);
-    assert_eq!(retry_limit(-1.0, f64::NAN), None);
-    assert_eq!(retry_limit(-1.0, f64::INFINITY), None);
-    assert_eq!(retry_limit(-1.0, 40.0), Some(-9.0), "never under the profile floor");
+    assert!(over_limit(-1.0, -0.41));
+    assert!(!over_limit(-1.0, -1.0));
+    assert!(!over_limit(-1.0, -3.0));
+    assert!(!over_limit(-1.0, f64::NAN));
+    assert!(!over_limit(-1.0, f64::INFINITY));
+    assert!(!over_limit(-1.0, f64::NEG_INFINITY));
 }
 
 #[test]
@@ -187,4 +186,54 @@ fn file_true_peak_reads_a_file_and_refuses_hostile_ones() {
     let junk = d.join("junk.mp4");
     std::fs::write(&junk, b"not media at all").unwrap();
     assert_eq!(file_true_peak(&s, &junk), None);
+}
+
+/// 20 s of a peaky stereo beat at 48 kHz, interleaved: a quiet chord bed under sharp kicks and noise snares (an LCG,
+/// so it is the same every run). Loudness normalisation drives it hard into the limiter.
+fn peaky_bed() -> Vec<f32> {
+    let sr = 48_000.0;
+    let mut seed: u32 = 8;
+    let mut noise = move || {
+        seed = seed.wrapping_mul(1_664_525).wrapping_add(1_013_904_223);
+        (seed >> 8) as f64 / (1u32 << 24) as f64 * 2.0 - 1.0
+    };
+    let tau = 2.0 * std::f64::consts::PI;
+    (0..(20.0 * sr) as usize)
+        .flat_map(|i| {
+            let t = i as f64 / sr;
+            let beat = t % 0.5;
+            let kick = (tau * (50.0 + 120.0 * (-beat * 30.0).exp()) * beat).sin() * (-beat * 8.0).exp();
+            let snare = noise() * (-((t + 0.25) % 0.5) * 20.0).exp() * 0.6;
+            let chord = [110.0, 138.6, 164.8, 220.0].iter().map(|f| (3.0 * (tau * f * t).sin()).tanh()).sum::<f64>() / 4.0;
+            let hats = noise() * (-(t % 0.125) * 60.0).exp() * 0.3;
+            let left = kick + snare + 0.7 * chord + hats;
+            let right = kick + snare + 0.7 * (3.0 * (tau * 111.0 * t).sin()).tanh() + hats;
+            let hit = 0.85 * kick * (-beat * 40.0).exp();
+            [(0.12 * left + hit + 0.5 * snare).clamp(-1.0, 1.0) as f32, (0.12 * right + hit - 0.5 * snare).clamp(-1.0, 1.0) as f32]
+        })
+        .collect()
+}
+
+#[test]
+fn a_peaky_bed_lands_under_the_limit_after_the_reexport() {
+    // #185: on this bed AAC lands over the -1 dBTP limit (-0.63), and lowering the limiter ceiling did not help
+    // (-1.00, -0.95, -0.45 dBTP over three lowered re-exports); a loudness target a quarter LU lower does
+    let mut s = Session::default();
+    s.execute("file.newSequence", json!({"name": "bed", "video": 1, "audio": 1, "width": 160, "height": 284})).unwrap();
+    let bytes: Arc<[u8]> = crate::previews::write_wav_f32(&peaky_bed(), 48_000).into();
+    let item = crate::commands::import_bytes(&mut s, "/bed.wav", bytes, None).unwrap().0;
+    s.execute("timeline.place", json!({"item": item, "audioTrack": "A1", "seconds": 0.0, "video": false})).unwrap();
+    let d = tmp_dir("bashcut-profiles-peaky");
+    let out = d.join("bed.mp4");
+    let r = s.execute("bashcut.profiles.apply", json!({"profile": "reels", "path": out.to_string_lossy(), "dir": d.to_string_lossy(), "wait": true})).unwrap();
+    let check = &r["peakCheck"];
+    let measured = file_true_peak(&s, &out).unwrap();
+    assert!(measured <= -1.0, "{measured} dBTP over the -1 dBTP limit: {check}");
+    assert_eq!(check["truePeakDbtp"].as_f64(), Some(measured), "{check}");
+    assert_eq!(check["withinLimit"], true, "{check}");
+    let attempts = check["attempts"].as_array().unwrap_or_else(|| panic!("no attempts: {check}"));
+    assert!(attempts.len() >= 2 && attempts[0]["truePeakDbtp"].as_f64().unwrap() > -1.0, "the first export is over on this bed: {check}");
+    let lufs = check["loudnessLufs"].as_f64().unwrap();
+    assert!((-14.75..=-14.0).contains(&lufs), "at most 0.75 LU under the target: {check}");
+    eprintln!("{check}");
 }
