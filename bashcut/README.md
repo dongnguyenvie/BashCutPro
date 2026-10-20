@@ -7,7 +7,7 @@ and its own docs (`CLAUDE.md`, `AGENTS.md`, `docs/`) still apply in full.
 | File | What it holds |
 |---|---|
 | [README.md](README.md) | this overview: what the fork is, the repos, the direction |
-| [extending-upstream.md](extending-upstream.md) | **read before touching upstream files**: add, never modify; extension points; what upstream changes most |
+| [extending-upstream.md](extending-upstream.md) | **read before touching upstream files**: add first, edit cold files when simpler (recorded); extension points; what upstream changes most |
 | [decisions.md](decisions.md) | decisions already made, with the reason; don't re-open them without the owner |
 | [migration.md](migration.md) | what to port from BashCut's kit and plugins, what to skip, and the order |
 | [status.md](status.md) | where the work stands and the next steps; update it when you finish something |

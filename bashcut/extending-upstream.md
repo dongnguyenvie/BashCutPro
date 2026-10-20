@@ -1,13 +1,19 @@
-# Extending FilmCraft: add, never modify
+# Extending FilmCraft: add first, modify when it is worth it
 
 Read this before touching any file that is not ours. BashCutPro pulls upstream FilmCraft one way from time to time
 ([decisions.md](decisions.md), 2026-10-20). Upstream is stable and moves fast (about 1,700 commits in the two weeks
-before 2026-10-20), so the cheapest fork is one that never changes upstream's code, only adds to it.
+before 2026-10-20), so the cheapest fork is one that mostly adds to upstream's code. Editing upstream is allowed
+when it is the simpler route and stays under our control: recorded, small, and cheap to re-apply at the next sync
+(owner, 2026-10-20: "no need to be that strict, as long as it stays within our control").
 
 ## 1. The rule
 
-1. **Add, never modify.** Do not edit, delete or reorder an existing upstream line, signature, struct, enum,
-   default, command, test or doc. Upstream's behaviour stays exactly as upstream ships it.
+1. **Add first; modify when it is worth it.** Prefer an addition (our files, a hook, a wrapper). Edit, delete or
+   reorder upstream lines when the addition would be clearly worse (more code, a fragile wrapper, a worse UX), and
+   the edit stays under control: small, in a file upstream rarely touches (§3: cold, ≲ 20 commits in 30 days), one
+   row in `UPSTREAM.md` "Carried edits" (kind `edits`, why, until), and re-applied by merge + `rerere` at each sync.
+   Hot files (§3) and high-churn structs (`UiState`, `FilmcraftApp`, `Session`, `Project`) still go through hooks
+   and our own files: an edit there conflicts on nearly every sync.
 2. **Our code goes in our files**: `bashcut-*` crates, `apps/bashcut-*`, `crates/<crate>/src/bashcut/` or
    `bashcut_*.rs` modules, `bashcut/` docs, new test files.
 3. **A hook is one inserted line** in an upstream file that calls into our code. It never replaces a line. It sits
@@ -19,7 +25,7 @@ before 2026-10-20), so the cheapest fork is one that never changes upstream's co
 5. **Depend on the surfaces that do not move** (§4). The process boundary (`filmcraft-cli`, MCP, command ids) is the
    most stable, Rust types the least.
 
-### Exceptions in place today
+### Carried edits in place today
 
 These modify upstream lines (all listed in `UPSTREAM.md` "Carried edits", with the reason):
 
@@ -111,9 +117,11 @@ Prefer the highest rung that does the job:
 
 ## 5. Checklist for a change that touches upstream
 
-- [ ] Is there an extension point in §2? Use it.
+- [ ] Is there an extension point in §2? Prefer it. If an edit is simpler and the file is cold, edit it and add a
+      `UPSTREAM.md` Carried edits row.
 - [ ] If a hook is needed: one inserted line, no edited line, stable neighbour, marker comment, `UPSTREAM.md` row.
-- [ ] No new field, variant, default or test in upstream code.
+- [ ] No new field or variant in the high-churn structs (`UiState`, `FilmcraftApp`, `Session`, `Project`); upstream
+      tests are not edited (add ours beside them).
 - [ ] Our tests are in our own files and pass: `cargo test -p <our crates>`, `cargo xtask layers`.
 - [ ] `bashcut/scripts/upstream.sh footprint --pr` passes: every inserted upstream line is covered by a `UPSTREAM.md`
       Hooks row, no upstream line is changed (except the Carried edits rows, §1).
