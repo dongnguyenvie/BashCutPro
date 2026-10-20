@@ -7,7 +7,7 @@ scripts for them.
 
 | Piece | macOS (.app / CLI zip) | Windows (MSI / portable zip) | Linux (tar, deb, rpm, AppImage) / FreeBSD |
 |---|---|---|---|
-| `bashcutpro` and its alias `bcpro` (#154, beside `filmcraft-cli`), `bashcut-doctor`, `bashcut-batch`, `bashcut-mcp` | `Contents/MacOS/`; CLI zip | install folder; portable zip | `/usr/bin` (FreeBSD: `bin/`) |
+| `bashcutpro` and its alias `bcpro` (#154, beside `filmcraft-cli`), `bashcut-doctor`, `bashcut-batch`, `bashcut-mcp` | `Contents/MacOS/` with `filmcraft-cli` (only `bcpro` there: `bashcutpro` would replace `BashCutPro` on a Mac volume, #187); CLI zip | install folder; portable zip | `/usr/bin` (FreeBSD: `bin/`) |
 | first-run setup `bashcut-setup.sh` / `.ps1` | `Contents/Resources/bashcut/`; CLI zip | install folder; portable zip | `/usr/share/bashcutpro/` (FreeBSD: `share/bashcutpro/`) |
 | speech-to-text (`--features whisper` for `filmcraft` and `filmcraft-cli`, #146; candle on the CPU) | app and CLI | app and CLI | app and CLI |
 
