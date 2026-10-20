@@ -9,6 +9,10 @@
 //! `FAKE_CLI_LOG=<file>` every process appends `start <ms>` / `end <ms>` lines, for concurrency checks.
 //! `exec transcript.models` prints `$FAKE_CLI_MODELS` (exit 1 when unset); `sequence.transcribe`
 //! records `sequence.transcribe model=<params.model>` in the project.
+//!
+//! Sequences (#195): `file.newSequenceFromClip` makes item 2 ("source"); a `sequence:<id>:<name>[:blocking]`
+//! line adds one (blocking: its review has a finding until a `fixed:<name>` line). `sequence.open`
+//! records `sequence.open item=<n>` (the last one is active); `project.inspect` lists them.
 
 use serde_json::{Value, json};
 use std::io::Write;
@@ -92,8 +96,19 @@ fn real_main() -> i32 {
                     return 1;
                 }
                 // the review gate: one blocking finding until an agent wrote "fixed" into the project
-                let result = if id == "bashcut.review.run" {
-                    let blocking = u64::from(!project.contains("fixed\n"));
+                let result = if id == "project.inspect" {
+                    inspect(&project)
+                } else if id == "bashcut.review.run" {
+                    let target = params["sequence"].as_u64().or_else(|| active(&project));
+                    if params["sequence"].is_u64() && target != active(&project) {
+                        println!("{}", json!({"line": n + 1, "id": id, "ok": false, "error": "not the active sequence"}));
+                        return 1;
+                    }
+                    // the source sequence keeps the plain rule above
+                    let blocking = match target.and_then(|t| sequences(&project).into_iter().find(|s| s.0 == t && s.0 != 2)) {
+                        Some((_, name, bad)) => u64::from(bad && !project.contains(&format!("fixed:{name}\n"))),
+                        None => u64::from(!project.contains("fixed\n")),
+                    };
                     let findings: Vec<Value> = (0..blocking)
                         .map(|_| json!({"category": "captions", "check": "captions.readingSpeed", "severity": "blocking", "start": 1.0, "end": 2.0, "message": "24 characters a second", "fix": "split the caption"}))
                         .collect();
@@ -103,6 +118,9 @@ fn real_main() -> i32 {
                 };
                 println!("{}", json!({"line": n + 1, "id": id, "ok": true, "result": result}));
                 project.push_str(&id);
+                if id == "sequence.open" {
+                    project.push_str(&format!(" item={}", params["item"].as_u64().unwrap_or(0)));
+                }
                 if id == "sequence.transcribe" {
                     project.push_str(&format!(" model={}", params["model"].as_str().unwrap_or("-")));
                 }
@@ -146,7 +164,9 @@ fn real_main() -> i32 {
             0
         }
         // an agent (Claude Code's stream-json): edits the project file itself, as an agent saving
-        // through MCP would; --mode ok (writes "fixed" on a fix round), fixfirst, stubborn, loop, sleep
+        // through MCP would; --mode ok (writes "fixed" on a fix round), fixfirst, stubborn, loop, sleep;
+        // clips makes three clip sequences (clip-1 and clip-3 blocking, clip-2 left active) and on a fix
+        // round fixes each clip the prompt names; clipsstubborn makes them and never fixes
         Some("fake-agent") => {
             log("agent-start");
             let mode = opt("--mode").unwrap_or_default();
@@ -163,6 +183,16 @@ fn real_main() -> i32 {
             }
             project.push_str("agent\n");
             let fix_round = prompt.contains("found blocking problems");
+            if mode.starts_with("clips") && !project.contains("sequence:3:") {
+                project.push_str("sequence:3:clip-1:blocking\nsequence:4:clip-2\nsequence:5:clip-3:blocking\nsequence.open item=4\n");
+            }
+            if mode == "clips" && fix_round {
+                for (_, name, _) in sequences(&project) {
+                    if prompt.contains(&format!("\"{name}\"")) {
+                        project.push_str(&format!("fixed:{name}\n"));
+                    }
+                }
+            }
             if mode == "fixfirst" || (mode == "ok" && fix_round) {
                 project.push_str("fixed\n");
             }
@@ -186,4 +216,37 @@ fn real_main() -> i32 {
         }
         _ => 2,
     }
+}
+
+/// (id, name, blocking) of each sequence in a fake project.
+fn sequences(project: &str) -> Vec<(u64, String, bool)> {
+    let mut v = Vec::new();
+    if project.lines().any(|l| l == "file.newSequenceFromClip") {
+        v.push((2, "source".to_string(), false));
+    }
+    for l in project.lines() {
+        let mut parts = l.split(':');
+        if parts.next() != Some("sequence") {
+            continue;
+        }
+        let (Some(id), Some(name)) = (parts.next().and_then(|i| i.parse().ok()), parts.next()) else { continue };
+        v.push((id, name.to_string(), parts.next() == Some("blocking")));
+    }
+    v
+}
+
+fn active(project: &str) -> Option<u64> {
+    let opened = project.lines().rev().find_map(|l| l.strip_prefix("sequence.open item=")).and_then(|i| i.parse().ok());
+    opened.or_else(|| sequences(project).first().map(|s| s.0))
+}
+
+/// `project.inspect`: the media item at the root, sequences made by an agent in a "Clips" bin.
+fn inspect(project: &str) -> Value {
+    let seq = |(id, name, _): &(u64, String, bool)| json!({"item": id, "name": name, "type": "Sequence"});
+    let all = sequences(project);
+    let (source, clips): (Vec<_>, Vec<_>) = all.iter().partition(|s| s.0 == 2);
+    let mut children = vec![json!({"item": 1, "name": "clip.mp4", "type": "Movie"})];
+    children.extend(source.into_iter().map(seq));
+    children.push(json!({"id": 9, "name": "Clips", "children": clips.into_iter().map(seq).collect::<Vec<_>>()}));
+    json!({"root": {"id": 0, "name": "root", "children": children}, "activeSequence": active(project)})
 }

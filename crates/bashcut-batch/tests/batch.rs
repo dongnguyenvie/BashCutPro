@@ -446,6 +446,52 @@ fn findings_left_after_the_fix_rounds_end_needs_fix() {
 }
 
 #[test]
+fn every_sequence_the_agent_made_is_reviewed_and_fixed() {
+    // #195: the agent cuts three clips and leaves the clean one active; the gate reviews all three
+    let b = Bench::new("agent-clips", &["a"]);
+    let job = Job::create(&agent_pipeline(&b, "clips", json!({})), Some("agent")).unwrap();
+    let summary = run(&job, &b.opts()).unwrap();
+    assert_eq!(summary.status, Status::Done, "{summary:?}");
+    let book = job.book().unwrap();
+    let step = &item(&book, "a").steps[1];
+    assert_eq!(step.agent.as_ref().map(|u| u.rounds), Some(2), "the clip findings got a fix round");
+    let first = std::fs::read_to_string(job.item_dir("a").join("step-1.review-0.jsonl")).unwrap();
+    assert_eq!(first.matches("bashcut.review.run").count(), 3, "{first}");
+    let review = step.review.clone().unwrap();
+    assert_eq!(review["verdict"], "pass");
+    let names: Vec<&str> = review["sequences"].as_array().unwrap().iter().filter_map(|s| s["name"].as_str()).collect();
+    assert_eq!(names, vec!["clip-1", "clip-2", "clip-3"], "the source sequence is not an output");
+    let project = b.read("a.fcproj");
+    // the fix prompt named the clips with findings, not the clean one; the active clip is active again
+    assert!(project.contains("fixed:clip-1\n") && project.contains("fixed:clip-3\n") && !project.contains("fixed:clip-2"), "{project}");
+    assert!(project.trim_end().ends_with("sequence.open item=4"), "{project}");
+}
+
+#[test]
+fn findings_left_in_any_sequence_end_needs_fix_and_survive_a_retry() {
+    let b = Bench::new("agent-clips-stubborn", &["a"]);
+    let job = Job::create(&agent_pipeline(&b, "clipsstubborn", json!({"fixRounds": 1})), Some("agent")).unwrap();
+    let summary = run(&job, &b.opts()).unwrap();
+    assert_eq!(summary.status, Status::NeedsFix, "{summary:?}");
+    let book = job.book().unwrap();
+    let e = item(&book, "a").error.clone().unwrap();
+    assert_eq!(e.category, Category::Review);
+    assert!(
+        e.message.starts_with("step-1: 2 blocking")
+            && e.message.contains("clip-1: captions.readingSpeed")
+            && e.message.contains("clip-3: captions.readingSpeed"),
+        "{}",
+        e.message
+    );
+    // a retry runs the agent on the same project: its clips are still outputs, not sources
+    assert_eq!(job.retry(&[]).unwrap(), 1);
+    assert_eq!(run(&job, &b.opts()).unwrap().status, Status::NeedsFix);
+    let book = job.book().unwrap();
+    let review = item(&book, "a").steps[1].review.clone().unwrap();
+    assert_eq!(review["blocking"], 2, "{review}");
+}
+
+#[test]
 fn agent_steps_respect_agent_concurrency() {
     let b = Bench::new("agent-cap", &["a", "b", "c"]);
     let mut p = agent_pipeline(&b, "fixfirst", json!({"review": false}));

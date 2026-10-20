@@ -607,8 +607,9 @@ fn create(sh: &Shared, idx: usize, s: usize, ctx: &Ctx) -> Result<(), ErrorInfo>
     std::fs::rename(&tmp, &ctx.project).map_err(|e| io(e, &ctx.project))
 }
 
-/// An agent step (#60): rounds of the agent, each followed by `bashcut.review.run`; blocking findings
-/// go back to the agent (resuming its session) at most `fixRounds` times, then the item needs fixing.
+/// An agent step (#60): rounds of the agent, each followed by `bashcut.review.run` on every sequence
+/// the agent made (#195; the active one when it made none); blocking findings go back to the agent
+/// (resuming its session) at most `fixRounds` times, then the item needs fixing.
 /// `maxMinutes` covers the whole step, `maxTurns` each round; at most `agentConcurrency` agent steps
 /// run at once. Usage and transcripts go into the step's `agent`, the last review into `review`.
 fn agent_step(sh: &Shared, idx: usize, s: usize, ctx: &Ctx, key: &str, a: &AgentStep) -> Result<Vec<String>, ErrorInfo> {
@@ -623,6 +624,7 @@ fn agent_step(sh: &Shared, idx: usize, s: usize, ctx: &Ctx, key: &str, a: &Agent
     let mut usage = AgentUsage { agent: if a.argv.is_empty() { a.agent_name().to_string() } else { "custom".into() }, ..AgentUsage::default() };
     let mut prompt = agent::first_prompt(a, &ctx.vars);
     let rounds = a.fix_rounds();
+    let before = if a.review { start_sequences(sh, idx, s, ctx, key)? } else { Vec::new() };
     let minutes = limit.as_secs_f64() / 60.0;
     for round in 0..=rounds {
         let remaining = limit.saturating_sub(start.elapsed());
@@ -663,7 +665,7 @@ fn agent_step(sh: &Shared, idx: usize, s: usize, ctx: &Ctx, key: &str, a: &Agent
         if !a.review {
             return Ok(Vec::new());
         }
-        let review = review_step(sh, idx, s, ctx, &format!("{key}.review-{round}"), a.review_profile.as_deref())?;
+        let review = review_step(sh, idx, s, ctx, &format!("{key}.review-{round}"), a.review_profile.as_deref(), &before)?;
         let summary = agent::review_summary(&review);
         sh.step(idx, s, |st| st.review = Some(summary));
         let blocking = agent::blocking_count(&review);
@@ -671,7 +673,7 @@ fn agent_step(sh: &Shared, idx: usize, s: usize, ctx: &Ctx, key: &str, a: &Agent
             return Ok(Vec::new());
         }
         if round == rounds {
-            let checks: Vec<String> = agent::blocking(&review).iter().filter_map(|f| f["check"].as_str().map(str::to_string)).take(5).collect();
+            let checks = agent::blocking_labels(&review, 5);
             return Err(ErrorInfo::new(
                 Category::Review,
                 format!("{key}: {blocking} blocking review finding(s) left after {rounds} fix round(s): {}", checks.join(", ")),
@@ -682,20 +684,53 @@ fn agent_step(sh: &Shared, idx: usize, s: usize, ctx: &Ctx, key: &str, a: &Agent
     Ok(Vec::new())
 }
 
-/// `bashcut.review.run` on the item's project (saved: it writes its findings as markers).
-fn review_step(sh: &Shared, idx: usize, s: usize, ctx: &Ctx, key: &str, profile: Option<&str>) -> Result<Value, ErrorInfo> {
-    let mut params = serde_json::json!({});
-    if let Some(p) = profile {
-        params["profile"] = serde_json::json!(p);
-    }
-    let line = CommandLine { id: "bashcut.review.run".into(), params };
-    let script = write_script(ctx, key, std::slice::from_ref(&line))?;
+/// `bashcut.review.run` on the item's project (saved: it writes its findings as markers), once for
+/// each sequence made since `before` (#195), merged into one review; the active sequence when none.
+fn review_step(sh: &Shared, idx: usize, s: usize, ctx: &Ctx, key: &str, profile: Option<&str>, before: &[agent::Sequence]) -> Result<Value, ErrorInfo> {
+    let inspect = inspect_step(sh, idx, s, ctx, &format!("{key}.inspect"))?;
+    let targets = agent::review_targets(before, &agent::sequences(&inspect));
+    let lines = agent::review_lines(&targets, agent::active_sequence(&inspect), profile);
+    let script = write_script(ctx, key, &lines)?;
     let mut argv = vec![cli(sh), "run".into(), path_arg(&script), "--project".into(), path_arg(&ctx.project), "--save".into(), "--compact".into()];
     argv.extend(data_dir_args(sh));
     let spec = Spec { argv, cwd: Some(ctx.dir.clone()), env: sh.opts.env.clone(), timeout: None, log: ctx.dir.join(key) };
     let ended = spawn(sh, idx, s, &spec)?;
     outcome(ended, &spec.log, key)?;
-    agent::review_result(&process::out_path(&spec.log)).ok_or_else(|| ErrorInfo::new(Category::Command, format!("{key}: no bashcut.review.run result")))
+    let mut results = agent::results(&process::out_path(&spec.log), "bashcut.review.run");
+    if targets.is_empty() {
+        return results.pop().ok_or_else(|| ErrorInfo::new(Category::Command, format!("{key}: no bashcut.review.run result")));
+    }
+    if results.len() != targets.len() {
+        return Err(ErrorInfo::new(Category::Command, format!("{key}: {} of {} sequence reviews returned a result", results.len(), targets.len())));
+    }
+    Ok(agent::merge_reviews(&targets.into_iter().zip(results).collect::<Vec<_>>()))
+}
+
+/// The sequences the agent step started from (the ones it adds are its outputs), kept in
+/// `<itemDir>/<key>.sequences.json` so a retry or resume still reviews what the first attempt made.
+fn start_sequences(sh: &Shared, idx: usize, s: usize, ctx: &Ctx, key: &str) -> Result<Vec<agent::Sequence>, ErrorInfo> {
+    let path = ctx.dir.join(format!("{key}.sequences.json"));
+    if let Some(kept) = std::fs::read_to_string(&path).ok().and_then(|t| serde_json::from_str::<Vec<agent::Sequence>>(&t).ok()) {
+        return Ok(kept);
+    }
+    let list = agent::sequences(&inspect_step(sh, idx, s, ctx, &format!("{key}.inspect"))?);
+    let text = serde_json::to_string(&list).map_err(|e| ErrorInfo::new(Category::Io, format!("{}: {e}", path.display())))?;
+    std::fs::write(&path, text).map_err(|e| ErrorInfo::new(Category::Io, format!("{}: {e}", path.display())))?;
+    Ok(list)
+}
+
+/// `project.inspect` on the item's project (not saved).
+fn inspect_step(sh: &Shared, idx: usize, s: usize, ctx: &Ctx, key: &str) -> Result<Value, ErrorInfo> {
+    let line = CommandLine { id: "project.inspect".into(), params: serde_json::json!({}) };
+    let script = write_script(ctx, key, std::slice::from_ref(&line))?;
+    let mut argv = vec![cli(sh), "run".into(), path_arg(&script), "--project".into(), path_arg(&ctx.project), "--compact".into()];
+    argv.extend(data_dir_args(sh));
+    let spec = Spec { argv, cwd: Some(ctx.dir.clone()), env: sh.opts.env.clone(), timeout: None, log: ctx.dir.join(key) };
+    let ended = spawn(sh, idx, s, &spec)?;
+    outcome(ended, &spec.log, key)?;
+    agent::results(&process::out_path(&spec.log), "project.inspect")
+        .pop()
+        .ok_or_else(|| ErrorInfo::new(Category::Command, format!("{key}: no project.inspect result")))
 }
 
 fn engine_step(sh: &Shared, idx: usize, s: usize, ctx: &Ctx, key: &str, lines: &[CommandLine], timeout: Option<Duration>) -> Result<Vec<String>, ErrorInfo> {
