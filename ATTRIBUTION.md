@@ -207,3 +207,17 @@ Screenshots in the user guide (`bashcut/guide/img/`), taken from the app itself 
 | `bashcut/guide/img/plugins.png` | BashCutPro contributors | Original work: screenshot of BashCutPro (`ui.screenshot`), cropped and scaled | MIT OR Apache-2.0 (`LICENSE-MIT`, `LICENSE-APACHE`) |
 | `bashcut/guide/img/runs.png` | BashCutPro contributors | Original work: screenshot of BashCutPro (`ui.screenshot`), cropped and scaled | MIT OR Apache-2.0 (`LICENSE-MIT`, `LICENSE-APACHE`) |
 | `bashcut/guide/img/window.png` | BashCutPro contributors | Original work: screenshot of BashCutPro (`ui.screenshot`), cropped and scaled | MIT OR Apache-2.0 (`LICENSE-MIT`, `LICENSE-APACHE`) |
+
+## Bench contact sheets
+
+Low-resolution frame strips of the bench edits for the owner's blind side-by-side pick (`bashcut/bench/`); the
+footage itself is never committed. Each sheet shows frames of two edits made from Creative Commons footage.
+
+| Asset | Author | Source | Licence |
+|---|---|---|---|
+| `bashcut/bench/2026-10-20-real-footage/talking-head-short.jpg` | footage: Kizzume; edits: BashCutPro and BashCut bench agents | Frames of edits made from https://youtu.be/InXjOKOhzKc (0-180 s), tiled with ffmpeg | CC BY 3.0 (YouTube Creative Commons Attribution) |
+| `bashcut/bench/2026-10-20-real-footage/vlog-60s.jpg` | footage: Marl Gabileo; edits: BashCutPro and BashCut bench agents | Frames of edits made from https://youtu.be/0pW_Gx2CAc0 (0-240 s), tiled with ffmpeg | CC BY 3.0 (YouTube Creative Commons Attribution) |
+| `bashcut/bench/2026-10-20-real-footage/podcast-3-clips.jpg` | footage: vlogwrap; edits: BashCutPro and BashCut bench agents | Frames of edits made from https://youtu.be/DmWH0tYnxHk (300-780 s), tiled with ffmpeg | CC BY 3.0 (YouTube Creative Commons Attribution) |
+| `bashcut/bench/2026-10-20-real-footage/broll-montage.jpg` | footage: Free Raw Footage; ZU FILM & PHOTO; mynbalaofficial; Sponge Can; edits: BashCutPro and BashCut bench agents | Frames of edits made from https://youtu.be/SBrXXKPq0CE, https://youtu.be/Gx07PCvirXo, https://youtu.be/99HTI9almbM, https://youtu.be/xu_4JtZ5pWw, tiled with ffmpeg | CC BY 3.0 (YouTube Creative Commons Attribution) |
+| `bashcut/bench/2026-10-20-real-footage/tutorial-captions.jpg` | footage: MacMingle; edits: BashCutPro and BashCut bench agents | Frames of edits made from https://youtu.be/Qf3JNIO8zVY (192 s), tiled with ffmpeg | CC BY 3.0 (YouTube Creative Commons Attribution) |
+| `bashcut/bench/2026-10-20-real-footage/vietnamese-subtitles.jpg` | footage: Burrup and Away; edits: BashCutPro and BashCut bench agents | Frames of edits made from https://youtu.be/kDY8n-qxUek (0-120 s), tiled with ffmpeg | CC BY 3.0 (YouTube Creative Commons Attribution) |

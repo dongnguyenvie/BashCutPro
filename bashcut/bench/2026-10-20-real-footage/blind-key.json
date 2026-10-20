@@ -1,0 +1,26 @@
+{
+  "talking-head-short": {
+    "A": "bashcut",
+    "B": "pro"
+  },
+  "vlog-60s": {
+    "A": "pro",
+    "B": "bashcut"
+  },
+  "podcast-3-clips": {
+    "A": "bashcut",
+    "B": "pro"
+  },
+  "broll-montage": {
+    "A": "bashcut",
+    "B": "pro"
+  },
+  "tutorial-captions": {
+    "A": "pro",
+    "B": "bashcut"
+  },
+  "vietnamese-subtitles": {
+    "A": "pro",
+    "B": "bashcut"
+  }
+}

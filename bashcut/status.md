@@ -79,6 +79,10 @@ _Last updated: 2026-10-20_
 - Build pass, kit + plugins + bench (mac 02): kit catalogue refreshed from a build's `command_list` and skill examples
   fixed (#113), plugins' live paths run without paid keys (#117), first bench scorecard, Pro side only, 3 of 6 jobs
   on generated clips ([bench/2026-10-20.md](bench/2026-10-20.md)); engine follow-ups #127 (polish), #130 (word captions).
+- Bench #58, full scorecard: all 6 jobs on real Creative Commons footage, Pro (bashcut-batch + agent) against the
+  Swift BashCut with the same brief and rubric ([bench/2026-10-20-real-footage.md](bench/2026-10-20-real-footage.md)):
+  Pro wins 1, ties 1, loses 4. Loss issues #185 (render freeze), #193/#196 (frozen-under-speech review noise),
+  #195 (batch reviews only the active sequence); blind contact sheets wait for the owner's pick.
 
 ## Next
 
