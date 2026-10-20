@@ -67,6 +67,14 @@ impl Thumb {
         }
         self.luma.iter().zip(&o.luma).map(|(a, b)| (a - b).abs()).sum::<f32>() / self.luma.len() as f32
     }
+
+    /// Largest difference of one cell to `o`, 0…1 (1 when the grids differ in size).
+    pub fn max_diff(&self, o: &Thumb) -> f32 {
+        if self.luma.len() != o.luma.len() || self.luma.is_empty() {
+            return 1.0;
+        }
+        self.luma.iter().zip(&o.luma).map(|(a, b)| (a - b).abs()).fold(0.0, f32::max)
+    }
 }
 
 /// One sampled frame.
@@ -85,8 +93,11 @@ pub struct Options {
     pub black_max: f32,
     /// Shortest black stretch reported.
     pub min_black: i64,
-    /// Two frames are the same picture below this mean difference.
+    /// Two frames are the same picture below this mean difference…
     pub still_diff: f32,
+    /// …and when no cell changes by this much (a locked-off shot with a little motion in it is
+    /// not frozen even though its mean difference is tiny).
+    pub still_cell: f32,
     /// Shortest unchanged stretch reported as frozen.
     pub min_frozen: i64,
     /// Unchanged stretches at least this long are reported as long stills instead.
@@ -99,7 +110,16 @@ impl Options {
     /// Defaults for a time unit of `per_second` units a second (ticks: `TICKS_PER_SECOND`).
     pub fn per_second(per_second: i64) -> Options {
         let s = per_second.max(1);
-        Options { black_mean: 0.06, black_max: 0.12, min_black: s / 4, still_diff: 0.003, min_frozen: s, min_still: s.saturating_mul(5), flash_jump: 0.35 }
+        Options {
+            black_mean: 0.06,
+            black_max: 0.12,
+            min_black: s / 4,
+            still_diff: 0.003,
+            still_cell: 0.03,
+            min_frozen: s,
+            min_still: s.saturating_mul(5),
+            flash_jump: 0.35,
+        }
     }
 }
 
@@ -169,7 +189,7 @@ pub fn check(samples: &[Sample], end: i64, o: &Options) -> Vec<Finding> {
         let mut worst = 0f32;
         while let (Some(a), Some(b)) = (s.get(j), s.get(j + 1)) {
             let d = a.thumb.diff(&b.thumb);
-            if d >= o.still_diff || is_black(a) || is_black(b) {
+            if d >= o.still_diff || a.thumb.max_diff(&b.thumb) >= o.still_cell || is_black(a) || is_black(b) {
                 break;
             }
             worst = worst.max(d);
