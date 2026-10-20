@@ -26,6 +26,9 @@ mod profiles_tests;
 pub mod review;
 #[cfg(test)]
 mod review_tests;
+pub mod safe_area;
+#[cfg(test)]
+mod safe_area_tests;
 pub mod summary;
 #[cfg(test)]
 mod summary_tests;

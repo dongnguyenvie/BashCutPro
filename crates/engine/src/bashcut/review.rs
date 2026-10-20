@@ -7,12 +7,12 @@
 //! |---|---|
 //! | sound | integrated loudness and true peak of the mix against the profile, clipped samples, loud seconds, long silences |
 //! | picture | black, frozen, long-still and flashing stretches (`bashcut.review.pictureChecks`), clips and gaps shorter than 3 frames |
-//! | captions | reading speed (characters a second), line length, lines per caption, overlaps |
+//! | captions | reading speed (characters a second), line length, lines drawn after wrapping, overlaps; with a profile, caption and title boxes against its safe area |
 //! | edit | cuts inside a word (transcript word edges), gaps on the main video track, offline media |
 //!
-//! Not measured here (listed under `skipped` in the result): music over speech (needs stems), caption safe
-//! area and text contrast (need the rendered caption boxes). A batch item whose review has blocking findings
-//! ends "needs fix" (`verdict`).
+//! Not measured here (listed under `skipped` in the result): music over speech (needs stems), text contrast, and
+//! the safe area when no profile is given. A batch item whose review has blocking findings ends "needs fix"
+//! (`verdict`).
 
 use filmcraft_project::{ItemId, Label, Marker, MarkerId, MarkerKind, Sequence};
 use filmcraft_time::Tick;
@@ -20,6 +20,7 @@ use serde_json::{Value, json};
 
 use super::analysis::{Target, measure, picture_findings, range_p, secs};
 use super::errors::{Code, fail};
+use super::safe_area::{Insets, caption_box, text_boxes};
 use crate::commands::{CommandSpec, bad, has_seq};
 use crate::{EngineError, Result, Session};
 
@@ -51,6 +52,8 @@ struct Limits {
     word_margin: f64,
     /// A vertical (short-form) output: a long still with nothing said over it is a warning, not info (#185).
     short_form: bool,
+    /// The profile's safe area (frame fractions platform UI covers) and its name (#205).
+    safe_area: Option<(super::profiles::SafeArea, String)>,
 }
 
 impl Default for Limits {
@@ -69,6 +72,7 @@ impl Default for Limits {
             short_frames: 3,
             word_margin: 0.02,
             short_form: false,
+            safe_area: None,
         }
     }
 }
@@ -363,14 +367,20 @@ fn spoken_share(spans: &[(Tick, Tick)], a: Tick, b: Tick) -> f64 {
 
 // --------------------------------------------------------------------------------------- captions
 
-fn captions(q: &Sequence, a: Tick, b: Tick, l: &Limits, out: &mut Vec<Finding>) -> Value {
+fn captions(s: &Session, q: &Sequence, a: Tick, b: Tick, l: &Limits, out: &mut Vec<Finding>) -> Value {
     let mut count = 0usize;
+    let (w, h) = (q.settings.width as usize, q.settings.height as usize);
+    let (wf, hf) = (w as f64, h as f64);
+    let insets = l.safe_area.as_ref().map(|(a, _)| Insets::of(a, wf, hf)).filter(|i| !i.is_empty());
+    let profile = l.safe_area.as_ref().map(|(_, n)| n.as_str()).unwrap_or_default();
+    let mut boxes = 0usize;
     for t in q.caption_tracks.iter().filter(|t| t.enabled) {
         let mut caps: Vec<_> = t.captions.iter().filter(|c| c.end() > a && c.start < b).collect();
         caps.sort_by_key(|c| c.start);
         for (k, c) in caps.iter().enumerate() {
             count += 1;
             let lines: Vec<&str> = c.text.lines().collect();
+            let drawn = caption_box(c, &t.style, w, h);
             let chars = c.text.chars().filter(|ch| !ch.is_control()).count();
             let dur = c.duration.seconds();
             let mut f = |check, severity, measured: Value, limit: Value, unit, message: String, fix| {
@@ -402,16 +412,48 @@ fn captions(q: &Sequence, a: Tick, b: Tick, l: &Limits, out: &mut Vec<Finding>) 
                     "break the line or shorten it",
                 );
             }
-            if lines.len() > l.lines {
+            // the lines the renderer draws: a long line wraps at the track's size (#205)
+            let drawn_lines = drawn.map_or(lines.len(), |d| d.lines);
+            if drawn_lines > l.lines {
+                let wrapped = drawn_lines > lines.len();
                 f(
                     "lines",
-                    Severity::Warning,
-                    json!(lines.len()),
+                    if wrapped { Severity::Blocking } else { Severity::Warning },
+                    json!(drawn_lines),
                     json!(l.lines),
                     "lines",
-                    format!("caption {} has {} lines", c.id.0, lines.len()),
-                    "split it into two captions",
+                    if wrapped {
+                        format!("caption {} draws {drawn_lines} lines: its {} text lines wrap at this caption size", c.id.0, lines.len())
+                    } else {
+                        format!("caption {} has {} lines", c.id.0, lines.len())
+                    },
+                    if wrapped {
+                        "shorter lines (bashcut.captions.create maxChars, 24 on vertical) or a smaller size (captions.setStyle {size})"
+                    } else {
+                        "split it into two captions"
+                    },
                 );
+            }
+            if let (Some(ins), Some(d)) = (insets, drawn) {
+                boxes += 1;
+                let into = ins.intrusion(&d, wf, hf);
+                if let Some(msg) = band_message(&into, &ins, profile) {
+                    // bottom band: the margin that puts the box's bottom edge 2 % above it; side bands: the largest size
+                    // whose laid-out box (lines re-wrap at each size) clears them; top band: anchor or margin
+                    let need = ((f64::from(t.style.margin) * hf + into[1]) / hf + 0.02).clamp(0.0, 0.45);
+                    let size = fitting_size(c, &t.style, (w, h), &ins);
+                    let mut limit = json!({"bandsPx": [ins.top.round(), ins.bottom.round(), ins.left.round(), ins.right.round()]});
+                    let fix = if into[1] >= 1.0 {
+                        limit["marginAtLeast"] = json!(round2(need));
+                        "raise the captions: captions.setStyle {margin} (fraction of the height) to at least `limit.marginAtLeast`"
+                    } else if into[2] >= 1.0 || into[3] >= 1.0 {
+                        limit["sizeAtMost"] = json!(size);
+                        "a smaller caption size (captions.setStyle {size} at most `limit.sizeAtMost`) or shorter lines (bashcut.captions.create maxChars)"
+                    } else {
+                        "move the captions out of the top band: captions.setStyle {anchor, margin}"
+                    };
+                    f("safeArea", Severity::Blocking, json!({"box": [d.x0, d.y0, d.x1, d.y1]}), limit, "pixels", format!("caption {} {msg}", c.id.0), fix);
+                }
             }
             if let Some(next) = caps.get(k + 1).filter(|n| n.start < c.end()) {
                 f(
@@ -426,7 +468,63 @@ fn captions(q: &Sequence, a: Tick, b: Tick, l: &Limits, out: &mut Vec<Finding>) 
             }
         }
     }
-    json!({"captions": count})
+    // titles and other text clips on the video tracks
+    if let Some(ins) = insets {
+        for x in text_boxes(s, q, a, b) {
+            boxes += 1;
+            let Some(msg) = band_message(&ins.intrusion(&x.bounds, wf, hf), &ins, profile) else { continue };
+            let text: String = x.text.chars().take(40).collect();
+            out.push(Finding {
+                category: "captions",
+                check: "safeArea",
+                severity: Severity::Blocking,
+                start: x.start.max(a),
+                end: x.end.min(b),
+                measured: json!({"box": [x.bounds.x0.round(), x.bounds.y0.round(), x.bounds.x1.round(), x.bounds.y1.round()], "clip": x.clip.0}),
+                limit: json!({"bandsPx": [ins.top.round(), ins.bottom.round(), ins.left.round(), ins.right.round()]}),
+                unit: "pixels",
+                message: format!("text clip {} (\"{text}\") {msg}", x.clip.0),
+                fix: "move it inside the safe area (graphics.set {position}, or the clip's Motion position)",
+            });
+        }
+    }
+    json!({"captions": count, "safeAreaBoxes": boxes})
+}
+
+/// The largest caption size (1080-line pixels, whole) at which `c`'s box clears the side bands, by bisection.
+fn fitting_size(c: &filmcraft_project::Caption, style: &filmcraft_project::CaptionStyle, (w, h): (usize, usize), ins: &Insets) -> f64 {
+    let clears = |size: f32| {
+        let st = filmcraft_project::CaptionStyle { size, ..style.clone() };
+        caption_box(c, &st, w, h).is_none_or(|d| {
+            let i = ins.intrusion(&d, w as f64, h as f64);
+            i[2] < 1.0 && i[3] < 1.0
+        })
+    };
+    let (mut lo, mut hi) = (4.0f32, style.size.floor().max(4.0));
+    if !clears(lo) {
+        return f64::from(lo);
+    }
+    for _ in 0..12 {
+        if hi - lo <= 1.0 {
+            break;
+        }
+        let mid = ((lo + hi) / 2.0).floor();
+        if clears(mid) { lo = mid } else { hi = mid }
+    }
+    f64::from(lo)
+}
+
+/// "sits 120 px inside the bottom 384 px of Reels" for the deepest band a box reaches into; `None` when clear.
+fn band_message(into: &[f64; 4], ins: &Insets, profile: &str) -> Option<String> {
+    let names = ["top", "bottom", "left", "right"];
+    let bands = [ins.top, ins.bottom, ins.left, ins.right];
+    let (k, depth) = into.iter().copied().enumerate().filter(|(_, v)| *v >= 1.0).max_by(|x, y| x.1.total_cmp(&y.1))?;
+    Some(format!(
+        "sits {:.0} px inside the {} {:.0} px of {profile} (platform buttons and text cover it)",
+        depth,
+        names.get(k).copied().unwrap_or("bottom"),
+        bands.get(k).copied().unwrap_or_default()
+    ))
 }
 
 // ------------------------------------------------------------------------------------------- edit
@@ -548,6 +646,7 @@ fn run(s: &mut Session, p: &Value) -> Result<Value> {
         l.lufs = pr.loudness_lufs;
         l.true_peak = pr.true_peak_dbtp;
         l.short_form = pr.height > pr.width;
+        l.safe_area = Some((pr.safe_area, pr.name.clone()));
         profile_id = json!(pr.id);
     }
     let checks: Vec<&str> = match p.get("checks") {
@@ -582,7 +681,7 @@ fn run(s: &mut Session, p: &Value) -> Result<Value> {
         let v = match *c {
             "sound" => sound(s, a, b, &l, &mut found)?,
             "picture" => picture(s, &q, a, b, per_second, &l, &mut found)?,
-            "captions" => captions(&q, a, b, &l, &mut found),
+            "captions" => captions(s, &q, a, b, &l, &mut found),
             _ => edit(s, &q, a, b, &l, &mut found),
         };
         measured.insert((*c).into(), v);
@@ -610,6 +709,13 @@ fn run(s: &mut Session, p: &Value) -> Result<Value> {
             Ok(())
         })?;
     }
+    let mut skipped = vec![
+        json!({"check": "sound.musicOverSpeech", "why": "needs voice and music stems: bcp:audio-mix loudness.py --speech"}),
+        json!({"check": "captions.contrast", "why": "needs the rendered caption boxes: render_frame at phone size"}),
+    ];
+    if l.safe_area.is_none() {
+        skipped.push(json!({"check": "captions.safeArea", "why": "pass a `profile` (bashcut.profiles.list): its safe area is the limit"}));
+    }
     let blocking = found.iter().filter(|f| f.severity == Severity::Blocking).count();
     let warnings = found.iter().filter(|f| f.severity == Severity::Warning).count();
     let scores: serde_json::Map<String, Value> = checks.iter().map(|c| ((*c).to_string(), json!(score(&found, c)))).collect();
@@ -626,11 +732,7 @@ fn run(s: &mut Session, p: &Value) -> Result<Value> {
         "findings": found.iter().map(Finding::json).collect::<Vec<_>>(),
         "measured": measured,
         "markers": markers,
-        "skipped": [
-            {"check": "sound.musicOverSpeech", "why": "needs voice and music stems: bcp:audio-mix loudness.py --speech"},
-            {"check": "captions.safeArea", "why": "needs the rendered caption boxes: render_frame at phone size"},
-            {"check": "captions.contrast", "why": "needs the rendered caption boxes: render_frame at phone size"},
-        ],
+        "skipped": skipped,
         "units": {"time": "seconds", "loudness": "LUFS", "peak": "dBTP"},
     }))
 }
@@ -641,7 +743,7 @@ pub(crate) fn commands() -> Vec<CommandSpec> {
         label: "Review Edit",
         menu: &[],
         shortcut: None,
-        params: r#"{"profile":str? (loudness target from bashcut.profiles.*; default -14 LUFS / -1 dBTP),"checks":["sound"|"picture"|"captions"|"edit"]?,"range":{"start":seconds?,"end":seconds?}?,"writeMarkers":bool=true,"samplesPerSecond":0.5..60=5,"sequence":id? (must be the active one)} (findings in seconds; markers replace the previous review's)"#,
+        params: r#"{"profile":str? (loudness target and caption safe area from bashcut.profiles.*; default -14 LUFS / -1 dBTP, no safe area),"checks":["sound"|"picture"|"captions"|"edit"]?,"range":{"start":seconds?,"end":seconds?}?,"writeMarkers":bool=true,"samplesPerSecond":0.5..60=5,"sequence":id? (must be the active one)} (findings in seconds; markers replace the previous review's)"#,
         enabled: has_seq,
         run,
         journal: true,
