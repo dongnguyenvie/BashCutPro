@@ -4,7 +4,9 @@
 //! into graphic text layers (`graphics.upgradeCaption`) and styles the spoken word of each segment with per-character
 //! style runs (`graphics.setCharStyle`): highlight colour, pop (a larger size, optional faux bold) and the upcoming
 //! words dimmed. Word times come from the transcript (`transcript.inspect`) when its words line up with the caption,
-//! else the caption's duration is shared by character count. Everything is one undo step; no render hook.
+//! else the caption's duration is shared by character count. A highlight step lasts at least [`MIN_STEP_SECONDS`]:
+//! fast words share a step with their neighbour instead of flashing for a frame or two (#213). Everything is one undo
+//! step; no render hook.
 
 use filmcraft_project::ClipId;
 use filmcraft_time::{FrameRate, Tick};
@@ -17,6 +19,9 @@ const CMD: &str = "bashcut.captions.wordStyle";
 const UNDO_LABEL: &str = "Word Caption Style";
 const MAX_CAPTIONS: usize = 2_000;
 const MAX_WORDS: usize = 64;
+/// Shortest highlight step: a faster word is highlighted together with its neighbour (review flags shorter graphic
+/// clips as flash frames, #213).
+pub const MIN_STEP_SECONDS: f64 = 0.25;
 
 pub fn commands() -> Vec<CommandSpec> {
     vec![CommandSpec {
@@ -146,6 +151,29 @@ pub fn word_starts(start: Tick, duration: Tick, words: &[(usize, usize)], transc
         .collect()
 }
 
+/// Which word starts open a highlight step: the first word always, then a word only when the step before it would
+/// last at least `min_step`; a last step shorter than that joins the one before. The result is the indices into
+/// `starts` (ascending, starting with 0).
+pub fn step_starts(start: Tick, duration: Tick, starts: &[Tick], min_step: Tick) -> Vec<usize> {
+    let end = start + duration;
+    let mut kept = vec![0usize];
+    let mut last = start;
+    for (k, t) in starts.iter().enumerate().skip(1) {
+        if *t - last >= min_step && end - *t > Tick::ZERO {
+            kept.push(k);
+            last = *t;
+        }
+    }
+    while kept.len() > 1 {
+        let tail = kept.last().and_then(|k| starts.get(*k)).copied().unwrap_or(end);
+        if end - tail >= min_step {
+            break;
+        }
+        kept.pop();
+    }
+    kept
+}
+
 fn hex_to_rgba(hex: &str, alpha: f64) -> Value {
     let c = |i: usize| hex.get(i..i + 2).and_then(|h| u8::from_str_radix(h, 16).ok()).unwrap_or(255) as f64 / 255.0;
     json!([c(1), c(3), c(5), alpha])
@@ -224,9 +252,12 @@ fn apply(s: &mut Session, style: &WordStyle, jobs: &[Job], transcript: &[(Tick, 
         // 1. split at each word's start; a refused split (too short) leaves that word with the previous segment
         // on frame boundaries (nearest), else the graphics round out to whole frames and two words show at once
         let starts: Vec<Tick> = word_starts(job.start, job.duration, &words, transcript).into_iter().map(|t| rate.snap_nearest(t)).collect();
+        // a word faster than a highlight step shares the step of its neighbour (#213)
+        let min_step = rate.snap_nearest(Tick::from_seconds_f64(MIN_STEP_SECONDS)).max(rate.frame_duration());
         let mut segments: Vec<(u64, usize)> = vec![(job.id.0, 0)];
         let mut current = job.id.0;
-        for (k, t) in starts.iter().enumerate().skip(1) {
+        for k in step_starts(job.start, job.duration, &starts, min_step).into_iter().skip(1) {
+            let Some(t) = starts.get(k) else { continue };
             let split = s.execute("captions.split", json!({"caption": current, "time": t.0}));
             if let Some(new) = split.ok().and_then(|v| v.get("captions").and_then(Value::as_array).and_then(|a| a.first()).and_then(Value::as_u64)) {
                 segments.push((new, k));
@@ -244,10 +275,13 @@ fn apply(s: &mut Session, style: &WordStyle, jobs: &[Job], transcript: &[(Tick, 
         // (a popped word grows, so a little narrower then)
         let max_width = width * if style.pop > 1.0 { 0.84 } else { 0.9 };
         wrap_segments(s, &clips, max_width, height)?;
-        // 4. style the spoken word of each segment
+        // 4. style the spoken word(s) of each segment: words `k` up to the next segment's first word
         let base = job.size * height / 1080.0;
         let dim = hex_to_rgba(&format!("#{:02x}{:02x}{:02x}", job.color[0], job.color[1], job.color[2]), style.dim);
-        for (clip, (_, k)) in clips.iter().zip(&segments) {
+        let mut steps = Vec::with_capacity(segments.len());
+        for (i, (clip, (_, k))) in clips.iter().zip(&segments).enumerate() {
+            let last = segments.get(i + 1).map_or(words.len(), |x| x.1).saturating_sub(1).max(*k);
+            steps.push(json!([k, last]));
             let text = s
                 .execute("graphics.list", json!({"clip": clip}))?
                 .get("layers")
@@ -257,7 +291,7 @@ fn apply(s: &mut Session, style: &WordStyle, jobs: &[Job], transcript: &[(Tick, 
                 .unwrap_or_default()
                 .to_string();
             let ranges = word_ranges(&text);
-            let Some(&(a, b)) = ranges.get(*k) else { continue };
+            let (Some(&(a, _)), Some(&(_, b))) = (ranges.get(*k), ranges.get(last).or(ranges.last())) else { continue };
             let mut word = json!({"color": style.highlight});
             if style.pop > 1.0 {
                 word["size"] = json!(base * style.pop);
@@ -271,7 +305,7 @@ fn apply(s: &mut Session, style: &WordStyle, jobs: &[Job], transcript: &[(Tick, 
                 s.execute("graphics.setCharStyle", json!({"clip": clip, "layer": 0, "start": b, "end": n, "style": {"color": dim}}))?;
             }
         }
-        report.push(json!({"caption": job.id.0, "words": words.len(), "clips": clips}));
+        report.push(json!({"caption": job.id.0, "words": words.len(), "clips": clips, "steps": steps}));
     }
     Ok(json!({"captions": report}))
 }

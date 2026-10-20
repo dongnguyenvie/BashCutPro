@@ -3,7 +3,7 @@
 use filmcraft_time::{TICKS_PER_SECOND, Tick};
 use serde_json::json;
 
-use super::word_captions::{plain_text, word_ranges, word_starts};
+use super::word_captions::{plain_text, step_starts, word_ranges, word_starts};
 use crate::Session;
 use crate::media_test_util::frame_rgba;
 
@@ -127,15 +127,19 @@ fn a_long_caption_stays_inside_a_phone_frame() {
     s.execute("captions.add", json!({"text": "Um, today I want to show you how we cut", "time": 0, "durationSeconds": 3.0})).unwrap();
     let r = s.execute("bashcut.captions.wordStyle", json!({"style": {"preset": "pop"}, "useTranscript": false})).unwrap();
     let clips: Vec<u64> = r["captions"][0]["clips"].as_array().unwrap().iter().map(|c| c.as_u64().unwrap()).collect();
-    assert_eq!(clips.len(), 10, "{r}");
-    for (k, c) in clips.iter().enumerate() {
+    let steps = r["captions"][0]["steps"].as_array().unwrap().clone();
+    // 10 words in 3 s: "I" (0.1 s) shares a step with a neighbour (#213)
+    assert!((7..10).contains(&clips.len()), "{r}");
+    assert_eq!(steps.len(), clips.len(), "{r}");
+    for (c, step) in clips.iter().zip(&steps) {
+        let (first, last) = (step[0].as_u64().unwrap() as usize, step[1].as_u64().unwrap() as usize);
         let l = s.execute("graphics.list", json!({"clip": c})).unwrap()["layers"][0].clone();
         let xs: Vec<f64> = l["quad"].as_array().unwrap().iter().map(|p| p[0].as_f64().unwrap()).collect();
-        assert!(xs.iter().all(|x| (0.0..=1080.0).contains(x)), "segment {k} leaves the frame: {l}");
+        assert!(xs.iter().all(|x| (0.0..=1080.0).contains(x)), "step {step} leaves the frame: {l}");
         assert!(l["text"].as_str().unwrap().contains('\n'), "{l}");
-        // the styled run is still the spoken word
+        // the styled run is still the spoken word(s) of the step
         let text = l["text"].as_str().unwrap();
-        let (a, b) = word_ranges(text)[k];
+        let (a, b) = (word_ranges(text)[first].0, word_ranges(text)[last].1);
         assert_eq!((l["styles"][0]["start"].as_u64(), l["styles"][0]["end"].as_u64()), (Some(a as u64), Some(b as u64)), "{l}");
     }
     assert_eq!(s.history.undo.last().map(|u| u.0.as_str()), Some("Word Caption Style"));
@@ -191,4 +195,50 @@ fn a_one_word_caption_becomes_a_graphic_too() {
     // its word is red
     let (w, h, rgba) = frame_rgba(&mut s, 4 * 24 + 12, 1.0);
     assert!(red_x(w, h, &rgba).1 > 20, "the word is highlighted");
+}
+
+#[test]
+fn step_starts_merge_fast_words() {
+    let sec = |x: f64| Tick::from_seconds_f64(x);
+    let min = sec(0.25);
+    // 0.1 s words: a new step opens once 0.25 s have passed
+    let starts: Vec<Tick> = (0..10).map(|i| sec(i as f64 * 0.1)).collect();
+    assert_eq!(step_starts(Tick::ZERO, sec(1.0), &starts, min), vec![0, 3, 6]);
+    // slow words keep their own steps
+    let slow: Vec<Tick> = (0..4).map(|i| sec(i as f64 * 0.5)).collect();
+    assert_eq!(step_starts(Tick::ZERO, sec(2.0), &slow, min), vec![0, 1, 2, 3]);
+    // a short last word joins the step before it
+    assert_eq!(step_starts(Tick::ZERO, sec(1.6), &slow, min), vec![0, 1, 2]);
+    // a caption shorter than a step is one step
+    assert_eq!(step_starts(Tick::ZERO, sec(0.2), &starts[..2], min), vec![0]);
+    assert_eq!(step_starts(Tick::ZERO, sec(1.0), &[], min), vec![0]);
+}
+
+#[test]
+fn fast_speech_makes_no_flash_frames() {
+    // #213: 6 words/s (12 words in 2 s, short and long ones) made 2-frame word clips that review flagged as shortClip
+    let mut s = Session::default();
+    s.execute("file.newSequence", json!({"width": 640, "height": 360, "fps": 30})).unwrap();
+    let text = "so I a do it to me, we go on up the extraordinarily";
+    s.execute("captions.add", json!({"text": text, "time": 0, "durationSeconds": 2.0})).unwrap();
+    let undo = s.history.undo.len();
+    let r = s.execute("bashcut.captions.wordStyle", json!({"style": {"preset": "pop"}, "useTranscript": false})).unwrap();
+    assert_eq!(s.history.undo.len(), undo + 1, "one undo step");
+    let clips = r["captions"][0]["clips"].as_array().unwrap();
+    assert!(clips.len() > 1 && clips.len() < 13, "{r}");
+    let seq = s.active_sequence().unwrap();
+    for c in clips {
+        let (_, it) = seq.find_item(filmcraft_project::ClipId(c.as_u64().unwrap())).unwrap();
+        assert!(it.duration >= Tick::from_seconds_f64(0.24), "a {} s step: {r}", it.duration.seconds());
+    }
+    // every word is highlighted in exactly one step, in order
+    let steps = r["captions"][0]["steps"].as_array().unwrap();
+    let mut next = 0;
+    for st in steps {
+        assert_eq!(st[0].as_u64(), Some(next), "{r}");
+        next = st[1].as_u64().unwrap() + 1;
+    }
+    assert_eq!(next, 13, "{r}");
+    let v = s.execute("bashcut.review.run", json!({"checks": ["picture"], "writeMarkers": false})).unwrap();
+    assert!(!v["findings"].as_array().unwrap().iter().any(|f| f["check"] == "shortClip" || f["check"] == "shortGap"), "{v}");
 }
