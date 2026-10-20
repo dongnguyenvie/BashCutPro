@@ -13,6 +13,8 @@ pub mod captions_fit;
 #[cfg(test)]
 mod captions_fit_tests;
 mod data;
+#[cfg(test)]
+mod drift_tests;
 pub mod errors;
 pub mod hooks;
 #[cfg(test)]
