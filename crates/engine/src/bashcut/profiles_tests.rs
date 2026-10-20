@@ -105,3 +105,30 @@ fn user_files_come_from_the_sessions_data_dir() {
     let t = s.execute("bashcut.template.list", json!({})).unwrap();
     assert_eq!(t["dir"].as_str().map(std::path::PathBuf::from), Some(data.join("bashcut").join("templates")), "{t}");
 }
+
+#[test]
+fn an_srt_profile_writes_no_empty_caption_file() {
+    // after bashcut.captions.wordStyle the caption track is empty (the words are graphic clips): no empty .srt (#173)
+    let mut s = Session::default();
+    s.execute("file.openDemoProject", json!({})).unwrap();
+    s.execute("captions.newTrack", json!({})).unwrap();
+    // half a second keeps the exports quick (In/Out is the default range)
+    s.execute("markers.markIn", json!({"seconds": 0.0})).unwrap();
+    s.execute("markers.markOut", json!({"seconds": 0.5})).unwrap();
+    let d = tmp_dir("bashcut-profiles-sidecar");
+    let out = d.join("empty.mp4");
+    let r =
+        s.execute("bashcut.profiles.apply", json!({"profile": "youtube", "path": out.to_string_lossy(), "dir": d.to_string_lossy(), "wait": true})).unwrap();
+    assert!(r["captionSidecarSkipped"].as_str().is_some_and(|n| n.contains("captions.export")), "{r}");
+    assert!(out.exists());
+    assert!(!d.join("empty.srt").exists(), "no empty caption file");
+
+    // with a caption the sidecar is written as before
+    s.execute("captions.add", json!({"text": "Hello there", "seconds": 0.0, "durationSeconds": 1.0})).unwrap();
+    let out = d.join("captioned.mp4");
+    let r =
+        s.execute("bashcut.profiles.apply", json!({"profile": "youtube", "path": out.to_string_lossy(), "dir": d.to_string_lossy(), "wait": true})).unwrap();
+    assert!(r.get("captionSidecarSkipped").is_none(), "{r}");
+    let srt = std::fs::read_to_string(d.join("captioned.srt")).unwrap();
+    assert!(srt.contains("Hello there"), "{srt}");
+}
