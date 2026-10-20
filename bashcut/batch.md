@@ -62,7 +62,8 @@ library.
 - **description**: one line shown by `presets list`.
 - **placeholders** in params, argv, env and output names: `{input}`, `{media}`, `{name}`, `{project}`, `{itemDir}`,
   `{outputs}`, `{cli}` (the engine in use: `bashcutpro` or `filmcraft-cli`) and `{plugins}` (`<data dir>/bashcut-plugins`, where the plugin
-  host installs plugins: `{plugins}/bashcut.translate-captions/plugin.py`), `{kit}` (the agent kit, `--kit`; empty without
+  host installs plugins: `{plugins}/bashcut.translate-captions/plugin.py`), `{python}` (the interpreter for kit scripts: `$BASHCUT_PYTHON`, else on Windows the first of
+  `python3` / `python` / `py` that runs, else `python3`; #223), `{kit}` (the agent kit, `--kit`; empty without
   one, see [Agent steps](#agent-steps)); `{prompt}`, `{session}`, `{mcpConfig}` in
   an agent's own argv. `outputName`
   takes `{stem}` and `{index}`.
@@ -105,7 +106,9 @@ Issue #60. `{"agent": {"skill", "brief", "agent"?, "argv"?, "maxTurns"?, "maxMin
      `Skill`, `Read`, `Glob`, `Grep`, `Write`, `Edit`, `Bash(python3:*)`, `Bash(python:*)`, `Bash(ffmpeg:*)`,
      `Bash(ffprobe:*)` (`agent::KIT_TOOLS`); the prompt still keeps writes in the item folder and the outputs;
    - every agent (Codex too): a prompt line naming `<kit>/skills/<name>/SKILL.md` and how to run its scripts, and
-     `BASHCUT_KIT` in its environment.
+     `BASHCUT_KIT` in its environment;
+   - every agent and plugin step: `BASHCUT_PYTHON` (`{python}`, one word such as `python` on Windows), named in the
+     agent's prompt as the interpreter to type for the kit's scripts, so it does not try `python3` first (#223).
    `allowedTools` adds entries (with or without a kit). The kit is also `{kit}` in every step and `BASHCUT_KIT` for
    plugin steps, so a pipeline can run a kit script as a plugin step (`["python3",
    "{kit}/skills/captions-text/captions_fit.py", "apply", "--cli", "{cli}", "--project", "{project}"]`); such a step

@@ -395,6 +395,7 @@ fn run_item(sh: &Shared, idx: usize) {
         ("cli", cli(sh)),
         ("plugins", plugins_dir(sh).to_string_lossy().into_owned()),
         ("kit", sh.opts.kit.as_deref().map(path_arg).unwrap_or_default()),
+        ("python", crate::python::agent_python()),
     ]);
     let ctx = Ctx { name, input, input_is_project, project: PathBuf::from(project), dir, vars };
 
@@ -890,6 +891,9 @@ fn item_env(sh: &Shared, ctx: &Ctx) -> Vec<(String, String)> {
     ]);
     if let Some(k) = &sh.opts.kit {
         env.push(("BASHCUT_KIT".into(), path_arg(k)));
+    }
+    if let Some(p) = ctx.vars.get("python") {
+        env.push(("BASHCUT_PYTHON".into(), p.to_string()));
     }
     env
 }

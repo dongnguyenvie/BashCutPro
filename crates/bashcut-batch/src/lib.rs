@@ -13,7 +13,7 @@ pub mod governor;
 pub mod pipeline;
 pub mod presets;
 mod process;
-mod python;
+pub mod python;
 pub mod runner;
 pub mod speech;
 
