@@ -6,7 +6,7 @@ BashCutPro first-run setup (#64) for Windows: optional, every step can be skippe
 1. Looks: the curated look pack as .cube LUTs + looks.json in <data dir>\bashcut\looks (bashcut.looks.export).
 2. Output profiles: compiled into export presets "BashCut <name>" (bashcut.profiles.compile).
 3. Agent kit: detects claude / codex and offers to clone bashcutpro-agent-kit (needs git and access).
-4. Plugins and models: installed from the app (Window > BashCut Plugins); models download on first use.
+4. Plugins and models: installed from the app (the Plugins icon on the right-hand rail, or Window > BashCutPro > Plugins); models download on first use.
 5. bashcut-doctor: checks the machine and prints fixes.
 #>
 param([switch]$Yes, [switch]$SkipLooks, [switch]$SkipProfiles, [switch]$SkipKit, [switch]$SkipDoctor)
@@ -52,7 +52,7 @@ if (-not $SkipKit) {
     if ($LASTEXITCODE -eq 0) { Write-Output '  kit cloned; follow its README (register bashcutpro as an MCP server)' } else { Write-Output '  kit: clone failed (skipped)' }
   }
 }
-Write-Output 'Plugins: install them in the app (Window > BashCut Plugins); models download on first use.'
+Write-Output 'Plugins: install them in the app (the Plugins icon on the right-hand rail, or Window > BashCutPro > Plugins); models download on first use.'
 $doctor = Find-Tool 'bashcut-doctor'
 if (-not $SkipDoctor -and $doctor) {
   Write-Output 'Checking this machine (bashcut-doctor):'

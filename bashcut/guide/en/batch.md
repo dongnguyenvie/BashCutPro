@@ -4,6 +4,8 @@ A batch runs the same steps on many files. **Every file becomes its own project*
 side in the background (the app stays free, and a batch even keeps going if you close the app), and each finished
 step is saved, so a stopped batch picks up where it was.
 
+![The Batch section](../img/batch.png)
+
 ## Build a batch
 
 Open **Batch** on the rail (or **Run on many files…** from a plugin action or the agent).

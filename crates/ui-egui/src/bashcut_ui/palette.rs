@@ -273,7 +273,7 @@ pub fn command_items(session: &filmcraft_engine::Session) -> Vec<Item> {
         if !seen.insert(c.id.clone()) {
             continue;
         }
-        v.push(command_item(&c.id, &c.label, &c.menu, "", short(&c.id), true));
+        v.push(command_item(&c.id, &c.label, &c.menu, super::params(&c.id), short(&c.id), true));
     }
     v
 }
@@ -854,6 +854,18 @@ mod tests {
         assert!(!needs_params(""));
         assert_eq!(required_keys(r#"{"template":str (folder or name),"fills":[{"slot":str,"file":str}],"saveAs":str?}"#), vec!["template", "fills"]);
         assert!(!needs_params(r#"{"amount":0..1=0.5,"loudness":bool=true}"#));
+    }
+
+    #[test]
+    fn rail_commands_say_what_to_type() {
+        let sections = super::super::section_ids().join("|");
+        for id in ["bashcut.ui.section", "bashcut.ui.popOut", "bashcut.ui.dockBack"] {
+            assert!(super::super::params(id).contains(&sections), "{id} lists every section");
+        }
+        assert_eq!(required_keys(super::super::params("bashcut.ui.dockBack")), vec!["section"]);
+        assert_eq!(required_keys(super::super::params("bashcut.ui.setWidth")), vec!["width"]);
+        assert!(super::super::params("bashcut.ui.setLanguage").contains(&super::super::strings::LANGUAGES.join("|")));
+        assert!(!needs_params(super::super::params("bashcut.ui.setLanguage")), "no language goes back to the app's");
     }
 
     #[test]

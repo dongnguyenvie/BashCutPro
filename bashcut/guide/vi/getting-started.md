@@ -32,6 +32,8 @@ bảng bên: **Trợ lý** (Agent), **Hàng loạt** (Batch), **Màu phim** (Loo
 (Plugins), **Tác vụ** (Runs) ([Thanh bên](rail.md)). Bấm lại biểu tượng đó để đóng. Kéo mép trái của bảng để nới rộng
 (240–720 px). Thanh bên ẩn trong chế độ Nhập và Xuất; **Window ▸ BashCutPro ▸ Hiện thanh bên** (Show Rail) để tắt / bật.
 
+![Cửa sổ BashCutPro: thanh bên ở mép phải, mục Hàng loạt đang mở bên cạnh](../img/window.png)
+
 ## 4. Tìm mọi thứ: bảng lệnh
 
 Nhấn **Cmd+Shift+P**. Gõ vài chữ của thứ bạn cần: một lệnh ("razor", "export"), một màu phim ("teal"), một hồ sơ xuất
@@ -39,12 +41,14 @@ Nhấn **Cmd+Shift+P**. Gõ vài chữ của thứ bạn cần: một lệnh ("r
 **Esc** để đóng. Thứ bạn hay dùng sẽ lên đầu. Lệnh nào cần giá trị thì **Tab** (hoặc Enter trên lệnh đó) mở một ô sửa
 nhỏ; đổi giá trị rồi nhấn **Cmd+Enter**. Mọi thứ bảng lệnh chạy đều hoàn tác được bằng **Cmd+Z** như mọi thao tác dựng.
 
+![Bảng lệnh đang tìm "razor"](../img/palette.png)
+
 (**Cmd+K** vẫn là *Add Edit* của FilmCraft nên bảng lệnh có phím riêng. Đổi phím tắt bất kỳ trong
 **Edit ▸ Keyboard Shortcuts**.)
 
 ## 5. Tiếng Việt
 
 Các bảng riêng của BashCutPro hiển thị được bằng tiếng Việt: mở bảng lệnh, gõ **BashCutPro Language**, nhấn **Tab**, thay
-`{}` bằng `{"language": "vi"}` rồi nhấn **Cmd+Enter**. Chạy lại với `{}` để theo ngôn ngữ của ứng dụng.
+`{}` bằng `{"language": "vi"}` (dòng phía trên ô ghi các lựa chọn, `en` và `vi`) rồi nhấn **Cmd+Enter**. Chạy lại với `{}` để theo ngôn ngữ của ứng dụng.
 
 Tiếp theo: [Thanh bên](rail.md).

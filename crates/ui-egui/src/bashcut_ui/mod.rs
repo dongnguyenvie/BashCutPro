@@ -235,6 +235,18 @@ pub fn invoke(app: &mut FilmcraftApp, ctx: &egui::Context, id: &str, params: &Va
     Some(r)
 }
 
+/// The parameter line of a rail command, in the engine's notation, so the palette's editor says what to type.
+pub fn params(id: &str) -> &'static str {
+    match id {
+        "bashcut.ui.section" => r#"{"section":"agent|batch|looks|library|plugins|runs","open":bool?}"#,
+        "bashcut.ui.setWidth" => r#"{"width":px}"#,
+        "bashcut.ui.popOut" => r#"{"section":"agent|batch|looks|library|plugins|runs"?}"#,
+        "bashcut.ui.dockBack" => r#"{"section":"agent|batch|looks|library|plugins|runs"}"#,
+        "bashcut.ui.setLanguage" => r#"{"language":"en|vi"?}"#,
+        _ => "",
+    }
+}
+
 /// Our frontend commands, for the shortcut editor and the command list (`menus::external_commands`).
 pub fn commands() -> Vec<CommandInfo> {
     let mut v = vec![

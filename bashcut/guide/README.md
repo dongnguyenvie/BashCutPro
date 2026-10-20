@@ -19,6 +19,10 @@ videos, not for developers.
 Everything else (timeline, monitors, effects, export) is FilmCraft's own editor and works as its documentation
 describes.
 
-**Status (2026-10-20).** The guide describes what is merged on `main`. The Pro features have not had their first full
-build and live test yet, so labels or small details may still change; screenshots (taken with the app's
-`ui.screenshot`) are added after that build pass. Keys: **Cmd** on a Mac is **Ctrl** on Windows and Linux.
+**Status (2026-10-20).** The guide describes what is merged on `main` and was walked step by step in the first build
+pass. Keys: **Cmd** on a Mac is **Ctrl** on Windows and Linux.
+
+**Pictures** (`img/`) are taken from the app itself at 1280x800 in the dark theme, on the built-in demo project:
+`filmcraft --control 9876`, open the section with `engine.execute {"id": "bashcut.ui.show.<section>"}`, then
+`ui.screenshot`; crop to the panel and scale to 480 px wide (the whole window to 960). Each picture has a
+`.attribution` sidecar and a row in `ATTRIBUTION.md`; retake it when its part of the screen changes.

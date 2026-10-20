@@ -1,6 +1,9 @@
 # The rail
 
-The rail is the strip of icons on the right edge of the window. Each icon opens one section in the side panel.
+The rail is the strip of icons on the right edge of the window. Each icon opens one section in the side panel; click
+it again to close the panel. The same sections are in **Window ▸ BashCutPro**.
+
+![The BashCutPro window: the rail on the right edge, the Batch section open beside it](../img/window.png)
 
 | Section | What it is for | Guide |
 |---|---|---|
@@ -14,9 +17,20 @@ The rail is the strip of icons on the right edge of the window. Each icon opens 
 **Pop out.** The square button in a section's header moves it into its own window (handy on a second screen);
 **Dock back** returns it to the side panel. **Cmd+Alt+Shift+A** jumps to the Agent section.
 
+## The command palette
+
+**Cmd+Shift+P** (or **Window ▸ BashCutPro ▸ Command Palette…**) finds anything by a few letters: commands, looks,
+output profiles, plugin actions, templates and recipes. **↑ ↓** choose, **Enter** runs, **Esc** closes; **Tab** opens
+the values of a command that takes some, with a line above saying which keys it accepts (`?` marks the optional ones).
+See [Getting started](getting-started.md#4-find-anything-the-command-palette).
+
+![The command palette searching for "razor"](../img/palette.png)
+
 ## Plugins
 
 Plugins are small programs that run beside the app and bring their results in as ordinary media, captions or edits.
+
+![The Plugins section with two plugins installed](../img/plugins.png)
 
 1. Open **Plugins** and press **Check registry** to see what is available.
 2. **Install** the ones you want. Most need Python 3.9 or newer on the computer.
@@ -28,6 +42,8 @@ Plugins are small programs that run beside the app and bring their results in as
 Removing a plugin also forgets its stored keys.
 
 ## Runs
+
+![The Runs section before anything has run](../img/runs.png)
 
 Runs lists everything that works in the background: plugin actions, installs, agent turns. Each row shows progress,
 time, the result's message, **Log** (what the plugin printed) and **Cancel** while it runs. **Clear finished** tidies
