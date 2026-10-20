@@ -14,6 +14,20 @@ pub fn resolve(argv: Vec<String>) -> Vec<String> {
     found.iter().cloned().chain(argv.into_iter().skip(1)).collect()
 }
 
+/// The interpreter an agent step's kit scripts run with (#223): `$BASHCUT_PYTHON` when set, else on
+/// Windows the first of `python3`, `python`, `py` that answers `--version`, else `python3`. One word,
+/// because Claude Code's allow rules (`Bash(python:*)`) match the command's first word.
+pub fn agent_python() -> String {
+    if let Some(p) = std::env::var("BASHCUT_PYTHON").ok().map(|p| p.trim().to_string()).filter(|p| !p.is_empty()) {
+        return p;
+    }
+    if !cfg!(windows) {
+        return "python3".into();
+    }
+    static FOUND: OnceLock<String> = OnceLock::new();
+    FOUND.get_or_init(|| ["python3", "python", "py"].into_iter().find(|p| runs(&[p.to_string()])).unwrap_or("python3").to_string()).clone()
+}
+
 fn is_python3(program: &str) -> bool {
     let p = program.to_ascii_lowercase();
     p == "python3" || p == "python3.exe"

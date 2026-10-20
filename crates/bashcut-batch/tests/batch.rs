@@ -543,6 +543,11 @@ fn the_kit_reaches_agent_and_plugin_steps() {
     let project = b.read("a.fcproj");
     assert_eq!(project.matches(&format!("kit-env:{}\n", kit.display())).count(), 2, "{project}");
     assert_eq!(project.matches("kit-in-prompt\n").count(), 2, "{project}");
+    // #223: one interpreter name for the kit's scripts, as BASHCUT_PYTHON and in the agent's prompt
+    let python = bashcut_batch::python::agent_python();
+    assert!(!python.contains(' '), "{python}");
+    assert_eq!(project.matches(&format!("python-env:{python}\n")).count(), 2, "{project}");
+    assert_eq!(project.matches("python-in-prompt\n").count(), 1, "the agent's prompt only: {project}");
     // without a kit, a step that needs one says how to give it
     let b = Bench::new("nokit", &["a"]);
     let p = b.pipeline(json!({"steps": [{"plugin": {"argv": ["python3", "{kit}/skills/captions-text/captions_fit.py", "apply"]}}]}));

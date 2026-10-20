@@ -190,6 +190,14 @@ fn real_main() -> i32 {
             if prompt.contains("/skills/<name>/SKILL.md") {
                 project.push_str("kit-in-prompt\n");
             }
+            // #223: the interpreter for the kit's scripts, in the environment and the prompt
+            if let Some(p) = std::env::var_os("BASHCUT_PYTHON") {
+                let p = p.to_string_lossy().into_owned();
+                project.push_str(&format!("python-env:{p}\n"));
+                if prompt.contains(&format!("scripts with {p} (BASHCUT_PYTHON")) {
+                    project.push_str("python-in-prompt\n");
+                }
+            }
             let fix_round = prompt.contains("found blocking problems");
             if mode.starts_with("clips") && !project.contains("sequence:3:") {
                 project.push_str("sequence:3:clip-1:blocking\nsequence:4:clip-2\nsequence:5:clip-3:blocking\nsequence.open item=4\n");
