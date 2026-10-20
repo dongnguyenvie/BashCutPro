@@ -14,7 +14,7 @@ scripts for them.
 The batch presets and the kit's caption skills start by transcribing. The Whisper models are not packaged: they
 download on first use (`bashcutpro exec transcript.downloadModel`, or Text panel > Transcribe); until then
 `bashcut-doctor` warns and a batch step that transcribes fails with that command as its next step.
-The Flatpak manifest (`packaging/linux/flatpak/`) is not generated and still builds without speech-to-text.
+The Flatpak source manifest (`packaging/linux/flatpak/ai.storyteller.filmcraft.yml`) is read by flatpak-builder directly, so speech-to-text is a carried edit there (#174) that `generate.py` checks; the Flatpak bundle repackages the Linux tarball.
 
 Profiles, templates and looks are built into the binaries (`bashcut.profiles.*`, `bashcut.template.*`,
 `bashcut.looks.*`); the setup writes their data-dir files, so the installers need no data tree of their own.
