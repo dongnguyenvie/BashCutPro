@@ -49,6 +49,9 @@ mod voice_tests;
 pub mod word_captions;
 #[cfg(test)]
 mod word_captions_tests;
+pub mod word_edges;
+#[cfg(test)]
+mod word_edges_tests;
 
 use crate::commands::CommandSpec;
 
@@ -68,6 +71,7 @@ pub fn commands() -> Vec<CommandSpec> {
         looks::commands(),
         transcript_clean::commands(),
         captions_fit::commands(),
+        word_edges::commands(),
     ];
     // typed errors (`notFound: …`) and a units note on every command (errors.rs)
     errors::wrap(groups.into_iter().flatten().collect())
