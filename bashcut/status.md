@@ -87,6 +87,9 @@ _Last updated: 2026-10-20_
   Swift BashCut with the same brief and rubric ([bench/2026-10-20-real-footage.md](bench/2026-10-20-real-footage.md)):
   Pro wins 1, ties 1, loses 4. Loss issues #185 (render freeze), #193/#196 (frozen-under-speech review noise),
   #195 (batch reviews only the active sequence); blind contact sheets wait for the owner's pick.
+- Bench #58 re-score (round 2, after #198, #201, #202, #207, #210, #212 and kit #43-#54): all 6 Pro jobs re-run with
+  `bashcut-batch --kit` ([bench/2026-10-20-rescore.md](bench/2026-10-20-rescore.md)): Pro wins 3, ties 3, loses
+  none. Follow-ups #219 (tutorial needs ~150 agent turns) and #220 (owner: music licence filter in the kit).
 
 ## Next
 
