@@ -764,7 +764,27 @@ fn outcome(ended: Ended, log: &Path, what: &str) -> Result<(), ErrorInfo> {
     if message.chars().count() > MAX_MESSAGE {
         message = message.chars().take(MAX_MESSAGE).collect::<String>() + "…";
     }
+    // after the cut, so the next step is always shown
+    if let Some(next) = speech_next_step(&detail) {
+        message = format!("{message}. {next}");
+    }
     Err(ErrorInfo::new(category, message))
+}
+
+/// What to do when a step failed for want of speech-to-text (#146): the batch presets and caption
+/// skills start by transcribing, and the engine's own error names no fix.
+fn speech_next_step(detail: &str) -> Option<String> {
+    const PREFIX: &str = "the speech model `";
+    if let Some(start) = detail.find(PREFIX) {
+        let rest = detail.get(start.saturating_add(PREFIX.len())..).unwrap_or_default();
+        let model = rest.split('`').next().filter(|m| !m.is_empty() && rest.contains("` is not downloaded"))?;
+        return Some(format!(
+            "Next: download it once with `bashcutpro exec transcript.downloadModel model={model}` (or Text panel > Transcribe in the app), then retry the batch; `bashcut-doctor` checks it"
+        ));
+    }
+    detail.contains("speech-to-text is not available in this build").then(|| {
+        "Next: install BashCutPro from its installer (it includes speech-to-text) or build with `cargo build -p filmcraft-cli --features whisper`; `bashcut-doctor` checks it".to_string()
+    })
 }
 
 /// The error in the last JSON result that says `"ok": false` (a `filmcraft-cli run` line or a
@@ -816,6 +836,16 @@ fn is_relative_inside(p: &Path) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_missing_speech_model_names_the_next_step() {
+        let next = speech_next_step("the speech model `whisper-base` is not downloaded").unwrap();
+        assert!(next.contains("transcript.downloadModel model=whisper-base"), "{next}");
+        let next = speech_next_step("speech-to-text is not available in this build (built without the `whisper` feature)").unwrap();
+        assert!(next.contains("--features whisper"), "{next}");
+        assert_eq!(speech_next_step("no clip"), None);
+        assert_eq!(speech_next_step("the speech model `"), None);
+    }
 
     #[test]
     fn reported_errors_come_from_the_last_failed_line() {
