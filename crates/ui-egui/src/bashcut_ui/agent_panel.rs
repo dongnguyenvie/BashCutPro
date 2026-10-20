@@ -145,29 +145,36 @@ fn header(app: &mut FilmcraftApp, ui: &mut egui::Ui, ctx: &egui::Context, v: &mu
             call(app, ctx, v, "use", json!({"agent": id}));
         }
 
-        let mut open = None;
-        let title = if snap.title.is_empty() { s("New conversation").to_string() } else { snap.title.clone() };
-        let combo =
-            egui::ComboBox::from_id_salt("bashcut.agent.conversations").selected_text(title.as_str()).width(ui.available_width() - 60.0).show_ui(ui, |ui| {
-                // read only while the list is open
-                let list = agent::with(app, ctx, |a| a.conversations());
-                if list.is_empty() {
-                    ui.label(egui::RichText::new(s("No saved conversations.")).size(11.0));
-                }
-                for c in list {
-                    let label = if c.title.is_empty() { c.id.clone() } else { c.title.clone() };
-                    if ui.selectable_label(false, label).clicked() {
-                        open = Some(c.id);
+        // New first from the right, so a long conversation title truncates instead of pushing it out
+        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+            if button(app, ui, "bashcut.agent.new", s("New"), !running && !snap.items.is_empty()) {
+                call(app, ctx, v, "new", json!({}));
+            }
+            let mut open = None;
+            let title = if snap.title.is_empty() { s("New conversation").to_string() } else { snap.title.clone() };
+            let combo = egui::ComboBox::from_id_salt("bashcut.agent.conversations")
+                .selected_text(title.as_str())
+                .width(ui.available_width())
+                .truncate()
+                .show_ui(ui, |ui| {
+                    // read only while the list is open
+                    let list = agent::with(app, ctx, |a| a.conversations());
+                    if list.is_empty() {
+                        ui.label(egui::RichText::new(s("No saved conversations.")).size(11.0));
                     }
-                }
-            });
-        app.auto.add_response("bashcut.agent.conversations", &combo.response, &title);
-        if let Some(id) = open {
-            call(app, ctx, v, "open", json!({"id": id}));
-        }
-        if button(app, ui, "bashcut.agent.new", s("New"), !running && !snap.items.is_empty()) {
-            call(app, ctx, v, "new", json!({}));
-        }
+                    for c in list {
+                        let label = if c.title.is_empty() { c.id.clone() } else { c.title.clone() };
+                        if ui.selectable_label(false, label).clicked() {
+                            open = Some(c.id);
+                        }
+                    }
+                });
+            let combo_response = combo.response.on_hover_text(&title);
+            app.auto.add_response("bashcut.agent.conversations", &combo_response, &title);
+            if let Some(id) = open {
+                call(app, ctx, v, "open", json!({"id": id}));
+            }
+        });
     });
 }
 
@@ -211,7 +218,8 @@ fn transcript(app: &mut FilmcraftApp, ui: &mut egui::Ui, items: &[Item]) {
                 ui.add(egui::Label::new(egui::RichText::new(text).color(t.text)).selectable(true).wrap());
             }
             Item::Assistant { text } => {
-                ui.add_space(4.0);
+                ui.add_space(6.0);
+                ui.label(egui::RichText::new(s("Agent")).size(10.5).strong().color(t.text_dim));
                 ui.add(egui::Label::new(egui::RichText::new(text).color(t.text)).selectable(true).wrap());
             }
             Item::Tool { .. } => {

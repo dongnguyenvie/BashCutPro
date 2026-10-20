@@ -255,6 +255,20 @@ fn agent_section_draws_and_gates_show_as_cards() {
     assert_ne!(v["ok"], json!(true), "{v}");
     assert_eq!(d.exec("bashcut.agent.gate", json!({}))["stage"], json!("rough cut"), "still pending");
 
+    // a long conversation title truncates: New stays inside the panel
+    let conv = side.join("conversations");
+    std::fs::create_dir_all(&conv).unwrap();
+    let title = "Cut the intro to ten seconds and add captions in Vietnamese for every speaker";
+    std::fs::write(conv.join("c1-0.json"), json!({"schema": "bashcut-conversation/1", "id": "c1-0", "title": title, "agent": "claude-code"}).to_string())
+        .unwrap();
+    d.exec("bashcut.agent.open", json!({"id": "c1-0"}));
+    d.frames(3);
+    let panel = d.rect("bashcut.panel.agent").unwrap();
+    for id in ["bashcut.agent.conversations", "bashcut.agent.new"] {
+        let r = d.rect(id).unwrap_or_else(|| panic!("no {id}"));
+        assert!(r[0] + r[2] <= panel[0] + panel[2] + 0.5, "{id} {r:?} spills out of the panel {panel:?}");
+    }
+
     let ids: Vec<String> = filmcraft_ui_egui::menus::external_commands().iter().map(|c| c.id.clone()).collect();
     for id in ["bashcut.agent.send", "bashcut.agent.stop", "bashcut.agent.approve", "bashcut.agent.change", "bashcut.agent.conversations"] {
         assert!(ids.iter().any(|c| c == id), "{id} listed");
