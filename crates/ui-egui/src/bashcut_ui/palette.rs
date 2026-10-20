@@ -761,7 +761,11 @@ fn paint_row(ui: &egui::Ui, r: Rect, it: &Item, t: &Tokens) {
     let color = if it.enabled { t.text } else { t.text_faint };
     let label = painter.text(pos2(r.min.x + 80.0, y), Align2::LEFT_CENTER, &it.label, egui::FontId::proportional(12.5), color);
     let right = match &it.shortcut {
-        Some(k) => painter.text(pos2(r.max.x - 6.0, y), Align2::RIGHT_CENTER, k, egui::FontId::proportional(11.0), t.text_dim).min.x,
+        Some(k) => {
+            // clear of the scroll bar, which floats over the rows
+            let bar = ui.spacing().scroll.bar_width + ui.spacing().scroll.bar_outer_margin;
+            painter.text(pos2(r.max.x - 6.0 - bar, y), Align2::RIGHT_CENTER, k, egui::FontId::proportional(11.0), t.text_dim).min.x
+        }
         None => r.max.x,
     };
     let room = right - label.max.x - 16.0;
