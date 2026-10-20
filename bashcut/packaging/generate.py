@@ -6,7 +6,7 @@ The packaging scripts re-exec the copy this writes (bash: `bashcut/brand/packagi
 never edited for the Pro pieces. Every change is an exact-match substitution that must match the expected number of
 times: when upstream rewrites a line we depend on, packaging fails loudly here instead of shipping without our tools.
 
-What the copy adds on every OS: the binaries `bashcutpro` and its alias `bcpro` (the Pro command line, installed beside
+What the copy adds on every OS: speech-to-text (`--features whisper` for `filmcraft` and `filmcraft-cli`, #146), the binaries `bashcutpro` and its alias `bcpro` (the Pro command line, installed beside
 `filmcraft-cli`, which stays for upstream's docs and scripts), `bashcut-doctor`, `bashcut-batch`, `bashcut-mcp` (built
 with the app) and
 the optional first-run setup (`bashcut/packaging/share/`). Data files stay where they are; only scripts and the
@@ -24,6 +24,10 @@ import sys
 PRO_BINS = ["bashcutpro", "bcpro", "bashcut-doctor", "bashcut-batch", "bashcut-mcp"]
 PRO_PACKAGES = "-p bashcut-cli -p bashcut-doctor -p bashcut-batch-cli -p bashcut-mcp"
 BINS_SH = " ".join(PRO_BINS)
+# speech-to-text in the app and the engine CLI (#146): the batch presets and caption skills start by
+# transcribing; models still download on first use (`transcript.downloadModel`)
+FEATURES = "--features filmcraft/whisper,filmcraft-cli/whisper"
+BUILD = "-p filmcraft -p filmcraft-cli %s %s" % (FEATURES, PRO_PACKAGES)
 
 
 def wix_id(binary):
@@ -44,7 +48,7 @@ SUBS = [
     (
         "macos/package.sh",
         "-p filmcraft -p filmcraft-cli ",
-        "-p filmcraft -p filmcraft-cli %s " % PRO_PACKAGES,
+        "%s " % BUILD,
         1,
     ),
     (
@@ -85,7 +89,7 @@ SUBS = [
         1,
     ),
     # ---- Linux
-    ("linux/package.sh", "-p filmcraft -p filmcraft-cli", "-p filmcraft -p filmcraft-cli %s" % PRO_PACKAGES, 2),
+    ("linux/package.sh", "-p filmcraft -p filmcraft-cli", BUILD, 2),
     (
         "linux/package.sh",
         'install -Dm755 "$BIN/filmcraft-cli" "$STAGE/usr/bin/filmcraft-cli"\n',
@@ -112,7 +116,7 @@ SUBS = [
         1,
     ),
     # ---- FreeBSD
-    ("freebsd/package.sh", "-p filmcraft -p filmcraft-cli", "-p filmcraft -p filmcraft-cli %s" % PRO_PACKAGES, 1),
+    ("freebsd/package.sh", "-p filmcraft -p filmcraft-cli", BUILD, 1),
     ("freebsd/package.sh", "  for b in filmcraft filmcraft-cli; do\n", "  for b in filmcraft filmcraft-cli %s; do\n" % BINS_SH, 1),
     (
         "freebsd/package.sh",
@@ -133,7 +137,7 @@ SUBS = [
     (
         "windows/package.ps1",
         "-p filmcraft -p filmcraft-cli --target $Target",
-        "-p filmcraft -p filmcraft-cli %s --target $Target" % PRO_PACKAGES,
+        "%s --target $Target" % BUILD,
         1,
     ),
     (

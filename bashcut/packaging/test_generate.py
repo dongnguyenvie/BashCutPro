@@ -43,6 +43,9 @@ class GenerateTest(unittest.TestCase):
         self.assertIn('Component Id="BashcutDoctor"', wxs)
         self.assertIn('File Id="BcproExe"', wxs)
         self.assertIn("-p bashcut-cli", self.read("windows/package.ps1"))
+        # speech-to-text ships in the app and the engine CLI on every OS (#146)
+        for rel in ("macos/package.sh", "linux/package.sh", "freebsd/package.sh", "windows/package.ps1"):
+            self.assertIn("--features filmcraft/whisper,filmcraft-cli/whisper", self.read(rel), rel)
         self.assertIn("/usr/bin/bashcut-doctor", self.read("linux/nfpm.yaml"))
         self.assertIn("BASHCUT_ROOT", self.read("env.sh"))
         # upstream's own files are untouched

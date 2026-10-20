@@ -9,6 +9,12 @@ scripts for them.
 |---|---|---|---|
 | `bashcutpro` and its alias `bcpro` (#154, beside `filmcraft-cli`), `bashcut-doctor`, `bashcut-batch`, `bashcut-mcp` | `Contents/MacOS/`; CLI zip | install folder; portable zip | `/usr/bin` (FreeBSD: `bin/`) |
 | first-run setup `bashcut-setup.sh` / `.ps1` | `Contents/Resources/bashcut/`; CLI zip | install folder; portable zip | `/usr/share/bashcutpro/` (FreeBSD: `share/bashcutpro/`) |
+| speech-to-text (`--features whisper` for `filmcraft` and `filmcraft-cli`, #146; candle on the CPU) | app and CLI | app and CLI | app and CLI |
+
+The batch presets and the kit's caption skills start by transcribing. The Whisper models are not packaged: they
+download on first use (`bashcutpro exec transcript.downloadModel`, or Text panel > Transcribe); until then
+`bashcut-doctor` warns and a batch step that transcribes fails with that command as its next step.
+The Flatpak manifest (`packaging/linux/flatpak/`) is not generated and still builds without speech-to-text.
 
 Profiles, templates and looks are built into the binaries (`bashcut.profiles.*`, `bashcut.template.*`,
 `bashcut.looks.*`); the setup writes their data-dir files, so the installers need no data tree of their own.
