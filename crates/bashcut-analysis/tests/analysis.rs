@@ -150,6 +150,41 @@ fn black_frozen_still_and_flash() {
     assert_eq!((flash[0].start, flash[0].end), (1000, 1100));
 }
 
+/// BashCutPro#178: a locked-off shot (still background, a small thing moving) is not frozen, even
+/// though its mean difference stays under `still_diff`; a repeated frame still is.
+#[test]
+fn locked_off_shot_is_not_frozen() {
+    let o = Options::per_second(1000);
+    let mut s = Vec::new();
+    for i in 0..30i64 {
+        let mut px = rgba(64, 36, 100);
+        // a 2×2-pixel dot walking along one row: one grid cell changes a lot, the mean barely moves
+        let x0 = (i as usize * 2) % 60;
+        for y in 20..22 {
+            for x in x0..x0 + 2 {
+                let o = (y * 64 + x) * 4;
+                px[o..o + 3].copy_from_slice(&[255, 255, 255]);
+            }
+        }
+        let thumb = Thumb::from_rgba8(64, 36, &px).expect("valid frame");
+        s.push(Sample { time: i * 100, thumb });
+    }
+    let mean_change = s.windows(2).map(|w| w[0].thumb.diff(&w[1].thumb)).fold(0.0, f32::max);
+    assert!(mean_change < o.still_diff, "the case only matters below still_diff: {mean_change}");
+    let f = picture::check(&s, 3000, &o);
+    assert!(f.iter().all(|f| f.kind != Kind::Frozen && f.kind != Kind::LongStill), "{f:?}");
+
+    // the same shot with the dot stopped for 2 s is frozen there
+    let stopped = s.get(10).map(|x| x.thumb.clone()).expect("sample 10");
+    for x in s.iter_mut().skip(10).take(20) {
+        x.thumb = stopped.clone();
+    }
+    let f = picture::check(&s, 3000, &o);
+    let frozen: Vec<_> = f.iter().filter(|f| f.kind == Kind::Frozen).collect();
+    assert_eq!(frozen.len(), 1, "{f:?}");
+    assert_eq!((frozen[0].start, frozen[0].end), (1000, 3000));
+}
+
 #[test]
 fn hostile_frames_do_not_crash() {
     assert!(Thumb::from_rgba8(0, 0, &[]).is_none());
@@ -161,4 +196,5 @@ fn hostile_frames_do_not_crash() {
     let one = [Sample { time: i64::MAX, thumb: Thumb::flat(0.0) }];
     let _ = picture::check(&one, i64::MIN, &Options::per_second(i64::MAX));
     assert_eq!(Thumb { luma: vec![] }.diff(&Thumb::flat(0.5)), 1.0);
+    assert_eq!(Thumb { luma: vec![] }.max_diff(&Thumb::flat(0.5)), 1.0);
 }
