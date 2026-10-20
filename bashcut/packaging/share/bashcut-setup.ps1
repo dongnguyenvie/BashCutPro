@@ -5,7 +5,7 @@ BashCutPro first-run setup (#64) for Windows: optional, every step can be skippe
 
 1. Looks: the curated look pack as .cube LUTs + looks.json in <data dir>\bashcut\looks (bashcut.looks.export).
 2. Output profiles: compiled into export presets "BashCut <name>" (bashcut.profiles.compile).
-3. Agent kit: detects claude / codex and offers to clone bashcutpro-agent-kit (needs git and access).
+3. Agent kit: installs it as a Claude Code plugin when claude is found; clones it for Codex (needs access to the kit repository).
 4. Plugins and models: installed from the app (the Plugins icon on the right-hand rail, or Window > BashCutPro > Plugins); models download on first use.
 5. bashcut-doctor: checks the machine and prints fixes.
 #>
@@ -46,10 +46,16 @@ if (-not $SkipProfiles -and $cli -and (Ask 'Add the output profiles (TikTok, Ree
 if (-not $SkipKit) {
   $agents = @('claude', 'codex') | Where-Object { Get-Command $_ -ErrorAction SilentlyContinue }
   if ($agents) { Write-Output "Agent CLIs: $($agents -join ', ')" } else { Write-Output 'Agent CLIs: none found (install Claude Code or Codex to drive BashCutPro with an agent)' }
+  # Claude Code: install the kit as its plugin (the kit README's way); Codex: clone it (see the kit's setup skill)
+  if ((Get-Command claude -ErrorAction SilentlyContinue) -and (Ask 'Install the agent kit as a Claude Code plugin (bcp)?')) {
+    claude plugin marketplace add dongnguyenvie/bashcutpro-agent-kit *> $null
+    if ($LASTEXITCODE -eq 0) { claude plugin install bcp@bashcutpro-agent-kit *> $null }
+    if ($LASTEXITCODE -eq 0) { Write-Output '  kit installed in Claude Code; in Claude Code run /bcp:setup once' } else { Write-Output '  kit: Claude Code plugin install failed (skipped); see the kit README' }
+  }
   $kit = Join-Path $env:USERPROFILE '.bashcutpro\bashcutpro-agent-kit'
-  if ($agents -and -not (Test-Path $kit) -and (Get-Command git -ErrorAction SilentlyContinue) -and (Ask "Clone the agent kit to $kit?")) {
+  if ((Get-Command codex -ErrorAction SilentlyContinue) -and -not (Test-Path $kit) -and (Get-Command git -ErrorAction SilentlyContinue) -and (Ask "Clone the agent kit for Codex to $kit?")) {
     git clone --depth 1 https://github.com/dongnguyenvie/bashcutpro-agent-kit $kit
-    if ($LASTEXITCODE -eq 0) { Write-Output '  kit cloned; follow its README (register bashcutpro as an MCP server)' } else { Write-Output '  kit: clone failed (skipped)' }
+    if ($LASTEXITCODE -eq 0) { Write-Output '  kit cloned; for Codex on Windows follow its setup skill (skills/setup/SKILL.md)' } else { Write-Output '  kit: clone failed (skipped)' }
   }
 }
 Write-Output 'Plugins: install them in the app (the Plugins icon on the right-hand rail, or Window > BashCutPro > Plugins); models download on first use.'

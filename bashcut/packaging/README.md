@@ -44,7 +44,7 @@ with `-Yes`, `-Skip…`):
 1. Creates `<data dir>/bashcut/{profiles,templates,looks}`.
 2. Writes the look pack as `.cube` LUTs + `looks.json` (`bashcut.looks.export`).
 3. Compiles the output profiles into the `BashCut <name>` export presets (`bashcut.profiles.compile`).
-4. Detects claude / codex and offers to clone the agent kit.
+4. Installs the agent kit as a Claude Code plugin when `claude` is found, and for Codex (clone + `install-codex.sh`) when `codex` is found.
 5. Plugins come from the registry in the app; models download on first use, verified against `models.json`.
 6. Runs `bashcut-doctor`.
 

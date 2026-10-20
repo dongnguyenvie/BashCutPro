@@ -5,7 +5,8 @@
 #
 # 1. Looks: the curated look pack as .cube LUTs + looks.json in <data dir>/bashcut/looks (bashcut.looks.export).
 # 2. Output profiles: compiled into export presets "BashCut <name>" (bashcut.profiles.compile).
-# 3. Agent kit: detects claude / codex and offers to clone bashcutpro-agent-kit (needs git and access).
+# 3. Agent kit: installs it as a Claude Code plugin when claude is found, and for Codex (clone + install-codex.sh)
+#    when codex is found (needs access to the kit repository).
 # 4. Plugins and models: nothing installed here; plugins come from the registry in the app (Plugins on the rail) and
 #    each plugin downloads its models, checked against models.json, on first use.
 # 5. bashcut-doctor: checks the machine and prints fixes.
@@ -57,11 +58,17 @@ if [ "$skip_kit" = 0 ]; then
   agents=""
   for a in claude codex; do command -v "$a" >/dev/null 2>&1 && agents="$agents $a"; done
   echo "Agent CLIs:${agents:- none found (install Claude Code or Codex to drive BashCutPro with an agent)}"
+  # Claude Code: install the kit as its plugin (the kit README's way); Codex: clone it and run its installer
+  if command -v claude >/dev/null 2>&1 && ask "Install the agent kit as a Claude Code plugin (bcp)?"; then
+    { claude plugin marketplace add dongnguyenvie/bashcutpro-agent-kit && claude plugin install bcp@bashcutpro-agent-kit; } >/dev/null 2>&1 \
+      && echo "  kit installed in Claude Code; in Claude Code run /bcp:setup once" \
+      || echo "  kit: Claude Code plugin install failed (skipped); see the kit README"
+  fi
   kit="$HOME/.bashcutpro/bashcutpro-agent-kit"
-  if [ -n "$agents" ] && [ ! -d "$kit" ] && command -v git >/dev/null && ask "Clone the agent kit to $kit?"; then
-    git clone --depth 1 https://github.com/dongnguyenvie/bashcutpro-agent-kit "$kit" \
-      && echo "  kit cloned; follow its README (Claude Code plugin, or scripts/install-codex.sh)" \
-      || echo "  kit: clone failed (skipped)"
+  if command -v codex >/dev/null 2>&1 && [ ! -d "$kit" ] && command -v git >/dev/null && ask "Install the agent kit for Codex (clone to $kit)?"; then
+    git clone --depth 1 https://github.com/dongnguyenvie/bashcutpro-agent-kit "$kit" && sh "$kit/scripts/install-codex.sh" \
+      && echo "  kit installed for Codex" \
+      || echo "  kit: Codex install failed (skipped); see the kit README"
   fi
 fi
 echo "Plugins: install them in the app (the Plugins icon on the right-hand rail, or Window > BashCutPro > Plugins); models download on first use."
