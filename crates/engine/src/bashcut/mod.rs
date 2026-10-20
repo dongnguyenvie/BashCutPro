@@ -31,6 +31,9 @@ pub mod templates;
 mod templates_tests;
 #[cfg(test)]
 mod tests;
+pub mod transcript_clean;
+#[cfg(test)]
+mod transcript_clean_tests;
 pub mod voice;
 #[cfg(test)]
 mod voice_tests;
@@ -54,6 +57,7 @@ pub fn commands() -> Vec<CommandSpec> {
         word_captions::commands(),
         review::commands(),
         looks::commands(),
+        transcript_clean::commands(),
     ];
     // typed errors (`notFound: …`) and a units note on every command (errors.rs)
     errors::wrap(groups.into_iter().flatten().collect())

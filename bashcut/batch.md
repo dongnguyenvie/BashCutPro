@@ -53,7 +53,9 @@ library.
   `timeoutSeconds` on any step.
   Transcribe steps (`sequence.transcribe`, `transcript.generate`) that name no `model` get one from the runner
   (#172; `filmcraft-cli` does not read the app's Settings): `--speech-model`, else Settings ▸ Speech model when it
-  is downloaded, else the engine's default when downloaded, else the downloaded model.
+  is downloaded, else the engine's default when downloaded, else the downloaded model. Each transcribe line is
+  followed by `bashcut.transcript.clean` (#177), which drops Whisper's repeated-text loops on music or ambience
+  (an item with only loops keeps an empty transcript); `"keepDoubtful": true` on the step keeps them.
 - **outputs**: `name` (inside the outputs folder, may have subfolders), and either a `profile` (#43: `tiktok`,
   `reels`, `shorts`, `youtube`, `youtube-4k`, `facebook-square`… exported with `bashcut.profiles.apply`, which also
   applies the profile's loudness and caption rules) or `preset`, `format`, `settings` (ExportSettings JSON).

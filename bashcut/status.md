@@ -36,6 +36,10 @@ _Last updated: 2026-10-20_
 - Engine measurements (#36): `crates/bashcut-analysis` (loudness, beats, picture checks) and `bashcut.audio.loudness`,
   `bashcut.audio.beats`, `bashcut.review.pictureChecks` in `crates/engine/src/bashcut/`; kit skills use them. Build + tests
   pending (build pass).
+- Doubtful transcript text (#177): `bashcut.transcript.generate` (transcribe, then drop Whisper's repeated-text loops
+  on footage with no speech) and `bashcut.transcript.clean` in `crates/engine/src/bashcut/transcript_clean.rs`; the
+  batch runner cleans after every transcribe step. Live: whisper-base on 25 s of wind and birds wrote 106 words of
+  "I'm going to go back to the next video." → 0 words and a no-speech warning; a 68-word TTS talk kept all 68.
 - U1 (#31): `crates/bashcut-plugin-host` (manifests, registry, git installs into `<data dir>/bashcut-plugins/`,
   settings + OS key store, runner with progress, `bashcut-result/1`, hand-off, cancel, timeout, capped output) and
   the Plugins and Runs sections with `bashcut.plugins.*` commands; hook H4. Build + tests + live check pending.

@@ -5,6 +5,10 @@
 //! `--speech-model`, else the Settings choice when it is downloaded, else the engine's default
 //! when it is downloaded, else the one downloaded model (the first in the catalogue when several),
 //! else the Settings choice (the step then fails with the download command, see `runner`).
+//!
+//! Each transcribe line is followed by `bashcut.transcript.clean` (#177): Whisper's repeated-text loops on
+//! music or ambience are dropped before captions or cuts read the transcript. `"keepDoubtful": true` on the
+//! line keeps them.
 
 use serde_json::Value;
 use std::path::Path;
@@ -71,6 +75,33 @@ pub fn with_model(id: &str, params: &Value, model: Option<&str>) -> Value {
     }
 }
 
+/// The clean line to run after `id` / `params` (see the module doc), with the transcribed `items` when named.
+pub fn clean_after(id: &str, params: &Value) -> Option<(String, Value)> {
+    if !TRANSCRIBE_COMMANDS.contains(&id) || params.get("keepDoubtful").and_then(Value::as_bool) == Some(true) {
+        return None;
+    }
+    let mut clean = serde_json::Map::new();
+    if id == "transcript.generate"
+        && let Some(items) = params.get("items").filter(|v| v.is_array()).or_else(|| params.get("item").filter(|v| v.is_u64()))
+    {
+        clean.insert(if items.is_array() { "items" } else { "item" }.into(), items.clone());
+    }
+    if let Some(n) = params.get("minRepeats").filter(|v| v.is_u64()) {
+        clean.insert("minRepeats".into(), n.clone());
+    }
+    Some(("bashcut.transcript.clean".into(), Value::Object(clean)))
+}
+
+/// A transcribe line's `params` without the keys only the clean reads; other lines' as they are.
+pub fn without_clean_keys(id: &str, params: &Value) -> Value {
+    let mut p = params.clone();
+    if let (true, Some(o)) = (TRANSCRIBE_COMMANDS.contains(&id), p.as_object_mut()) {
+        o.remove("keepDoubtful");
+        o.remove("minRepeats");
+    }
+    p
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -107,6 +138,21 @@ mod tests {
         assert_eq!(with_model("sequence.transcribe", &json!({"model": "whisper-base"}), m), json!({"model": "whisper-base"}));
         assert_eq!(with_model("captions.export", &json!({}), m), json!({}));
         assert_eq!(with_model("sequence.transcribe", &json!({}), None), json!({}));
+    }
+
+    #[test]
+    fn transcribe_lines_are_followed_by_the_clean() {
+        let (id, p) = clean_after("transcript.generate", &json!({"items": [3, 4], "minRepeats": 4})).unwrap();
+        assert_eq!(id, "bashcut.transcript.clean");
+        assert_eq!(p, json!({"items": [3, 4], "minRepeats": 4}));
+        assert_eq!(clean_after("transcript.generate", &json!({"item": 7})).unwrap().1, json!({"item": 7}));
+        // sequence.transcribe has no item list: every recogniser transcript is cleaned
+        assert_eq!(clean_after("sequence.transcribe", &json!({"track": "A1"})).unwrap().1, json!({}));
+        assert_eq!(clean_after("sequence.transcribe", &json!({"keepDoubtful": true})), None);
+        assert_eq!(clean_after("captions.export", &json!({})), None);
+        assert_eq!(without_clean_keys("transcript.generate", &json!({"keepDoubtful": false, "minRepeats": 3, "model": "m"})), json!({"model": "m"}));
+        let ours = json!({"keepDoubtful": true});
+        assert_eq!(without_clean_keys("bashcut.transcript.generate", &ours), ours);
     }
 
     #[test]
