@@ -365,11 +365,19 @@ fn an_existing_project_or_job_id_is_refused() {
 
 /// An agent step driven by the fake agent in `mode`.
 fn agent_pipeline(b: &Bench, mode: &str, extra: Value) -> Pipeline {
+    agent_pipeline_with(b, mode, extra, json!({}))
+}
+
+fn agent_pipeline_with(b: &Bench, mode: &str, extra: Value, more: Value) -> Pipeline {
     let mut agent = json!({"skill": "captions-text", "brief": "Fix the captions of {name}.", "argv": [FAKE, "fake-agent", "--mode", mode, "--prompt", "{prompt}", "--session", "{session}", "--project", "{project}"]});
     if let (Some(m), Value::Object(e)) = (agent.as_object_mut(), extra) {
         m.extend(e);
     }
-    b.pipeline(json!({"steps": [{"agent": agent}]}))
+    let mut p = json!({"steps": [{"agent": agent}]});
+    if let (Some(m), Value::Object(e)) = (p.as_object_mut(), more) {
+        m.extend(e);
+    }
+    b.pipeline(p)
 }
 
 #[test]
@@ -405,15 +413,39 @@ fn a_clean_first_round_needs_no_fix_round() {
 }
 
 #[test]
-fn an_agent_that_loops_hits_its_turn_limit() {
+fn an_agent_out_of_turns_still_exports_its_last_save_and_needs_attention() {
     let b = Bench::new("agent-loop", &["a"]);
-    let job = Job::create(&agent_pipeline(&b, "loop", json!({"maxTurns": 3})), Some("agent")).unwrap();
+    let job = Job::create(&agent_pipeline_with(&b, "loop", json!({"maxTurns": 3}), json!({"outputs": [{"name": "{name}.mp4"}]})), Some("agent")).unwrap();
     let summary = run(&job, &b.opts()).unwrap();
-    assert_eq!(summary.status, Status::Failed);
+    assert_eq!(summary.status, Status::NeedsAttention, "{summary:?}");
     let book = job.book().unwrap();
-    let e = item(&book, "a").error.clone().unwrap();
+    let a = item(&book, "a");
+    assert_eq!(a.status, Status::NeedsAttention);
+    let e = a.error.clone().unwrap();
     assert_eq!(e.category, Category::Limit);
-    assert!(e.message.contains("maxTurns (3)"), "{}", e.message);
+    assert!(e.message.contains("maxTurns (3)") && e.message.contains("last saved project"), "{}", e.message);
+    // no review round on an unfinished project, but the export ran on what the agent saved
+    assert_eq!(a.steps[1].status, Status::Done);
+    assert!(a.steps[1].review.is_none());
+    assert!(b.out("exports/a.mp4").exists(), "exported from the last save");
+    assert!(b.read("a.fcproj").contains(
+        "agent
+"
+    ));
+
+    // retry runs the agent and the export again
+    assert_eq!(job.retry(&[]).unwrap(), 1);
+    let book = job.book().unwrap();
+    assert!(item(&book, "a").steps[1..].iter().all(|s| s.status == Status::Pending && s.error.is_none()));
+    run(&job, &b.opts()).unwrap();
+    let book = job.book().unwrap();
+    assert_eq!(item(&book, "a").steps[1].attempts, 2);
+    assert_eq!(item(&book, "a").steps[2].attempts, 2);
+    // a person accepts the result: mark-done finishes the item without running anything again
+    assert_eq!(job.retry_with(&["a".to_string()], true).unwrap(), 1);
+    assert_eq!(run(&job, &b.opts()).unwrap().status, Status::Done);
+    let book = job.book().unwrap();
+    assert_eq!(item(&book, "a").steps[1].attempts, 2);
 }
 
 #[test]

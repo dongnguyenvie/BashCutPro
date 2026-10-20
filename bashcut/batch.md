@@ -119,9 +119,20 @@ Issue #60. `{"agent": {"skill", "brief", "agent"?, "argv"?, "maxTurns"?, "maxMin
 3. **Fix rounds.** Blocking findings of any sequence go back to the agent (Claude Code: `--resume <session>`, Codex:
    `exec resume`), each naming its sequence, at most `fixRounds` times (default 2, at most 5). Findings left in any
    sequence after that end the item **needsFix** (category `review`), which `retry` reopens.
-4. **Caps.** `maxTurns` per round (default 40; hitting it fails the item, category `limit`), `maxMinutes` for the whole
-   step (default 30, every round included; `timeout`), and at most `agentConcurrency` agent steps at once across items
-   (default 1, separate from `concurrency`).
+4. **Caps.** `maxTurns` per round (default 120), `maxMinutes` for the whole step (default 30, every round included;
+   `timeout`), and at most `agentConcurrency` agent steps at once across items (default 1, separate from
+   `concurrency`).
+   **Out of turns (#219).** An agent that hits `maxTurns` does not fail the item with nothing: its step ends `done`
+   with a `limit` note, the review is skipped, the rest of the item (later steps, the exports) runs on the project as
+   the agent last saved it (the prompt asks it to save after each finished part), and the item ends
+   **needsAttention** with that note. `retry` runs the agent step and everything after it again; `retry --items
+   <name> --done` accepts the result as it is.
+   **Why 120.** Measured on real footage (`bench/2026-10-20-rescore.md`): one-skill jobs (talking head, vlog,
+   podcast, b-roll, subtitles) took 39-115 turns in a round, and a tutorial (cut, cards, zooms, captions: several
+   skills in one brief) about 150 over two rounds, so the old default of 40 stopped most of them half way and 80
+   stopped the tutorial in its captions. 120 covers a single round of every measured job with the kit's batched frame
+   checks (#219); a longer recipe should set its own `maxTurns` (150-200). The turn cap is a runaway guard, not a
+   budget: `maxMinutes` still bounds time and cost, and an agent that runs out still exports.
 5. **Book.** The step's `agent` holds the adapter, session, rounds, turns, input / output tokens, cost (as Claude Code
    reports it), time and each round's transcript (`items/<name>/<step>.round-N.out`); its `review` holds the last
    verdict, counts, scores and blocking findings. The run summary (and `status`) totals agent use over the job.
