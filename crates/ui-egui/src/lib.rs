@@ -2146,6 +2146,7 @@ impl eframe::App for FilmcraftApp {
         }
         let had_synthetic = !self.synthetic.is_empty();
         self.drain_control(ctx);
+        bashcut_ui::logic(self, ctx); // BashCutPro: automation.json follows the open project, also while the window is hidden (bashcut/extending-upstream.md)
         if !self.synthetic.is_empty() && !had_synthetic {
             // Occluded macOS windows stop running `ui`; bring the window forward (without taking
             // keyboard focus) so the input is processed.
