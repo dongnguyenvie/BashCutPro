@@ -49,6 +49,9 @@ pub struct Options {
     /// The speech model for transcribe steps that name none; else picked from Settings and the
     /// downloaded models ([`crate::speech`], #172).
     pub speech_model: Option<String>,
+    /// The agent kit (bashcutpro-agent-kit): `{kit}` in steps, `--plugin-dir` and script tools for
+    /// agent steps, `BASHCUT_KIT` for plugins and agents (#204).
+    pub kit: Option<PathBuf>,
 }
 
 impl Options {
@@ -65,6 +68,7 @@ impl Options {
             mcp: None,
             agent_concurrency: None,
             speech_model: None,
+            kit: None,
         }
     }
 }
@@ -390,6 +394,7 @@ fn run_item(sh: &Shared, idx: usize) {
         ("outputs", sh.pipeline.outputs_dir().to_string_lossy().into_owned()),
         ("cli", cli(sh)),
         ("plugins", plugins_dir(sh).to_string_lossy().into_owned()),
+        ("kit", sh.opts.kit.as_deref().map(path_arg).unwrap_or_default()),
     ]);
     let ctx = Ctx { name, input, input_is_project, project: PathBuf::from(project), dir, vars };
 
@@ -520,6 +525,12 @@ fn run_step(sh: &Shared, idx: usize, s: usize, step: StepRef, ctx: &Ctx) -> Resu
                 }
                 StepKind::Commands(lines) => engine_step(sh, idx, s, ctx, &key, lines, timeout),
                 StepKind::Plugin(p) => {
+                    if ctx.vars.get("kit").is_none() && p.argv.iter().chain(p.env.values()).any(|a| a.contains("{kit}")) {
+                        return Err(ErrorInfo::new(
+                            Category::Usage,
+                            format!("{key}: this step runs a script of the agent kit; pass --kit <bashcutpro-agent-kit folder> or set BASHCUT_KIT"),
+                        ));
+                    }
                     let argv = crate::python::resolve(p.argv.iter().map(|a| ctx.vars.expand(a)).collect());
                     let mut env: Vec<(String, String)> = p.env.iter().map(|(k, v)| (k.clone(), ctx.vars.expand(v))).collect();
                     env.extend(item_env(sh, ctx));
@@ -859,6 +870,9 @@ fn item_env(sh: &Shared, ctx: &Ctx) -> Vec<(String, String)> {
         ("BASHCUT_BATCH_ITEM".into(), ctx.name.clone()),
         ("BASHCUT_BATCH_JOB".into(), sh.job.dir.to_string_lossy().into_owned()),
     ]);
+    if let Some(k) = &sh.opts.kit {
+        env.push(("BASHCUT_KIT".into(), path_arg(k)));
+    }
     env
 }
 
