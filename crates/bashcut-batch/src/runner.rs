@@ -699,8 +699,15 @@ fn review_step(sh: &Shared, idx: usize, s: usize, ctx: &Ctx, key: &str, profile:
 }
 
 fn engine_step(sh: &Shared, idx: usize, s: usize, ctx: &Ctx, key: &str, lines: &[CommandLine], timeout: Option<Duration>) -> Result<Vec<String>, ErrorInfo> {
-    let lines: Vec<CommandLine> =
-        lines.iter().map(|l| CommandLine { id: l.id.clone(), params: crate::speech::with_model(&l.id, &l.params, sh.speech_model.as_deref()) }).collect();
+    let mut with_clean = Vec::with_capacity(lines.len());
+    for l in lines {
+        let params = crate::speech::with_model(&l.id, &crate::speech::without_clean_keys(&l.id, &l.params), sh.speech_model.as_deref());
+        with_clean.push(CommandLine { id: l.id.clone(), params });
+        if let Some((id, params)) = crate::speech::clean_after(&l.id, &l.params) {
+            with_clean.push(CommandLine { id, params });
+        }
+    }
+    let lines = with_clean;
     let script = write_script(ctx, key, &lines)?;
     let mut argv = vec![cli(sh), "run".into(), path_arg(&script), "--project".into(), path_arg(&ctx.project), "--save".into(), "--compact".into()];
     argv.extend(data_dir_args(sh));

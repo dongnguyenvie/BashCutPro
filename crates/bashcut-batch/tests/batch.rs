@@ -488,7 +488,12 @@ fn transcribe_steps_use_the_settings_speech_model_when_downloaded() {
         assert_eq!(run(&job, &o).unwrap().status, Status::Done);
         b.read("a.fcproj")
     };
-    let steps = |model: &str| format!("file.import\nfile.newSequenceFromClip\nsequence.transcribe model={model}\nsequence.transcribe model=whisper-base\n");
+    // each transcribe line is followed by the doubtful-text clean (#177)
+    let steps = |model: &str| {
+        format!(
+            "file.import\nfile.newSequenceFromClip\nsequence.transcribe model={model}\nbashcut.transcript.clean\nsequence.transcribe model=whisper-base\nbashcut.transcript.clean\n"
+        )
+    };
     // the Settings choice is downloaded: used; a step that names its model keeps it
     assert_eq!(run_with("s1", &["whisper-base", "whisper-small"], None), steps("whisper-small"));
     // only another model is downloaded: that one
