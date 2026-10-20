@@ -10,6 +10,34 @@ Mỗi gói kèm dòng lệnh `bashcutpro` (tên ngắn `bcpro`; nó chạy bộ 
 phụ: `bashcut-doctor` (kiểm tra máy), `bashcut-batch` (chạy hàng loạt) và `bashcut-mcp` (cho trợ lý AI kết nối vào cửa
 sổ đang mở), cùng một tập lệnh thiết lập lần đầu.
 
+### Chưa có gói cài? Tự dựng từ mã nguồn
+
+Hiện chưa có gói cài phát hành, nên tạm thời bạn tự dựng BashCutPro. Mất khoảng mười phút trên một máy Mac đời mới và
+cần chừng 10 GB đĩa trống. Các bước dưới đây dành cho macOS; trên Linux và Windows lệnh `cargo` giống hệt.
+
+1. Cài bộ công cụ dòng lệnh của Apple nếu `git --version` chưa chạy được: `xcode-select --install`.
+2. Cài Rust (phiên bản 1.95 trở lên):
+   `curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh`, rồi mở cửa sổ terminal mới để có lệnh `cargo`
+   (kiểm tra bằng `rustc --version`).
+3. Lấy mã nguồn. Các kho hiện là riêng tư, nên tài khoản GitHub của bạn cần được cấp quyền:
+   `gh repo clone dongnguyenvie/BashCutPro && cd BashCutPro`.
+4. Dựng ứng dụng và các công cụ dòng lệnh, kèm chuyển giọng nói thành chữ:
+
+   ```sh
+   cargo build -p filmcraft -p filmcraft-cli -p bashcut-cli -p bashcut-doctor -p bashcut-batch-cli -p bashcut-mcp \
+     --features filmcraft/whisper,filmcraft-cli/whisper
+   ```
+
+5. Cho terminal này tìm thấy các công cụ: `export PATH="$PWD/target/debug:$PATH"` (thêm dòng đó, với đường dẫn đầy đủ,
+   vào `~/.zshrc` để giữ lại). Khi đó `bashcutpro --version` trả lời `filmcraft-cli 0.9.0`, tức bộ máy mà nó chạy.
+
+Với bản tự dựng, bước thiết lập lần đầu bên dưới là `bash bashcut/packaging/share/bashcut-setup.sh`, và bạn mở ứng dụng
+bằng `target/debug/filmcraft --control 9876`.
+
+Muốn có ứng dụng macOS và tệp DMG thì chạy `bash packaging/macos/package.sh --arch aarch64` (máy Mac chip Intel dùng
+`x86_64`). Lệnh này dựng bản phát hành đầy đủ nên lâu hơn. Kết quả nằm trong `dist/release/`. Bản này chỉ được ký cho máy
+này: nó mở được ở đây, còn máy Mac khác sẽ từ chối cho đến khi được ký và công chứng (notarise) bằng Developer ID.
+
 ## 2. Thiết lập lần đầu (tùy chọn, một lần)
 
 Tập lệnh chuẩn bị các tệp riêng của BashCutPro. Bước nào cũng bỏ qua được.
@@ -24,6 +52,13 @@ Nó tạo thư mục cho hồ sơ xuất, mẫu dự án và màu phim, ghi bộ
 thành thiết lập xuất (tên **BashCut TikTok**, **BashCut YouTube**…), đề nghị cài bộ kỹ năng trợ lý (agent kit) khi máy
 có Claude Code hoặc Codex, và cuối cùng chạy kiểm tra máy (`bashcut-doctor`). Thêm `--yes` để đồng ý mọi bước, hoặc
 `--skip-looks`, `--skip-profiles`, `--skip-kit`, `--skip-doctor` để bỏ một bước.
+
+**Mô hình giọng nói.** Phụ đề, các thiết lập sẵn của Hàng loạt và bước dựng thô của trợ lý đều bắt đầu bằng việc chuyển
+giọng nói thành chữ, nên máy cần có một mô hình giọng nói. Tải một lần: `bashcutpro exec transcript.downloadModel` tải
+**whisper-base** (khoảng 290 MB), mô hình mặc định. Sau đó `bashcut-doctor` báo `[ok] speech`. Chưa tải thì việc chép
+lời dừng với thông báo *the speech model `whisper-base` is not downloaded*. Mô hình nhỏ hơn **whisper-tiny** (khoảng
+150 MB: `bashcutpro exec transcript.downloadModel model=whisper-tiny`) nhanh hơn nhưng kém chính xác hơn. Muốn dùng nó
+thì chọn trong **Cài đặt ▸ Media Analysis & Transcription ▸ Speech model**.
 
 ## 3. Mở ứng dụng
 

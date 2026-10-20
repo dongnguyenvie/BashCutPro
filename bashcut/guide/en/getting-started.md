@@ -7,6 +7,36 @@ Every package also carries the command line `bashcutpro` (short name `bcpro`; it
 `filmcraft-cli`, which sits beside it) and three helper programs: `bashcut-doctor` (checks your setup), `bashcut-batch`
 (runs batches) and `bashcut-mcp` (lets an AI agent reach the open window), plus a first-run setup script.
 
+### No package yet? Build it from source
+
+There is no published package yet, so for now you build BashCutPro yourself. It takes about ten minutes on a recent
+Mac, and needs about 10 GB of free disk space. These steps are for macOS; on Linux and Windows the `cargo` command is
+the same.
+
+1. Install Apple's command line tools if `git --version` does not answer yet: `xcode-select --install`.
+2. Install Rust (version 1.95 or newer):
+   `curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh`, then open a new terminal so `cargo` is found
+   (`rustc --version` checks it).
+3. Get the code. The repositories are private for now, so your GitHub account needs access:
+   `gh repo clone dongnguyenvie/BashCutPro && cd BashCutPro`.
+4. Build the app and its command-line tools, with speech to text:
+
+   ```sh
+   cargo build -p filmcraft -p filmcraft-cli -p bashcut-cli -p bashcut-doctor -p bashcut-batch-cli -p bashcut-mcp \
+     --features filmcraft/whisper,filmcraft-cli/whisper
+   ```
+
+5. Make the tools reachable in this terminal: `export PATH="$PWD/target/debug:$PATH"` (add that line, with the full
+   path, to `~/.zshrc` to keep it). `bashcutpro --version` then answers `filmcraft-cli 0.9.0`, which is the engine
+   it runs.
+
+From a source build, the first-run setup below is `bash bashcut/packaging/share/bashcut-setup.sh`, and you open the app
+with `target/debug/filmcraft --control 9876`.
+
+To make the macOS app and its DMG instead, run `bash packaging/macos/package.sh --arch aarch64` (use `x86_64` on an
+Intel Mac). This does a full release build, so it takes longer. The result goes to `dist/release/`. It is signed only for this
+Mac: the copy opens here, but other Macs refuse it until it is signed and notarised with a Developer ID.
+
 ## 2. Run the first-run setup (optional, once)
 
 The setup prepares BashCutPro's own files. Every step can be skipped.
@@ -21,6 +51,13 @@ It makes the folders for your profiles, templates and looks, writes the look pac
 output profiles into export presets (named **BashCut TikTok**, **BashCut YouTube**…), offers to install the agent kit
 when Claude Code or Codex is on the computer, and ends with a health check (`bashcut-doctor`). Add `--yes` to accept
 every step, or `--skip-looks`, `--skip-profiles`, `--skip-kit`, `--skip-doctor` to leave one out.
+
+**The speech model.** Captions, the batch presets and the agent's rough cut start by turning speech into text, which
+needs a speech model on this computer. Download it once: `bashcutpro exec transcript.downloadModel` gets
+**whisper-base** (about 290 MB), the default. `bashcut-doctor` then shows `[ok] speech`. Until then, transcribing stops
+with *the speech model `whisper-base` is not downloaded*. The smaller **whisper-tiny** (about 150 MB:
+`bashcutpro exec transcript.downloadModel model=whisper-tiny`) is faster but less accurate. To make it the one used,
+choose it in **Settings ▸ Media Analysis & Transcription ▸ Speech model**.
 
 ## 3. Open the app
 
