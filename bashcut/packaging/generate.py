@@ -61,16 +61,20 @@ SUBS = [
         "macos/package.sh",
         'copy_font_licences "$APP/Contents/Resources"\n',
         'copy_font_licences "$APP/Contents/Resources"\n'
-        "# BashCutPro: Pro tools beside the app executable, first-run setup in Resources/bashcut\n"
-        'for b in %s; do cp "$WORK/bin/$b" "$APP/Contents/MacOS/$b"; done\n'
+        "# BashCutPro: Pro tools beside the app executable, with the filmcraft-cli that bashcutpro/bcpro run (#187);\n"
+        "# Mac volumes ignore case, so a tool named like the executable (bashcutpro, BashCutPro) is left out: bcpro covers it\n"
+        'brand_lc="$(printf %%s "$BRAND_NAME" | tr "[:upper:]" "[:lower:]")"\n'
+        'APP_BINS=""; for b in filmcraft-cli %s; do [ "$b" = "$brand_lc" ] || APP_BINS="$APP_BINS $b"; done\n'
+        'for b in $APP_BINS; do cp "$WORK/bin/$b" "$APP/Contents/MacOS/$b"; done\n'
+        "# first-run setup in Resources/bashcut\n"
         'mkdir -p "$APP/Contents/Resources/bashcut" && cp "$ROOT/bashcut/packaging/share/"* "$APP/Contents/Resources/bashcut/"\n' % BINS_SH,
         1,
     ),
     (
         "macos/package.sh",
         'sign --options runtime --entitlements "$HERE/entitlements.plist" "$APP/Contents/MacOS/$BRAND_NAME"\n',
-        'for b in %s; do sign --options runtime "$APP/Contents/MacOS/$b"; done\n'
-        'sign --options runtime --entitlements "$HERE/entitlements.plist" "$APP/Contents/MacOS/$BRAND_NAME"\n' % BINS_SH,
+        'for b in $APP_BINS; do sign --options runtime "$APP/Contents/MacOS/$b"; done\n'
+        'sign --options runtime --entitlements "$HERE/entitlements.plist" "$APP/Contents/MacOS/$BRAND_NAME"\n',
         1,
     ),
     (

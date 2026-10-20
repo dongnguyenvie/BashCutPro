@@ -76,6 +76,24 @@ class GenerateTest(unittest.TestCase):
                 r = subprocess.run([bash, "-n", os.path.join(self.out, *rel.split("/"))], capture_output=True, text=True)
                 self.assertEqual(r.returncode, 0, rel + ": " + r.stderr)
 
+    def test_the_app_keeps_its_executable_and_ships_the_engine_cli(self):
+        # Mac volumes ignore case: copying bashcutpro beside BashCutPro replaced the app executable (#187)
+        generate.generate(ROOT, self.out)
+        lines = [l for l in self.read("macos/package.sh").splitlines() if l.startswith(("brand_lc=", "APP_BINS="))]
+        self.assertEqual(len(lines), 2)
+        bash = shutil.which("bash")
+        if not bash:
+            return
+        for brand, left_out in (("BashCutPro", "bashcutpro"), ("Other", None)):
+            r = subprocess.run([bash, "-c", "\n".join(lines) + '\necho $APP_BINS'], env={"BRAND_NAME": brand, "PATH": os.environ["PATH"]}, capture_output=True, text=True)
+            bins = r.stdout.split()
+            self.assertIn("filmcraft-cli", bins, brand)
+            self.assertIn("bcpro", bins, brand)
+            if left_out:
+                self.assertNotIn(left_out, bins)
+            else:
+                self.assertIn("bashcutpro", bins)
+
     def test_a_changed_upstream_line_fails_loudly(self):
         fake = os.path.join(self.tmp, "root")
         shutil.copytree(os.path.join(ROOT, "packaging"), os.path.join(fake, "packaging"))
