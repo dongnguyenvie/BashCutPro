@@ -9,6 +9,9 @@ pub mod analysis;
 pub mod batch;
 #[cfg(test)]
 mod batch_tests;
+pub mod captions_fit;
+#[cfg(test)]
+mod captions_fit_tests;
 mod data;
 pub mod errors;
 pub mod hooks;
@@ -58,6 +61,7 @@ pub fn commands() -> Vec<CommandSpec> {
         review::commands(),
         looks::commands(),
         transcript_clean::commands(),
+        captions_fit::commands(),
     ];
     // typed errors (`notFound: …`) and a units note on every command (errors.rs)
     errors::wrap(groups.into_iter().flatten().collect())
