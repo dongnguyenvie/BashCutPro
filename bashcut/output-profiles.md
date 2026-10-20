@@ -5,6 +5,9 @@ Platform-correct exports without tuning. Code: `crates/engine/src/bashcut/profil
 - **Profile** (`bashcut-profile/1`, camelCase JSON): `id`, `name`, `platform`, `width`, `height`, `fps`, `codec`
   (`h264` | `hevc` | `av1`), `bitDepth`, `bitrateKbps?`, `audioKbps`, `sampleRate`, `loudnessLufs`, `truePeakDbtp`,
   `captions` (`burn` | `srt` | `vtt` | `none`), `safeArea {top,bottom,left,right}` (fractions of the frame), `notes`.
+  An `srt` / `vtt` sidecar is skipped when the sequence's first caption track has no captions (after
+  `bashcut.captions.wordStyle` they are graphic clips): `apply` returns `captionSidecarSkipped` instead of writing an
+  empty file (#173).
 - **Built-ins:** `tiktok`, `reels`, `shorts` (1080×1920), `youtube` (1080p), `youtube-4k`, `facebook-square`. User files
   `<data dir>/bashcut/profiles/*.json` add profiles or replace a built-in with the same `id`; invalid files are skipped.
 - **Bitrate guidance** (when `bitrateKbps` is not set): by the short side, 2.5 / 5 / 8 / 16 / 40 / 80 Mbps at

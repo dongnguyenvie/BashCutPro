@@ -418,6 +418,16 @@ fn apply(s: &mut Session, p: &Value) -> Result<Value> {
     if let Some(v) = p.get("range") {
         q["range"] = v.clone();
     }
+    // The export writes the sidecar from the first caption track, empty or not: after
+    // `bashcut.captions.wordStyle` the captions are graphic clips and the file would be empty (#173).
+    let seq = u64_p(p, "sequence").map(filmcraft_project::ItemId).or(s.state.active_sequence);
+    let no_captions = seq.and_then(|id| s.project.sequence(id)).is_some_and(|q| q.caption_tracks.first().is_none_or(|t| t.captions.is_empty()));
+    if matches!(pr.captions.as_str(), "srt" | "vtt") && no_captions {
+        q["captionSidecar"] = json!("none");
+        out["captionSidecarSkipped"] = json!(
+            "no captions on the sequence (word-styled captions are graphics), so no caption file was written; export one before the word style (captions.export)"
+        );
+    }
     // plugin hooks declared for `export.before` (a failed required hook stops the export)
     out["hooks"] = super::hooks::fire(s, p, "export.before", json!({"profile": pr.id, "preset": preset, "path": path}), CMD)?;
     let queue = p.get("queue").and_then(Value::as_bool).unwrap_or(false);
