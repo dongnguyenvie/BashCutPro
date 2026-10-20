@@ -442,7 +442,7 @@ fn captions(s: &Session, q: &Sequence, a: Tick, b: Tick, l: &Limits, out: &mut V
                         format!("caption {} has {} lines", c.id.0, lines.len())
                     },
                     if wrapped {
-                        "shorter lines (bashcut.captions.create maxChars, 24 on vertical) or a smaller size (captions.setStyle {size})"
+                        "shorter lines (bashcut.captions.create maxChars: 20 on vertical, with captions.setStyle size <= 36) or a smaller size (captions.setStyle {size}; see limit.sizeAtMost in the safeArea finding)"
                     } else {
                         "split it into two captions"
                     },
