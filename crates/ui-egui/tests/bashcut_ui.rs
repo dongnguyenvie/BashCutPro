@@ -433,8 +433,8 @@ else:
 
 #[test]
 fn a_plugin_view_draws_its_rows_and_buttons_run_actions() {
-    if std::process::Command::new("python3").arg("--version").output().is_err() {
-        eprintln!("python3 not found: skipped");
+    if !has_python() {
+        eprintln!("python not found: skipped");
         return;
     }
     let data = std::env::temp_dir().join(format!("bashcut-ui-view-{}", std::process::id()));
@@ -444,7 +444,7 @@ fn a_plugin_view_draws_its_rows_and_buttons_run_actions() {
     std::fs::write(plugin.join("plugin.py"), VIEW_PLUGIN).unwrap();
     let manifest = json!({
         "schema": "bashcut-plugin/1", "id": "test.views", "name": "Views", "version": "0.1.0", "summary": "test plugin",
-        "entry": {"command": ["python3", "plugin.py"]}, "output": "bashcut-result/1",
+        "entry": {"command": ["python3", "plugin.py"], "windows": ["py", "-3", "plugin.py"]}, "output": "bashcut-result/1",
         "actions": [
             {"id": "review", "title": "Review", "args": ["review"], "needs": "none", "view": true},
             {"id": "accept", "title": "Accept", "args": ["accept"], "needs": "none", "params": [
@@ -519,6 +519,108 @@ fn a_plugin_view_draws_its_rows_and_buttons_run_actions() {
     for id in ["bashcut.plugins.view", "bashcut.plugins.click"] {
         assert!(ids.iter().any(|c| c == id), "{id} listed");
     }
+    assert!(d.harness.state().ui_error.is_none(), "{:?}", d.harness.state().ui_error);
+    let _ = std::fs::remove_dir_all(&data);
+}
+
+/// The test plugins' Python runs (`py -3` on Windows, where `python3` may be the Store's stub).
+fn has_python() -> bool {
+    let (exe, args): (&str, &[&str]) = if cfg!(windows) { ("py", &["-3", "--version"]) } else { ("python3", &["--version"]) };
+    std::process::Command::new(exe).args(args).output().is_ok_and(|o| o.status.success())
+}
+
+/// A stand-in for `bashcut.resources`: one search result, whose download is `tone.wav` beside it.
+const RESOURCES_PLUGIN: &str = r#"
+import json, os, sys
+here = os.path.dirname(os.path.abspath(__file__))
+if sys.argv[1] == "search":
+    items = [{"title": "Calm tone", "kind": "music", "url": "https://example.invalid/tone.wav", "license": "CC0", "author": "test", "source": "test"}]
+    print(json.dumps({"ok": True, "data": {"items": items}}))
+else:
+    print(json.dumps({"ok": True, "data": {"path": os.path.join(here, "tone.wav")}}))
+"#;
+
+/// One second of 16 kHz mono silence.
+fn silent_wav() -> Vec<u8> {
+    let data = 16_000u32 * 2;
+    let mut w = Vec::new();
+    w.extend_from_slice(b"RIFF");
+    w.extend_from_slice(&(36 + data).to_le_bytes());
+    w.extend_from_slice(b"WAVEfmt ");
+    w.extend_from_slice(&16u32.to_le_bytes());
+    w.extend_from_slice(&1u16.to_le_bytes());
+    w.extend_from_slice(&1u16.to_le_bytes());
+    w.extend_from_slice(&16_000u32.to_le_bytes());
+    w.extend_from_slice(&32_000u32.to_le_bytes());
+    w.extend_from_slice(&2u16.to_le_bytes());
+    w.extend_from_slice(&16u16.to_le_bytes());
+    w.extend_from_slice(b"data");
+    w.extend_from_slice(&data.to_le_bytes());
+    w.resize(w.len() + data as usize, 0);
+    w
+}
+
+#[test]
+fn library_added_status_clears_after_a_few_seconds() {
+    if !has_python() {
+        eprintln!("python not found: skipped");
+        return;
+    }
+    let data = std::env::temp_dir().join(format!("bashcut-ui-library-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&data);
+    let plugin = data.join("bashcut-plugins").join("bashcut.resources");
+    std::fs::create_dir_all(&plugin).unwrap();
+    std::fs::write(plugin.join("plugin.py"), RESOURCES_PLUGIN).unwrap();
+    std::fs::write(plugin.join("tone.wav"), silent_wav()).unwrap();
+    let string = |id: &str, flag: &str| json!({"id": id, "flag": flag, "type": "string", "optional": true});
+    let manifest = json!({
+        "schema": "bashcut-plugin/1", "id": "bashcut.resources", "name": "Online Resources", "version": "0.1.0", "summary": "test plugin",
+        "entry": {"command": ["python3", "plugin.py"], "windows": ["py", "-3", "plugin.py"]}, "output": "bashcut-result/1",
+        "actions": [
+            {"id": "search", "title": "Search", "args": ["search"], "needs": "none", "params": [string("kind", "--kind"), string("query", "--query"),
+                {"id": "count", "flag": "--count", "type": "integer", "optional": true}]},
+            {"id": "download", "title": "Download", "args": ["download"], "needs": "none", "params": [string("kind", "--kind"), string("url", "--url"),
+                string("title", "--title"), string("license", "--license"), string("author", "--author"), string("source", "--source")]}
+        ]
+    });
+    std::fs::write(plugin.join("bashcut-plugin.json"), manifest.to_string()).unwrap();
+
+    let mut session = Session::default();
+    session.start_autosave(filmcraft_engine::autosave::AutosaveConfig::new(&data)).expect("data dir");
+    session.execute("file.openDemoProject", json!({})).expect("demo project");
+    let (tx, rx) = channel();
+    let app = FilmcraftApp::new(session).with_control(rx);
+    let harness = Harness::builder().with_size(egui::vec2(W, H)).with_max_steps(10_000).build_eframe(move |_cc| app);
+    let mut d = Driver { harness, tx };
+    d.frames(4);
+
+    d.exec("bashcut.ui.library.search", json!({"tab": "online", "kind": "music", "query": "calm"}));
+    let mut results = Value::Null;
+    for _ in 0..600 {
+        results = d.exec("bashcut.ui.library.results", json!({}));
+        if results["items"].as_array().is_some_and(|a| !a.is_empty()) {
+            break;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(20));
+    }
+    assert_eq!(results["items"][0]["title"], json!("Calm tone"), "{results}");
+    d.exec("bashcut.ui.library.add", json!({"index": 0}));
+    let mut status = Value::Null;
+    for _ in 0..600 {
+        status = d.exec("bashcut.ui.library.results", json!({}))["status"].clone();
+        if status.as_str().is_some_and(|s| s.starts_with("Added")) {
+            break;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(20));
+    }
+    assert_eq!(status, json!("Added Calm tone to the project"));
+    // the harness steps a quarter second a frame: still shown after 1 s, gone after 7.5 s
+    d.frames(4);
+    assert_eq!(d.exec("bashcut.ui.library.results", json!({}))["status"], status);
+    assert!(d.has("bashcut.library.status"));
+    d.frames(30);
+    assert_eq!(d.exec("bashcut.ui.library.results", json!({}))["status"], Value::Null, "the done message clears (#168)");
+    assert!(!d.has("bashcut.library.status"));
     assert!(d.harness.state().ui_error.is_none(), "{:?}", d.harness.state().ui_error);
     let _ = std::fs::remove_dir_all(&data);
 }

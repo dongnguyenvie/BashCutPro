@@ -35,6 +35,8 @@ const MAX_CACHE: usize = 32;
 const MAX_ITEMS: usize = 100;
 const RUN_TIMEOUT: Duration = Duration::from_secs(180);
 const MAX_FILE: u64 = 16 * 1024;
+/// How long a done message ("Added …") stays once nothing runs; errors stay until the next action (#168).
+const STATUS_SECONDS: f64 = 6.0;
 pub const CREDITS_START: &str = "<!-- bashcut.resources credits -->";
 pub const CREDITS_END: &str = "<!-- /bashcut.resources credits -->";
 
@@ -63,6 +65,8 @@ struct Panel {
     shown: Option<String>,
     mine_shown: Option<String>,
     status: Option<(bool, String)>,
+    /// The done message on show and when it was first drawn (egui time), to clear it.
+    status_since: Option<(String, f64)>,
     loaded: bool,
     saved: Option<String>,
 }
@@ -83,6 +87,7 @@ impl Default for Panel {
             shown: None,
             mine_shown: None,
             status: None,
+            status_since: None,
             loaded: false,
             saved: None,
         }
@@ -297,6 +302,30 @@ fn poll(app: &mut FilmcraftApp, ctx: &egui::Context, p: &mut Panel) {
     }
 }
 
+/// Clear a done message [`STATUS_SECONDS`] after it first showed, once no search or download runs.
+fn expire_status(ctx: &egui::Context, p: &mut Panel) {
+    let busy = !p.searches.is_empty() || !p.downloads.is_empty();
+    let Some((true, msg)) = p.status.as_ref().filter(|_| !busy) else {
+        p.status_since = None;
+        return;
+    };
+    let now = ctx.input(|i| i.time);
+    let since = match &p.status_since {
+        Some((shown, t)) if shown == msg => *t,
+        _ => {
+            p.status_since = Some((msg.clone(), now));
+            now
+        }
+    };
+    let left = STATUS_SECONDS - (now - since);
+    if left <= 0.0 {
+        p.status = None;
+        p.status_since = None;
+    } else {
+        ctx.request_repaint_after(Duration::try_from_secs_f64(left).unwrap_or(Duration::from_secs(1)));
+    }
+}
+
 /// A button with an automation id; `true` when clicked.
 fn button(app: &mut FilmcraftApp, ui: &mut egui::Ui, id: &str, label: &str, enabled: bool) -> bool {
     let r = ui.add_enabled(enabled, egui::Button::new(label).small());
@@ -311,6 +340,7 @@ pub fn draw(app: &mut FilmcraftApp, ui: &mut egui::Ui) {
     let mut p = get(&ctx);
     load(&mut p, dir.as_deref());
     poll(app, &ctx, &mut p);
+    expire_status(&ctx, &mut p);
 
     ui.horizontal(|ui| {
         for (online, label, id) in [(false, s("Mine"), "bashcut.library.tab.mine"), (true, s("Online"), "bashcut.library.tab.online")] {
