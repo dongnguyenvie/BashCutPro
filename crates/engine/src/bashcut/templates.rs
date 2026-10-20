@@ -218,20 +218,20 @@ fn instantiate(s: &mut Session, p: &Value) -> Result<Value> {
     }
 
     s.execute("file.open", json!({"path": project_path.to_string_lossy()}))?;
-    let mut steps = 0usize;
+    let group = super::undo::UndoGroup::start(s);
     let mut done = Vec::with_capacity(chosen.len());
     for (item, sid, file, from) in &chosen {
         if s.project.item(ItemId(*item)).and_then(|i| i.as_media()).is_none() {
+            group.finish(s, UNDO_LABEL);
             return Err(err(CMD, format!("slot `{sid}`: item {item} is missing from the template's project")));
         }
-        let before = s.history.undo.len();
-        s.execute("media.replaceFootage", json!({"item": item, "path": file}))?;
-        if s.history.undo.len() > before {
-            steps = steps.saturating_add(1);
+        if let Err(e) = s.execute("media.replaceFootage", json!({"item": item, "path": file})) {
+            group.finish(s, UNDO_LABEL);
+            return Err(e);
         }
         done.push(json!({"slot": sid, "item": item, "file": file, "from": from}));
     }
-    fold_history(s, steps);
+    group.finish(s, UNDO_LABEL);
     // never write back over the template's own project
     s.path = None;
     let mut saved = Value::Null;
@@ -239,21 +239,6 @@ fn instantiate(s: &mut Session, p: &Value) -> Result<Value> {
         saved = s.execute("file.saveAs", json!({"path": path}))?;
     }
     Ok(json!({"template": dir.to_string_lossy(), "slots": done, "saved": saved}))
-}
-
-/// Fold the last `steps` undo entries into one step labelled [`UNDO_LABEL`]: the oldest entry keeps the project as it
-/// was before the first replacement.
-fn fold_history(s: &mut Session, steps: usize) {
-    let len = s.history.undo.len();
-    let steps = steps.min(len);
-    if steps == 0 {
-        return;
-    }
-    let first = len - steps;
-    s.history.undo.truncate(first + 1);
-    if let Some(step) = s.history.undo.get_mut(first) {
-        step.0 = UNDO_LABEL.to_string();
-    }
 }
 
 fn list(s: &Session, p: &Value) -> Result<Value> {

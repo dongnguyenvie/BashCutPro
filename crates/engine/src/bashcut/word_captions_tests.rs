@@ -100,10 +100,10 @@ fn word_style_refuses_hostile_params() {
     }
     // out-of-range numbers clamp
     assert!(s.execute("bashcut.captions.wordStyle", json!({"style": {"pop": 1e9, "dim": -4}, "useTranscript": false})).is_ok());
-    // a one-word caption is reported, not styled
+    // a one-word caption is styled as one segment (#199)
     let mut one = session_with_caption("hello");
     let r = one.execute("bashcut.captions.wordStyle", json!({})).unwrap();
-    assert!(r["captions"][0]["skipped"].is_string(), "{r}");
+    assert_eq!(r["captions"][0]["clips"].as_array().map(Vec::len), Some(1), "{r}");
 }
 
 #[test]
@@ -139,4 +139,56 @@ fn a_long_caption_stays_inside_a_phone_frame() {
         assert_eq!((l["styles"][0]["start"].as_u64(), l["styles"][0]["end"].as_u64()), (Some(a as u64), Some(b as u64)), "{l}");
     }
     assert_eq!(s.history.undo.last().map(|u| u.0.as_str()), Some("Word Caption Style"));
+}
+
+fn undo_labels(s: &Session) -> Vec<String> {
+    s.history.undo.iter().map(|u| u.0.clone()).collect()
+}
+
+fn all_captions(s: &Session) -> Vec<u64> {
+    s.active_sequence().unwrap().caption_tracks.iter().flat_map(|t| t.captions.iter().map(|c| c.id.0)).collect()
+}
+
+#[test]
+fn a_long_word_style_is_one_undo_step_after_the_one_before() {
+    // #199: 25 captions of 6 words push more steps than the history keeps (200): the step before the word style was
+    // lost and a stray "Character Style" stayed
+    let mut s = Session::default();
+    s.execute("file.newSequence", json!({"width": 320, "height": 180, "fps": 24})).unwrap();
+    let commands: Vec<_> = (0..25)
+        .map(|i| json!({"id": "captions.add", "params": {"text": format!("one two three four five six{i}"), "time": Tick::from_seconds_f64(i as f64 * 3.0).0, "durationSeconds": 3.0}}))
+        .collect();
+    s.execute("bashcut.batch", json!({"label": "Captions", "commands": commands})).unwrap();
+    let before = undo_labels(&s);
+    assert_eq!(before.last().map(String::as_str), Some("Captions"));
+    let ids = all_captions(&s);
+    let r = s.execute("bashcut.captions.wordStyle", json!({"captions": ids, "style": {"preset": "pop", "pop": 1.2}, "useTranscript": false})).unwrap();
+    assert_eq!(r["captions"].as_array().unwrap().len(), 25, "{r}");
+    let mut want = before.clone();
+    want.push("Word Caption Style".into());
+    assert_eq!(undo_labels(&s), want);
+    assert_eq!(s.history.limit, 200, "the limit is back");
+    s.execute("edit.undo", json!({})).unwrap();
+    let seq = s.active_sequence().unwrap();
+    assert_eq!(seq.caption_tracks.iter().map(|t| t.captions.len()).sum::<usize>(), 25, "undo brings the captions back");
+    assert_eq!(undo_labels(&s), before);
+}
+
+#[test]
+fn a_one_word_caption_becomes_a_graphic_too() {
+    // #199: "it." and "read." stayed plain captions while the rest became graphics
+    let mut s = session_with_caption("Most people cut it");
+    s.execute("captions.add", json!({"text": "Yes.", "time": Tick::from_seconds_f64(4.0).0, "durationSeconds": 1.0})).unwrap();
+    let ids = all_captions(&s);
+    let r = s
+        .execute("bashcut.captions.wordStyle", json!({"captions": ids, "style": {"preset": "clean", "highlight": "#ff0000"}, "useTranscript": false}))
+        .unwrap();
+    assert!(r["captions"].as_array().unwrap().iter().all(|c| c.get("skipped").is_none()), "{r}");
+    let seq = s.active_sequence().unwrap();
+    assert!(seq.caption_tracks.iter().all(|t| t.captions.is_empty()), "every cue became a graphic: {r}");
+    let one = r["captions"].as_array().unwrap().iter().find(|c| c["words"] == 1).expect("the one-word cue");
+    assert_eq!(one["clips"].as_array().unwrap().len(), 1, "{r}");
+    // its word is red
+    let (w, h, rgba) = frame_rgba(&mut s, 4 * 24 + 12, 1.0);
+    assert!(red_x(w, h, &rgba).1 > 20, "the word is highlighted");
 }

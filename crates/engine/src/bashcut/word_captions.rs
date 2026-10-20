@@ -206,10 +206,9 @@ fn word_style(s: &mut Session, p: &Value) -> Result<Value> {
         Vec::new()
     };
 
-    let before = s.history.undo.len();
+    let group = super::undo::UndoGroup::start(s);
     let result = apply(s, &style, &jobs, &transcript, (width, height), rate);
-    let steps = s.history.undo.len().saturating_sub(before);
-    fold_history(s, steps);
+    group.finish(s, UNDO_LABEL);
     result
 }
 
@@ -217,8 +216,9 @@ fn apply(s: &mut Session, style: &WordStyle, jobs: &[Job], transcript: &[(Tick, 
     let mut report = Vec::with_capacity(jobs.len());
     for job in jobs {
         let words = word_ranges(&plain_text(&job.text));
-        if words.len() < 2 || words.len() > MAX_WORDS {
-            report.push(json!({"caption": job.id.0, "skipped": format!("{} words (2 to {MAX_WORDS} are styled)", words.len())}));
+        // a one-word cue ("Yes.") is one segment with its word highlighted, like the others (#199)
+        if words.is_empty() || words.len() > MAX_WORDS {
+            report.push(json!({"caption": job.id.0, "skipped": format!("{} words (1 to {MAX_WORDS} are styled)", words.len())}));
             continue;
         }
         // 1. split at each word's start; a refused split (too short) leaves that word with the previous segment
@@ -340,18 +340,4 @@ fn wrap_segments(s: &mut Session, clips: &[u64], max_width: f64, height: f64) ->
         }
     }
     Ok(())
-}
-
-/// Fold the last `steps` undo entries into one labelled [`UNDO_LABEL`].
-fn fold_history(s: &mut Session, steps: usize) {
-    let len = s.history.undo.len();
-    let steps = steps.min(len);
-    if steps == 0 {
-        return;
-    }
-    let first = len - steps;
-    s.history.undo.truncate(first + 1);
-    if let Some(step) = s.history.undo.get_mut(first) {
-        step.0 = UNDO_LABEL.to_string();
-    }
 }
