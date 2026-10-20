@@ -242,10 +242,11 @@ fn picture(s: &Session, q: &Sequence, a: Tick, b: Tick, per_second: f64, l: &Lim
     let edge = Tick::from_seconds_f64(0.5);
     // video transitions (a dip to black is meant to be black)
     let transitions: Vec<(Tick, Tick)> = q.video_tracks.iter().flat_map(|t| t.transitions.iter()).map(|t| (t.start, t.end())).collect();
-    // a long still is fine under someone talking (a locked-off interview, #178); in a short-form edit with nothing
-    // said over it, it is dead air on screen (#185: a vlog's end card over 6 s of a near-still shot)
-    let words = if l.short_form { crate::transcript::sequence_words(s) } else { Vec::new() };
-    let spoken = |a: Tick, b: Tick| words.iter().any(|w| w.start < b && w.end > a);
+    // a still picture is fine under someone talking: a screen recording under narration, a locked-off interview
+    // (#178, #193, #196). In a short-form edit with nothing said over it, it is dead air on screen (#185: a vlog's end
+    // card over 6 s of a near-still shot)
+    let speech = speech_spans(s, q);
+    let spoken = |a: Tick, b: Tick| spoken_share(&speech, a, b) >= SPOKEN_SHARE;
     for x in &found {
         use bashcut_analysis::picture::Kind;
         let (start, end) = (Tick(x.start), Tick(x.end));
@@ -255,6 +256,9 @@ fn picture(s: &Session, q: &Sequence, a: Tick, b: Tick, per_second: f64, l: &Lim
             Kind::Black if at_edge => ("black", Severity::Info, "black at the start or end", "fine for a fade; else trim it"),
             Kind::Black if in_transition => ("black", Severity::Info, "black inside a transition", "fine for a dip to black; else change the transition"),
             Kind::Black => ("black", Severity::Blocking, "black frames inside the edit", "close the gap or fill it (sequence.closeGap)"),
+            Kind::Frozen if spoken(start, end) => {
+                ("stillUnderSpeech", Severity::Info, "a still picture under narration", "fine for a screen recording, slide or interview; else punch in or cut")
+            }
             Kind::Frozen => ("frozen", Severity::Warning, "the picture does not move", "a frame hold or a stuck source: replace or cut it"),
             Kind::LongStill if l.short_form && !spoken(start, end) => (
                 "longStill",
@@ -321,6 +325,40 @@ fn picture(s: &Session, q: &Sequence, a: Tick, b: Tick, per_second: f64, l: &Lim
         }
     }
     Ok(json!({"frames": frames, "unrendered": failed}))
+}
+
+/// A still stretch is under speech when speech covers at least this share of it.
+const SPOKEN_SHARE: f64 = 0.5;
+/// Pauses up to twice this long inside narration count as speech (each word is widened by it on both sides).
+const SPEECH_PAD_SECONDS: f64 = 0.5;
+
+/// Where someone talks in the sequence: transcript words (widened over short pauses) and enabled caption cues (a
+/// subtitled interview may have captions but no transcript), merged and sorted.
+fn speech_spans(s: &Session, q: &Sequence) -> Vec<(Tick, Tick)> {
+    let pad = Tick::from_seconds_f64(SPEECH_PAD_SECONDS);
+    let mut spans: Vec<(Tick, Tick)> = crate::transcript::sequence_words(s).iter().map(|w| (w.start - pad, w.end + pad)).collect();
+    for t in q.caption_tracks.iter().filter(|t| t.enabled) {
+        spans.extend(t.captions.iter().filter(|c| !c.text.trim().is_empty()).map(|c| (c.start, c.end())));
+    }
+    spans.sort();
+    let mut merged: Vec<(Tick, Tick)> = Vec::with_capacity(spans.len());
+    for (a, b) in spans {
+        match merged.last_mut() {
+            Some(last) if a <= last.1 => last.1 = last.1.max(b),
+            _ => merged.push((a, b)),
+        }
+    }
+    merged
+}
+
+/// The share of `[a, b)` that `spans` (sorted, not overlapping) cover, 0…1.
+fn spoken_share(spans: &[(Tick, Tick)], a: Tick, b: Tick) -> f64 {
+    let len = b.0.saturating_sub(a.0);
+    if len <= 0 {
+        return 0.0;
+    }
+    let covered: i64 = spans.iter().map(|(x, y)| y.0.min(b.0).saturating_sub(x.0.max(a.0)).max(0)).fold(0i64, i64::saturating_add);
+    covered as f64 / len as f64
 }
 
 // --------------------------------------------------------------------------------------- captions

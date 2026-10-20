@@ -202,3 +202,72 @@ fn a_silent_long_still_warns_in_short_form_only() {
     assert_eq!(long_still(320, 180, None, false)[0]["severity"], "info");
     assert_eq!(long_still(180, 320, Some("reels"), true)[0]["severity"], "info");
 }
+
+/// Two 3 s stills (frozen stretches) then a 7 s still (a long still) on V1 of a `w`×`h` sequence; `speech`: a
+/// narration transcript over all 13 s; `captions`: subtitle cues over it instead. Returns the picture findings.
+fn stills(w: u32, h: u32, speech: bool, captions: bool) -> Vec<Value> {
+    let mut s = Session::default();
+    s.execute("file.newSequence", json!({"name": "stills", "video": 2, "audio": 2, "width": w, "height": h})).unwrap();
+    for (color, at, len) in [("#808080", 0.0, 3.0), ("#305070", 3.0, 3.0), ("#a07040", 6.0, 7.0)] {
+        let m = s.execute("file.newColorMatte", json!({"color": color, "seconds": len})).unwrap()["item"].as_u64().unwrap();
+        s.execute("timeline.place", json!({"item": m, "track": "V1", "seconds": at, "audio": false})).unwrap();
+    }
+    if speech {
+        // narration with normal pauses: 0.4 s words, 0.2-0.9 s apart
+        let item = import_wav(&mut s, "voice", &tone(-20.0, 13.0));
+        let t = |x: f64| Tick::from_seconds_f64(x).0;
+        let mut words = Vec::new();
+        let mut at = 0.1;
+        let mut k = 0;
+        while at + 0.4 < 13.0 {
+            words.push(json!({"text": "word", "start": t(at), "end": t(at + 0.4)}));
+            at += 0.6 + if k % 5 == 4 { 0.7 } else { 0.0 };
+            k += 1;
+        }
+        s.execute("transcript.set", json!({"item": item, "transcript": {"language": "en", "words": words}})).unwrap();
+        s.execute("timeline.place", json!({"item": item, "audioTrack": "A1", "seconds": 0.0, "video": false})).unwrap();
+    }
+    if captions {
+        for i in 0..6 {
+            let text = format!("Xin chào các bạn, phần {i}");
+            s.execute("captions.add", json!({"seconds": i as f64 * 2.2, "durationSeconds": 2.0, "text": text})).unwrap();
+        }
+    }
+    let v = s.execute("bashcut.review.run", json!({"checks": ["picture"], "samplesPerSecond": 4, "writeMarkers": false})).unwrap();
+    v["findings"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|f| f["check"] == "frozen" || f["check"] == "stillUnderSpeech" || f["check"] == "longStill")
+        .cloned()
+        .collect()
+}
+
+fn severities(f: &[Value]) -> Vec<(String, String)> {
+    f.iter().map(|f| (f["check"].as_str().unwrap().to_string(), f["severity"].as_str().unwrap().to_string())).collect()
+}
+
+#[test]
+fn a_still_screen_under_narration_is_info() {
+    // #193: a screen-recording tutorial got one "frozen" warning per still menu or dialog under the narration
+    let f = stills(320, 180, true, false);
+    assert!(!f.is_empty());
+    assert!(f.iter().all(|f| f["severity"] == "info"), "{:?}", severities(&f));
+    assert!(f.iter().any(|f| f["check"] == "stillUnderSpeech"), "{:?}", severities(&f));
+    // the same stills with nothing said: frozen stays a warning
+    let silent = stills(320, 180, false, false);
+    assert!(silent.iter().any(|f| f["check"] == "frozen" && f["severity"] == "warning"), "{:?}", severities(&silent));
+    // and in a vertical edit the silent long still warns too (#185), but not under narration
+    let vertical = stills(180, 320, false, false);
+    assert!(vertical.iter().any(|f| f["check"] == "longStill" && f["severity"] == "warning"), "{:?}", severities(&vertical));
+    let narrated = stills(180, 320, true, false);
+    assert!(narrated.iter().all(|f| f["severity"] == "info"), "{:?}", severities(&narrated));
+}
+
+#[test]
+fn a_subtitled_still_interview_is_info() {
+    // #196: a locked-off interview with Vietnamese subtitles and no transcript got "frozen" warnings
+    let f = stills(320, 180, false, true);
+    assert!(!f.is_empty());
+    assert!(f.iter().all(|f| f["severity"] == "info"), "{:?}", severities(&f));
+}
