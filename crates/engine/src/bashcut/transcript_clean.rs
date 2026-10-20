@@ -7,7 +7,7 @@
 //! | command | what it does |
 //! |---|---|
 //! | `bashcut.transcript.clean` | drops doubtful words from transcripts already made (one undo step) |
-//! | `bashcut.transcript.generate` | `transcript.generate`, then the clean, as one undo step |
+//! | `bashcut.transcript.generate` | `transcript.generate`, then the clean and the word-edge refinement (`word_edges.rs`, #203), as one undo step |
 //!
 //! A word is doubtful when it is part of
 //! - a run of the same phrase back to back: 2–24 words repeated `minRepeats` (3) times or more in a row, or one
@@ -190,7 +190,7 @@ fn stretches(words: &[Word], v: &Verdict) -> Vec<Value> {
 }
 
 /// Transcripts to clean: `items` / `item`, else every transcript a recogniser made.
-fn targets(s: &Session, p: &Value) -> Vec<ItemId> {
+pub(crate) fn targets(s: &Session, p: &Value) -> Vec<ItemId> {
     let named: Option<Vec<ItemId>> = p
         .get("items")
         .and_then(Value::as_array)
@@ -272,19 +272,34 @@ fn generate_cmd(s: &mut Session, p: &Value) -> Result<Value> {
         return Err(bad(GENERATE, "`minRepeats` must be a whole number of 2 or more"));
     }
     let keep = bool_p(p, "keepDoubtful").unwrap_or(false);
+    let keep_times = bool_p(p, "keepWordTimes").unwrap_or(false);
+    let min_silence = super::word_edges::min_silence_p(p, GENERATE)?;
     let mut params = p.clone();
     if let Some(o) = params.as_object_mut() {
-        for k in ["keepDoubtful", "minRepeats", "dryRun"] {
+        for k in ["keepDoubtful", "minRepeats", "dryRun", "keepWordTimes", "minSilenceSeconds"] {
             o.remove(k);
         }
     }
     let min_repeats = min_repeats_p(p);
     s.edit_group("Transcribe", |s| {
         let mut r = s.execute("transcript.generate", params)?;
+        let items: Vec<ItemId> = r.get("items").and_then(Value::as_array).into_iter().flatten().filter_map(|i| i.get("item")?.as_u64()).map(ItemId).collect();
+        // Whisper hides pauses inside the word after them (#203): move word edges out of measured pauses
+        if !keep_times {
+            let e = super::word_edges::refine_items(s, &items, min_silence, false)?;
+            if let Some(list) = r.get_mut("items").and_then(Value::as_array_mut) {
+                for it in list.iter_mut() {
+                    let id = it.get("item").and_then(Value::as_u64);
+                    if let Some(row) = e["items"].as_array().into_iter().flatten().find(|row| row["item"].as_u64() == id) {
+                        it["edgesMoved"] = row.get("moved").cloned().unwrap_or(json!(0));
+                        it["pauses"] = row.get("pauses").cloned().unwrap_or(json!(0));
+                    }
+                }
+            }
+        }
         if keep {
             return Ok(r);
         }
-        let items: Vec<ItemId> = r.get("items").and_then(Value::as_array).into_iter().flatten().filter_map(|i| i.get("item")?.as_u64()).map(ItemId).collect();
         let c = clean_items(s, &items, min_repeats, false)?;
         // the generate report gains each item's dropped count; noSpeech items say so
         if let Some(list) = r.get_mut("items").and_then(Value::as_array_mut) {
@@ -315,7 +330,7 @@ pub(crate) fn commands() -> Vec<CommandSpec> {
             label: "Transcribe (Drop Doubtful Text)",
             menu: &[],
             shortcut: None,
-            params: r#"{…transcript.generate params, "keepDoubtful":bool=false,"minRepeats":n=3}  (transcribes, then drops Whisper's repeated-text loops; an item with only loops reports noSpeech and keeps an empty transcript)"#,
+            params: r#"{…transcript.generate params, "keepDoubtful":bool=false,"minRepeats":n=3,"keepWordTimes":bool=false,"minSilenceSeconds":f=0.3}  (transcribes, moves word edges out of pauses measured on the audio (edgesMoved), then drops Whisper's repeated-text loops; an item with only loops reports noSpeech and keeps an empty transcript)"#,
             enabled: crate::transcript::can_transcribe,
             run: generate_cmd,
             journal: true,
