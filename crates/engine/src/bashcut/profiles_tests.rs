@@ -2,7 +2,9 @@
 
 use serde_json::json;
 
-use super::profiles::{Profile, builtins};
+use std::sync::Arc;
+
+use super::profiles::{Profile, builtins, file_true_peak, retry_limit};
 use crate::Session;
 use crate::media_test_util::tmp_dir;
 
@@ -131,4 +133,58 @@ fn an_srt_profile_writes_no_empty_caption_file() {
     assert!(r.get("captionSidecarSkipped").is_none(), "{r}");
     let srt = std::fs::read_to_string(d.join("captioned.srt")).unwrap();
     assert!(srt.contains("Hello there"), "{srt}");
+}
+
+/// Stereo 48 kHz WAV of `mono` imported as a project item.
+fn import_wav(s: &mut Session, name: &str, mono: &[f32]) -> u64 {
+    let inter: Vec<f32> = mono.iter().flat_map(|v| [*v, *v]).collect();
+    let bytes: Arc<[u8]> = crate::previews::write_wav_f32(&inter, 48_000).into();
+    crate::commands::import_bytes(s, &format!("/{name}.wav"), bytes, None).unwrap().0
+}
+
+#[test]
+fn a_profile_export_lands_under_its_true_peak_limit() {
+    // sparse square-wave bursts, driven into the limiter by the loudness normalisation; the encoded file is measured
+    // after the export (#184)
+    let mut s = Session::default();
+    s.execute("file.newSequence", json!({"name": "peaks", "video": 1, "audio": 1, "width": 320, "height": 180})).unwrap();
+    let square: Vec<f32> = (0..96_000).map(|i| if i % 9_600 < 960 { if (i / 24) % 2 == 0 { 0.5 } else { -0.5 } } else { 0.0 }).collect();
+    let item = import_wav(&mut s, "square", &square);
+    s.execute("timeline.place", json!({"item": item, "audioTrack": "A1", "seconds": 0.0, "video": false})).unwrap();
+    let d = tmp_dir("bashcut-profiles-peak");
+    let out = d.join("square.mp4");
+    let r = s.execute("bashcut.profiles.apply", json!({"profile": "tiktok", "path": out.to_string_lossy(), "dir": d.to_string_lossy(), "wait": true})).unwrap();
+    let check = &r["peakCheck"];
+    let limit = check["limitDbtp"].as_f64().unwrap_or_else(|| panic!("no peak check: {r}"));
+    let measured = file_true_peak(&s, &out).unwrap();
+    assert!(measured <= limit, "{measured} dBTP over the {limit} dBTP limit: {check}");
+    assert_eq!(check["truePeakDbtp"].as_f64(), Some(measured), "{check}");
+    assert_eq!(check["reexported"], false, "{check}");
+}
+
+#[test]
+fn an_overshoot_lowers_the_limit_by_the_overshoot_plus_a_margin() {
+    // the bench's vlog: -0.41 dBTP after AAC for a -1 dBTP limit (#184)
+    let l = retry_limit(-1.0, -0.41).unwrap();
+    assert!((l - (-1.0 - 0.59 - 0.3)).abs() < 1e-9, "{l}");
+    assert_eq!(retry_limit(-1.0, -1.0), None);
+    assert_eq!(retry_limit(-1.0, -3.0), None);
+    assert_eq!(retry_limit(-1.0, f64::NAN), None);
+    assert_eq!(retry_limit(-1.0, f64::INFINITY), None);
+    assert_eq!(retry_limit(-1.0, 40.0), Some(-9.0), "never under the profile floor");
+}
+
+#[test]
+fn file_true_peak_reads_a_file_and_refuses_hostile_ones() {
+    let s = Session::default();
+    let d = tmp_dir("bashcut-profiles-file-peak");
+    let wav = d.join("half.wav");
+    let sine: Vec<f32> = (0..48_000).map(|i| 0.5 * (i as f32 * 0.05).sin()).flat_map(|v| [v, v]).collect();
+    std::fs::write(&wav, crate::previews::write_wav_f32(&sine, 48_000)).unwrap();
+    let tp = file_true_peak(&s, &wav).unwrap();
+    assert!((tp + 6.02).abs() < 0.3, "{tp}");
+    assert_eq!(file_true_peak(&s, &d.join("missing.mp4")), None);
+    let junk = d.join("junk.mp4");
+    std::fs::write(&junk, b"not media at all").unwrap();
+    assert_eq!(file_true_peak(&s, &junk), None);
 }

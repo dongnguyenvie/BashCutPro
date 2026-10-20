@@ -17,6 +17,9 @@ Platform-correct exports without tuning. Code: `crates/engine/src/bashcut/profil
   `filmcraft-cli export out.mp4 --preset "BashCut TikTok"`, the export queue and Quick Export use it. No upstream edit.
   The preset's loudness normalisation uses `loudnessLufs` and a true-peak ceiling 0.5 dB under `truePeakDbtp`: AAC
   encoding overshoots the limiter by a few tenths of a dB (a TikTok export measured -0.75 dBTP with a -1 ceiling, #127).
+  On dense music it can overshoot by more than a dB, so a waited `bashcut.profiles.apply` measures the true peak of
+  the encoded file and, when it is over `truePeakDbtp`, exports once more with the ceiling lowered by the overshoot
+  plus 0.3 dB (#184; a music-bed vlog went from -0.41 to -1.12 dBTP). The result's `peakCheck` says what happened.
 
 | Command | Params | Result |
 |---|---|---|

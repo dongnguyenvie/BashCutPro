@@ -32,6 +32,12 @@ pub struct SafeArea {
 
 /// Headroom under the true-peak limit for the lossy audio codec, dB.
 pub const CODEC_HEADROOM_DB: f64 = 0.5;
+/// Extra headroom, dB, on the one re-export after an encoded file measured over its true-peak limit (#184).
+pub const PEAK_RETRY_MARGIN_DB: f64 = 0.3;
+/// Exported files above this size are not read back for the true-peak check.
+const MAX_PEAK_CHECK_BYTES: u64 = 2 << 30;
+/// At most this much of an exported file's audio is measured, seconds.
+const MAX_PEAK_CHECK_SECONDS: i64 = 4 * 3600;
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(default, rename_all = "camelCase")]
@@ -434,11 +440,70 @@ fn apply(s: &mut Session, p: &Value) -> Result<Value> {
     if let Some(id) = u64_p(p, "sequence") {
         q[if queue { "sequences" } else { "sequence" }] = if queue { json!([id]) } else { json!(id) };
     }
+    let waited = !queue && q["wait"].as_bool() == Some(true);
     out["export"] = if queue {
         q["start"] = json!(true);
-        s.execute("export.queue.add", q)?
+        s.execute("export.queue.add", std::mem::take(&mut q))?
     } else {
-        s.execute("file.exportMedia", q)?
+        s.execute("file.exportMedia", q.clone())?
     };
+    // AAC can overshoot the limiter by more than CODEC_HEADROOM_DB on dense music (#184): measure the encoded file
+    // and export once more with the ceiling lowered by the overshoot
+    if waited && let Some(v) = peak_check(s, &pr, &q, path)? {
+        out["peakCheck"] = v;
+    }
     Ok(out)
+}
+
+/// The true-peak check of a waited export: `None` when the file has no audio to measure.
+fn peak_check(s: &mut Session, pr: &Profile, q: &Value, path: &str) -> Result<Option<Value>> {
+    let Some(first) = file_true_peak(s, std::path::Path::new(path)) else { return Ok(None) };
+    let Some(limit) = retry_limit(pr.true_peak_dbtp, first) else {
+        return Ok(Some(json!({"truePeakDbtp": first, "limitDbtp": pr.true_peak_dbtp, "reexported": false})));
+    };
+    let mut lowered = pr.clone();
+    lowered.true_peak_dbtp = limit;
+    compile(s, &lowered)?;
+    let again = s.execute("file.exportMedia", q.clone());
+    // the saved preset goes back to the profile's own ceiling whatever the second export did
+    compile(s, pr)?;
+    again?;
+    let after = file_true_peak(s, std::path::Path::new(path));
+    Ok(Some(json!({
+        "truePeakDbtp": after, "limitDbtp": pr.true_peak_dbtp, "reexported": true, "firstTruePeakDbtp": first,
+        "limiterCeilingDbtp": lowered.limiter_ceiling_dbtp(),
+    })))
+}
+
+/// The profile limit to export again with when the encoded file measured `measured` dBTP: lowered by the overshoot
+/// plus [`PEAK_RETRY_MARGIN_DB`] (at least -9). `None` when the file is within `limit` or the measurement is not finite.
+pub(crate) fn retry_limit(limit: f64, measured: f64) -> Option<f64> {
+    let over = measured - limit;
+    (over.is_finite() && over > 0.0).then(|| (limit - over - PEAK_RETRY_MARGIN_DB).max(-9.0))
+}
+
+/// True peak, dBTP, of a file's first audio stream (opened through the session's registered decoders); `None` when it has none or cannot be read.
+pub(crate) fn file_true_peak(s: &Session, path: &std::path::Path) -> Option<f64> {
+    if std::fs::metadata(path).ok()?.len() > MAX_PEAK_CHECK_BYTES {
+        return None;
+    }
+    let name = path.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
+    let src = s.media.open_bytes(&name, std::fs::read(path).ok()?.into()).ok()?;
+    let a = src.info().audio()?;
+    let sr = a.sample_rate.clamp(8_000, 192_000);
+    let rate = i64::from(sr);
+    let total = src.info().duration.to_units_floor(rate).clamp(0, MAX_PEAK_CHECK_SECONDS.saturating_mul(rate));
+    let mut meter = bashcut_analysis::loudness::Meter::new(sr, a.channels as usize);
+    let mut pos = 0i64;
+    while pos < total {
+        let n = (total - pos).min(rate) as usize;
+        let buf = src.audio(pos, n, sr).ok()?;
+        if buf.frames() == 0 {
+            break;
+        }
+        let refs: Vec<&[f32]> = buf.channels.iter().map(Vec::as_slice).collect();
+        meter.push(&refs);
+        pos = pos.saturating_add(n as i64);
+    }
+    meter.finish().true_peak_dbtp
 }
