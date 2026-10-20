@@ -7,6 +7,8 @@
 //! any other id succeeds. `export --preset offline` reports offline media (exit 1);
 //! `plugin-handoff` acts as a plugin that hands off to the agent (exit 3). With
 //! `FAKE_CLI_LOG=<file>` every process appends `start <ms>` / `end <ms>` lines, for concurrency checks.
+//! `exec transcript.models` prints `$FAKE_CLI_MODELS` (exit 1 when unset); `sequence.transcribe`
+//! records `sequence.transcribe model=<params.model>` in the project.
 
 use serde_json::{Value, json};
 use std::io::Write;
@@ -101,6 +103,9 @@ fn real_main() -> i32 {
                 };
                 println!("{}", json!({"line": n + 1, "id": id, "ok": true, "result": result}));
                 project.push_str(&id);
+                if id == "sequence.transcribe" {
+                    project.push_str(&format!(" model={}", params["model"].as_str().unwrap_or("-")));
+                }
                 project.push('\n');
             }
             let target = if let Some(p) = opt("--save-as") {
@@ -115,6 +120,13 @@ fn real_main() -> i32 {
             }
             0
         }
+        Some("exec") if pos.get(1).map(String::as_str) == Some("transcript.models") => match std::env::var("FAKE_CLI_MODELS") {
+            Ok(models) => {
+                println!("{models}");
+                0
+            }
+            Err(_) => 1,
+        },
         Some("export") => {
             let Some(out) = pos.get(1) else { return 2 };
             let preset = opt("--preset").unwrap_or_default();

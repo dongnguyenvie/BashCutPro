@@ -46,6 +46,9 @@ pub struct Options {
     pub mcp: Option<PathBuf>,
     /// Overrides the pipeline's `agentConcurrency`.
     pub agent_concurrency: Option<usize>,
+    /// The speech model for transcribe steps that name none; else picked from Settings and the
+    /// downloaded models ([`crate::speech`], #172).
+    pub speech_model: Option<String>,
 }
 
 impl Options {
@@ -61,6 +64,7 @@ impl Options {
             watch_every: Duration::from_secs(2),
             mcp: None,
             agent_concurrency: None,
+            speech_model: None,
         }
     }
 }
@@ -138,6 +142,7 @@ pub fn run(job: &Job, opts: &Options) -> Result<Summary, String> {
         agents: Mutex::new(0),
         agents_free: Condvar::new(),
         agent_cap: opts.agent_concurrency.unwrap_or(pipeline.agent_concurrency).clamp(1, pipeline::MAX_CONCURRENCY),
+        speech_model: speech_model(&pipeline, opts),
     };
     std::thread::scope(|s| {
         for _ in 0..workers {
@@ -225,6 +230,8 @@ struct Shared<'a> {
     agents: Mutex<usize>,
     agents_free: Condvar,
     agent_cap: usize,
+    /// `model` for transcribe steps that name none ([`crate::speech`]).
+    speech_model: Option<String>,
 }
 
 /// What a worker gets when it asks for an item.
@@ -692,7 +699,9 @@ fn review_step(sh: &Shared, idx: usize, s: usize, ctx: &Ctx, key: &str, profile:
 }
 
 fn engine_step(sh: &Shared, idx: usize, s: usize, ctx: &Ctx, key: &str, lines: &[CommandLine], timeout: Option<Duration>) -> Result<Vec<String>, ErrorInfo> {
-    let script = write_script(ctx, key, lines)?;
+    let lines: Vec<CommandLine> =
+        lines.iter().map(|l| CommandLine { id: l.id.clone(), params: crate::speech::with_model(&l.id, &l.params, sh.speech_model.as_deref()) }).collect();
+    let script = write_script(ctx, key, &lines)?;
     let mut argv = vec![cli(sh), "run".into(), path_arg(&script), "--project".into(), path_arg(&ctx.project), "--save".into(), "--compact".into()];
     argv.extend(data_dir_args(sh));
     let spec = Spec { argv, cwd: Some(ctx.dir.clone()), env: sh.opts.env.clone(), timeout, log: ctx.dir.join(key) };
@@ -821,7 +830,31 @@ fn plugins_dir(sh: &Shared) -> PathBuf {
 }
 
 fn data_dir_args(sh: &Shared) -> Vec<String> {
-    sh.opts.data_dir.as_ref().map(|d| vec!["--data-dir".to_string(), path_arg(d)]).unwrap_or_default()
+    dir_args(sh.opts)
+}
+
+fn dir_args(opts: &Options) -> Vec<String> {
+    opts.data_dir.as_ref().map(|d| vec!["--data-dir".to_string(), path_arg(d)]).unwrap_or_default()
+}
+
+/// The model for transcribe steps that name none: asked of the engine only when there are such steps.
+fn speech_model(pipeline: &Pipeline, opts: &Options) -> Option<String> {
+    if opts.speech_model.is_some() {
+        return opts.speech_model.clone();
+    }
+    let unnamed =
+        |id: &str, params: Option<&Value>| crate::speech::TRANSCRIBE_COMMANDS.contains(&id) && params.and_then(|p| p.get("model")).is_none_or(Value::is_null);
+    let needed = pipeline.steps.iter().filter_map(|s| s.kind().ok()).any(|k| match k {
+        StepKind::Command(id, params) => unnamed(id, params),
+        StepKind::Commands(lines) => lines.iter().any(|l| unnamed(&l.id, Some(&l.params))),
+        _ => false,
+    });
+    if !needed {
+        return None;
+    }
+    let settings = opts.data_dir.clone().or_else(crate::presets::default_data_dir).and_then(|d| crate::speech::settings_model(&d));
+    let models = crate::speech::engine_models(&crate::cli::engine(&opts.cli), &dir_args(opts), &opts.env);
+    crate::speech::choose(settings.as_deref(), models.as_ref())
 }
 
 fn path_arg(p: &Path) -> String {

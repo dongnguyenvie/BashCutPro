@@ -15,6 +15,7 @@ pub mod presets;
 mod process;
 mod python;
 pub mod runner;
+pub mod speech;
 
 pub use book::{AgentTotals, AgentUsage, Book, Category, Counts, ErrorInfo, ItemState, Job, Status, StepState, list_jobs};
 pub use governor::{FakeProbe, Limits, Probe, Report, SystemProbe};
