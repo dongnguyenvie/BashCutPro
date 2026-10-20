@@ -49,7 +49,7 @@ fn this_process_port() -> Option<u16> {
 #[derive(Clone, Debug, PartialEq)]
 struct Published(Option<String>);
 
-/// Called once per frame from [`super::layout`]: publish, update or remove `automation.json`.
+/// Called every pass from [`super::logic`], also while the window is hidden: publish, update or remove `automation.json`.
 pub fn publish(app: &FilmcraftApp, ctx: &egui::Context, data_dir: Option<&Path>) {
     let (Some(dir), Some(port)) = (data_dir, this_process_port()) else { return };
     let path = file(dir);

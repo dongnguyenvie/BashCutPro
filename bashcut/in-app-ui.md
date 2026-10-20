@@ -113,6 +113,7 @@ Every hook is an **inserted** line; no upstream line is edited (rules: [extendin
 | H9 | `crates/ui-egui/src/menus.rs` (`menu_items_for`) | `out.extend(crate::bashcut_ui::menu_items(session));` before `out` | 2 changes |
 | H10 | `crates/ui-egui/src/i18n/mod.rs` | **not needed** (#34): our strings are translated by `bashcut_ui::strings::s`, which reads the interface language or our own override (Vietnamese is not an upstream language) | — |
 | H12 | `crates/ui-egui/src/lib.rs` (`frame()`) | before `self.handle_drops(&ctx);`: `bashcut_ui::batch::take_drops(self, &ctx);` (files dropped on the Batch section's drop zone become batch inputs instead of project imports, #46) | low |
+| H13 | `crates/ui-egui/src/lib.rs` (`logic()`) | right after `self.drain_control(ctx);`: `bashcut_ui::logic(self, ctx);` (`automation.json` follows the open project also while an occluded macOS window skips `ui()`, #191) | low |
 | H11 | `xtask/src/main.rs` | `mod bashcut;` and, as the first line of `layer_of`: `bashcut::our_layer_first!(name);` (macro, as H7) | 2 changes |
 
 About **16 lines in 8 upstream files**, all marked `// BashCutPro`, all listed in `UPSTREAM.md`.

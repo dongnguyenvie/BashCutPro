@@ -100,6 +100,13 @@ pub fn data_dir(app: &FilmcraftApp) -> Option<PathBuf> {
     app.session.persistence.as_ref().map(|p| p.data_dir.clone())
 }
 
+/// The logic hook (`lib.rs`, `logic()`, after the control requests): runs every pass, also while an
+/// occluded macOS window skips `ui` (locked screen, minimised, behind a full-screen terminal), so a
+/// project opened or saved over the control channel is still published to `automation.json` (#191).
+pub fn logic(app: &FilmcraftApp, ctx: &egui::Context) {
+    connect::publish(app, ctx, data_dir(app).as_deref());
+}
+
 /// The layout hook (`lib.rs`, `frame()`): draws the rail, the side panel, floating sections and
 /// overlays, and returns what is left of `body` for FilmCraft's dock. In Import / Export mode, or
 /// with the rail hidden, `body` comes back unchanged.
@@ -111,7 +118,6 @@ pub fn layout(app: &mut FilmcraftApp, ui: &mut egui::Ui, body: egui::Rect) -> eg
     st.load_once(dir.as_deref(), &known);
     strings::set_language(st.language.as_deref());
     plugins::poll(&ctx);
-    connect::publish(app, &ctx, dir.as_deref());
     agent::poll(&ctx);
     batch::poll(&ctx, dir.as_deref());
     let mut dock = body;
