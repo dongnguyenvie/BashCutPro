@@ -198,3 +198,40 @@ fn hostile_frames_do_not_crash() {
     assert_eq!(Thumb { luma: vec![] }.diff(&Thumb::flat(0.5)), 1.0);
     assert_eq!(Thumb { luma: vec![] }.max_diff(&Thumb::flat(0.5)), 1.0);
 }
+
+/// BashCutPro#206: a slow pan or zoom on a still (each frame barely differs from the last, but the change adds up)
+/// is motion; sensor noise (each frame differs a little, nothing adds up) and a held frame are not.
+#[test]
+fn a_slow_drift_is_not_frozen_but_noise_and_a_hold_are() {
+    use bashcut_analysis::picture::{GRID_H, GRID_W};
+    let o = Options::per_second(1000);
+    // a gradient that slides 0.2 % of the frame a frame (10 samples a second, 3 s)
+    let gradient =
+        |shift: f32| Thumb { luma: (0..GRID_W * GRID_H).map(|k| (((k % GRID_W) as f32 + shift) / GRID_W as f32 * 0.6 + 0.2).clamp(0.0, 1.0)).collect() };
+    let drift: Vec<Sample> = (0..30i64).map(|i| Sample { time: i * 100, thumb: gradient(i as f32 * 0.002 * GRID_W as f32) }).collect();
+    assert!(drift.windows(2).all(|w| w[0].thumb.diff(&w[1].thumb) < o.still_diff), "the case only matters below still_diff");
+    let f = picture::check(&drift, 3000, &o);
+    assert!(f.iter().all(|f| f.kind != Kind::Frozen && f.kind != Kind::LongStill), "{f:?}");
+
+    // the same picture with noise that does not add up: frozen
+    let noisy: Vec<Sample> = (0..30i64)
+        .map(|i| {
+            let mut t = gradient(0.0);
+            for (k, v) in t.luma.iter_mut().enumerate() {
+                *v += if (k as i64 + i) % 2 == 0 { 0.001 } else { -0.001 };
+            }
+            Sample { time: i * 100, thumb: t }
+        })
+        .collect();
+    let f = picture::check(&noisy, 3000, &o);
+    assert!(f.iter().any(|f| f.kind == Kind::Frozen || f.kind == Kind::LongStill), "{f:?}");
+
+    // a drift for 1 s, then the frame holds for 2 s: frozen from where it stops
+    let mut held: Vec<Sample> = drift.iter().take(10).cloned().collect();
+    let last = held.last().map(|x| x.thumb.clone()).expect("a sample");
+    held.extend((10..30i64).map(|i| Sample { time: i * 100, thumb: last.clone() }));
+    let f = picture::check(&held, 3000, &o);
+    let frozen: Vec<_> = f.iter().filter(|f| f.kind == Kind::Frozen).collect();
+    assert_eq!(frozen.len(), 1, "{f:?}");
+    assert_eq!((frozen[0].start, frozen[0].end), (900, 3000));
+}

@@ -104,6 +104,14 @@ pub struct Options {
     pub min_still: i64,
     /// A flash: mean luma jumps up by at least this and comes back down by half of it.
     pub flash_jump: f32,
+    /// Two frames are identical below this mean difference (a held frame renders the same pixels).
+    pub same_diff: f32,
+    /// A slow drift (a Ken Burns zoom or pan, #206): inside an unchanged stretch, a run of frames that are not
+    /// identical is moving when its first and last frames differ by at least this many times the median
+    /// frame-to-frame difference (motion adds up, noise does not)…
+    pub drift_ratio: f32,
+    /// …and by at least this much.
+    pub drift_min: f32,
 }
 
 impl Options {
@@ -119,6 +127,9 @@ impl Options {
             min_frozen: s,
             min_still: s.saturating_mul(5),
             flash_jump: 0.35,
+            same_diff: 1e-5,
+            drift_ratio: 2.5,
+            drift_min: 0.0005,
         }
     }
 }
@@ -151,6 +162,46 @@ pub struct Finding {
     pub start: i64,
     pub end: i64,
     pub value: f64,
+}
+
+/// For each interval `k → k + 1` of the unchanged stretch `i..=j`: whether it belongs to a slow drift. Runs of
+/// non-identical intervals whose end-to-end change adds up (see [`Options::drift_ratio`]) are drifting.
+fn drifting(s: &[&Sample], i: usize, j: usize, o: &Options) -> Vec<bool> {
+    let diffs: Vec<f32> = (i..j)
+        .map(|k| match (s.get(k), s.get(k + 1)) {
+            (Some(a), Some(b)) => a.thumb.diff(&b.thumb),
+            _ => 0.0,
+        })
+        .collect();
+    let mut out = vec![false; diffs.len()];
+    let mut p = 0;
+    while p < diffs.len() {
+        if diffs.get(p).is_none_or(|d| *d < o.same_diff) {
+            p += 1;
+            continue;
+        }
+        let mut q = p;
+        while diffs.get(q).is_some_and(|d| *d >= o.same_diff) {
+            q += 1;
+        }
+        // intervals p..q change; 3 or more tell motion from noise
+        if q - p >= 3 {
+            let mut run: Vec<f32> = diffs.get(p..q).unwrap_or_default().to_vec();
+            run.sort_by(f32::total_cmp);
+            let median = run.get(run.len() / 2).copied().unwrap_or(0.0);
+            let total = match (s.get(i + p), s.get(i + q)) {
+                (Some(a), Some(b)) => a.thumb.diff(&b.thumb),
+                _ => 0.0,
+            };
+            if total >= o.drift_min && total >= o.drift_ratio * median {
+                for v in out.get_mut(p..q).into_iter().flatten() {
+                    *v = true;
+                }
+            }
+        }
+        p = q;
+    }
+    out
 }
 
 /// Run every check over `samples` (sorted by time here); the last sample lasts until `end`.
@@ -186,17 +237,31 @@ pub fn check(samples: &[Sample], end: i64, o: &Options) -> Vec<Finding> {
     let mut i = 0;
     while i < n {
         let mut j = i;
-        let mut worst = 0f32;
         while let (Some(a), Some(b)) = (s.get(j), s.get(j + 1)) {
             let d = a.thumb.diff(&b.thumb);
             if d >= o.still_diff || a.thumb.max_diff(&b.thumb) >= o.still_cell || is_black(a) || is_black(b) {
                 break;
             }
-            worst = worst.max(d);
             j += 1;
         }
-        if j > i {
-            let (a, b) = (s.get(i).map_or(0, |x| x.time), until(j));
+        // the stretch without its slowly moving parts: each run of still intervals is reported on its own
+        let moving = drifting(&s, i, j, o);
+        let mut k = i;
+        while k < j {
+            if moving.get(k - i).copied().unwrap_or(false) {
+                k += 1;
+                continue;
+            }
+            let mut m = k;
+            let mut worst = 0f32;
+            while m < j && !moving.get(m - i).copied().unwrap_or(false) {
+                if let (Some(a), Some(b)) = (s.get(m), s.get(m + 1)) {
+                    worst = worst.max(a.thumb.diff(&b.thumb));
+                }
+                m += 1;
+            }
+            // the last sample of the stretch lasts until the next one; a run cut short by motion ends where it starts
+            let (a, b) = (s.get(k).map_or(0, |x| x.time), if m == j { until(j) } else { s.get(m).map_or(0, |x| x.time) });
             let dur = b.saturating_sub(a);
             let kind = if dur >= o.min_still {
                 Some(Kind::LongStill)
@@ -208,6 +273,7 @@ pub fn check(samples: &[Sample], end: i64, o: &Options) -> Vec<Finding> {
             if let Some(kind) = kind {
                 out.push(Finding { kind, start: a, end: b, value: worst as f64 });
             }
+            k = m;
         }
         i = j + 1;
     }
