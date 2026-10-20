@@ -257,3 +257,29 @@ fn version_helpers() {
     assert_eq!(parse_df_free("garbage"), None);
     assert_eq!(parse_meminfo_total("MemTotal:       16314728 kB\nMemFree: 1 kB\n"), Some(16_314_728 * 1024));
 }
+
+/// The Claude Code plugin install (the kit README's way) and the setup's clone count as the kit (#182).
+#[test]
+fn kit_installed_as_claude_plugin_or_by_setup_is_found() {
+    let mut f = Fake::healthy();
+    f.vars.remove("BASHCUTPRO_KIT_DIR");
+    f.vars.insert("HOME".into(), "home".into());
+    assert_eq!(level(&run_checks(&f, &Options::default()), "kit"), Level::Warn);
+
+    f.file(
+        "home/.claude/plugins/installed_plugins.json",
+        br#"{"version":2,"plugins":{"bcp@bashcutpro-agent-kit":[{"scope":"user","installPath":"home/.claude/plugins/cache/bashcutpro-agent-kit/bcp/0.2.16","version":"0.2.16"}]}}"#,
+    );
+    // a registry entry whose files are gone is not a kit
+    assert_eq!(level(&run_checks(&f, &Options::default()), "kit"), Level::Warn);
+    f.file("home/.claude/plugins/cache/bashcutpro-agent-kit/bcp/0.2.16/skills/setup/SKILL.md", b"---\n");
+    let r = run_checks(&f, &Options::default());
+    assert_eq!(level(&r, "kit"), Level::Ok, "{}", r.to_text());
+    assert!(r.to_text().contains("Claude Code plugin bcp 0.2.16"), "{}", r.to_text());
+
+    let mut g = Fake::healthy();
+    g.vars.remove("BASHCUTPRO_KIT_DIR");
+    g.vars.insert("HOME".into(), "home".into());
+    g.file("home/.bashcutpro/bashcutpro-agent-kit/skills/setup/SKILL.md", b"---\n");
+    assert_eq!(level(&run_checks(&g, &Options::default()), "kit"), Level::Ok);
+}

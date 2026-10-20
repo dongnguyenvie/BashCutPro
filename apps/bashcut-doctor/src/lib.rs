@@ -268,19 +268,43 @@ fn check_kit(env: &dyn Env, opts: &Options, r: &mut Report) {
         r.findings.push(Finding::new("kit", Level::Ok, format!("bashcutpro-agent-kit {} at {}", version.as_deref().unwrap_or("(no version)"), dir.display())));
         return;
     }
-    // installed skills: Codex links them as ~/.agents/skills/bcp-<name>, Claude Code may copy them to ~/.claude/skills
+    // the Claude Code plugin (`claude plugin install bcp@bashcutpro-agent-kit`, the kit README's way)
+    if let Some((path, version)) = home(env).and_then(|h| claude_plugin_kit(env, &h)) {
+        let version = version.map(|v| format!(" {v}")).unwrap_or_default();
+        r.findings.push(Finding::new("kit", Level::Ok, format!("Claude Code plugin bcp{version} at {}", path.display())));
+        return;
+    }
+    // installed skills: Codex links them as ~/.agents/skills/bcp-<name>, Claude Code may copy them to ~/.claude/skills;
+    // the first-run setup clones the kit to ~/.bashcutpro/bashcutpro-agent-kit
     let found = home(env).and_then(|h| {
-        [h.join(".agents").join("skills"), h.join(".claude").join("skills")]
-            .into_iter()
-            .find(|d| env.file_size(&d.join("bcp-setup").join("SKILL.md")).is_some())
+        [
+            h.join(".agents").join("skills").join("bcp-setup"),
+            h.join(".claude").join("skills").join("bcp-setup"),
+            h.join(".bashcutpro").join("bashcutpro-agent-kit").join("skills").join("setup"),
+        ]
+        .into_iter()
+        .find(|d| env.file_size(&d.join("SKILL.md")).is_some())
     });
     match found {
-        Some(d) => r.findings.push(Finding::new("kit", Level::Ok, format!("kit skills installed in {}", d.display()))),
+        Some(d) => r.findings.push(Finding::new("kit", Level::Ok, format!("kit skills installed in {}", d.parent().unwrap_or(&d).display()))),
         None => r.findings.push(
             Finding::new("kit", Level::Warn, "no bashcutpro-agent-kit found")
                 .fix("install the kit (its README: Claude Code plugin or scripts/install-codex.sh), or set BASHCUTPRO_KIT_DIR"),
         ),
     }
+}
+
+/// The kit installed as a Claude Code plugin: `(install path, version)` from `~/.claude/plugins/installed_plugins.json`
+/// (`plugins["bcp@<marketplace>"]`), when its install path still holds the skills.
+fn claude_plugin_kit(env: &dyn Env, home: &Path) -> Option<(PathBuf, Option<String>)> {
+    let registry = read_json(env, &home.join(".claude").join("plugins").join("installed_plugins.json"))?;
+    registry.get("plugins")?.as_object()?.iter().filter(|(k, _)| k.starts_with("bcp@")).find_map(|(_, installs)| {
+        installs.as_array()?.iter().find_map(|i| {
+            let path = PathBuf::from(i.get("installPath")?.as_str()?);
+            env.file_size(&path.join("skills").join("setup").join("SKILL.md"))?;
+            Some((path, i.get("version").and_then(Value::as_str).map(str::to_string)))
+        })
+    })
 }
 
 /// Installed plugin manifests: `(folder, manifest)`.
