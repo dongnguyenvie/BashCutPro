@@ -172,6 +172,12 @@ SUBS = [
 ]
 
 
+# Carried edits (UPSTREAM.md) in files the packaging runs straight from packaging/, not from our copy: checked, so a
+# merge that drops one fails here. The Flatpak source manifest is read by flatpak-builder itself (#174); the
+# bundle repackages the Linux tarball, which the copy builds with FEATURES.
+CARRIED = [("linux/flatpak/ai.storyteller.filmcraft.yml", "-p filmcraft -p filmcraft-cli %s" % FEATURES)]
+
+
 class Fail(Exception):
     pass
 
@@ -180,6 +186,10 @@ def generate(root, out):
     src = os.path.join(root, "packaging")
     if not os.path.isdir(src):
         raise Fail("%s: no packaging/ folder" % root)
+    for rel, text in CARRIED:
+        with open(os.path.join(src, *rel.split("/")), encoding="utf-8") as fh:
+            if text not in fh.read():
+                raise Fail("packaging/%s: the carried edit %r is gone; re-apply it (UPSTREAM.md, bashcut/rebrand.md)" % (rel, text))
     if os.path.isdir(out):
         shutil.rmtree(out)
     shutil.copytree(src, out)

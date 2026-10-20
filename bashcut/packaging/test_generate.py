@@ -52,6 +52,21 @@ class GenerateTest(unittest.TestCase):
         with open(os.path.join(ROOT, "packaging", "env.sh"), encoding="utf-8") as fh:
             self.assertNotIn("BASHCUT_ROOT:?", fh.read())
 
+    def test_flatpak_builds_with_speech_and_losing_it_fails(self):
+        # flatpak-builder reads the source manifest from packaging/ itself, so speech is a carried edit there (#174)
+        with open(os.path.join(ROOT, "packaging", "linux", "flatpak", "ai.storyteller.filmcraft.yml"), encoding="utf-8") as fh:
+            self.assertIn("-p filmcraft -p filmcraft-cli --features filmcraft/whisper,filmcraft-cli/whisper", fh.read())
+        fake = os.path.join(self.tmp, "root")
+        shutil.copytree(os.path.join(ROOT, "packaging"), os.path.join(fake, "packaging"))
+        path = os.path.join(fake, "packaging", "linux", "flatpak", "ai.storyteller.filmcraft.yml")
+        with open(path, encoding="utf-8") as fh:
+            text = fh.read()
+        with open(path, "w", encoding="utf-8") as fh:
+            fh.write(text.replace(" --features filmcraft/whisper,filmcraft-cli/whisper", ""))
+        with self.assertRaises(generate.Fail) as e:
+            generate.generate(fake, self.out)
+        self.assertIn("flatpak", str(e.exception))
+
     def test_copies_parse(self):
         generate.generate(ROOT, self.out)
         xml.dom.minidom.parse(os.path.join(self.out, "windows", "filmcraft.wxs"))

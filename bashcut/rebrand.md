@@ -72,7 +72,7 @@ files upstream changes often (`dialogs.rs`, `main.rs`, `header.rs`) carry one ho
 | `packaging/linux/ai.storyteller.filmcraft.metainfo.xml.in` | 8 | name, developer, description, URLs |
 | `packaging/linux/ai.storyteller.filmcraft.desktop` | 1 | `Name=BashCutPro` |
 | `packaging/linux/flatpak-bundle.sh` | 1 | tarball name |
-| `packaging/linux/flatpak/ai.storyteller.filmcraft.yml` | 1 | icons from `bashcut/brand/` |
+| `packaging/linux/flatpak/ai.storyteller.filmcraft.yml` | 2 | icons from `bashcut/brand/`; speech-to-text (`--features …/whisper`, #174: flatpak-builder reads this file directly, so `bashcut/packaging/generate.py` cannot add it; generate.py checks it is still there) |
 | `packaging/freebsd/package.sh` | 1 | icons from `$BRAND_ICON_DIR` |
 | `omastore.toml` | 5 | icon path, `bashcutpro-…` tarball names |
 | `.github/workflows/release.yml` | 1 | `app-title: BashCutPro` (`app-name` stays `filmcraft`: it is the cargo package) |
