@@ -10,6 +10,7 @@
 # 4. Plugins and models: nothing installed here; plugins come from the registry in the app (Plugins on the rail) and
 #    each plugin downloads its models, checked against models.json, on first use.
 # 5. bashcut-doctor: checks the machine and prints fixes.
+# No `set -e` on purpose (bashcut/scripts/README.md): a failed optional step is reported and the next one still runs.
 set -u
 yes=0 skip_looks=0 skip_profiles=0 skip_kit=0 skip_doctor=0
 for a in "$@"; do

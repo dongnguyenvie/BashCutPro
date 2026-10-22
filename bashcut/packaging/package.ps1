@@ -9,6 +9,7 @@ param(
   [string] $Arch = 'x64',
   [switch] $SkipBuild
 )
+Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 $Root = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
 $TargetDir = if ($env:CARGO_TARGET_DIR) { $env:CARGO_TARGET_DIR } else { Join-Path $Root 'target' }

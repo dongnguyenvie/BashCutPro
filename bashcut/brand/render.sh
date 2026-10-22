@@ -8,6 +8,11 @@
 #
 #   bashcut/brand/render.sh
 set -euo pipefail
+case "${1:-}" in
+  -h|--help) sed -n '2,9p' "$0"; exit 0 ;;
+  "") ;;
+  *) echo "render: unknown argument $1" >&2; exit 2 ;;
+esac
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT="$(cd "$HERE/../.." && pwd)"
 DIR="$HERE/app-icon"
