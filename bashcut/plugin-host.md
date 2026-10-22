@@ -143,6 +143,16 @@ empty string, shows as the value itself, so the map may be partial. There is no 
 value is shown. Optional and backward compatible (`bashcut-plugin/1` unchanged); a non-object `choices` there
 rejects the manifest.
 
+## Bool params (BF1)
+
+Params reach the plugin as flags (`Manifest::command_line`); a param left out keeps the plugin's own default. A
+`bool` param sends its `flag` when true. When false it sends nothing, **unless the manifest `default` is `true`**: then
+it sends `--no-<name>` (the flag with its dashes stripped, e.g. `--keep` → `--no-keep`), so a default-true bool can be
+turned off from the plugin form, Batch steps and agent calls. Such a plugin must accept the false form (Python:
+`argparse.BooleanOptionalAction`); the plugins repo lint (`tools/check_registry.py`) fails a default-true bool whose
+script does not mention `--no-<name>` or `BooleanOptionalAction`. Default-false bools are unchanged, so older plugins
+keep working.
+
 ## Testing
 
 Never-crash rules apply (`AGENTS.md` §0): plugin output is hostile input, parsed with caps and no panics.
