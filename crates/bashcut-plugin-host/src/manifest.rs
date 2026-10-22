@@ -47,7 +47,8 @@ pub struct Manifest {
 }
 
 /// Translations of the text a person sees, by language code (`{"vi": {"title": …, "help": …}}`;
-/// on the plugin `name` / `summary`). Optional: an empty or missing entry falls back to English.
+/// on the plugin `name` / `summary`; on an enum setting or param `choices`, a map from choice value
+/// to its label). Optional: an empty or missing entry falls back to English.
 pub type I18n = BTreeMap<String, Text>;
 
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
@@ -61,6 +62,9 @@ pub struct Text {
     pub title: String,
     #[serde(skip_serializing_if = "String::is_empty")]
     pub help: String,
+    /// Labels of enum choices by choice value (`{"gemini": "Gemini (Google)"}`); the value is what runs.
+    #[serde(skip_serializing_if = "BTreeMap::is_empty")]
+    pub choices: BTreeMap<String, String>,
 }
 
 /// `english` in `lang` when the manifest has a non-empty translation, else `english`.
@@ -68,6 +72,14 @@ fn local<'a>(i18n: &'a I18n, lang: &str, english: &'a str, pick: fn(&Text) -> &s
     match i18n.get(lang).map(pick) {
         Some(x) if !x.trim().is_empty() => x,
         _ => english,
+    }
+}
+
+/// The label of choice `value` in `lang` when the manifest has a non-empty one, else the value itself.
+pub fn choice_label<'a>(i18n: &'a I18n, lang: &str, value: &'a str) -> &'a str {
+    match i18n.get(lang).and_then(|t| t.choices.get(value)) {
+        Some(x) if !x.trim().is_empty() => x,
+        _ => value,
     }
 }
 
@@ -154,6 +166,11 @@ impl Setting {
     pub fn help_in(&self, lang: &str) -> &str {
         local(&self.i18n, lang, &self.help, |x| &x.help)
     }
+
+    /// The label of choice `value` in `lang`, else the value.
+    pub fn choice_in<'a>(&'a self, lang: &str, value: &'a str) -> &'a str {
+        choice_label(&self.i18n, lang, value)
+    }
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
@@ -200,6 +217,11 @@ impl Param {
     pub fn title_in(&self, lang: &str) -> Option<&str> {
         let english = self.title.as_deref().unwrap_or_default();
         Some(local(&self.i18n, lang, english, |x| &x.title)).filter(|x| !x.trim().is_empty())
+    }
+
+    /// The label of choice `value` in `lang`, else the value.
+    pub fn choice_in<'a>(&'a self, lang: &str, value: &'a str) -> &'a str {
+        choice_label(&self.i18n, lang, value)
     }
 }
 
@@ -545,6 +567,23 @@ mod tests {
             (Some("Ngôn ngữ"), Some("Language"), Some("Số lần"), None)
         );
         assert!(Manifest::parse(&json!({"i18n": {"vi": "x"}}).to_string()).is_err(), "a translation is an object");
+    }
+
+    #[test]
+    fn choice_labels_follow_the_language_and_fall_back_to_the_value() {
+        let old = Manifest::parse(&sample()).unwrap();
+        assert_eq!((old.settings[0].choice_in("vi", "a"), old.actions[0].params[0].choice_in("vi", "vi")), ("a", "vi"));
+        let mut v: Value = serde_json::from_str(&sample()).unwrap();
+        v["settings"][0]["i18n"] = json!({"vi": {"title": "Dịch vụ", "choices": {"a": "Dịch vụ A", "b": " "}}});
+        v["actions"][0]["params"][0]["i18n"] = json!({"vi": {"choices": {"vi": "Tiếng Việt", "en": "Tiếng Anh"}}});
+        let m = Manifest::parse(&v.to_string()).unwrap();
+        let s = &m.settings[0];
+        assert_eq!((s.choice_in("vi", "a"), s.choice_in("vi", "b"), s.choice_in("en", "a"), s.choice_in("vi", "zz")), ("Dịch vụ A", "b", "a", "zz"));
+        let p = &m.actions[0].params[0];
+        assert_eq!((p.choice_in("vi", "en"), p.choice_in("en", "en"), p.title_in("vi")), ("Tiếng Anh", "en", None));
+        assert!(Manifest::parse(&json!({"settings": [{"id": "s", "i18n": {"vi": {"choices": ["x"]}}}]}).to_string()).is_err(), "choices is a map");
+        let back: Value = serde_json::to_value(&m.settings[0].i18n).unwrap();
+        assert_eq!(back["vi"]["choices"]["a"], "Dịch vụ A");
     }
 
     #[test]
