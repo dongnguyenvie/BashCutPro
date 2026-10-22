@@ -92,7 +92,7 @@ pub const IMPORT_MARKER: &str = "bashcut/imported-from-filmcraft.txt";
 /// What the import copies: settings (with the recent projects list), export presets, our `bashcut/`
 /// files (profiles, templates, looks, batch presets, agent and side-panel settings) and installed
 /// plugins. Not `Auto-Save`, `Recovery`, `Logs` or graphics state (FilmCraft's own), nor `models`
-/// (gigabytes: [`models_dir`] reads FilmCraft's in place).
+/// (gigabytes: [`models_dir`] links FilmCraft's files per file).
 pub const IMPORTED: &[&str] = &["preferences.json", "export-presets.json", "bashcut", "bashcut-plugins"];
 
 /// Runtime files of the open window inside `bashcut/` that must not follow (a stale port and pid).
@@ -140,20 +140,53 @@ fn copy_tree(from: &Path, to: &Path, depth: u32) -> bool {
     any
 }
 
-/// Where speech and voice models live: ours (`<data dir>/models`) when it exists, else FilmCraft's
-/// when that exists (so the same gigabytes are not downloaded twice), else ours.
+/// Where speech and voice models live: always ours (`<data dir>/models`, created), so a download
+/// lands in BashCutPro's folder (SB3). Each FilmCraft model file ours lacks is linked in first
+/// ([`link_missing`]): reads find ours, else FilmCraft's file, per file, without copying gigabytes.
 pub fn models_dir_in(ours: &Path, filmcraft: Option<&Path>) -> PathBuf {
     let mine = ours.join("models");
-    match filmcraft.map(|f| f.join("models")) {
-        Some(theirs) if !mine.is_dir() && theirs.is_dir() => theirs,
-        _ => mine,
+    let _ = std::fs::create_dir_all(&mine);
+    if let Some(theirs) = filmcraft.map(|f| f.join("models")) {
+        link_missing(&theirs, &mine, 0);
+    }
+    mine
+}
+
+/// Links every file under `theirs` that `mine` does not have (hard link, else a symlink on Unix;
+/// best effort, at most 8 levels, no `.part` leftovers, never replaces a file of ours). FilmCraft's
+/// files stay read only: the downloader writes `<name>.part` and renames it over the link, it never
+/// writes through it.
+pub fn link_missing(theirs: &Path, mine: &Path, depth: u32) {
+    if depth > 8 {
+        return;
+    }
+    let Ok(rd) = std::fs::read_dir(theirs) else { return };
+    for e in rd.flatten() {
+        let (from, to) = (e.path(), mine.join(e.file_name()));
+        let Ok(meta) = std::fs::symlink_metadata(&from) else { continue };
+        if meta.is_dir() {
+            if std::fs::create_dir_all(&to).is_ok() {
+                link_missing(&from, &to, depth + 1);
+            }
+        } else if meta.is_file()
+            && from.extension().is_none_or(|x| x != "part")
+            && std::fs::symlink_metadata(&to).is_err()
+            && std::fs::hard_link(&from, &to).is_err()
+        {
+            #[cfg(unix)]
+            let _ = std::os::unix::fs::symlink(&from, &to);
+        }
     }
 }
 
-/// [`models_dir_in`] for this process.
+/// [`models_dir_in`] for this process. The panels ask every frame, so FilmCraft's folder is
+/// walked once per process; later calls only make sure ours exists.
 pub fn models_dir() -> Option<PathBuf> {
     let ours = data_dir()?;
-    Some(models_dir_in(&ours, Host::current().filmcraft_dir().as_deref()))
+    static LINK: std::sync::Once = std::sync::Once::new();
+    let mut dir = None;
+    LINK.call_once(|| dir = Some(models_dir_in(&ours, Host::current().filmcraft_dir().as_deref())));
+    Some(dir.unwrap_or_else(|| models_dir_in(&ours, None)))
 }
 
 /// Upstream FilmCraft's per-user folder, read only (see [`Host::filmcraft_dir`]).

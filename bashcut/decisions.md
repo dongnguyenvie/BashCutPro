@@ -15,9 +15,11 @@ decides something; don't change an old one, add a new one that supersedes it.
   `preferences.json` (settings and recent projects), `export-presets.json`, `bashcut/` (without the open window's
   `automation.json`) and `bashcut-plugins/`, and write `bashcut/imported-from-filmcraft.txt` (the log; never runs
   twice). Not copied: `Auto-Save`, `Recovery`, `Logs`, graphics state and `models`.
-- **Models:** `transcript::models_dir` (hook) uses our `models` folder when it exists, else FilmCraft's in place
-  (no duplicate gigabytes). Folder-level, not per file: while it falls back, a newly downloaded model lands in
-  FilmCraft's folder too.
+- **Models (SB3, 2026-10-23):** `transcript::models_dir` (hook) always answers our `models` folder (created), so a
+  download lands in BashCutPro's folder. Reads fall back per file: once per process, each file of FilmCraft's
+  `models` that ours lacks is hard-linked in (a symlink on Unix when hard links fail; no `.part` leftovers, never
+  over a file of ours), so the same gigabytes are not downloaded or copied twice. FilmCraft's files stay read
+  only: the downloader writes `<name>.part` and renames it over the link. Replaces SB1's folder-level fallback.
 - **Why:** owner decision 2026-10-22. eframe's app name stays "FilmCraft": the build has no eframe persistence, so
   it stores nothing under that name.
 
