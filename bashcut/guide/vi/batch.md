@@ -10,15 +10,19 @@ loạt bị dừng sẽ chạy tiếp từ chỗ cũ.
 
 Mở **Hàng loạt** (Batch) trên thanh bên (hoặc **Chạy trên nhiều tệp…** từ một thao tác plugin hay từ trợ lý).
 
+**Bắt đầu từ:** (Start from) ở trên cùng nạp một mẫu thiết lập của bạn hoặc mở một lượt gần đây (mỗi dòng ghi "tên ·
+ngày · n xong / m lỗi"), nên thiết lập đã lưu chỉ cách một cú nhấp.
+
 1. **Đầu vào** (Inputs): thả tệp hoặc thư mục vào bảng, hoặc dùng **Thêm tệp…** / **Thêm thư mục…**. Video, âm thanh,
-   ảnh và dự án có sẵn (`.fcproj`) đều được. Dự án bạn thêm vào được sao chép, không bao giờ bị sửa.
+   ảnh và dự án có sẵn (`.fcproj`) đều được. Dự án bạn thêm vào được sao chép, không bao giờ bị sửa. Dấu ✕ sau tên tệp
+   bỏ tệp đó; **Xoá hết** (Clear all, cạnh số tệp) xoá mọi đầu vào và giữ nguyên phần còn lại.
 2. **Các bước** (Steps): **＋ Thêm bước** mở ô tìm lệnh, thao tác plugin và công thức (giống bảng lệnh). Các bước chạy
    lần lượt trên từng dự án.
 3. **Đầu ra** (Outputs): **＋ Thêm đầu ra** rồi chọn một **Hồ sơ xuất** (TikTok, Reels, Shorts, YouTube, YouTube 4K,
    Facebook vuông; xem [Hồ sơ xuất](export.md)) hoặc một **Thiết lập xuất** của bạn. Không có đầu ra cũng được: khi đó
    kết quả là các dự án.
 4. Đặt **Tên**, chọn số mục chạy **Cùng lúc**, và **Khi một mục lỗi**: **tiếp tục** với các mục khác hay **dừng**. Dòng
-   dự án cho biết dự án được lưu ở đâu (mặc định cạnh đầu vào đầu tiên, trong `batch/`; **Chọn…** để đổi).
+   dự án cho biết dự án được lưu ở đâu (mặc định cạnh đầu vào đầu tiên, trong `batch/`; **Chọn…** để đổi, ✕ để về mặc định).
 5. **Chạy hàng loạt** (Run batch).
 
 **Lưu thành mẫu** (Save as preset) giữ toàn bộ thiết lập cho lần sau; **Mẫu thiết lập** (Presets) liệt kê chúng.

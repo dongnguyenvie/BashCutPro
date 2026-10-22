@@ -1095,3 +1095,87 @@ fn batch_plugin_steps_edit_as_a_form_and_bad_json_cannot_apply() {
     assert!(d.harness.state().ui_error.is_none(), "{:?}", d.harness.state().ui_error);
     let _ = std::fs::remove_dir_all(&data);
 }
+
+/// UX12: a saved preset loads from the "Start from" row at the top of Batch; recent rows read
+/// "name · date · n done / m failed"; "Clear all" empties only the inputs.
+#[test]
+fn batch_starts_from_a_preset_and_clears_inputs() {
+    let data = std::env::temp_dir().join(format!("bashcut-ui-startfrom-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&data);
+    std::fs::create_dir_all(data.join("bashcut")).unwrap();
+    let clips: Vec<String> = ["a", "b"]
+        .iter()
+        .map(|c| {
+            let p = data.join(format!("{c}.mp4"));
+            std::fs::write(&p, b"media").unwrap();
+            p.to_string_lossy().into_owned()
+        })
+        .collect();
+    // 2026-10-22 UTC
+    let recent = json!({"recent": [{"job": data.join("no-job").to_string_lossy(), "name": "promo", "at": 1_792_627_200_000u64, "done": 3, "failed": 1}]});
+    std::fs::write(data.join("bashcut").join("batch.json"), recent.to_string()).unwrap();
+    let mut session = Session::default();
+    session.start_autosave(filmcraft_engine::autosave::AutosaveConfig::new(&data)).expect("data dir");
+    session.execute("file.openDemoProject", json!({})).expect("demo project");
+    let (tx, rx) = channel();
+    let app = FilmcraftApp::new(session).with_control(rx);
+    let harness = Harness::builder().with_size(egui::vec2(W, H)).with_max_steps(10_000).build_eframe(move |_cc| app);
+    let mut d = Driver { harness, tx };
+    d.frames(4);
+    let element = |d: &mut Driver, id: &str| -> Value {
+        let v = d.ok("ui.elements", json!({"prefix": id}));
+        v.as_array().and_then(|a| a.iter().find(|e| e["id"] == json!(id)).cloned()).unwrap_or(Value::Null)
+    };
+    d.click("bashcut.rail.batch");
+    d.exec("bashcut.batch.addStep", json!({"command": "markers.add", "params": {"name": "Hook"}}));
+    d.exec("bashcut.batch.set", json!({"name": "hooks"}));
+    d.exec("bashcut.batch.addInput", json!({"paths": [clips[0]]}));
+    d.exec("bashcut.batch.savePreset", json!({"name": "hooks"}));
+    d.exec("bashcut.batch.clear", json!({}));
+    d.exec("bashcut.batch.addInput", json!({"paths": clips}));
+    d.frames(3);
+
+    // the row sits above the inputs
+    let (row, input) = (d.rect("bashcut.batch.startFrom").expect("start-from row"), d.rect("bashcut.batch.input.0").expect("input row"));
+    assert!(row[1] < input[1], "{row:?} / {input:?}");
+    d.click("bashcut.batch.startFrom");
+    let r = element(&mut d, "bashcut.batch.startFrom.recent.0");
+    assert_eq!(r["label"], json!("promo · 2026-10-22 · 3 done / 1 failed"));
+    d.click("bashcut.batch.startFrom.preset.hooks");
+    let draft = d.exec("bashcut.batch.state", json!({}))["draft"].clone();
+    assert_eq!(draft["name"], json!("hooks"), "the preset is loaded");
+    assert_eq!(draft["steps"].as_array().map(Vec::len), Some(1));
+
+    // the command: a preset fills the draft
+    d.exec("bashcut.batch.clear", json!({}));
+    d.exec("bashcut.batch.startFrom", json!({"preset": "hooks"}));
+    d.exec("bashcut.batch.addInput", json!({"paths": clips}));
+    d.exec("bashcut.ui.setLanguage", json!({"language": "vi"}));
+    d.frames(3);
+    assert_eq!(element(&mut d, "bashcut.batch.clearInputs")["label"], json!("Xoá hết"));
+    d.click("bashcut.batch.startFrom");
+    assert_eq!(element(&mut d, "bashcut.batch.startFrom.recent.0")["label"], json!("promo · 2026-10-22 · 3 xong / 1 lỗi"));
+    d.harness.key_press(egui::Key::Escape);
+    d.frames(2);
+    if let Some(dir) = std::env::var_os("BASHCUT_UI_SHOTS").map(std::path::PathBuf::from) {
+        std::fs::create_dir_all(&dir).unwrap();
+        for lang in ["en", "vi"] {
+            d.exec("bashcut.ui.setLanguage", json!({"language": lang}));
+            d.frames(3);
+            d.harness.render().unwrap().save(dir.join(format!("batch-start-from-{lang}.png"))).unwrap();
+        }
+    }
+    d.exec("bashcut.ui.setLanguage", json!({"language": null}));
+    d.frames(2);
+    // a chosen projects folder resets to the default with its ✕
+    assert!(d.has("bashcut.batch.projects.choose"), "Choose… stays on screen next to a long folder");
+    d.click("bashcut.batch.projects.reset");
+    assert_eq!(d.exec("bashcut.batch.state", json!({}))["draft"]["projectsFolder"], json!(""));
+    assert!(!d.has("bashcut.batch.projects.reset"), "no ✕ for the default");
+    d.click("bashcut.batch.clearInputs");
+    let draft = d.exec("bashcut.batch.state", json!({}))["draft"].clone();
+    assert_eq!(draft["inputs"], json!([]), "inputs cleared");
+    assert_eq!(draft["steps"].as_array().map(Vec::len), Some(1), "steps kept");
+    assert!(d.harness.state().ui_error.is_none(), "{:?}", d.harness.state().ui_error);
+    let _ = std::fs::remove_dir_all(&data);
+}

@@ -50,6 +50,11 @@ pub struct Recent {
     pub job: String,
     pub name: String,
     pub at: u64,
+    /// Items done and failed when the job was last read (shown in the Start-from list).
+    #[serde(default)]
+    pub done: u32,
+    #[serde(default)]
+    pub failed: u32,
 }
 
 /// What `batch.json` keeps between sessions.
@@ -79,8 +84,17 @@ impl Memory {
     fn remember(&mut self, job: &Job, name: &str) {
         let path = job.dir.to_string_lossy().into_owned();
         self.recent.retain(|r| r.job != path);
-        self.recent.insert(0, Recent { job: path, name: name.to_string(), at: now_ms() });
+        self.recent.insert(0, Recent { job: path, name: name.to_string(), at: now_ms(), done: 0, failed: 0 });
         self.recent.truncate(MAX_RECENT);
+    }
+
+    /// Count `book`'s done and failed items into the recent entry of `job`.
+    pub fn tally(&mut self, job: &Path, book: &Book) {
+        let path = job.to_string_lossy();
+        let Some(r) = self.recent.iter_mut().find(|r| r.job == path) else { return };
+        let count = |want: &[Status]| u32::try_from(book.items.iter().filter(|i| want.contains(&i.status)).count()).unwrap_or(u32::MAX);
+        r.done = count(&[Status::Done]);
+        r.failed = count(&[Status::Failed, Status::NeedsFix, Status::NeedsAttention, Status::Tripped]);
     }
 
     fn expected(&self, label: &str) -> u64 {
@@ -264,6 +278,9 @@ pub fn poll(ctx: &egui::Context, dir: Option<&Path>) {
         }
         if let Some(book) = g.book.clone() {
             g.memory.learn(&book, since);
+            if let Some(dir) = g.job.as_ref().map(|j| j.dir.clone()) {
+                g.memory.tally(&dir, &book);
+            }
         }
         g.save(dir);
         return;
@@ -542,6 +559,10 @@ pub fn invoke(app: &mut FilmcraftApp, ctx: &egui::Context, name: &str, p: &Value
             let added = g.add_inputs(paths);
             Ok(json!({"added": added, "inputs": g.draft.inputs}))
         }
+        "clearInputs" => {
+            g.draft.inputs.clear();
+            Ok(json!(g.draft.inputs))
+        }
         "removeInput" => {
             let i = index_p(p, "index", g.draft.inputs.len())?;
             g.draft.inputs.remove(i);
@@ -688,6 +709,17 @@ pub fn invoke(app: &mut FilmcraftApp, ctx: &egui::Context, name: &str, p: &Value
             Ok(Value::Null)
         }
         "recent" => Ok(json!(g.memory.recent)),
+        "startFrom" => {
+            // a preset fills the draft; a recent job opens with its queue
+            if let Some(preset) = str_p(p, "preset") {
+                let d = dir.as_deref().ok_or("presets need a data folder")?;
+                g.draft = presets::load(d, preset, &pipeline::absolute(Path::new(".")))?;
+                return Ok(json!({"draft": g.draft}));
+            }
+            let job = str_p(p, "job").ok_or("`preset` or `job` is required")?.to_string();
+            drop(g);
+            invoke(app, ctx, "openJob", &json!({"job": job}))
+        }
         "openJob" => {
             if g.is_running() {
                 return Err("a batch is running; wait for it or cancel it first".into());
@@ -700,6 +732,10 @@ pub fn invoke(app: &mut FilmcraftApp, ctx: &egui::Context, name: &str, p: &Value
             g.summary = None;
             g.error = None;
             g.read();
+            if let (Some(book), Some(job)) = (g.book.clone(), g.job.as_ref().map(|j| j.dir.clone())) {
+                g.memory.tally(&job, &book);
+                g.save(dir.as_deref());
+            }
             Ok(state_json(&g))
         }
         "durations" => Ok(json!(g.memory.durations)),
@@ -714,6 +750,7 @@ pub fn commands() -> Vec<CommandInfo> {
         ("clear", "Clear Batch Draft"),
         ("addInput", "Add Batch Inputs"),
         ("removeInput", "Remove Batch Input"),
+        ("clearInputs", "Clear Batch Inputs"),
         ("addStep", "Add Batch Step"),
         ("setStep", "Change Batch Step"),
         ("removeStep", "Remove Batch Step"),
@@ -733,6 +770,7 @@ pub fn commands() -> Vec<CommandInfo> {
         ("deletePreset", "Delete Batch Preset"),
         ("recent", "Recent Batches"),
         ("openJob", "Open Batch Job"),
+        ("startFrom", "Start Batch From Preset or Recent"),
         ("prefill", "Run on Many Files"),
         ("durations", "Learned Batch Step Times"),
     ]
@@ -786,6 +824,16 @@ mod tests {
         assert_eq!(m.durations["Create project"], Learned { ms: 2_000, runs: 2 });
         m.learn(&book, 999_999);
         assert_eq!(m.durations["Create project"].runs, 2, "steps that ended before the run are not learned again");
+
+        // the recent entry counts done and failed items
+        m.remember(&job, "t");
+        book.items[0].status = Status::Failed;
+        m.tally(&job.dir, &book);
+        assert_eq!((m.recent[0].done, m.recent[0].failed), (0, 1));
+        book.items[0].status = Status::Done;
+        m.tally(&job.dir, &book);
+        assert_eq!((m.recent[0].done, m.recent[0].failed), (1, 0));
+        m.tally(Path::new("elsewhere"), &book);
 
         let item = &mut book.items[0];
         item.status = Status::Running;
