@@ -162,6 +162,21 @@ channel. Error status lines go through `hints::friendly`, which turns the known 
 `claude` cannot start, `no_cli`, `needs the open project`) into one sentence plus "See Troubleshooting".
 `hints::python_found` / `cli_found` are the `bashcut-doctor` lookups, asked once per session, for other sections (UX7).
 
+Run outcome in the card (UX5): each plugin card shows its last run under its title (also while the card is closed),
+`bashcut.plugins.<id>.last`: "Running 40 %" / "Running…", "Done", "Needs the agent", "Cancelled", or "Failed: …"
+through `hints::friendly` (a run that did not start at all shows its error there too, not in the panel's status line),
+then **Open in Runs** (`….last.runs`, switches the rail section) and ✕ (`….last.dismiss`). The last run per plugin
+lives in the panel's `Drafts`; a newer run of that plugin started anywhere (palette, agent, control channel) takes its
+place. The panel-top "Started run N" is gone. **Decision (audit §8, P3): no auto-switch to Runs.** Running an
+action, from the panel or by command, leaves the open section alone; the card says how it went and links to Runs.
+(The audit's "lost switch" was the translate form being a `view` action, which opens Plugins by design.) A `view`
+action still opens Plugins, where its form is. **Install** reads **Installing…** (disabled) and **Update to …**
+reads **Updating…** while the host installs that id, so a double click starts one install; a failed install says
+"Failed: …" under its row (`bashcut.plugins.<id>.install.status`). The first time Plugins is drawn with a data folder
+and no registry (and no check made yet), it checks the registry once; the line under **Available**
+(`bashcut.plugins.registry.status`) says "Checking the registry…", "N plugins available" / "All plugins are installed",
+or "Could not check …", with the registry location as its tooltip.
+
 Built in #52 (P): `bashcut_ui/palette.rs`, a foreground `egui::Area` drawn at the end of `layout` in every mode.
 Cmd/Ctrl+Shift+P (`bashcut.palette.open`, Window ▸ BashCutPro ▸ Command Palette…) opens it; Cmd/Ctrl+K stays
 upstream's Add Edit. Items: engine and UI commands (live shortcut and enabled state), `bashcut.*` commands, plugin
@@ -280,7 +295,7 @@ own research (spec 14) reached the same conclusion for most needs.
 
 Built in #37 (U4): the model and rules are in [plugin-host.md](plugin-host.md) §Views. `bashcut_ui/view.rs` draws the
 form at the end of the plugin card (the card opens when a new view arrives); a typed value stays until the plugin
-sends a different value for that field. Running a `view` action opens the Plugins section instead of Runs. Images
+sends a different value for that field. Running a `view` action opens the Plugins section. Images
 are decoded off the PNG header with limits and cached by path, size and mtime. Automation ids
 `bashcut.view.<plugin>.title`, `.row<n>`, `.<id>` (fields and buttons), `.<list>.<item>[.<button>]`. Port of the
 translate-captions review list to a view is a follow-up in `bashcutpro-plugins`.

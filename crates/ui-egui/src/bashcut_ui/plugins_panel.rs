@@ -2,12 +2,12 @@
 //! actions, and what the registry offers. Every button goes through the `bashcut.plugins.*`
 //! commands ([`plugins::invoke`]) and registers an automation id.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
-use bashcut_plugin_host::JobState;
 use bashcut_plugin_host::install::Installed;
 use bashcut_plugin_host::manifest::{Action, Manifest, Param, Setting};
 use bashcut_plugin_host::registry::Entry;
+use bashcut_plugin_host::{Job, JobKind, JobState};
 use serde_json::{Map, Value, json};
 
 use super::hints::{self, CONTROL_OFF, HOW_TO_TURN_ON};
@@ -33,8 +33,115 @@ struct Drafts {
     status: Option<(bool, String)>,
     /// Per plugin, the run whose form last opened its card (a new form opens it once).
     shown_view: BTreeMap<String, u64>,
-    /// The registry fetch the "Checking…" line waits for.
-    checking: Option<u64>,
+    /// Per plugin, the last run its card shows (until dismissed).
+    last: BTreeMap<String, Last>,
+    /// Per plugin, the newest run seen in the host: a newer one, started anywhere (palette, agent,
+    /// control channel), becomes the card's last run.
+    seen: BTreeMap<String, u64>,
+    /// The registry was checked on the first open (once a session, never repeated).
+    auto_checked: bool,
+}
+
+/// A plugin's last run as its card shows it.
+#[derive(Clone, Debug, PartialEq)]
+enum Last {
+    /// A run the host holds.
+    Job(u64),
+    /// A run that did not start, with the host's error.
+    Error(String),
+}
+
+/// What the panel reads of a job each frame.
+#[derive(Clone, Debug, PartialEq)]
+struct Brief {
+    state: JobState,
+    progress: Option<f32>,
+    message: String,
+}
+
+impl Brief {
+    fn of(j: &Job) -> Self {
+        Brief { state: j.state, progress: j.progress, message: j.message.clone() }
+    }
+}
+
+/// What the host says this frame, read under one lock.
+#[derive(Default)]
+struct Snapshot {
+    /// Every job, by id.
+    jobs: BTreeMap<u64, Brief>,
+    /// Per plugin, its newest run.
+    newest_run: BTreeMap<String, u64>,
+    /// Per plugin, its newest install or update.
+    newest_install: BTreeMap<String, u64>,
+    /// Plugins being installed or updated now.
+    installing: BTreeSet<String>,
+    /// The newest registry check.
+    registry_check: Option<Brief>,
+}
+
+impl Snapshot {
+    fn read(jobs: &[Job]) -> Self {
+        let mut s = Snapshot::default();
+        // jobs come oldest first: the last one seen per plugin is its newest
+        for j in jobs {
+            s.jobs.insert(j.id, Brief::of(j));
+            match &j.kind {
+                JobKind::Run { plugin, .. } => {
+                    s.newest_run.insert(plugin.clone(), j.id);
+                }
+                JobKind::Install { plugin } => {
+                    s.newest_install.insert(plugin.clone(), j.id);
+                    if j.state.is_running() {
+                        s.installing.insert(plugin.clone());
+                    }
+                }
+                JobKind::Registry => s.registry_check = Some(Brief::of(j)),
+            }
+        }
+        s
+    }
+}
+
+/// The line a card shows for its last run.
+#[derive(Clone, Debug, PartialEq)]
+struct LastLine {
+    text: String,
+    failed: bool,
+    /// The run is in Runs (its log, Retry, Send to agent): offer "Open in Runs".
+    in_runs: bool,
+}
+
+/// What a card says about its last run (`None` once the host forgot it, e.g. after Clear).
+/// Failures read through [`hints::friendly`].
+fn last_line(last: &Last, job: Option<&Brief>) -> Option<LastLine> {
+    let failed = |msg: &str| if msg.trim().is_empty() { s("Failed").to_string() } else { f("Failed: {error}", &[("error", &hints::friendly(msg))]) };
+    let line = |text: String, failed: bool| Some(LastLine { text, failed, in_runs: true });
+    match last {
+        Last::Error(e) => Some(LastLine { text: failed(e), failed: true, in_runs: false }),
+        Last::Job(_) => {
+            let j = job?;
+            match j.state {
+                JobState::Running => match j.progress.filter(|p| p.is_finite()) {
+                    Some(p) => line(f("Running {percent} %", &[("percent", &format!("{}", (p.clamp(0.0, 1.0) * 100.0).round() as u32))]), false),
+                    None => line(s("Running…").to_string(), false),
+                },
+                JobState::Succeeded => line(s("Done").to_string(), false),
+                JobState::HandOff => line(s("Needs the agent").to_string(), false),
+                JobState::Cancelled => line(s("Cancelled").to_string(), false),
+                JobState::Failed | JobState::TimedOut | JobState::Crashed => line(failed(&j.message), true),
+            }
+        }
+    }
+}
+
+/// The registry line: "N plugins available" (`listed` = the ones not installed yet).
+fn available_text(listed: usize, total: usize) -> String {
+    match listed {
+        0 if total > 0 => s("All plugins are installed").to_string(),
+        1 => s("1 plugin available").to_string(),
+        n => f("{n} plugins available", &[("n", &n.to_string())]),
+    }
 }
 
 fn key() -> egui::Id {
@@ -72,20 +179,52 @@ fn run(app: &mut FilmcraftApp, ctx: &egui::Context, d: &mut Drafts, name: &str, 
     }
 }
 
+/// Run `bashcut.plugins.run` or `click` for `plugin`: the run, or why it did not start, becomes
+/// the card's last run (not the panel's status line).
+fn start_run(app: &mut FilmcraftApp, ctx: &egui::Context, d: &mut Drafts, plugin: &str, name: &str, params: Value) -> bool {
+    match plugins::invoke(app, ctx, name, &params) {
+        Ok(v) => {
+            d.status = None;
+            if let Some(job) = v.get("job").and_then(Value::as_u64) {
+                d.last.insert(plugin.to_string(), Last::Job(job));
+            }
+            true
+        }
+        Err(e) => {
+            d.last.insert(plugin.to_string(), Last::Error(e));
+            false
+        }
+    }
+}
+
 pub fn draw(app: &mut FilmcraftApp, ui: &mut egui::Ui) {
     let ctx = ui.ctx().clone();
     let mut d = drafts(&ctx);
     let t = app.tokens;
-    let (installed, registry, location, running, checked) = plugins::with(app, &ctx, |h| {
-        let checked = d.checking.and_then(|id| h.job(id)).filter(|j| j.state != JobState::Running).map(|j| (j.state, j.message.clone()));
-        (h.installed().to_vec(), h.registry().cloned(), format!("{}@{}", h.registry_location.0, h.registry_location.1), h.any_running(), checked)
+    let (installed, registry, location, running, snap) = plugins::with(app, &ctx, |h| {
+        (
+            h.installed().to_vec(),
+            h.registry().cloned(),
+            format!("{}@{}", h.registry_location.0, h.registry_location.1),
+            h.any_running(),
+            Snapshot::read(h.jobs()),
+        )
     });
-    // the fetch ended: drop "Checking…", or say why it failed
-    if let Some((state, msg)) = checked {
-        d.checking = None;
-        d.status = (state != JobState::Succeeded).then(|| (false, f("Could not check {location}: {error}", &[("location", &location), ("error", &msg)])));
+    // a run started anywhere since the last look becomes its card's last run
+    for (plugin, id) in &snap.newest_run {
+        if d.seen.get(plugin).is_none_or(|seen| seen < id) {
+            d.seen.insert(plugin.clone(), *id);
+            d.last.insert(plugin.clone(), Last::Job(*id));
+        }
     }
     let can_install = super::data_dir(app).is_some();
+    // the first open with no registry checks it once, so the list shows without a click
+    if !d.auto_checked && can_install {
+        d.auto_checked = true;
+        if registry.is_none() && snap.registry_check.is_none() {
+            run(app, &ctx, &mut d, "registry", json!({}));
+        }
+    }
 
     // before any click: without the control channel, project actions cannot run
     if !hints::control_on() {
@@ -105,7 +244,7 @@ pub fn draw(app: &mut FilmcraftApp, ui: &mut egui::Ui) {
         ui.label(egui::RichText::new(s("No plugins installed yet.")).size(11.0).color(t.text_dim));
     }
     for p in &installed {
-        plugin_card(app, ui, &ctx, &mut d, p);
+        plugin_card(app, ui, &ctx, &mut d, &snap, p);
     }
 
     // registry
@@ -114,25 +253,29 @@ pub fn draw(app: &mut FilmcraftApp, ui: &mut egui::Ui) {
     ui.horizontal(|ui| {
         ui.label(egui::RichText::new(s("Available")).strong().color(t.text));
         let label = if registry.is_some() { s("Refresh") } else { s("Check registry") };
-        if button(app, ui, "bashcut.plugins.registry.refresh", label, can_install)
-            && let Some(v) = run(app, &ctx, &mut d, "registry", json!({}))
-        {
-            d.checking = v["job"].as_u64();
-            d.status = Some((true, f("Checking {location}…", &[("location", &location)])));
+        let checking = snap.registry_check.as_ref().is_some_and(|j| j.state.is_running());
+        if button(app, ui, "bashcut.plugins.registry.refresh", label, can_install && !checking) {
+            run(app, &ctx, &mut d, "registry", json!({}));
         }
     });
     if !can_install {
         ui.label(egui::RichText::new(s("No data folder in this session: plugins cannot be installed.")).size(11.0).color(t.text_dim));
     }
-    match &registry {
-        None => {
-            ui.label(egui::RichText::new(f("Registry: {location}", &[("location", &location)])).size(11.0).color(t.text_dim));
-        }
-        Some(reg) => {
-            for e in reg.plugins.iter().filter(|e| !installed.iter().any(|p| p.id == e.id)) {
-                registry_row(app, ui, &ctx, &mut d, e, can_install);
-            }
-        }
+    let listed: Vec<&Entry> = registry.iter().flat_map(|r| &r.plugins).filter(|e| !installed.iter().any(|p| p.id == e.id)).collect();
+    // what the registry check says; where the registry lives is in the tooltip
+    let line = match &snap.registry_check {
+        Some(j) if j.state.is_running() => Some((s("Checking the registry…").to_string(), false)),
+        Some(j) if j.state != JobState::Succeeded => Some((f("Could not check {location}: {error}", &[("location", &location), ("error", &j.message)]), true)),
+        _ => registry.as_ref().map(|r| (available_text(listed.len(), r.plugins.len()), false)),
+    };
+    if let Some((text, failed)) = line {
+        let r = ui
+            .label(egui::RichText::new(&text).size(11.0).color(if failed { t.danger } else { t.text_dim }))
+            .on_hover_text(f("Registry: {location}", &[("location", &location)]));
+        app.auto.add_response("bashcut.plugins.registry.status", &r, &text);
+    }
+    for e in listed {
+        registry_row(app, ui, &ctx, &mut d, &snap, e, can_install);
     }
     if running {
         ctx.request_repaint_after(std::time::Duration::from_millis(200));
@@ -140,12 +283,15 @@ pub fn draw(app: &mut FilmcraftApp, ui: &mut egui::Ui) {
     ctx.data_mut(|data| data.insert_temp(key(), d));
 }
 
-fn registry_row(app: &mut FilmcraftApp, ui: &mut egui::Ui, ctx: &egui::Context, d: &mut Drafts, e: &Entry, can_install: bool) {
+fn registry_row(app: &mut FilmcraftApp, ui: &mut egui::Ui, ctx: &egui::Context, d: &mut Drafts, snap: &Snapshot, e: &Entry, can_install: bool) {
     let t = app.tokens;
     let supported = e.supports(bashcut_plugin_host::os());
+    // one install at a time: the button waits while the host installs this id
+    let installing = snap.installing.contains(&e.id);
     ui.horizontal(|ui| {
         ui.label(egui::RichText::new(format!("{} {}", e.name, e.version)).color(t.text));
-        if button(app, ui, &format!("bashcut.plugins.{}.install", e.id), s("Install"), can_install && supported) {
+        let label = if installing { s("Installing…") } else { s("Install") };
+        if button(app, ui, &format!("bashcut.plugins.{}.install", e.id), label, can_install && supported && !installing) {
             run(app, ctx, d, "install", json!({"plugin": e.id}));
         }
         if !supported {
@@ -155,9 +301,61 @@ fn registry_row(app: &mut FilmcraftApp, ui: &mut egui::Ui, ctx: &egui::Context, 
     if !e.summary.is_empty() {
         ui.label(egui::RichText::new(plain(&e.summary)).size(11.0).color(t.text_dim));
     }
+    // a failed install says why next to its button
+    if let Some(j) = snap.newest_install.get(&e.id).and_then(|id| snap.jobs.get(id)).filter(|j| !j.state.is_running() && j.state != JobState::Succeeded) {
+        let text = f("Failed: {error}", &[("error", &hints::friendly(&j.message))]);
+        let r = ui.label(egui::RichText::new(&text).size(11.0).color(t.danger));
+        app.auto.add_response(&format!("bashcut.plugins.{}.install.status", e.id), &r, &text);
+    }
 }
 
-fn plugin_card(app: &mut FilmcraftApp, ui: &mut egui::Ui, ctx: &egui::Context, d: &mut Drafts, p: &Installed) {
+/// The card's last-run line: "Running 40 %", "Failed: …", "Done · Open in Runs", with ✕ to hide it.
+fn last_run(app: &mut FilmcraftApp, ui: &mut egui::Ui, ctx: &egui::Context, d: &mut Drafts, snap: &Snapshot, plugin: &str) {
+    let Some(last) = d.last.get(plugin) else { return };
+    let job = match last {
+        Last::Job(id) => snap.jobs.get(id),
+        Last::Error(_) => None,
+    };
+    let Some(line) = last_line(last, job) else {
+        // Runs was cleared: nothing left to show
+        d.last.remove(plugin);
+        return;
+    };
+    let t = app.tokens;
+    let id = format!("bashcut.plugins.{plugin}.last");
+    let text = egui::RichText::new(&line.text).size(11.0).color(if line.failed { t.danger } else { t.text_dim });
+    // a failure can be a long sentence: it wraps on its own line, the links go below it
+    if line.failed {
+        let r = ui.add(egui::Label::new(text.clone()).wrap());
+        app.auto.add_response(&id, &r, &line.text);
+    }
+    ui.horizontal(|ui| {
+        if !line.failed {
+            let r = ui.label(text);
+            app.auto.add_response(&id, &r, &line.text);
+        }
+        if line.in_runs {
+            if !line.failed {
+                ui.label(egui::RichText::new("·").size(11.0).color(t.text_dim));
+            }
+            let r = ui.link(egui::RichText::new(s("Open in Runs")).size(11.0));
+            app.auto.add_response(&format!("{id}.runs"), &r, s("Open in Runs"));
+            if r.clicked() {
+                super::State::update(ctx, |st| st.show("runs"));
+            }
+        }
+        let running = job.is_some_and(|j| j.state.is_running());
+        if !running {
+            let r = ui.small_button("✕").on_hover_text(s("Dismiss"));
+            app.auto.add_response(&format!("{id}.dismiss"), &r, s("Dismiss"));
+            if r.clicked() {
+                d.last.remove(plugin);
+            }
+        }
+    });
+}
+
+fn plugin_card(app: &mut FilmcraftApp, ui: &mut egui::Ui, ctx: &egui::Context, d: &mut Drafts, snap: &Snapshot, p: &Installed) {
     let t = app.tokens;
     let Some(m) = &p.manifest else {
         ui.horizontal(|ui| {
@@ -175,13 +373,18 @@ fn plugin_card(app: &mut FilmcraftApp, ui: &mut egui::Ui, ctx: &egui::Context, d
         .id_salt(("bashcut.plugins.card", &p.id))
         .open(view.as_ref().and_then(|(job, _)| (d.shown_view.insert(p.id.clone(), *job) != Some(*job)).then_some(true)))
         .show(ui, |ui| {
+            last_run(app, ui, ctx, d, snap, &p.id);
             if !m.summary.is_empty() {
                 ui.label(egui::RichText::new(plain(&m.summary)).size(11.0).color(t.text_dim));
             }
             ui.horizontal(|ui| {
-                if let Some(v) = &update
-                    && button(app, ui, &format!("bashcut.plugins.{}.update", p.id), &f("Update to {version}", &[("version", v)]), true)
-                {
+                let updating = snap.installing.contains(&p.id);
+                let label = if updating {
+                    s("Updating…").to_string()
+                } else {
+                    update.as_ref().map(|v| f("Update to {version}", &[("version", v)])).unwrap_or_default()
+                };
+                if (update.is_some() || updating) && button(app, ui, &format!("bashcut.plugins.{}.update", p.id), &label, !updating) {
                     run(app, ctx, d, "update", json!({"plugin": p.id}));
                 }
                 if button(app, ui, &format!("bashcut.plugins.{}.remove", p.id), s("Remove"), true) {
@@ -200,13 +403,14 @@ fn plugin_card(app: &mut FilmcraftApp, ui: &mut egui::Ui, ctx: &egui::Context, d
             {
                 let item = c.item.as_ref();
                 let params = json!({"plugin": p.id, "button": c.button, "item": item.map(|i| &i.0), "itemButton": item.map(|i| &i.1), "values": c.values});
-                if let Some(v) = run(app, ctx, d, "click", params) {
-                    let job = v.get("job").and_then(Value::as_u64).unwrap_or_default();
-                    d.status = Some((true, f("Started run {job}", &[("job", &job.to_string())])));
-                }
+                start_run(app, ctx, d, &p.id, "click", params);
             }
         });
     app.auto.add_response(&format!("bashcut.plugins.{}", p.id), &head.header_response, &m.name);
+    // a closed card still says how its last run went
+    if head.body_returned.is_none() && d.last.contains_key(&p.id) {
+        ui.indent(("bashcut.plugins.last", &p.id), |ui| last_run(app, ui, ctx, d, snap, &p.id));
+    }
 }
 
 fn settings_form(app: &mut FilmcraftApp, ui: &mut egui::Ui, ctx: &egui::Context, d: &mut Drafts, m: &Manifest) {
@@ -378,9 +582,7 @@ fn batch_button(app: &mut FilmcraftApp, ui: &mut egui::Ui, ctx: &egui::Context, 
 /// Start `a` with the form's params (empty ones are left to the plugin's defaults).
 fn start(app: &mut FilmcraftApp, ctx: &egui::Context, d: &mut Drafts, m: &Manifest, a: &Action) {
     let params = form_params(d, m, a);
-    if let Some(v) = run(app, ctx, d, "run", json!({"plugin": m.id, "action": a.id, "params": params})) {
-        let job = v.get("job").and_then(Value::as_u64).unwrap_or_default();
-        d.status = Some((true, f("Started run {job}", &[("job", &job.to_string())])));
+    if start_run(app, ctx, d, &m.id, "run", json!({"plugin": m.id, "action": a.id, "params": params})) {
         d.open = None;
     }
 }
@@ -576,6 +778,70 @@ mod tests {
         assert_eq!(s("Browse…"), "Chọn tệp…");
         assert_eq!(f("Fill in: {fields}", &[("fields", "Answer")]), "Cần điền: Answer");
         assert_ne!(s("Not set: the plugin's default is used"), "Not set: the plugin's default is used");
+        super::super::strings::set_language(None);
+    }
+
+    fn brief(state: JobState, progress: Option<f32>, message: &str) -> Brief {
+        Brief { state, progress, message: message.into() }
+    }
+
+    #[test]
+    fn the_card_says_how_its_last_run_went() {
+        super::super::strings::set_language(Some("en"));
+        let job = Last::Job(3);
+        let line = |b: Brief| last_line(&job, Some(&b));
+        let running = line(brief(JobState::Running, Some(0.4), "")).unwrap();
+        assert_eq!((running.text.as_str(), running.failed, running.in_runs), ("Running 40 %", false, true));
+        assert_eq!(line(brief(JobState::Running, None, "step 1")).unwrap().text, "Running…");
+        assert_eq!(line(brief(JobState::Running, Some(f32::NAN), "")).unwrap().text, "Running…");
+        assert_eq!(line(brief(JobState::Running, Some(7.0), "")).unwrap().text, "Running 100 %");
+        assert_eq!(line(brief(JobState::Succeeded, Some(1.0), "3 captions")).unwrap().text, "Done");
+        assert_eq!(line(brief(JobState::HandOff, None, "")).unwrap().text, "Needs the agent");
+        let failed = line(brief(JobState::Failed, None, "bad_params: no captions")).unwrap();
+        assert_eq!((failed.text.as_str(), failed.failed, failed.in_runs), ("Failed: bad_params: no captions", true, true));
+        let python = line(brief(JobState::Crashed, None, "cannot start `python3`: No such file (os error 2)")).unwrap();
+        assert!(python.text.starts_with("Failed: Python 3 was not found") && !python.text.contains("os error"), "{}", python.text);
+        assert_eq!(line(brief(JobState::TimedOut, None, " ")).unwrap().text, "Failed");
+        // a run that never started has no job in Runs to open
+        let not_started = last_line(&Last::Error("no_cli: not found".into()), None).unwrap();
+        assert!(not_started.failed && !not_started.in_runs && not_started.text.starts_with("Failed: The BashCutPro engine"), "{not_started:?}");
+        // Runs was cleared: the line goes
+        assert_eq!(last_line(&job, None), None);
+        super::super::strings::set_language(None);
+    }
+
+    #[test]
+    fn the_registry_line_counts_what_can_be_installed() {
+        super::super::strings::set_language(Some("en"));
+        assert_eq!(available_text(8, 8), "8 plugins available");
+        assert_eq!(available_text(1, 3), "1 plugin available");
+        assert_eq!(available_text(0, 3), "All plugins are installed");
+        assert_eq!(available_text(0, 0), "0 plugins available");
+        super::super::strings::set_language(None);
+    }
+
+    #[test]
+    fn card_status_strings_have_vietnamese() {
+        super::super::strings::set_language(Some("vi"));
+        for en in [
+            "Running…",
+            "Open in Runs",
+            "Dismiss",
+            "Installing…",
+            "Updating…",
+            "Checking the registry…",
+            "1 plugin available",
+            "All plugins are installed",
+            "Done",
+            "Needs the agent",
+            "Cancelled",
+            "Failed",
+        ] {
+            assert_ne!(s(en), en, "no Vietnamese for {en}");
+        }
+        assert_eq!(f("Running {percent} %", &[("percent", "40")]), "Đang chạy 40 %");
+        assert_eq!(available_text(8, 8), "Có 8 plugin");
+        assert_eq!(last_line(&Last::Error("bad_params: x".into()), None).map(|l| l.text).as_deref(), Some("Lỗi: bad_params: x"));
         super::super::strings::set_language(None);
     }
 

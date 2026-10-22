@@ -463,6 +463,7 @@ fn a_plugin_view_draws_its_rows_and_buttons_run_actions() {
     let harness = Harness::builder().with_size(egui::vec2(W, H)).with_max_steps(10_000).build_eframe(move |_cc| app);
     let mut d = Driver { harness, tx };
     d.frames(4);
+    offline_registry(&mut d, &data);
 
     assert_eq!(d.exec("bashcut.plugins.view", json!({"plugin": "test.views"})), Value::Null);
     d.exec("bashcut.plugins.run", json!({"plugin": "test.views", "action": "review"}));
@@ -556,6 +557,7 @@ fn plugin_action_forms_follow_the_manifest() {
     let harness = Harness::builder().with_size(egui::vec2(W, H)).with_max_steps(10_000).build_eframe(move |_cc| app);
     let mut d = Driver { harness, tx };
     d.frames(4);
+    offline_registry(&mut d, &data);
 
     d.click("bashcut.rail.plugins");
     d.click("bashcut.plugins.test.forms");
@@ -632,6 +634,7 @@ fn plugins_say_the_control_channel_is_off_and_errors_read_as_sentences() {
     let harness = Harness::builder().with_size(egui::vec2(W, H)).with_max_steps(10_000).build_eframe(move |_cc| app);
     let mut d = Driver { harness, tx };
     d.frames(4);
+    offline_registry(&mut d, &data);
     let element = |d: &mut Driver, id: &str| -> Value {
         let v = d.ok("ui.elements", json!({"prefix": id}));
         v.as_array().and_then(|a| a.iter().find(|e| e["id"] == json!(id)).cloned()).unwrap_or(Value::Null)
@@ -656,11 +659,12 @@ fn plugins_say_the_control_channel_is_off_and_errors_read_as_sentences() {
         }
         d.exec("bashcut.ui.setLanguage", json!({"language": null}));
     }
-    // a needs-none action runs, and its spawn error reads as a sentence
+    // a needs-none action runs, and its spawn error reads as a sentence in its card
     d.click("bashcut.plugins.test.hints.action.check");
-    let status = element(&mut d, "bashcut.plugins.status");
+    assert!(!d.has("bashcut.plugins.status"), "not at the top of the panel");
+    let status = element(&mut d, "bashcut.plugins.test.hints.last");
     let text = status["label"].as_str().unwrap_or_default();
-    assert!(text.starts_with("Python 3 was not found") && text.ends_with("See Troubleshooting."), "{status}");
+    assert!(text.starts_with("Failed: Python 3 was not found") && text.ends_with("See Troubleshooting."), "{status}");
     assert!(!text.contains("os error"), "{text}");
     assert!(d.harness.state().ui_error.is_none(), "{:?}", d.harness.state().ui_error);
     let _ = std::fs::remove_dir_all(&data);
@@ -719,6 +723,8 @@ fn a_failed_run_shows_its_error_and_retries_and_a_result_path_shows_reveal() {
 
     let failed = d.exec("bashcut.plugins.run", json!({"plugin": "test.runs", "action": "fail", "params": {"word": "hi"}}))["job"].as_u64().unwrap();
     assert_eq!(wait(&mut d, failed)["state"], json!("failed"));
+    // a run no longer switches to Runs (UX5): open it
+    d.click("bashcut.rail.runs");
     assert_eq!(d.state()["open"], json!("runs"));
     d.frames(3);
     let error = d.ok("ui.elements", json!({"prefix": format!("bashcut.runs.{failed}.error")}));
@@ -740,6 +746,160 @@ fn a_failed_run_shows_its_error_and_retries_and_a_result_path_shows_reveal() {
     assert!(!d.has(&format!("bashcut.runs.{made}.retry")) && !d.has(&format!("bashcut.runs.{made}.error")));
     assert!(d.harness.state().ui_error.is_none(), "{:?}", d.harness.state().ui_error);
     let _ = std::fs::remove_dir_all(&data);
+}
+
+/// Point the host at an empty local registry (`bashcut.plugins.registry {location}`) before
+/// Plugins first draws, so its first-open check does not go to the network.
+fn offline_registry(d: &mut Driver, data: &std::path::Path) {
+    std::fs::create_dir_all(data).unwrap();
+    let path = data.join("registry.json");
+    std::fs::write(&path, json!({"schema": "bashcut-registry/1", "name": "test", "plugins": []}).to_string()).unwrap();
+    d.exec("bashcut.plugins.registry", json!({"location": path.to_string_lossy()}));
+}
+
+/// UX5: the first open of Plugins checks the registry with no click and says how many plugins it
+/// offers; Install reads "Installing…" (disabled) while that install runs, so a double click
+/// starts one install; a failed run says why in its card, without opening Runs.
+///
+/// The first-open check reads `BASHCUT_PLUGIN_REGISTRY`, so the test runs itself again with it
+/// pointing at a local registry whose plugin lives on a git server that never answers.
+#[test]
+fn plugin_cards_show_the_last_run_and_install_waits() {
+    const LOCAL: &str = "BASHCUT_UI_TEST_LOCAL_REGISTRY";
+    let Some(registry) = std::env::var_os(LOCAL).map(std::path::PathBuf::from) else {
+        let data = std::env::temp_dir().join(format!("bashcut-ui-card-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&data);
+        std::fs::create_dir_all(&data).unwrap();
+        let registry = data.join("registry.json");
+        let exe = std::env::current_exe().unwrap();
+        let out = std::process::Command::new(exe)
+            .args(["--exact", "plugin_cards_show_the_last_run_and_install_waits", "--nocapture", "--test-threads=1"])
+            .env(LOCAL, &registry)
+            .env("BASHCUT_PLUGIN_REGISTRY", &registry)
+            .output()
+            .unwrap();
+        let _ = std::fs::remove_dir_all(&data);
+        let log = format!("{}{}", String::from_utf8_lossy(&out.stdout), String::from_utf8_lossy(&out.stderr));
+        assert!(out.status.success() && log.contains("1 passed"), "{log}");
+        return;
+    };
+    let data = registry.parent().unwrap().to_path_buf();
+    // accepts git's connection and never answers: the install stays running until it is dropped
+    let silent = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    let port = silent.local_addr().unwrap().port();
+    let entry = |id: &str, name: &str| {
+        json!({"id": id, "name": name, "version": "0.1.0", "summary": "test entry", "platforms": ["macos", "windows", "linux"],
+               "source": {"type": "git", "repo": format!("git://127.0.0.1:{port}/plugins"), "ref": "main", "path": "p"}})
+    };
+    let reg = json!({"schema": "bashcut-registry/1", "name": "test", "plugins": [entry("test.slow", "Slow"), entry("test.other", "Other")]});
+    std::fs::write(&registry, reg.to_string()).unwrap();
+    let python = has_python();
+    if python {
+        let plugin = data.join("bashcut-plugins").join("test.card");
+        std::fs::create_dir_all(&plugin).unwrap();
+        let script =
+            "import json, sys\nprint(json.dumps({\"ok\": False, \"error\": {\"code\": \"bad_params\", \"message\": \"no captions in the sequence\"}}))\n";
+        std::fs::write(plugin.join("plugin.py"), script).unwrap();
+        let manifest = json!({
+            "schema": "bashcut-plugin/1", "id": "test.card", "name": "Card", "version": "0.1.0", "summary": "test plugin",
+            "entry": {"command": ["python3", "plugin.py"], "windows": ["py", "-3", "plugin.py"]}, "output": "bashcut-result/1",
+            "actions": [{"id": "fail", "title": "Fail", "args": ["fail"], "needs": "none"}]
+        });
+        std::fs::write(plugin.join("bashcut-plugin.json"), manifest.to_string()).unwrap();
+    }
+
+    let mut session = Session::default();
+    session.start_autosave(filmcraft_engine::autosave::AutosaveConfig::new(&data)).expect("data dir");
+    session.execute("file.openDemoProject", json!({})).expect("demo project");
+    let (tx, rx) = channel();
+    let app = FilmcraftApp::new(session).with_control(rx);
+    let harness = Harness::builder().with_size(egui::vec2(W, H)).with_max_steps(10_000).build_eframe(move |_cc| app);
+    let mut d = Driver { harness, tx };
+    d.frames(4);
+    let element = |d: &mut Driver, id: &str| -> Value {
+        let v = d.ok("ui.elements", json!({"prefix": id}));
+        v.as_array().and_then(|a| a.iter().find(|e| e["id"] == json!(id)).cloned()).unwrap_or(Value::Null)
+    };
+    let jobs = |d: &mut Driver, kind: &str| -> Vec<Value> {
+        let runs = d.exec("bashcut.plugins.runs", json!({}));
+        runs.as_array().cloned().unwrap_or_default().into_iter().filter(|r| r["kind"]["type"] == json!(kind)).collect()
+    };
+
+    // the first open checks the registry by itself, once
+    d.exec("bashcut.ui.setLanguage", json!({"language": "en"}));
+    d.click("bashcut.rail.plugins");
+    let mut line = Value::Null;
+    for _ in 0..200 {
+        d.frames(1);
+        line = element(&mut d, "bashcut.plugins.registry.status");
+        if line["label"] == json!("2 plugins available") {
+            break;
+        }
+    }
+    assert_eq!(line["label"], json!("2 plugins available"), "{line}");
+    assert!(d.has("bashcut.plugins.test.slow.install"), "the list shows without a click");
+    d.click("bashcut.rail.runs");
+    d.click("bashcut.rail.plugins");
+    assert_eq!(jobs(&mut d, "registry").len(), 1, "no second check");
+
+    // a double click on Install starts one install
+    d.ok("ui.click", json!({"id": "bashcut.plugins.test.slow.install"}));
+    d.frames(1);
+    let _ = d.call("ui.click", json!({"id": "bashcut.plugins.test.slow.install"}));
+    d.frames(3);
+    let install = element(&mut d, "bashcut.plugins.test.slow.install");
+    assert_eq!((install["label"].clone(), install["enabled"].clone()), (json!("Installing…"), json!(false)), "{install}");
+    assert_eq!(element(&mut d, "bashcut.plugins.test.other.install")["enabled"], json!(true), "only that plugin waits");
+    assert_eq!(jobs(&mut d, "install").len(), 1, "one install");
+    if let Some(dir) = std::env::var_os("BASHCUT_UI_SHOTS").map(std::path::PathBuf::from) {
+        std::fs::create_dir_all(&dir).unwrap();
+        for lang in ["en", "vi"] {
+            d.exec("bashcut.ui.setLanguage", json!({"language": lang}));
+            d.frames(3);
+            d.harness.render().unwrap().save(dir.join(format!("plugins-installing-{lang}.png"))).unwrap();
+        }
+        d.exec("bashcut.ui.setLanguage", json!({"language": "en"}));
+    }
+
+    // a failed run says why in its card, and Plugins stays open
+    if python {
+        d.click("bashcut.plugins.test.card");
+        d.click("bashcut.plugins.test.card.action.fail");
+        let mut last = Value::Null;
+        for _ in 0..600 {
+            d.frames(1);
+            last = element(&mut d, "bashcut.plugins.test.card.last");
+            if last["label"].as_str().is_some_and(|l| l.starts_with("Failed")) {
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        }
+        assert_eq!(last["label"], json!("Failed: bad_params: no captions in the sequence"), "{last}");
+        assert_eq!(d.state()["open"], json!("plugins"), "no switch to Runs");
+        assert!(!d.has("bashcut.plugins.status"), "no panel-top status");
+        if let Some(dir) = std::env::var_os("BASHCUT_UI_SHOTS").map(std::path::PathBuf::from) {
+            for lang in ["en", "vi"] {
+                d.exec("bashcut.ui.setLanguage", json!({"language": lang}));
+                d.frames(3);
+                d.harness.render().unwrap().save(dir.join(format!("plugins-card-failed-{lang}.png"))).unwrap();
+            }
+            d.exec("bashcut.ui.setLanguage", json!({"language": "en"}));
+        }
+        // closed, the card still says it; Open in Runs switches there; ✕ hides it
+        d.click("bashcut.plugins.test.card");
+        // past the closing animation
+        d.frames(30);
+        assert!(d.has("bashcut.plugins.test.card.last"), "shown under a closed card");
+        d.click("bashcut.plugins.test.card.last.runs");
+        assert_eq!(d.state()["open"], json!("runs"));
+        d.click("bashcut.rail.plugins");
+        d.click("bashcut.plugins.test.card.last.dismiss");
+        assert!(!d.has("bashcut.plugins.test.card.last"), "dismissed");
+    } else {
+        eprintln!("python not found: the failed-run part is skipped");
+    }
+    assert!(d.harness.state().ui_error.is_none(), "{:?}", d.harness.state().ui_error);
+    drop(silent);
 }
 
 /// The test plugins' Python runs (`py -3` on Windows, where `python3` may be the Store's stub).
