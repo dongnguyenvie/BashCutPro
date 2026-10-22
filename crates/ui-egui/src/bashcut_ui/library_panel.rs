@@ -21,6 +21,7 @@ use serde_json::{Value, json};
 
 use super::plugins;
 use super::strings::{f, s};
+use super::widgets::small_button;
 use crate::FilmcraftApp;
 
 pub const RESOURCES: &str = "bashcut.resources";
@@ -345,13 +346,6 @@ fn expire_status(ctx: &egui::Context, p: &mut Panel) {
     }
 }
 
-/// A button with an automation id; `true` when clicked.
-fn button(app: &mut FilmcraftApp, ui: &mut egui::Ui, id: &str, label: &str, enabled: bool) -> bool {
-    let r = ui.add_enabled(enabled, egui::Button::new(label).small());
-    app.auto.add_response(id, &r, label);
-    r.clicked()
-}
-
 pub fn draw(app: &mut FilmcraftApp, ui: &mut egui::Ui) {
     let ctx = ui.ctx().clone();
     let t = app.tokens;
@@ -379,7 +373,7 @@ pub fn draw(app: &mut FilmcraftApp, ui: &mut egui::Ui) {
     if !installed(app, &ctx, plugin) {
         let name = if p.online { s("Online Resources") } else { s("Library") };
         ui.label(egui::RichText::new(f("Install the {plugin} plugin to use this tab.", &[("plugin", name)])).size(11.0).color(t.text_dim));
-        if button(app, ui, "bashcut.library.install", s("Open Plugins"), true) {
+        if small_button(app, ui, "bashcut.library.install", s("Open Plugins"), true) {
             super::State::update(&ctx, |st| st.show("plugins"));
         }
         put(&ctx, p);
@@ -417,7 +411,7 @@ pub fn draw(app: &mut FilmcraftApp, ui: &mut egui::Ui) {
         let label = q.clone();
         app.auto.add_response("bashcut.library.query", &r, &label);
         go |= r.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter));
-        go |= button(app, ui, "bashcut.library.search", s("Search"), true);
+        go |= small_button(app, ui, "bashcut.library.search", s("Search"), true);
     });
     if go && let Err(e) = search(app, &ctx, &mut p) {
         p.status = Some((false, e));
@@ -492,22 +486,22 @@ fn online_row(app: &mut FilmcraftApp, ui: &mut egui::Ui, ctx: &egui::Context, p:
         ui.horizontal_wrapped(|ui| {
             let preview = text(item, "preview");
             let preview = if preview.is_empty() { text(item, "url") } else { preview };
-            if button(app, ui, &format!("{id}.preview"), s("Preview"), !preview.is_empty()) {
+            if small_button(app, ui, &format!("{id}.preview"), s("Preview"), !preview.is_empty()) {
                 ctx.open_url(egui::OpenUrl::new_tab(preview));
             }
             let source = text(item, "source");
-            if !source.is_empty() && button(app, ui, &format!("{id}.source"), s("Source"), true) {
+            if !source.is_empty() && small_button(app, ui, &format!("{id}.source"), s("Source"), true) {
                 ctx.open_url(egui::OpenUrl::new_tab(source));
             }
             let is_font = text(item, "kind") == "font";
             let busy = p.downloads.iter().any(|d| d.item == *item);
-            if button(app, ui, &format!("{id}.add"), if is_font { s("Download") } else { s("Add to bin") }, !busy)
+            if small_button(app, ui, &format!("{id}.add"), if is_font { s("Download") } else { s("Add to bin") }, !busy)
                 && let Err(e) = download(app, ctx, p, item, false)
             {
                 p.status = Some((false, e));
             }
             if !is_font
-                && button(app, ui, &format!("{id}.place"), s("Place at playhead"), has_seq && !busy)
+                && small_button(app, ui, &format!("{id}.place"), s("Place at playhead"), has_seq && !busy)
                 && let Err(e) = download(app, ctx, p, item, true)
             {
                 p.status = Some((false, e));
@@ -526,7 +520,7 @@ fn mine_row(app: &mut FilmcraftApp, ui: &mut egui::Ui, ctx: &egui::Context, p: &
             ui.label(egui::RichText::new(text(item, "title")).strong().color(t.text));
             ui.label(egui::RichText::new(mine_kind_label(&text(item, "kind"))).size(10.5).color(t.text_faint));
             let fav = item.get("favourite").and_then(Value::as_bool).unwrap_or(false);
-            if button(app, ui, &format!("{id}.favourite"), if fav { "★" } else { "☆" }, true) {
+            if small_button(app, ui, &format!("{id}.favourite"), if fav { "★" } else { "☆" }, true) {
                 let mut params = BTreeMap::new();
                 params.insert("id".to_string(), json!(item_id));
                 params.insert("off".to_string(), json!(fav));
@@ -548,13 +542,13 @@ fn mine_row(app: &mut FilmcraftApp, ui: &mut egui::Ui, ctx: &egui::Context, p: &
         if MEDIA_KINDS.contains(&kind.as_str())
             && let Some(file) = file
         {
-            if button(app, ui, &format!("{id}.place"), s("Place at playhead"), has_seq) {
+            if small_button(app, ui, &format!("{id}.place"), s("Place at playhead"), has_seq) {
                 p.status = Some(match bring_in(app, ctx, &file, true, None, false) {
                     Ok(_) => (true, f("Placed {title} at the playhead", &[("title", text(item, "title").as_str())])),
                     Err(e) => (false, e),
                 });
             }
-        } else if button(app, ui, &format!("{id}.apply"), s("Apply"), has_seq) {
+        } else if small_button(app, ui, &format!("{id}.apply"), s("Apply"), has_seq) {
             let mut params = BTreeMap::new();
             params.insert("id".to_string(), json!(item_id));
             p.status = Some(match start(app, ctx, LIBRARY, "apply", params) {

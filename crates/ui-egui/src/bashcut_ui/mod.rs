@@ -27,6 +27,7 @@ pub mod state;
 pub mod strings;
 pub mod toast;
 pub mod view;
+pub mod widgets;
 
 use std::path::PathBuf;
 

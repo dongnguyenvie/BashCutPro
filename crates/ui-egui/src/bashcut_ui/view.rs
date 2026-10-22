@@ -15,7 +15,7 @@ use std::time::SystemTime;
 use bashcut_plugin_host::view::{Row, View};
 use serde_json::{Map, Value};
 
-use super::plugins_panel::button;
+use super::widgets::button;
 use crate::FilmcraftApp;
 
 /// Largest picture file read.

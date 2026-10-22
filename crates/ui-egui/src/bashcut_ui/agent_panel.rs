@@ -12,8 +12,8 @@ use serde_json::{Value, json};
 
 use super::agent;
 use super::hints::{self, HOW_TO_TURN_ON};
-use super::plugins_panel::button;
 use super::strings::{f, s};
+use super::widgets::button;
 use crate::FilmcraftApp;
 
 /// The pending gate is re-read from `plan.json` this often (seconds), not every frame.

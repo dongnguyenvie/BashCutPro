@@ -13,6 +13,7 @@ use serde_json::{Map, Value, json};
 use super::hints::{self, CONTROL_OFF, HOW_TO_TURN_ON};
 use super::plugins;
 use super::strings::{self, f, s};
+use super::widgets::button;
 use crate::FilmcraftApp;
 use crate::native_dialogs::FileDialog;
 
@@ -150,13 +151,6 @@ fn key() -> egui::Id {
 
 fn drafts(ctx: &egui::Context) -> Drafts {
     ctx.data_mut(|d| d.get_temp_mut_or_default::<Drafts>(key()).clone())
-}
-
-/// A button with an automation id; `true` when clicked.
-pub fn button(app: &mut FilmcraftApp, ui: &mut egui::Ui, id: &str, label: &str, enabled: bool) -> bool {
-    let r = ui.add_enabled(enabled, egui::Button::new(label));
-    app.auto.add_response(id, &r, label);
-    r.clicked()
 }
 
 /// Manifest prose as plain text: the panel draws no markdown, so code spans lose their backticks.

@@ -11,8 +11,8 @@ use std::time::Duration;
 use bashcut_plugin_host::{JobKind, JobState};
 use egui::{Align2, vec2};
 
-use super::plugins_panel::button;
 use super::strings::{f, s};
+use super::widgets::button;
 use super::{State, plugins, runs_panel};
 use crate::FilmcraftApp;
 
