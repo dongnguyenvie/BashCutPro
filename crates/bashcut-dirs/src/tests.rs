@@ -92,14 +92,41 @@ fn import_copies_settings_and_our_files_once() {
 }
 
 #[test]
-fn models_are_ours_first_then_filmcraft_in_place() {
+fn models_download_target_is_always_ours() {
     let root = tmp("models");
     let (fc, ours) = (root.join("FilmCraft"), root.join("BashCutPro"));
-    assert_eq!(models_dir_in(&ours, Some(&fc)), ours.join("models"), "neither: ours (downloads go there)");
+    assert_eq!(models_dir_in(&ours, Some(&fc)), ours.join("models"), "neither: ours");
+    assert!(ours.join("models").is_dir(), "created, so downloads land there");
+    let _ = std::fs::remove_dir_all(&ours);
     let _ = std::fs::create_dir_all(fc.join("models"));
-    assert_eq!(models_dir_in(&ours, Some(&fc)), fc.join("models"), "only FilmCraft's: read in place");
+    assert_eq!(models_dir_in(&ours, Some(&fc)), ours.join("models"), "only FilmCraft's: still ours");
     assert_eq!(models_dir_in(&ours, None), ours.join("models"), "override or portable: ours");
-    let _ = std::fs::create_dir_all(ours.join("models"));
-    assert_eq!(models_dir_in(&ours, Some(&fc)), ours.join("models"), "ours wins once it exists");
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+#[test]
+fn models_fall_back_to_filmcraft_per_file() {
+    let root = tmp("models-per-file");
+    let (fc, ours) = (root.join("FilmCraft"), root.join("BashCutPro"));
+    put(&fc.join("models/whisper-base/model.bin"), "theirs");
+    put(&fc.join("models/whisper-base/tokenizer.json"), "theirs");
+    put(&fc.join("models/whisper-base/big.bin.part"), "half");
+    put(&fc.join("models/kokoro/voices.bin"), "theirs");
+    put(&ours.join("models/whisper-base/model.bin"), "ours");
+    let dir = models_dir_in(&ours, Some(&fc));
+    assert_eq!(dir, ours.join("models"));
+    let read = |p: &str| std::fs::read_to_string(dir.join(p)).unwrap_or_default();
+    assert_eq!(read("whisper-base/model.bin"), "ours", "ours first");
+    assert_eq!(read("whisper-base/tokenizer.json"), "theirs", "missing file: FilmCraft's");
+    assert_eq!(read("kokoro/voices.bin"), "theirs", "missing model: FilmCraft's");
+    assert!(!dir.join("whisper-base/big.bin.part").exists(), "no half downloads");
+    // A download replaces the link (part file + rename), FilmCraft's file is untouched.
+    put(&dir.join("kokoro/voices.bin.part"), "new");
+    let _ = std::fs::rename(dir.join("kokoro/voices.bin.part"), dir.join("kokoro/voices.bin"));
+    assert_eq!(read("kokoro/voices.bin"), "new");
+    assert_eq!(std::fs::read_to_string(fc.join("models/kokoro/voices.bin")).unwrap_or_default(), "theirs");
+    // Asking again keeps ours.
+    let _ = models_dir_in(&ours, Some(&fc));
+    assert_eq!(read("kokoro/voices.bin"), "new");
     let _ = std::fs::remove_dir_all(&root);
 }
