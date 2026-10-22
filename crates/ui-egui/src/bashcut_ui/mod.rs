@@ -181,6 +181,10 @@ pub fn invoke(app: &mut FilmcraftApp, ctx: &egui::Context, id: &str, params: &Va
     if let Some(name) = id.strip_prefix("bashcut.batch.") {
         return Some(batch::invoke(app, ctx, name, params));
     }
+    // Window ▸ BashCutPro ▸ Language: menus pass no params, so the choice is in the id
+    if let Some((_, code)) = LANGUAGE_MENU.iter().find(|(menu_id, _)| *menu_id == id) {
+        return invoke(app, ctx, "bashcut.ui.setLanguage", &json!({ "language": code }));
+    }
     let known = section_ids();
     let section_param = || params.get("section").and_then(Value::as_str).filter(|s| is_section(s)).map(str::to_string);
     let r = match id {
@@ -277,14 +281,37 @@ pub fn commands() -> Vec<CommandInfo> {
     v.extend(library_panel::commands());
     v.extend(agent::commands());
     v.extend(batch::commands());
+    // last, so the Language submenu ends Window ▸ BashCutPro
+    v.extend([
+        CommandInfo::new(LANGUAGE_MENU[0].0, "Follow App", LANGUAGE_PATH, None),
+        CommandInfo::new(LANGUAGE_MENU[1].0, "English", LANGUAGE_PATH, None),
+        CommandInfo::new(LANGUAGE_MENU[2].0, "Tiếng Việt", LANGUAGE_PATH, None),
+    ]);
     v
 }
 
-/// Window ▸ BashCutPro (`menus::menu_items_for`).
+/// Window ▸ BashCutPro ▸ Language: one item per choice, each running `bashcut.ui.setLanguage` with
+/// its code (`None` follows the interface language).
+const LANGUAGE_MENU: [(&str, Option<&str>); 3] =
+    [("bashcut.ui.setLanguage.follow", None), ("bashcut.ui.setLanguage.en", Some("en")), ("bashcut.ui.setLanguage.vi", Some("vi"))];
+const LANGUAGE_PATH: &[&str] = &["Window", "BashCutPro", "Language"];
+
+/// Window ▸ BashCutPro (`menus::menu_items_for`), in our language (upstream's catalogs then
+/// translate whatever we left in English), with a check on the current language.
 pub fn menu_items(session: &filmcraft_engine::Session) -> Vec<MenuItem> {
     commands()
         .into_iter()
         .filter(|c| !c.menu.is_empty())
-        .map(|c| MenuItem { shortcut: session.shortcuts.primary(&c.id), id: c.id, label: c.label, path: c.menu, enabled: true, checked: None })
+        .map(|c| {
+            let checked = LANGUAGE_MENU.iter().find(|(id, _)| *id == c.id).map(|(_, code)| *code == strings::chosen());
+            MenuItem {
+                shortcut: session.shortcuts.primary(&c.id),
+                label: strings::s(&c.label).to_string(),
+                path: c.menu.iter().map(|p| strings::s(p).to_string()).collect(),
+                id: c.id,
+                enabled: true,
+                checked,
+            }
+        })
         .collect()
 }

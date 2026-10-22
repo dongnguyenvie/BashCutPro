@@ -83,8 +83,8 @@ small editor with them; change the values and press **Cmd+Enter**. Everything th
 
 ## 5. Vietnamese
 
-BashCutPro's own panels can be shown in Vietnamese: open the palette, type **BashCutPro Language**, press **Tab**,
-replace `{}` with `{"language": "vi"}` (the line above the box lists the choices, `en` and `vi`) and press
-**Cmd+Enter**. Running it with `{}` goes back to the app's language.
+BashCutPro's own panels can be shown in Vietnamese: choose **Window ▸ BashCutPro ▸ Language ▸ Tiếng Việt**. The panels
+switch at once and stay that way the next time you open the app. **English** keeps them in English whatever the app's
+language is; **Follow App** (the default) uses the app's interface language. The check mark shows the current choice.
 
 Next: [The rail](rail.md).

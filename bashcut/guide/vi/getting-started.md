@@ -83,7 +83,9 @@ nhỏ; đổi giá trị rồi nhấn **Cmd+Enter**. Mọi thứ bảng lệnh c
 
 ## 5. Tiếng Việt
 
-Các bảng riêng của BashCutPro hiển thị được bằng tiếng Việt: mở bảng lệnh, gõ **BashCutPro Language**, nhấn **Tab**, thay
-`{}` bằng `{"language": "vi"}` (dòng phía trên ô ghi các lựa chọn, `en` và `vi`) rồi nhấn **Cmd+Enter**. Chạy lại với `{}` để theo ngôn ngữ của ứng dụng.
+Các bảng riêng của BashCutPro hiển thị được bằng tiếng Việt: chọn **Window ▸ BashCutPro ▸ Language ▸ Tiếng Việt**
+(khi đã chọn tiếng Việt, menu này ghi là **Ngôn ngữ**). Các bảng đổi ngay và giữ nguyên ở lần mở ứng dụng sau. **English**
+luôn hiển thị tiếng Anh dù ứng dụng đang dùng ngôn ngữ nào; **Theo ứng dụng** (khi menu còn tiếng Anh: **Follow App**; mặc định) dùng ngôn ngữ giao diện của ứng
+dụng. Dấu tích cho biết lựa chọn hiện tại.
 
 Tiếp theo: [Thanh bên](rail.md).

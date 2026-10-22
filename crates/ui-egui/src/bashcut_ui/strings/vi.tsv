@@ -57,6 +57,7 @@ Batch: starting	Hàng loạt: đang bắt đầu
 Open Batch	Mở Hàng loạt
 # Command palette (BC-52)
 Command Palette	Bảng lệnh
+Command Palette…	Bảng lệnh…
 Search commands, actions, looks, profiles, recipes…	Tìm lệnh, thao tác, màu phim, hồ sơ xuất, công thức…
 Nothing matches.	Không có kết quả.
 ↑↓ choose · Enter run · Tab parameters · Esc close	↑↓ chọn · Enter chạy · Tab tham số · Esc đóng
@@ -148,6 +149,7 @@ Interrupted	Bị gián đoạn
 Needs attention	Cần xem lại
 Not run	Chưa chạy
 Stopped	Đã dừng
+Needs fix	Cần sửa
 {done} done · {failed} failed · {attention} need attention · {left} left	{done} xong · {failed} lỗi · {attention} cần xem lại · {left} còn lại
 # Library (BC-68)
 Your saved pieces and open media online, with the licence shown before download.	Tư liệu đã lưu của bạn và tư liệu mở trên mạng, hiện giấy phép trước khi tải.
@@ -230,3 +232,9 @@ All plugins are installed	Đã cài hết các plugin
 Control channel off: the agent cannot edit the open project.	Kênh điều khiển đang tắt: trợ lý không sửa được dự án đang mở.
 Project not saved: conversations will not be kept	Dự án chưa lưu: cuộc trò chuyện sẽ không được giữ lại
 Save…	Lưu…
+
+# Window ▸ BashCutPro ▸ Language (UX11); language names stay in their own language
+Language	Ngôn ngữ
+Follow App	Theo ứng dụng
+English	English
+Tiếng Việt	Tiếng Việt
