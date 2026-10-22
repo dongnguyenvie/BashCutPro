@@ -38,15 +38,15 @@ USAGE
 
 RUN OPTIONS
   --cli PATH          the engine to use (default: $BASHCUTPRO_CLI, $BASHCUT_FILMCRAFT_CLI or
-                      $FILMCRAFT_CLI, else bashcutpro or filmcraft-cli next to this program, else
-                      the same on PATH)
+                      $FILMCRAFT_CLI, else bashcutpro, bcpro or filmcraft-cli next to this program,
+                      else the same on PATH)
   --concurrency N     items at once (overrides the pipeline; free RAM and cores may allow fewer)
   --no-keep-awake     let the machine sleep while the batch runs
   --agent-concurrency N
                       agent steps at once, across items (overrides the pipeline's agentConcurrency)
   --mcp PATH          bashcut-mcp for agent steps (default: $BASHCUT_MCP, else the one next to this
                       program; without it agents get bashcutpro mcp, writes not limited)
-  --data-dir DIR      FilmCraft data dir: presets, and --data-dir for the engine
+  --data-dir DIR      BashCutPro data dir: presets, and --data-dir for the engine
   --kit DIR           the agent kit (bashcutpro-agent-kit): `{kit}` in steps, and agent steps get its
                       skills and scripts (default: $BASHCUT_KIT, else <data dir>/bashcut-kit if there)
   --speech-model ID   the speech model for transcribe steps that name none (default: the one picked
