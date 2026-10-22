@@ -2,11 +2,15 @@
 //! headless, watch every item and fix the ones that failed. Every button goes through the
 //! `bashcut.batch.*` commands ([`batch::invoke`]) and registers an automation id.
 
-use serde_json::{Value, json};
+use std::collections::BTreeMap;
+
+use bashcut_plugin_host::install::Installed;
+use bashcut_plugin_host::manifest::Action;
+use serde_json::{Map, Value, json};
 
 use super::batch;
 use super::palette::{self, Item};
-use super::plugins_panel::button;
+use super::plugins_panel::{Spec, button, field, param_title, param_value};
 use super::strings::{f, s};
 use crate::FilmcraftApp;
 use crate::native_dialogs::FileDialog;
@@ -23,6 +27,8 @@ struct View {
     search: String,
     /// The step whose parameters are open, with the JSON being edited.
     editing: Option<(usize, String)>,
+    /// The open plugin step's form: its index and each param's text.
+    form: Option<(usize, BTreeMap<String, String>)>,
     preset: String,
     /// The last command's error.
     status: Option<String>,
@@ -193,6 +199,7 @@ fn steps(app: &mut FilmcraftApp, ui: &mut egui::Ui, ctx: &egui::Context, v: &mut
             let open = v.editing.as_ref().is_some_and(|(e, _)| *e == i);
             if button(app, ui, &format!("bashcut.batch.step.{i}"), &format!("{}. {label}", i + 1), true) {
                 v.editing = if open { None } else { Some((i, serde_json::to_string_pretty(step).unwrap_or_default())) };
+                v.form = None;
             }
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 if button(app, ui, &format!("bashcut.batch.step.{i}.remove"), "✕", true) {
@@ -210,19 +217,33 @@ fn steps(app: &mut FilmcraftApp, ui: &mut egui::Ui, ctx: &egui::Context, v: &mut
             });
         });
         let Some((at, text)) = v.editing.clone().filter(|(e, _)| *e == i) else { continue };
+        // a plugin step is edited as its action's form, never as its command line
+        let argv = step.plugin.as_ref().map(|p| p.argv.clone()).unwrap_or_default();
+        if let Some((plugin, a)) = super::plugins::with(app, ctx, |h| plugin_action(h.installed(), &argv)) {
+            plugin_form(app, ui, ctx, v, i, step, &plugin, &a, &argv);
+            continue;
+        }
+        // an engine command shows what it takes, as the palette does
+        if let Some(sig) = step.command.as_deref().and_then(filmcraft_engine::commands::find).map(|c| c.params).filter(|p| !p.is_empty()) {
+            let r = ui.label(egui::RichText::new(sig).monospace().size(10.5).color(t.text_dim));
+            app.auto.add_response(&format!("bashcut.batch.step.{i}.signature"), &r, sig);
+        }
         let mut text = text;
         let r = ui.add(egui::TextEdit::multiline(&mut text).code_editor().desired_rows(4).desired_width(f32::INFINITY));
         app.auto.add_response(&format!("bashcut.batch.step.{i}.json"), &r, "step JSON");
         v.editing = Some((at, text.clone()));
-        if button(app, ui, &format!("bashcut.batch.step.{i}.apply"), s("Apply"), true) {
-            match serde_json::from_str::<Value>(&text) {
-                Ok(step) => {
-                    if call(app, ctx, v, "setStep", json!({"index": i, "step": step})).is_some() {
-                        v.editing = None;
-                    }
-                }
-                Err(e) => v.status = Some(f("Step JSON: {error}", &[("error", &e.to_string())])),
-            }
+        // Apply waits for JSON that parses; hovering it says where it breaks
+        let parsed = serde_json::from_str::<Value>(&text);
+        let mut r = ui.add_enabled(parsed.is_ok(), egui::Button::new(s("Apply")));
+        if let Err(e) = &parsed {
+            r = r.on_disabled_hover_text(f("Step JSON: {error}", &[("error", &e.to_string())]));
+        }
+        app.auto.add_response(&format!("bashcut.batch.step.{i}.apply"), &r, s("Apply"));
+        if r.clicked()
+            && let Ok(step) = parsed
+            && call(app, ctx, v, "setStep", json!({"index": i, "step": step})).is_some()
+        {
+            v.editing = None;
         }
     }
     let r = ui.add(egui::TextEdit::singleline(&mut v.search).hint_text(s("＋ Add step: search commands, plugins, recipes")).desired_width(f32::INFINITY));
@@ -242,6 +263,90 @@ fn steps(app: &mut FilmcraftApp, ui: &mut egui::Ui, ctx: &egui::Context, v: &mut
             v.search.clear();
         }
     }
+}
+
+/// The installed plugin action a plugin step was built from (`batch.rs` `plugin_step`): the one
+/// whose program and args start its command line (program files made absolute), longest first.
+fn plugin_action(installed: &[Installed], argv: &[String]) -> Option<(String, Action)> {
+    let os = bashcut_plugin_host::os();
+    let mut best: Option<(usize, String, Action)> = None;
+    for p in installed {
+        let Some(m) = &p.manifest else { continue };
+        let entry = m.entry_for(os);
+        if entry.is_empty() {
+            continue;
+        }
+        for a in &m.actions {
+            let head: Vec<&String> = entry.iter().chain(&a.args).collect();
+            let fits = head.len() <= argv.len() && head.iter().zip(argv).all(|(want, got)| *want == got || p.dir.join(want).to_string_lossy() == got.as_str());
+            if fits && best.as_ref().is_none_or(|(n, ..)| head.len() > *n) {
+                best = Some((head.len(), p.id.clone(), a.clone()));
+            }
+        }
+    }
+    best.map(|(_, id, a)| (id, a))
+}
+
+/// Each param's text read back from its flag in the command line (a bool is its flag's presence;
+/// one left out is empty, for the plugin's default).
+fn flag_texts(a: &Action, argv: &[String]) -> BTreeMap<String, String> {
+    a.params
+        .iter()
+        .map(|p| {
+            let at = argv.iter().position(|x| !p.flag.is_empty() && *x == p.flag);
+            let text = if p.kind == "bool" { at.is_some().to_string() } else { at.and_then(|k| argv.get(k.saturating_add(1))).cloned().unwrap_or_default() };
+            (p.id.clone(), text)
+        })
+        .collect()
+}
+
+/// A plugin step's params as the Plugins section's form ([`field`], labels in the UI language);
+/// **Apply** rebuilds the step through `setStep`, keeping its label.
+#[allow(clippy::too_many_arguments)]
+fn plugin_form(
+    app: &mut FilmcraftApp,
+    ui: &mut egui::Ui,
+    ctx: &egui::Context,
+    v: &mut View,
+    i: usize,
+    step: &bashcut_batch::pipeline::Step,
+    plugin: &str,
+    a: &Action,
+    argv: &[String],
+) {
+    let mut texts = match v.form.take() {
+        Some((at, texts)) if at == i => texts,
+        _ => flag_texts(a, argv),
+    };
+    let mut apply = false;
+    egui::Frame::group(ui.style()).show(ui, |ui| {
+        for p in &a.params {
+            let title = param_title(p);
+            let id = format!("bashcut.batch.step.{i}.param.{}", p.id);
+            let text = texts.entry(p.id.clone()).or_default();
+            ui.horizontal(|ui| {
+                ui.label(title.as_str());
+                field(app, ui, &id, &title, Spec::param(p), text);
+            });
+        }
+        apply = button(app, ui, &format!("bashcut.batch.step.{i}.apply"), s("Apply"), true);
+    });
+    if apply {
+        let params: Map<String, Value> = a.params.iter().filter_map(|p| Some((p.id.clone(), param_value(p, texts.get(&p.id)?)?))).collect();
+        let mut req = Map::new();
+        req.insert("index".into(), json!(i));
+        req.insert("plugin".into(), json!(plugin));
+        req.insert("action".into(), json!(a.id));
+        req.insert("params".into(), Value::Object(params));
+        if let Some(label) = &step.label {
+            req.insert("label".into(), json!(label));
+        }
+        if call(app, ctx, v, "setStep", Value::Object(req)).is_some() {
+            v.editing = None;
+            return;
+        }
+    }
+    v.form = Some((i, texts));
 }
 
 fn outputs(app: &mut FilmcraftApp, ui: &mut egui::Ui, ctx: &egui::Context, v: &mut View, list: &[bashcut_batch::pipeline::Output]) {
@@ -487,5 +592,26 @@ mod tests {
         };
         let step = step_params(&item).unwrap();
         assert_eq!(step, json!({"command": "markers.add", "params": {"name": "Hook"}, "label": "Add Marker"}));
+    }
+
+    #[test]
+    fn flags_read_back_as_form_texts() {
+        let m = bashcut_plugin_host::manifest::Manifest::parse(
+            &json!({"schema": "bashcut-plugin/1", "id": "t", "name": "T", "version": "0.1.0", "entry": {"command": ["t"]},
+                "actions": [{"id": "go", "args": ["go"], "needs": "none", "params": [
+                    {"id": "to", "flag": "--to", "type": "string"}, {"id": "on", "flag": "--on", "type": "bool", "optional": true},
+                    {"id": "n", "flag": "--n", "type": "integer", "optional": true}]}]})
+            .to_string(),
+        )
+        .unwrap();
+        let installed = [Installed { id: "t".into(), dir: "/p".into(), manifest: Some(m), origin: None, error: None }];
+        let argv: Vec<String> = ["t", "go", "--to", "vi", "--on"].map(String::from).into();
+        let (id, a) = plugin_action(&installed, &argv).unwrap();
+        assert_eq!((id.as_str(), a.id.as_str()), ("t", "go"));
+        let texts = flag_texts(&a, &argv);
+        assert_eq!((texts["to"].as_str(), texts["on"].as_str(), texts["n"].as_str()), ("vi", "true", ""));
+        // a trailing flag with no value, or another program, reads nothing
+        assert!(plugin_action(&installed, &["other".to_string()]).is_none());
+        assert_eq!(flag_texts(&a, &["--to".to_string()])["to"], "");
     }
 }

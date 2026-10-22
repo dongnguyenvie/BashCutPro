@@ -1017,3 +1017,81 @@ fn popped_out_windows_come_back_where_they_were() {
     assert!(place[0].as_f64().is_some_and(|x| (x as f32 - r[0]).abs() <= 1.0), "{place} vs {r:?}");
     assert!(d.harness.state().ui_error.is_none(), "{:?}", d.harness.state().ui_error);
 }
+
+/// UX10: a plugin step opens as its action's form (labels in the UI language, no JSON) and Apply
+/// rebuilds it through `setStep`; an engine step shows its signature over the JSON, and Apply
+/// stays disabled while that JSON does not parse.
+#[test]
+fn batch_plugin_steps_edit_as_a_form_and_bad_json_cannot_apply() {
+    let data = std::env::temp_dir().join(format!("bashcut-ui-stepform-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&data);
+    let plugin = data.join("bashcut-plugins").join("test.cap");
+    std::fs::create_dir_all(&plugin).unwrap();
+    let manifest = json!({
+        "schema": "bashcut-plugin/1", "id": "test.cap", "name": "Captions", "version": "0.1.0", "summary": "test plugin",
+        "entry": {"command": ["python3", "plugin.py"]}, "output": "bashcut-result/1",
+        "connect": {"project": ["--project", "{project}"]},
+        "actions": [{"id": "translate", "title": "Translate captions…", "args": ["translate"], "needs": "project", "params": [
+            {"id": "target", "title": "Target language", "flag": "--target", "type": "enum", "default": "vi", "choices": ["vi", "en"],
+             "i18n": {"vi": {"title": "Ngôn ngữ đích"}}},
+            {"id": "note", "flag": "--note", "type": "string", "optional": true},
+            {"id": "burn", "flag": "--burn", "type": "bool", "optional": true}]}]
+    });
+    std::fs::write(plugin.join("bashcut-plugin.json"), manifest.to_string()).unwrap();
+    let mut session = Session::default();
+    session.start_autosave(filmcraft_engine::autosave::AutosaveConfig::new(&data)).expect("data dir");
+    session.execute("file.openDemoProject", json!({})).expect("demo project");
+    let (tx, rx) = channel();
+    let app = FilmcraftApp::new(session).with_control(rx);
+    let harness = Harness::builder().with_size(egui::vec2(W, H)).with_max_steps(10_000).build_eframe(move |_cc| app);
+    let mut d = Driver { harness, tx };
+    d.frames(4);
+    let element = |d: &mut Driver, id: &str| -> Value {
+        let v = d.ok("ui.elements", json!({"prefix": id}));
+        v.as_array().and_then(|a| a.iter().find(|e| e["id"] == json!(id)).cloned()).unwrap_or(Value::Null)
+    };
+    d.click("bashcut.rail.batch");
+    d.exec("bashcut.batch.addStep", json!({"plugin": "test.cap", "action": "translate", "params": {"target": "en", "burn": true}}));
+    d.exec("bashcut.batch.addStep", json!({"command": "markers.add", "params": {"name": "Hook"}}));
+    let label = d.exec("bashcut.batch.state", json!({}))["draft"]["steps"][0]["label"].clone();
+
+    // the plugin step: a form filled from its command line, no JSON
+    d.click("bashcut.batch.step.0");
+    let param = "bashcut.batch.step.0.param";
+    assert!(!d.has("bashcut.batch.step.0.json"), "no JSON for a plugin step");
+    assert_eq!(element(&mut d, &format!("{param}.target"))["label"], json!("Target language"));
+    assert!(d.has(&format!("{param}.burn")) && d.has(&format!("{param}.note")));
+    d.exec("bashcut.ui.setLanguage", json!({"language": "vi"}));
+    d.frames(3);
+    assert_eq!(element(&mut d, &format!("{param}.target"))["label"], json!("Ngôn ngữ đích"), "the label in the UI language");
+    if let Some(dir) = std::env::var_os("BASHCUT_UI_SHOTS").map(std::path::PathBuf::from) {
+        std::fs::create_dir_all(&dir).unwrap();
+        for lang in ["en", "vi"] {
+            d.exec("bashcut.ui.setLanguage", json!({"language": lang}));
+            d.frames(3);
+            d.harness.render().unwrap().save(dir.join(format!("batch-step-form-{lang}.png"))).unwrap();
+        }
+    }
+    d.exec("bashcut.ui.setLanguage", json!({"language": null}));
+    d.click(&format!("{param}.note"));
+    d.ok("ui.type", json!({"text": "hi"}));
+    d.frames(2);
+    d.click("bashcut.batch.step.0.apply");
+    let steps = d.exec("bashcut.batch.state", json!({}))["draft"]["steps"].clone();
+    let argv: Vec<String> = serde_json::from_value(steps[0]["plugin"]["argv"].clone()).unwrap();
+    let tail = argv.iter().skip_while(|a| *a != "--target").cloned().collect::<Vec<_>>();
+    assert_eq!(tail, ["--target", "en", "--note", "hi", "--burn"], "{argv:?}");
+    assert_eq!(steps[0]["label"], label, "the label is kept");
+    assert!(!d.has(&format!("{param}.target")), "Apply closes the form");
+
+    // the engine step: its signature over the JSON; JSON that doesn't parse can't be applied
+    d.click("bashcut.batch.step.1");
+    assert!(element(&mut d, "bashcut.batch.step.1.signature")["label"].as_str().is_some_and(|l| l.contains("name")));
+    assert_eq!(element(&mut d, "bashcut.batch.step.1.apply")["enabled"], json!(true));
+    d.click("bashcut.batch.step.1.json");
+    d.ok("ui.type", json!({"text": "}"}));
+    d.frames(3);
+    assert_eq!(element(&mut d, "bashcut.batch.step.1.apply")["enabled"], json!(false), "invalid JSON");
+    assert!(d.harness.state().ui_error.is_none(), "{:?}", d.harness.state().ui_error);
+    let _ = std::fs::remove_dir_all(&data);
+}
