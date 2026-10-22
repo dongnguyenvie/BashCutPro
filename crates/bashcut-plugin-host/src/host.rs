@@ -82,12 +82,15 @@ pub struct Job {
     pub then: Option<String>,
     /// The latest `bashcut-view/1` form the run printed (or put in its result as `data.view`).
     pub view: Option<View>,
+    /// A run's params as it started with them (Retry runs the same again); empty for other jobs.
+    pub params: BTreeMap<String, Value>,
     #[serde(skip)]
     started: Instant,
 }
 
 impl Job {
-    fn new(id: u64, kind: JobKind, title: String) -> Self {
+    /// A job that has just started (the host makes these; public so a UI test can draw one).
+    pub fn new(id: u64, kind: JobKind, title: String) -> Self {
         Job {
             id,
             kind,
@@ -100,6 +103,7 @@ impl Job {
             elapsed_ms: 0,
             then: None,
             view: None,
+            params: BTreeMap::new(),
             started: Instant::now(),
         }
     }
@@ -392,6 +396,7 @@ impl Host {
         let id = self.add_job(JobKind::Run { plugin: plugin.to_string(), action: action.to_string() }, title);
         if let Some(j) = self.job_mut(id) {
             j.then = a.handoff.as_ref().map(|h| h.then.clone()).filter(|t| !t.is_empty());
+            j.params = params.clone();
         }
         self.live.push((id, Live::Run(running)));
         Ok(id)

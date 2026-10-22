@@ -78,7 +78,7 @@ pub const SECTIONS: &[Section] = &[
         draw: library_panel::draw,
     },
     Section { id: "plugins", title: "Plugins", icon: Icon::Grid, blurb: "Installed plugins, their settings and actions.", draw: plugins_panel::draw },
-    Section { id: "runs", title: "Runs", icon: Icon::Stopwatch, blurb: "Plugin runs and agent turns with progress and results.", draw: runs_panel::draw },
+    Section { id: "runs", title: "Runs", icon: Icon::Stopwatch, blurb: "Plugin runs, installs and registry checks, with results.", draw: runs_panel::draw },
 ];
 
 /// The ids of [`SECTIONS`].

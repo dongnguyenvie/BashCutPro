@@ -12,7 +12,7 @@ này cũng có trong **Window ▸ BashCutPro**.
 | **Màu phim** (Looks) | 26 màu phim, mỗi màu có một dòng mục đích; xem trước và áp cho các clip đang chọn | [Màu phim](looks.md) |
 | **Thư viện** (Library) | **Của tôi**: những phần bạn đã lưu. **Trực tuyến**: nhạc, hiệu ứng âm thanh, ảnh và video stock, biểu tượng, phông chữ có giấy phép mở | [Thư viện](library.md) |
 | **Plugin** (Plugins) | Cài plugin (đọc tiếng Việt, dịch phụ đề, ảnh AI, tài nguyên trực tuyến…), nhập khóa, chạy thao tác | bên dưới |
-| **Tác vụ** (Runs) | Mọi lượt chạy plugin và lượt của trợ lý, với tiến độ, kết quả và nhật ký | bên dưới |
+| **Tác vụ** (Runs) | Lượt chạy plugin, cài đặt và kiểm tra kho plugin, với tiến độ, lỗi, kết quả và nhật ký | bên dưới |
 
 **Tách cửa sổ** (Pop out). Nút vuông ở đầu mỗi mục đưa nó ra cửa sổ riêng (tiện khi có màn hình thứ hai);
 **Gắn lại** (Dock back) đưa về bảng bên. **Cmd+Alt+Shift+A** nhảy tới mục Trợ lý.
@@ -45,9 +45,13 @@ Gỡ plugin cũng xóa luôn các khóa đã lưu của nó.
 
 ![Mục Tác vụ khi chưa có gì chạy](../img/runs.png)
 
-Tác vụ liệt kê mọi việc chạy nền: thao tác plugin, cài đặt, lượt của trợ lý. Mỗi dòng có tiến độ, thời gian, thông báo
-kết quả, **Nhật ký** (Log, những gì plugin in ra) và **Hủy** (Cancel) khi đang chạy. **Xóa mục đã xong** (Clear
-finished) dọn danh sách. Khi plugin cần giúp (ví dụ dịch mà không có khóa API), lượt chạy ghi **Cần trợ lý** (Needs
+Tác vụ liệt kê các lượt chạy plugin, cài đặt và kiểm tra kho plugin, mới nhất ở trên. Mỗi dòng có tiến độ và thời gian
+(cả khi đang chạy), thông báo kết quả, **Nhật ký** (Log, những gì plugin in ra), **Chép nhật ký** (Copy log) và **Hủy**
+(Cancel) khi đang chạy. Lượt chạy thất bại, bị lỗi hoặc hết thời gian hiện đầy đủ lỗi màu đỏ (chọn và chép được) cùng
+nút **Chạy lại** (Retry), chạy lại đúng thao tác đó với cùng giá trị. Khi lượt chạy tạo ra tệp, **Mở vị trí** (Reveal)
+mở thư mục chứa từng tệp. Trong lúc chạy hàng loạt, một dòng cho biết tiến độ (**Hàng loạt: 3 / 10**) với nút **Mở
+Hàng loạt** (Open Batch); các mục của nó nằm trong Hàng loạt, còn lượt của trợ lý nằm trong Trợ lý. **Xóa mục đã xong**
+(Clear finished) dọn danh sách. Khi plugin cần giúp (ví dụ dịch mà không có khóa API), lượt chạy ghi **Cần trợ lý** (Needs
 the agent): **Gửi cho trợ lý** (Send to agent) chuyển việc sang mục Trợ lý để làm nốt.
 
 Bạn không phải chờ: cứ dựng tiếp trong lúc tác vụ chạy.

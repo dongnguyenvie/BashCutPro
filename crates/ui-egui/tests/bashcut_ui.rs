@@ -666,6 +666,82 @@ fn plugins_say_the_control_channel_is_off_and_errors_read_as_sentences() {
     let _ = std::fs::remove_dir_all(&data);
 }
 
+/// `fail` reports a coded error (exit 1), `make` names a file it wrote (`data.path`).
+const RUNS_PLUGIN: &str = r#"
+import json, sys
+if sys.argv[1] == "fail":
+    print(json.dumps({"ok": False, "error": {"code": "no_key", "message": "set the API key in settings"}}))
+    sys.exit(1)
+print(json.dumps({"ok": True, "message": "made", "data": {"path": "/out/made.wav"}}))
+"#;
+
+#[test]
+fn a_failed_run_shows_its_error_and_retries_and_a_result_path_shows_reveal() {
+    if !has_python() {
+        eprintln!("python not found: skipped");
+        return;
+    }
+    let data = std::env::temp_dir().join(format!("bashcut-ui-runs-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&data);
+    let plugin = data.join("bashcut-plugins").join("test.runs");
+    std::fs::create_dir_all(&plugin).unwrap();
+    std::fs::write(plugin.join("plugin.py"), RUNS_PLUGIN).unwrap();
+    let word = json!([{"id": "word", "flag": "--word", "type": "string", "optional": true}]);
+    let manifest = json!({
+        "schema": "bashcut-plugin/1", "id": "test.runs", "name": "Runs", "version": "0.1.0", "summary": "test plugin",
+        "entry": {"command": ["python3", "plugin.py"], "windows": ["py", "-3", "plugin.py"]}, "output": "bashcut-result/1",
+        "actions": [
+            {"id": "fail", "title": "Fail", "args": ["fail"], "needs": "none", "params": word},
+            {"id": "make", "title": "Make", "args": ["make"], "needs": "none", "params": []}
+        ]
+    });
+    std::fs::write(plugin.join("bashcut-plugin.json"), manifest.to_string()).unwrap();
+
+    let mut session = Session::default();
+    session.start_autosave(filmcraft_engine::autosave::AutosaveConfig::new(&data)).expect("data dir");
+    session.execute("file.openDemoProject", json!({})).expect("demo project");
+    let (tx, rx) = channel();
+    let app = FilmcraftApp::new(session).with_control(rx);
+    let harness = Harness::builder().with_size(egui::vec2(W, H)).with_max_steps(10_000).build_eframe(move |_cc| app);
+    let mut d = Driver { harness, tx };
+    d.frames(4);
+    let wait = |d: &mut Driver, job: u64| {
+        let mut j = Value::Null;
+        for _ in 0..600 {
+            j = d.exec("bashcut.plugins.job", json!({"job": job}));
+            if j["state"] != json!("running") {
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(20));
+        }
+        j
+    };
+
+    let failed = d.exec("bashcut.plugins.run", json!({"plugin": "test.runs", "action": "fail", "params": {"word": "hi"}}))["job"].as_u64().unwrap();
+    assert_eq!(wait(&mut d, failed)["state"], json!("failed"));
+    assert_eq!(d.state()["open"], json!("runs"));
+    d.frames(3);
+    let error = d.ok("ui.elements", json!({"prefix": format!("bashcut.runs.{failed}.error")}));
+    assert!(error.to_string().contains("no_key: set the API key in settings"), "{error}");
+    assert!(d.has(&format!("bashcut.runs.{failed}.copyLog")));
+    assert!(!d.has(&format!("bashcut.runs.{failed}.reveal.0")));
+    d.click(&format!("bashcut.runs.{failed}.retry"));
+    let runs = d.exec("bashcut.plugins.runs", json!({}));
+    let again = runs.as_array().unwrap().iter().filter_map(|r| r["id"].as_u64()).max().unwrap();
+    assert_ne!(again, failed, "Retry started a new run");
+    let j = wait(&mut d, again);
+    assert_eq!(j["kind"], json!({"type": "run", "plugin": "test.runs", "action": "fail"}));
+    assert_eq!(j["params"], json!({"word": "hi"}), "the same params");
+
+    let made = d.exec("bashcut.plugins.run", json!({"plugin": "test.runs", "action": "make"}))["job"].as_u64().unwrap();
+    assert_eq!(wait(&mut d, made)["state"], json!("succeeded"));
+    d.frames(3);
+    assert!(d.has(&format!("bashcut.runs.{made}.reveal.0")), "data.path shows Reveal");
+    assert!(!d.has(&format!("bashcut.runs.{made}.retry")) && !d.has(&format!("bashcut.runs.{made}.error")));
+    assert!(d.harness.state().ui_error.is_none(), "{:?}", d.harness.state().ui_error);
+    let _ = std::fs::remove_dir_all(&data);
+}
+
 /// The test plugins' Python runs (`py -3` on Windows, where `python3` may be the Store's stub).
 fn has_python() -> bool {
     let (exe, args): (&str, &[&str]) = if cfg!(windows) { ("py", &["-3", "--version"]) } else { ("python3", &["--version"]) };

@@ -83,6 +83,22 @@ layout files and `ALL` array on every merge. Docking can come later if upstream 
 3. **P3** a dockable panel and the director chat dock, only if upstream panels become extensible or the owner
    accepts the extra merge cost.
 
+## Results (`bashcut-result/1` in Runs)
+
+Runs shows a finished run's `message`; a failed one (failed, crashed, timed out) shows its full error: `error.code:
+error.message` from the result, else the host's error (start failure, timeout, no result) with the plugin's last
+stderr line, else the exit code. **Retry** reruns the same plugin, action and params (kept on the job as `params`, also
+in `bashcut.plugins.job`); a failed install or registry check retries as itself.
+
+Files a run wrote go in `data` under these keys, and each gets a **Reveal** button (at most 8 per run):
+
+| Key | Value |
+|---|---|
+| `path` | one path string |
+| `paths`, `files`, `outputs` | a list of path strings or `{"path": …}` objects |
+
+Other `data` keys are the plugin's own (`view` is the form, see below).
+
 ## Views (`bashcut-view/1`, #37)
 
 An action with `"view": true` shows a form in its plugin card. While it runs, every stdout line that parses as
