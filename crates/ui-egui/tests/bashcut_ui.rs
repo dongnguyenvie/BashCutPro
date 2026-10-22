@@ -523,6 +523,80 @@ fn a_plugin_view_draws_its_rows_and_buttons_run_actions() {
     let _ = std::fs::remove_dir_all(&data);
 }
 
+#[test]
+fn plugin_action_forms_follow_the_manifest() {
+    if !has_python() {
+        eprintln!("python not found: skipped");
+        return;
+    }
+    let data = std::env::temp_dir().join(format!("bashcut-ui-forms-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&data);
+    let plugin = data.join("bashcut-plugins").join("test.forms");
+    std::fs::create_dir_all(&plugin).unwrap();
+    std::fs::write(plugin.join("plugin.py"), "import json, sys\nprint(json.dumps({\"ok\": True, \"data\": {\"args\": sys.argv[1:]}}))\n").unwrap();
+    let manifest = json!({
+        "schema": "bashcut-plugin/1", "id": "test.forms", "name": "Forms", "version": "0.1.0", "summary": "test plugin",
+        "entry": {"command": ["python3", "plugin.py"], "windows": ["py", "-3", "plugin.py"]}, "output": "bashcut-result/1",
+        "actions": [
+            {"id": "go", "title": "Go", "args": ["go"], "needs": "none", "params": [
+                {"id": "target", "flag": "--target", "type": "enum", "default": "vi", "choices": ["vi", "en"]},
+                {"id": "maxCps", "flag": "--max-cps", "type": "integer", "minimum": 8, "maximum": 30, "default": 17},
+                {"id": "answer", "flag": "--answer", "type": "path"},
+                {"id": "out_dir", "flag": "--out-dir", "type": "string", "optional": true, "title": "Save to"}]}
+        ]
+    });
+    std::fs::write(plugin.join("bashcut-plugin.json"), manifest.to_string()).unwrap();
+
+    let mut session = Session::default();
+    session.start_autosave(filmcraft_engine::autosave::AutosaveConfig::new(&data)).expect("data dir");
+    session.execute("file.openDemoProject", json!({})).expect("demo project");
+    let (tx, rx) = channel();
+    let mut app = FilmcraftApp::new(session).with_control(rx);
+    app.hooks.pick_files = Some(Box::new(|_| vec!["/tmp/answer.json".to_string()]));
+    let harness = Harness::builder().with_size(egui::vec2(W, H)).with_max_steps(10_000).build_eframe(move |_cc| app);
+    let mut d = Driver { harness, tx };
+    d.frames(4);
+
+    d.click("bashcut.rail.plugins");
+    d.click("bashcut.plugins.test.forms");
+    d.click("bashcut.plugins.test.forms.action.go");
+    let label = |d: &mut Driver, id: &str| -> Value {
+        let v = d.ok("ui.elements", json!({"prefix": id}));
+        v.as_array().and_then(|a| a.iter().find(|e| e["id"] == json!(id)).cloned()).unwrap_or(Value::Null)
+    };
+    let param = "bashcut.plugins.test.forms.action.go.param";
+    assert_eq!(label(&mut d, &format!("{param}.target"))["label"], json!("Target"));
+    assert_eq!(label(&mut d, &format!("{param}.maxCps"))["label"], json!("Max cps"));
+    assert_eq!(label(&mut d, &format!("{param}.out_dir"))["label"], json!("Save to"), "a title wins over the id");
+    // `answer` is required and empty: Run waits for it
+    assert_eq!(label(&mut d, "bashcut.plugins.test.forms.go.run")["enabled"], json!(false));
+    // an integer field takes no letters
+    d.click(&format!("{param}.maxCps"));
+    d.ok("ui.type", json!({"text": "abc"}));
+    d.ok("ui.key", json!({"key": "Enter"}));
+    d.frames(3);
+    // Browse… fills the path (the picker answers in a later frame)
+    d.click(&format!("{param}.answer.browse"));
+    d.frames(3);
+    assert_eq!(label(&mut d, "bashcut.plugins.test.forms.go.run")["enabled"], json!(true), "the path was filled");
+    d.click("bashcut.plugins.test.forms.go.run");
+    let runs = d.exec("bashcut.plugins.runs", json!({}));
+    let id = runs.as_array().unwrap().iter().filter_map(|r| r["id"].as_u64()).max().expect("a run started");
+    let mut job = Value::Null;
+    for _ in 0..600 {
+        job = d.exec("bashcut.plugins.job", json!({"job": id}));
+        if job["state"] != json!("running") {
+            break;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(20));
+    }
+    assert_eq!(job["state"], json!("succeeded"), "{job}");
+    let args = job["outcome"]["result"]["data"]["args"].clone();
+    assert_eq!(args, json!(["go", "--target", "vi", "--max-cps", "17", "--answer", "/tmp/answer.json"]), "{job}");
+    assert!(d.harness.state().ui_error.is_none(), "{:?}", d.harness.state().ui_error);
+    let _ = std::fs::remove_dir_all(&data);
+}
+
 /// The test plugins' Python runs (`py -3` on Windows, where `python3` may be the Store's stub).
 fn has_python() -> bool {
     let (exe, args): (&str, &[&str]) = if cfg!(windows) { ("py", &["-3", "--version"]) } else { ("python3", &["--version"]) };

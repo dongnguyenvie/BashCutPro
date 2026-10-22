@@ -145,6 +145,14 @@ and MCP share one code path (`sendToAgent` answers `sent: false` until the Agent
 `bashcut.plugins.<id>.secret.<setting>[.save|.clear]`, `bashcut.plugins.<id>.action.<action>[.param.<param>]`,
 `bashcut.plugins.<id>.<action>.run`, `bashcut.runs.<job>[.progress|.cancel|.log|.agent]`, `bashcut.runs.clear`.
 
+Action forms (UX2) follow the manifest: the label is the param's `title`, else its id in words (`maxCps` → "Max
+cps"). A param with neither `optional` nor a `default` is required (a `bool` never is: a checkbox always has a value):
+its label ends in `*`, and **Run** / **Run on many files…** stay disabled with "Fill in: …" as the tooltip until it
+is filled. `integer` / `number` are drag values clamped to `minimum..=maximum` and go out as JSON numbers; one with
+no value shows "–" and is left to the plugin's default. `path` adds **Browse…** (`…param.<param>.browse`), which
+picks one file. `plugins_panel::field` / `Spec` are `pub(super)` so other forms (the Batch step form) draw the same
+fields.
+
 Built in #52 (P): `bashcut_ui/palette.rs`, a foreground `egui::Area` drawn at the end of `layout` in every mode.
 Cmd/Ctrl+Shift+P (`bashcut.palette.open`, Window ▸ BashCutPro ▸ Command Palette…) opens it; Cmd/Ctrl+K stays
 upstream's Add Edit. Items: engine and UI commands (live shortcut and enabled state), `bashcut.*` commands, plugin
