@@ -13,7 +13,7 @@ Close	Đóng
 Coming soon	Sắp có
 Chat with the editing agent (Claude Code, Codex) about this project.	Trò chuyện với trợ lý dựng phim (Claude Code, Codex) về dự án này.
 Installed plugins, their settings and actions.	Plugin đã cài, cài đặt và thao tác của chúng.
-Plugin runs and agent turns with progress and results.	Các lượt chạy plugin và trợ lý, với tiến độ và kết quả.
+Plugin runs, installs and registry checks, with results.	Các lượt chạy plugin, cài đặt và kiểm tra kho plugin, kèm kết quả.
 # Plugins and Runs (BC-31)
 Installed	Đã cài
 Available	Có thể cài
@@ -51,6 +51,12 @@ Needs the agent	Cần trợ lý
 Cancelled	Đã hủy
 Timed out	Hết thời gian
 Crashed	Bị lỗi
+Copy log	Chép nhật ký
+exit code {code}	mã thoát {code}
+No error was reported.	Không có thông báo lỗi.
+Batch: {done} of {total}	Hàng loạt: {done} / {total}
+Batch: starting	Hàng loạt: đang bắt đầu
+Open Batch	Mở Hàng loạt
 # Command palette (BC-52)
 Command Palette	Bảng lệnh
 Search commands, actions, looks, profiles, recipes…	Tìm lệnh, thao tác, màu phim, hồ sơ xuất, công thức…

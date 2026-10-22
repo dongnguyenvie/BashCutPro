@@ -12,7 +12,7 @@ it again to close the panel. The same sections are in **Window ▸ BashCutPro**.
 | **Looks** | 26 colour looks, each with a one-line purpose; preview and apply to the selected clips | [Looks](looks.md) |
 | **Library** | **Mine**: your saved pieces. **Online**: open music, sound effects, stock photos and video, icons, fonts | [Library](library.md) |
 | **Plugins** | Install plugins (Vietnamese text to speech, caption translation, AI images, online resources…), set their keys, run their actions | below |
-| **Runs** | Every plugin run and agent turn, with progress, result and log | below |
+| **Runs** | Plugin runs, installs and registry checks, with progress, errors, results and log | below |
 
 **Pop out.** The square button in a section's header moves it into its own window (handy on a second screen);
 **Dock back** returns it to the side panel. **Cmd+Alt+Shift+A** jumps to the Agent section.
@@ -45,9 +45,12 @@ Removing a plugin also forgets its stored keys.
 
 ![The Runs section before anything has run](../img/runs.png)
 
-Runs lists everything that works in the background: plugin actions, installs, agent turns. Each row shows progress,
-time, the result's message, **Log** (what the plugin printed) and **Cancel** while it runs. **Clear finished** tidies
-the list. When a plugin needs help (for example a translation without an API key) its run says **Needs the agent**:
+Runs lists plugin runs, installs and registry checks, newest first. Each row shows progress and time (also while it
+runs), the result's message, **Log** (what the plugin printed), **Copy log**, and **Cancel** while it runs. A run that
+failed, crashed or timed out shows its full error in red (you can select and copy it) and **Retry**, which runs the
+same action again with the same values. When a run wrote files, **Reveal** shows each one in its folder. While a batch
+runs, one row says how far it is (**Batch: 3 of 10**) with **Open Batch**; the batch's own items are in Batch, and
+agent turns stay in Agent. **Clear finished** tidies the list. When a plugin needs help (for example a translation without an API key) its run says **Needs the agent**:
 **Send to agent** hands the job to the Agent section, which finishes it.
 
 You never have to wait for a run: keep editing while it works.

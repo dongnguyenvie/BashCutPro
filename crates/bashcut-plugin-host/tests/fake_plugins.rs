@@ -231,6 +231,7 @@ fn install_settings_run_update_remove() {
     assert_eq!(data_out["cli"], json!("/apps/bashcutpro"), "the engine reaches plugins as BASHCUTPRO_CLI (#154)");
     assert_eq!(data_out["args"], json!(["--word", "hi"]));
     assert_eq!(j["progress"], json!(1.0));
+    assert_eq!(j["params"], json!({"word": "hi"}), "kept for Retry");
     assert!(j["log"].as_array().unwrap().len() >= 2);
     // one that needs the project gets the bridge address
     let job = host.command("run", &json!({"plugin": "test.fake", "action": "edit"}), &ctx).unwrap()["job"].as_u64().unwrap();
