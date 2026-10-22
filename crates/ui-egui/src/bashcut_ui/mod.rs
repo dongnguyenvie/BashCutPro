@@ -5,7 +5,9 @@
 //! touched. Commands (`bashcut.ui.*`) reach us through three one-line hooks in `menus.rs`
 //! ([`route!`], [`commands`], [`menu_items`]). State lives in egui context data ([`state`]).
 //!
-//! Adding a section: one row in [`SECTIONS`] and a `draw` function in its own file.
+//! Adding a section: one row in [`SECTIONS`] and a `draw` function in its own file, plus its id in
+//! the [`params`] hints (a test checks) and, if it shows a rail badge, an arm in `rail::show`
+//! (`bashcut/review/ui.md` S1, ticket RU6).
 
 pub mod agent;
 pub mod agent_panel;
