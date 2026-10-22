@@ -13,6 +13,7 @@ use serde_json::{Map, Value, json};
 use super::plugins;
 use super::strings::{f, s};
 use crate::FilmcraftApp;
+use crate::native_dialogs::FileDialog;
 
 /// What the forms hold between frames (egui context data, not `UiState`).
 #[derive(Clone, Default)]
@@ -244,7 +245,7 @@ fn settings_form(app: &mut FilmcraftApp, ui: &mut egui::Ui, ctx: &egui::Context,
             let id = format!("bashcut.plugins.{}.settings.{}", m.id, st.id);
             ui.horizontal(|ui| {
                 ui.label(title.as_str());
-                field(app, ui, &id, &title, &st.kind, st.choices.as_deref(), text);
+                field(app, ui, &id, &title, Spec::setting(st), text);
             });
         }
         if !st.help.is_empty() {
@@ -290,7 +291,7 @@ fn action_row(app: &mut FilmcraftApp, ui: &mut egui::Ui, ctx: &egui::Context, d:
         }
         // with parameters, the button sits in the form so the batch takes their values
         if a.needs == "project" && a.params.is_empty() {
-            batch_button(app, ui, ctx, d, m, a);
+            batch_button(app, ui, ctx, d, m, a, None);
         }
     });
     if !is_open {
@@ -299,29 +300,41 @@ fn action_row(app: &mut FilmcraftApp, ui: &mut egui::Ui, ctx: &egui::Context, d:
     egui::Frame::group(ui.style()).show(ui, |ui| {
         for p in &a.params {
             let k = format!("{}/{}/{}", m.id, a.id, p.id);
-            let ptitle = p.title.clone().unwrap_or_else(|| p.id.clone());
+            let ptitle = param_title(p);
             let text = d.params.entry(k).or_insert_with(|| p.default.as_ref().map(value_text).unwrap_or_default());
             let id = format!("bashcut.plugins.{}.action.{}.param.{}", m.id, a.id, p.id);
             ui.horizontal(|ui| {
-                ui.label(ptitle.as_str());
-                field(app, ui, &id, &ptitle, &p.kind, p.choices.as_deref(), text);
+                ui.label(if required(p) { format!("{ptitle} *") } else { ptitle.clone() });
+                field(app, ui, &id, &ptitle, Spec::param(p), text);
             });
         }
+        let missing = missing(d, m, a);
+        let why = (!missing.is_empty()).then(|| f("Fill in: {fields}", &[("fields", &missing.join(", "))]));
         ui.horizontal(|ui| {
-            if button(app, ui, &format!("bashcut.plugins.{}.{}.run", m.id, a.id), s("Run"), true) {
+            if gated_button(app, ui, &format!("bashcut.plugins.{}.{}.run", m.id, a.id), s("Run"), why.as_deref()) {
                 start(app, ctx, d, m, a);
             }
             if a.needs == "project" {
-                batch_button(app, ui, ctx, d, m, a);
+                batch_button(app, ui, ctx, d, m, a, why.as_deref());
             }
         });
     });
 }
 
+/// A button disabled while `why` says what is missing (shown when hovered); `true` when clicked.
+fn gated_button(app: &mut FilmcraftApp, ui: &mut egui::Ui, id: &str, label: &str, why: Option<&str>) -> bool {
+    let mut r = ui.add_enabled(why.is_none(), egui::Button::new(label));
+    if let Some(why) = why {
+        r = r.on_disabled_hover_text(why);
+    }
+    app.auto.add_response(id, &r, label);
+    r.clicked()
+}
+
 /// "Run on many files…": the action, with the form's params, becomes a step of the Batch section's
-/// draft (#46), which opens.
-fn batch_button(app: &mut FilmcraftApp, ui: &mut egui::Ui, ctx: &egui::Context, d: &mut Drafts, m: &Manifest, a: &Action) {
-    if !button(app, ui, &format!("bashcut.plugins.{}.{}.batch", m.id, a.id), s("Run on many files…"), true) {
+/// draft (#46), which opens. Disabled while `why` names empty required params.
+fn batch_button(app: &mut FilmcraftApp, ui: &mut egui::Ui, ctx: &egui::Context, d: &mut Drafts, m: &Manifest, a: &Action, why: Option<&str>) {
+    if !gated_button(app, ui, &format!("bashcut.plugins.{}.{}.batch", m.id, a.id), s("Run on many files…"), why) {
         return;
     }
     let params = form_params(d, m, a);
@@ -353,13 +366,74 @@ fn form_params(d: &Drafts, m: &Manifest, a: &Action) -> Map<String, Value> {
     params
 }
 
-/// A form's text as the param's JSON value; `None` when left empty.
+/// The titles of `a`'s required params whose field is empty.
+fn missing(d: &Drafts, m: &Manifest, a: &Action) -> Vec<String> {
+    let empty = |p: &Param| d.params.get(&format!("{}/{}/{}", m.id, a.id, p.id)).is_none_or(|t| t.trim().is_empty());
+    a.params.iter().filter(|p| required(p) && empty(p)).map(param_title).collect()
+}
+
+/// A param the plugin can't run without: not optional and with no default (a checkbox always has a value).
+fn required(p: &Param) -> bool {
+    !p.optional && p.default.is_none() && p.kind != "bool"
+}
+
+/// The param's label: its `title`, else its id in words.
+fn param_title(p: &Param) -> String {
+    p.title.clone().filter(|t| !t.trim().is_empty()).unwrap_or_else(|| humanise(&p.id))
+}
+
+/// An id as a label: camelCase, snake_case and kebab-case become words, first one capitalised
+/// (`maxCps` → "Max cps", `out_dir` → "Out dir").
+pub(super) fn humanise(id: &str) -> String {
+    let mut words = String::new();
+    let mut prev_lower = false;
+    for c in id.chars() {
+        if c == '_' || c == '-' || c == ' ' {
+            prev_lower = false;
+            if !words.is_empty() && !words.ends_with(' ') {
+                words.push(' ');
+            }
+            continue;
+        }
+        if c.is_uppercase() && prev_lower {
+            words.push(' ');
+        }
+        prev_lower = c.is_lowercase() || c.is_ascii_digit();
+        words.extend(c.to_lowercase());
+    }
+    let words = words.trim_end();
+    let mut chars = words.chars();
+    match chars.next() {
+        Some(first) => first.to_uppercase().chain(chars).collect(),
+        None => id.to_string(),
+    }
+}
+
+/// A form's text as the param's JSON value; `None` when left empty. Numbers go out as JSON
+/// numbers, clamped to the manifest's bounds (text that isn't one is sent as is, for the plugin to
+/// refuse).
 fn param_value(p: &Param, text: &str) -> Option<Value> {
+    let text_value = || Some(Value::String(text.to_string()));
     match p.kind.as_str() {
         "bool" => Some(Value::Bool(text == "true")),
         _ if text.trim().is_empty() => None,
-        _ => Some(Value::String(text.to_string())),
+        "integer" => match text.trim().parse::<f64>() {
+            // `as` saturates: a huge value can't wrap
+            Ok(n) if n.is_finite() => Some(Value::from(clamp(n.round(), p.minimum, p.maximum) as i64)),
+            _ => text_value(),
+        },
+        "number" => match text.trim().parse::<f64>().ok().and_then(|n| serde_json::Number::from_f64(clamp(n, p.minimum, p.maximum))) {
+            Some(n) => Some(Value::Number(n)),
+            None => text_value(),
+        },
+        _ => text_value(),
     }
+}
+
+/// `n` within the optional bounds (a reversed pair leaves it as is rather than panic).
+fn clamp(n: f64, min: Option<f64>, max: Option<f64>) -> f64 {
+    let n = min.filter(|m| m.is_finite()).map_or(n, |m| n.max(m));
+    max.filter(|m| m.is_finite() && min.is_none_or(|lo| lo <= *m)).map_or(n, |m| n.min(m))
 }
 
 fn value_text(v: &Value) -> String {
@@ -370,14 +444,35 @@ fn value_text(v: &Value) -> String {
     }
 }
 
-/// One form field: a checkbox for `bool`, a combo box for choices, else a text field.
-fn field(app: &mut FilmcraftApp, ui: &mut egui::Ui, id: &str, label: &str, kind: &str, choices: Option<&[String]>, text: &mut String) {
-    let r = if kind == "bool" {
+/// What a form field edits: the manifest's `type`, its choices and its bounds.
+#[derive(Clone, Copy, Default)]
+pub(super) struct Spec<'a> {
+    pub kind: &'a str,
+    pub choices: Option<&'a [String]>,
+    pub minimum: Option<f64>,
+    pub maximum: Option<f64>,
+}
+
+impl<'a> Spec<'a> {
+    pub fn param(p: &'a Param) -> Self {
+        Spec { kind: &p.kind, choices: p.choices.as_deref(), minimum: p.minimum, maximum: p.maximum }
+    }
+
+    pub fn setting(st: &'a Setting) -> Self {
+        Spec { kind: &st.kind, choices: st.choices.as_deref(), ..Spec::default() }
+    }
+}
+
+/// One form field over its text: a checkbox for `bool`, a combo box for choices, a drag value for
+/// `integer` / `number` (it takes no letters), a text field with **Browse…** for `path`, else a
+/// text field.
+pub(super) fn field(app: &mut FilmcraftApp, ui: &mut egui::Ui, id: &str, label: &str, spec: Spec, text: &mut String) {
+    let r = if spec.kind == "bool" {
         let mut on = text == "true";
         let r = ui.checkbox(&mut on, "");
         *text = on.to_string();
         r
-    } else if let Some(choices) = choices {
+    } else if let Some(choices) = spec.choices {
         egui::ComboBox::from_id_salt(id)
             .selected_text(text.as_str())
             .show_ui(ui, |ui| {
@@ -386,19 +481,126 @@ fn field(app: &mut FilmcraftApp, ui: &mut egui::Ui, id: &str, label: &str, kind:
                 }
             })
             .response
+    } else if spec.kind == "integer" || spec.kind == "number" {
+        number(ui, spec, text)
+    } else if spec.kind == "path" {
+        // the picker answers in a later frame: its path waits in this slot for the field
+        let slot = egui::Id::new((id, "bashcut.plugins.picked"));
+        if let Some(path) = ui.ctx().data_mut(|d| d.remove_temp::<String>(slot)) {
+            *text = path;
+        }
+        // leave room for Browse… in a narrow panel
+        let width = (ui.available_width() - 90.0).clamp(60.0, 160.0);
+        let r = ui.add(egui::TextEdit::singleline(text).desired_width(width));
+        if button(app, ui, &format!("{id}.browse"), s("Browse…"), true) {
+            let ctx = ui.ctx().clone();
+            app.pick_ui(FileDialog::OpenFiles { exts: Vec::new() }, move |_, paths| {
+                if let Some(path) = paths.into_iter().next() {
+                    ctx.data_mut(|d| d.insert_temp(slot, path));
+                }
+            });
+        }
+        r
     } else {
         ui.add(egui::TextEdit::singleline(text).desired_width(160.0))
     };
     app.auto.add_response(id, &r, label);
 }
 
+/// A drag value over a number's text, within the bounds. Empty text shows "–" (the plugin's
+/// default) until it is dragged or typed.
+fn number(ui: &mut egui::Ui, spec: Spec, text: &mut String) -> egui::Response {
+    let integer = spec.kind == "integer";
+    let lo = spec.minimum.filter(|n| n.is_finite()).unwrap_or(f64::MIN);
+    let hi = spec.maximum.filter(|n| n.is_finite() && *n >= lo).unwrap_or(f64::MAX);
+    let parsed = text.trim().parse::<f64>().ok().filter(|n| n.is_finite());
+    let mut n = parsed.unwrap_or_else(|| clamp(0.0, spec.minimum, spec.maximum));
+    let mut drag = egui::DragValue::new(&mut n).range(lo..=hi).speed(if integer { 0.2 } else { 0.1 });
+    if integer {
+        drag = drag.max_decimals(0);
+    }
+    if parsed.is_none() {
+        drag = drag.custom_formatter(|_, _| "–".to_string());
+    }
+    let r = ui.add(drag);
+    if r.changed() {
+        *text = if integer { format!("{}", n.round() as i64) } else { n.to_string() };
+    }
+    if parsed.is_none() { r.on_hover_text(s("Not set: the plugin's default is used")) } else { r }
+}
+
 #[cfg(test)]
 mod tests {
-    use super::plain;
+    use super::*;
 
     #[test]
     fn manifest_prose_drops_code_backticks() {
         assert_eq!(plain("empty = the one `setup` installed"), "empty = the one setup installed");
         assert_eq!(plain("no code here"), "no code here");
+    }
+
+    #[test]
+    fn form_strings_have_vietnamese() {
+        super::super::strings::set_language(Some("vi"));
+        assert_eq!(s("Browse…"), "Chọn tệp…");
+        assert_eq!(f("Fill in: {fields}", &[("fields", "Answer")]), "Cần điền: Answer");
+        assert_ne!(s("Not set: the plugin's default is used"), "Not set: the plugin's default is used");
+        super::super::strings::set_language(None);
+    }
+
+    fn param(id: &str, kind: &str) -> Param {
+        Param { id: id.into(), kind: kind.into(), ..Param::default() }
+    }
+
+    #[test]
+    fn labels_are_the_title_or_the_id_in_words() {
+        assert_eq!(humanise("maxCps"), "Max cps");
+        assert_eq!(humanise("out_dir"), "Out dir");
+        assert_eq!(humanise("out-dir"), "Out dir");
+        assert_eq!(humanise("target"), "Target");
+        assert_eq!(humanise("track2Name"), "Track2 name");
+        assert_eq!(humanise("_"), "_");
+        assert_eq!(param_title(&param("maxCps", "integer")), "Max cps");
+        let titled = Param { title: Some("Characters per second".into()), ..param("maxCps", "integer") };
+        assert_eq!(param_title(&titled), "Characters per second");
+    }
+
+    #[test]
+    fn required_params_are_the_ones_without_optional_or_default() {
+        let answer = param("answer", "path");
+        let lines = Param { optional: true, ..param("lines", "path") };
+        let target = Param { default: Some(json!("vi")), ..param("target", "enum") };
+        assert!(required(&answer));
+        assert!(!required(&lines));
+        assert!(!required(&target));
+        assert!(!required(&param("dry", "bool")));
+        let m = Manifest { id: "p".into(), ..Manifest::default() };
+        let a = Action { id: "apply".into(), params: vec![answer, lines, target], ..Action::default() };
+        let mut d = Drafts::default();
+        assert_eq!(missing(&d, &m, &a), ["Answer"]);
+        d.params.insert("p/apply/answer".into(), " ".into());
+        assert_eq!(missing(&d, &m, &a), ["Answer"]);
+        d.params.insert("p/apply/answer".into(), "/tmp/a.json".into());
+        assert!(missing(&d, &m, &a).is_empty());
+    }
+
+    #[test]
+    fn param_values_send_numbers_as_numbers_within_bounds() {
+        let cps = Param { minimum: Some(8.0), maximum: Some(30.0), ..param("maxCps", "integer") };
+        assert_eq!(param_value(&cps, "17"), Some(json!(17)));
+        assert_eq!(param_value(&cps, "17.6"), Some(json!(18)));
+        assert_eq!(param_value(&cps, "99"), Some(json!(30)));
+        assert_eq!(param_value(&cps, "1"), Some(json!(8)));
+        assert_eq!(param_value(&cps, ""), None);
+        assert_eq!(param_value(&cps, "lots"), Some(json!("lots")));
+        assert_eq!(param_value(&param("n", "integer"), "1e30"), Some(json!(i64::MAX)));
+        let secs = param("seconds", "number");
+        assert_eq!(param_value(&secs, "2.5"), Some(json!(2.5)));
+        assert_eq!(param_value(&secs, "NaN"), Some(json!("NaN")));
+        let reversed = Param { minimum: Some(5.0), maximum: Some(1.0), ..param("x", "number") };
+        assert_eq!(param_value(&reversed, "3"), Some(json!(5.0)));
+        assert_eq!(param_value(&param("dry", "bool"), "true"), Some(json!(true)));
+        assert_eq!(param_value(&param("dry", "bool"), ""), Some(json!(false)));
+        assert_eq!(param_value(&param("track", "string"), "V1"), Some(json!("V1")));
     }
 }
