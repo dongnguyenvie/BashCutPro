@@ -22,15 +22,21 @@ const MAX_REVEAL: usize = 8;
 /// Characters of one error part shown (plugin output is hostile: it can be megabytes).
 const MAX_ERROR: usize = 4000;
 
-/// Jobs whose log is unfolded, and the last command error.
+/// Jobs whose log is unfolded, the last command error, and the run to scroll to.
 #[derive(Clone, Default)]
 struct View {
     logs: BTreeSet<u64>,
     status: Option<String>,
+    focus: Option<u64>,
 }
 
 fn key() -> egui::Id {
     egui::Id::new("bashcut.runs.view")
+}
+
+/// Scroll Runs to `job` the next time it draws (a toast's Show).
+pub fn focus(ctx: &egui::Context, job: u64) {
+    ctx.data_mut(|d| d.get_temp_mut_or_default::<View>(key()).focus = Some(job));
 }
 
 fn state_label(st: JobState) -> &'static str {
@@ -143,10 +149,7 @@ pub fn draw(app: &mut FilmcraftApp, ui: &mut egui::Ui) {
         Err(e) => v.status = Some(e),
     };
 
-    if let Some(e) = &v.status {
-        let r = ui.label(egui::RichText::new(e).size(11.0).color(t.danger));
-        app.auto.add_response("bashcut.runs.status", &r, e);
-    }
+    super::toast::status_line(app, ui, "bashcut.runs.status", v.status.as_deref(), t.danger);
     let batch_row = batch_row(app, ui);
     if jobs.is_empty() {
         if !batch_row {
@@ -162,7 +165,8 @@ pub fn draw(app: &mut FilmcraftApp, ui: &mut egui::Ui) {
 
     for j in &jobs {
         ui.add_space(4.0);
-        for act in job_row(app, ui, j, v.logs.contains(&j.id)) {
+        let focus = v.focus == Some(j.id);
+        for act in job_row(app, ui, j, v.logs.contains(&j.id), focus) {
             match act {
                 Act::Command(name, params) => call(app, &mut v, name, params),
                 Act::Reveal(path) => {
@@ -181,6 +185,8 @@ pub fn draw(app: &mut FilmcraftApp, ui: &mut egui::Ui) {
         }
     }
     v.logs.retain(|id| jobs.iter().any(|j| j.id == *id));
+    // scrolled to once (or gone from the list)
+    v.focus = None;
     ctx.data_mut(|d| d.insert_temp(key(), v));
 }
 
@@ -211,13 +217,17 @@ fn batch_row(app: &mut FilmcraftApp, ui: &mut egui::Ui) -> bool {
 }
 
 /// One job's row; returns what its buttons asked for.
-fn job_row(app: &mut FilmcraftApp, ui: &mut egui::Ui, j: &Job, log_open: bool) -> Vec<Act> {
+fn job_row(app: &mut FilmcraftApp, ui: &mut egui::Ui, j: &Job, log_open: bool, focus: bool) -> Vec<Act> {
     let t = app.tokens;
     let id = format!("bashcut.runs.{}", j.id);
     let error = error_text(j);
     let paths = result_paths(j);
     let mut acts = Vec::new();
-    let frame = egui::Frame::group(ui.style()).show(ui, |ui| {
+    let mut group = egui::Frame::group(ui.style());
+    if focus {
+        group = group.stroke(egui::Stroke::new(1.5, t.accent));
+    }
+    let frame = group.show(ui, |ui| {
         // State first from the right, so a long title truncates instead of running under it.
         ui.horizontal(|ui| {
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
@@ -287,6 +297,9 @@ fn job_row(app: &mut FilmcraftApp, ui: &mut egui::Ui, j: &Job, log_open: bool) -
             });
         }
     });
+    if focus {
+        ui.scroll_to_rect(frame.response.rect, Some(egui::Align::Center));
+    }
     app.auto.add(&id, frame.response.rect, &j.title);
     acts
 }
@@ -371,8 +384,8 @@ mod tests {
         let mut done = done;
         done.id = 9;
         let mut out = ctx.run_ui(egui::RawInput::default(), |ui| {
-            assert!(job_row(&mut app, ui, &j, false).is_empty());
-            assert!(job_row(&mut app, ui, &done, false).is_empty());
+            assert!(job_row(&mut app, ui, &j, false, false).is_empty());
+            assert!(job_row(&mut app, ui, &done, false, false).is_empty());
         });
         // no renderer here: drop the font texture on purpose (egui asserts it was handled)
         out.textures_delta.clear();

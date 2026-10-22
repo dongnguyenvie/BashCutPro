@@ -61,4 +61,6 @@ runs, one row says how far it is (**Batch: 3 of 10**) with **Open Batch**; the b
 agent turns stay in Agent. **Clear finished** tidies the list. When a plugin needs help (for example a translation without an API key) its run says **Needs the agent**:
 **Send to agent** hands the job to the Agent section, which finishes it.
 
-You never have to wait for a run: keep editing while it works.
+You never have to wait for a run: keep editing while it works. When a run ends while Runs is not open, a small note
+appears at the bottom right for a few seconds: **✓ … finished** or **✕ … failed**. **Show** opens Runs on that run;
+**✕** hides the note. A message at the top of Plugins or Runs also has **✕**; it comes back only with a new message.

@@ -62,4 +62,7 @@ Hàng loạt** (Open Batch); các mục của nó nằm trong Hàng loạt, còn
 (Clear finished) dọn danh sách. Khi plugin cần giúp (ví dụ dịch mà không có khóa API), lượt chạy ghi **Cần trợ lý** (Needs
 the agent): **Gửi cho trợ lý** (Send to agent) chuyển việc sang mục Trợ lý để làm nốt.
 
-Bạn không phải chờ: cứ dựng tiếp trong lúc tác vụ chạy.
+Bạn không phải chờ: cứ dựng tiếp trong lúc tác vụ chạy. Khi một lượt chạy kết thúc mà mục Tác vụ đang đóng, một thông
+báo nhỏ hiện ở góc dưới bên phải trong vài giây: **✓ … đã xong** hoặc **✕ … bị lỗi**. **Xem** (Show) mở Tác vụ đúng lượt
+chạy đó; **✕** ẩn thông báo. Dòng thông báo ở đầu mục Plugin hoặc Tác vụ cũng có **✕**; nó chỉ hiện lại khi có thông
+báo mới.
