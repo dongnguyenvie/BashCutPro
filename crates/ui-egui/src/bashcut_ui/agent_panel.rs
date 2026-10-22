@@ -100,10 +100,7 @@ pub fn draw(app: &mut FilmcraftApp, ui: &mut egui::Ui) {
 
     header(app, ui, &ctx, &mut v, &snap, running);
     readiness(app, ui, &ctx, &snap);
-    if let Some(e) = &v.status {
-        let r = ui.label(egui::RichText::new(e).size(11.0).color(t.danger));
-        app.auto.add_response("bashcut.agent.status", &r, e);
-    }
+    super::toast::status_line(app, ui, "bashcut.agent.status", v.status.as_deref(), t.danger);
     if let Some(g) = v.gate.clone() {
         gate_card(app, ui, &ctx, &mut v, &g, running);
     }

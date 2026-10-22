@@ -197,7 +197,8 @@ gets one toast, "✓ <run title> finished" or "✕ <run title> failed" (`bashcut
 are a foreground `egui::Area` at the bottom right, left of the rail, at most 3, each for 8 s; opening Runs clears
 them. No upstream hook: upstream's `FilmcraftApp::toast` is one string without buttons. **Decision:** cancelled runs,
 installs and registry checks do not toast (the canceller knows; installs show under their row). The panel-top status
-lines of Plugins and Runs (`bashcut.plugins.status`, `bashcut.runs.status`) go through `toast::status_line`: a ✕
+lines of Plugins, Runs, Agent and Batch (`bashcut.plugins.status`, `bashcut.runs.status`, `bashcut.agent.status`,
+`bashcut.batch.status`, `bashcut.batch.error`; RN2) go through `toast::status_line`: a ✕
 (`….status.dismiss`) hides the line until its message changes or the status clears and comes back.
 
 Built in #52 (P): `bashcut_ui/palette.rs`, a foreground `egui::Area` drawn at the end of `layout` in every mode.
