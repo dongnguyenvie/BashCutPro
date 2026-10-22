@@ -122,6 +122,10 @@ pub struct Step {
     /// A plugin action (or any program): it connects to the project itself (`--project {project}`).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub plugin: Option<ProcessStep>,
+    /// The plugin action a `plugin` step was made from, with its params as given (BT1). Steps saved
+    /// before it have only the command line.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub plugin_action: Option<PluginAction>,
     /// A kit skill run by a headless agent (#60 adds review rounds and caps).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub agent: Option<AgentStep>,
@@ -134,6 +138,19 @@ pub struct ProcessStep {
     pub argv: Vec<String>,
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub env: BTreeMap<String, String>,
+}
+
+/// `{plugin, action, params}` of a plugin step: what reopens it as its form (a `false` that the
+/// command line can't show included) and names the plugin when it is not installed.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct PluginAction {
+    pub plugin: String,
+    pub action: String,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub params: BTreeMap<String, Value>,
+    /// Required params still empty: the step has no command line and the batch can't run.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub missing: Vec<String>,
 }
 
 /// An agent step (#60): a kit skill run headless against the item's project, then reviewed
@@ -253,6 +270,11 @@ impl Step {
         }
     }
 
+    /// The required params of a plugin step still empty, when there are any.
+    pub fn missing(&self) -> Option<&[String]> {
+        self.plugin_action.as_ref().map(|a| a.missing.as_slice()).filter(|m| !m.is_empty())
+    }
+
     /// A short label for the job book.
     pub fn describe(&self) -> String {
         if let Some(l) = self.label.as_ref().filter(|l| !l.trim().is_empty()) {
@@ -342,6 +364,9 @@ impl Pipeline {
         }
         for (i, s) in self.steps.iter().enumerate() {
             let kind = s.kind().map_err(|e| format!("pipeline: step {}: {e}", i + 1))?;
+            if let Some(missing) = s.missing() {
+                return Err(format!("pipeline: step {}: fill in {}", i + 1, missing.join(", ")));
+            }
             let bad = match kind {
                 StepKind::Command(id, _) => id.trim().is_empty(),
                 StepKind::Commands(c) => c.iter().any(|c| c.id.trim().is_empty()),
@@ -618,5 +643,35 @@ mod tests {
         let missing = json!({"schema": SCHEMA, "inputs": [dir.join("nope.mp4").to_string_lossy()], "projectsFolder": "out"}).to_string();
         assert!(Pipeline::parse(&missing, Path::new("/")).unwrap().expand_inputs().is_err());
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// BT1: jobs and presets saved before `pluginAction` still load; a plugin step keeps its
+    /// action and params (a `false` too), and one with empty required params can't run.
+    #[test]
+    fn plugin_steps_keep_their_action_and_old_ones_still_load() {
+        let old = minimal(json!({"steps": [{"label": "Captions", "plugin": {"argv": ["python3", "p.py", "translate", "--burn"]}}]}));
+        let p = Pipeline::parse(&old, Path::new("/")).unwrap();
+        assert_eq!(p.steps[0].plugin_action, None);
+        assert_eq!(p.steps[0].plugin.as_ref().map(|s| s.argv.len()), Some(4));
+
+        let step = Step {
+            plugin: Some(ProcessStep { argv: vec!["python3".into(), "p.py".into()], ..ProcessStep::default() }),
+            plugin_action: Some(PluginAction {
+                plugin: "test.cap".into(),
+                action: "translate".into(),
+                params: BTreeMap::from([("burn".to_string(), json!(false)), ("target".to_string(), json!("en"))]),
+                missing: Vec::new(),
+            }),
+            ..Step::default()
+        };
+        let text = serde_json::to_string(&step).unwrap();
+        assert!(text.contains(r#""pluginAction":{"plugin":"test.cap","action":"translate","params":{"burn":false,"target":"en"}}"#), "{text}");
+        let back: Step = serde_json::from_str(&text).unwrap();
+        assert_eq!(back, step);
+        assert_eq!(back.plugin_action.unwrap().params["burn"], json!(false), "false survives save and load");
+
+        let incomplete = minimal(json!({"steps": [{"plugin": {"argv": []}, "pluginAction": {"plugin": "test.cap", "action": "go", "missing": ["answer"]}}]}));
+        let e = Pipeline::parse(&incomplete, Path::new("/")).unwrap_err();
+        assert_eq!(e, "pipeline: step 1: fill in answer");
     }
 }

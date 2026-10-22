@@ -1138,6 +1138,75 @@ fn batch_plugin_steps_edit_as_a_form_and_bad_json_cannot_apply() {
     let _ = std::fs::remove_dir_all(&data);
 }
 
+/// BT1: a plugin step with an empty required param says so under its row and Run batch waits
+/// (the command refuses too); filled in, it runs. A `false` is kept; a missing plugin greys its step.
+#[test]
+fn batch_steps_with_empty_required_params_block_the_run() {
+    let data = std::env::temp_dir().join(format!("bashcut-ui-bt1-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&data);
+    let plugin = data.join("bashcut-plugins").join("test.ask");
+    std::fs::create_dir_all(&plugin).unwrap();
+    let manifest = json!({
+        "schema": "bashcut-plugin/1", "id": "test.ask", "name": "Ask", "version": "0.1.0", "summary": "test plugin",
+        "entry": {"command": ["python3", "plugin.py"]}, "output": "bashcut-result/1",
+        "connect": {"project": ["--project", "{project}"]},
+        "actions": [{"id": "go", "title": "Go", "args": ["go"], "needs": "project", "params": [
+            {"id": "answer", "title": "Answer", "flag": "--answer", "type": "string"},
+            {"id": "burn", "flag": "--burn", "type": "bool", "default": true}]}]
+    });
+    std::fs::write(plugin.join("bashcut-plugin.json"), manifest.to_string()).unwrap();
+    let input = data.join("a.mp4");
+    std::fs::write(&input, b"x").unwrap();
+    let mut session = Session::default();
+    session.start_autosave(filmcraft_engine::autosave::AutosaveConfig::new(&data)).expect("data dir");
+    session.execute("file.openDemoProject", json!({})).expect("demo project");
+    let (tx, rx) = channel();
+    let app = FilmcraftApp::new(session).with_control(rx);
+    let harness = Harness::builder().with_size(egui::vec2(W, H)).with_max_steps(10_000).build_eframe(move |_cc| app);
+    let mut d = Driver { harness, tx };
+    d.frames(4);
+    let element = |d: &mut Driver, id: &str| -> Value {
+        let v = d.ok("ui.elements", json!({"prefix": id}));
+        v.as_array().and_then(|a| a.iter().find(|e| e["id"] == json!(id)).cloned()).unwrap_or(Value::Null)
+    };
+    d.click("bashcut.rail.batch");
+    d.exec("bashcut.batch.addInput", json!({"paths": [input]}));
+    d.exec("bashcut.batch.addStep", json!({"plugin": "test.ask", "action": "go", "params": {"burn": false}}));
+    let step = d.exec("bashcut.batch.state", json!({}))["draft"]["steps"][0].clone();
+    assert_eq!(step["pluginAction"], json!({"plugin": "test.ask", "action": "go", "params": {"burn": false}, "missing": ["answer"]}));
+    d.frames(2);
+    assert_eq!(element(&mut d, "bashcut.batch.step.0.error")["label"], json!("Fill in: Answer"));
+    assert_eq!(element(&mut d, "bashcut.batch.run")["enabled"], json!(false), "Run batch waits");
+    assert_eq!(element(&mut d, "bashcut.batch.run.blocked")["label"], json!("Step 1: fill in Answer"));
+    let v = d.call("engine.execute", json!({"command": "bashcut.batch.run", "params": {"cli": "nope"}}));
+    assert!(v.to_string().contains("fill in answer"), "the command refuses too: {v}");
+    d.exec("bashcut.ui.setLanguage", json!({"language": "vi"}));
+    d.frames(3);
+    assert_eq!(element(&mut d, "bashcut.batch.run.blocked")["label"], json!("Bước 1: cần điền Answer"));
+    d.exec("bashcut.ui.setLanguage", json!({"language": null}));
+
+    // the form reads back the `false` (the command line can't show it) and fills the blank
+    d.click("bashcut.batch.step.0");
+    d.click("bashcut.batch.step.0.param.answer");
+    d.ok("ui.type", json!({"text": "42"}));
+    d.frames(2);
+    d.click("bashcut.batch.step.0.apply");
+    let step = d.exec("bashcut.batch.state", json!({}))["draft"]["steps"][0].clone();
+    assert_eq!(step["pluginAction"]["params"], json!({"answer": "42", "burn": false}), "{step}");
+    assert!(step["pluginAction"].get("missing").is_none());
+    d.frames(2);
+    assert!(!d.has("bashcut.batch.step.0.error"));
+    assert_eq!(element(&mut d, "bashcut.batch.run")["enabled"], json!(true));
+
+    // a step whose plugin is not installed: greyed, with Install
+    d.exec("bashcut.batch.addStep", json!({"step": {"plugin": {"argv": ["x"]}, "pluginAction": {"plugin": "gone.plugin", "action": "go"}}}));
+    d.frames(2);
+    assert_eq!(element(&mut d, "bashcut.batch.step.1")["enabled"], json!(false));
+    assert!(d.has("bashcut.batch.step.1.notInstalled") && d.has("bashcut.batch.step.1.install"));
+    assert!(d.harness.state().ui_error.is_none(), "{:?}", d.harness.state().ui_error);
+    let _ = std::fs::remove_dir_all(&data);
+}
+
 /// UX12: a saved preset loads from the "Start from" row at the top of Batch; recent rows read
 /// "name · date · n done / m failed"; "Clear all" empties only the inputs.
 #[test]
