@@ -185,6 +185,9 @@ mod tests {
         for (_, label) in super::super::library_panel::KINDS {
             keys.push(("library_panel.rs".into(), label.into()));
         }
+        for (_, label) in super::super::library_panel::MINE_KINDS {
+            keys.push(("library_panel.rs".into(), label.into()));
+        }
         for (_, title, purpose) in super::super::palette::RECIPES {
             keys.push(("palette.rs".into(), title.to_string()));
             keys.push(("palette.rs".into(), purpose.to_string()));

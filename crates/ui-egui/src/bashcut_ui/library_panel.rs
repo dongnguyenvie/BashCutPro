@@ -30,7 +30,21 @@ pub const KINDS: [(&str, &str); 6] =
     [("music", "Music"), ("sfx", "Sound effects"), ("photo", "Photos"), ("video", "Video"), ("icon", "Icons"), ("font", "Fonts")];
 /// The library's kinds the app places itself (a file on the timeline); the rest go through the plugin's `apply`.
 const MEDIA_KINDS: [&str; 4] = ["music", "sound", "sticker", "overlay"];
-const MINE_KINDS: [&str; 12] = ["", "music", "sound", "sticker", "overlay", "title", "text-style", "look", "lut", "effect-preset", "template", "brand-kit"];
+/// "Mine" kinds: (id, English label); "" is every kind.
+pub const MINE_KINDS: [(&str, &str); 12] = [
+    ("", "Everything"),
+    ("music", "Music"),
+    ("sound", "Sounds"),
+    ("sticker", "Stickers"),
+    ("overlay", "Overlays"),
+    ("title", "Titles"),
+    ("text-style", "Text styles"),
+    ("look", "Looks"),
+    ("lut", "LUTs"),
+    ("effect-preset", "Effect presets"),
+    ("template", "Templates"),
+    ("brand-kit", "Brand kits"),
+];
 const MAX_CACHE: usize = 32;
 const MAX_ITEMS: usize = 100;
 const RUN_TIMEOUT: Duration = Duration::from_secs(180);
@@ -382,10 +396,10 @@ pub fn draw(app: &mut FilmcraftApp, ui: &mut egui::Ui) {
         });
     } else {
         egui::ComboBox::from_id_salt("bashcut.library.minekind")
-            .selected_text(if p.mine_kind.is_empty() { s("Everything") } else { p.mine_kind.as_str() })
+            .selected_text(MINE_KINDS.iter().find(|(id, _)| *id == p.mine_kind).map_or(p.mine_kind.as_str(), |(_, label)| s(label)))
             .show_ui(ui, |ui| {
-                for k in MINE_KINDS {
-                    if ui.selectable_label(p.mine_kind == k, if k.is_empty() { s("Everything") } else { k }).clicked() {
+                for (k, label) in MINE_KINDS {
+                    if ui.selectable_label(p.mine_kind == k, s(label)).clicked() {
                         p.mine_kind = k.to_string();
                         go = true;
                     }
