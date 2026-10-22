@@ -25,7 +25,9 @@ unusual, set the environment variable `BASHCUT_CLAUDE` to its path.
 ## Codex
 
 Codex works as an outside agent (below) and in batch pipelines, whose agent steps can use `codex` instead of
-Claude Code. The in-app Agent section uses Claude Code for now.
+Claude Code. The in-app Agent section offers both: pick Claude Code or Codex in its agent list. A missing one shows
+"(not installed)" there, with a line under the header saying how to install it or which variable to set
+(`BASHCUT_CLAUDE`, `BASHCUT_CODEX`).
 
 ## An agent in your terminal
 

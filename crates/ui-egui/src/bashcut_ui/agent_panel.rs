@@ -2,11 +2,16 @@
 //! gate as a card (Approve / Change), the transcript with tool calls grouped by command, and the
 //! message box (Enter sends, Shift+Enter starts a new line). Every action goes through the
 //! `bashcut.agent.*` commands ([`agent::invoke`]) and registers an automation id.
+//!
+//! Under the header, one readiness line per missing item (UX7): the agent's program, the control
+//! channel, a saved project. Agents whose program is missing are greyed out in the picker and
+//! Send is disabled with the reason.
 
 use bashcut_agent::{Gate, Item, Status};
 use serde_json::{Value, json};
 
 use super::agent;
+use super::hints::{self, HOW_TO_TURN_ON};
 use super::plugins_panel::button;
 use super::strings::{f, s};
 use crate::FilmcraftApp;
@@ -40,8 +45,11 @@ fn input_id() -> egui::Id {
 struct Snapshot {
     items: Vec<Item>,
     status: Status,
-    agents: Vec<(String, String)>,
+    /// id, name, program found ([`hints::agent_found`])
+    agents: Vec<(String, String, bool)>,
     agent: (String, String),
+    /// The current agent's program is missing: why Send is disabled.
+    missing: Option<String>,
     title: String,
     has_project: bool,
 }
@@ -75,8 +83,9 @@ pub fn draw(app: &mut FilmcraftApp, ui: &mut egui::Ui) {
         let snap = Snapshot {
             items: a.conversation.transcript.items.clone(),
             status: a.status.clone(),
-            agents: a.agents.iter().map(|s| (s.id.clone(), s.name.clone())).collect(),
+            agents: a.agents.iter().map(|s| (s.id.clone(), s.name.clone(), hints::agent_found(s))).collect(),
             agent: (a.agent.id.clone(), a.agent.name.clone()),
+            missing: (!hints::agent_found(&a.agent)).then(|| missing_line(&a.agent)),
             title: a.conversation.title(),
             has_project: a.sidecar().is_some(),
         };
@@ -90,12 +99,10 @@ pub fn draw(app: &mut FilmcraftApp, ui: &mut egui::Ui) {
     let running = matches!(snap.status, Status::Running | Status::Stopping);
 
     header(app, ui, &ctx, &mut v, &snap, running);
+    readiness(app, ui, &ctx, &snap);
     if let Some(e) = &v.status {
         let r = ui.label(egui::RichText::new(e).size(11.0).color(t.danger));
         app.auto.add_response("bashcut.agent.status", &r, e);
-    }
-    if !snap.has_project {
-        ui.label(egui::RichText::new(s("Save the project to keep conversations and gates next to it.")).size(11.0).color(t.text_dim));
     }
     if let Some(g) = v.gate.clone() {
         gate_card(app, ui, &ctx, &mut v, &g, running);
@@ -119,19 +126,61 @@ pub fn draw(app: &mut FilmcraftApp, ui: &mut egui::Ui) {
     app.auto.add("bashcut.agent.transcript", out.inner_rect, &snap.title);
 
     ui.separator();
-    input(app, ui, &ctx, &mut v, running);
+    input(app, ui, &ctx, &mut v, running, snap.missing.as_deref());
     if running {
         ctx.request_repaint_after(std::time::Duration::from_millis(100));
     }
     ctx.data_mut(|d| d.insert_temp(key(), v));
 }
 
+/// "Claude Code not found: install it, or set BASHCUT_CLAUDE" (an agent plugin: install its program).
+fn missing_line(spec: &bashcut_agent::AgentSpec) -> String {
+    let var = match spec.id.as_str() {
+        "claude-code" => Some("BASHCUT_CLAUDE"),
+        "codex" => Some("BASHCUT_CODEX"),
+        _ => None,
+    };
+    match var {
+        Some(var) => f("{agent} not found: install it, or set {var}", &[("agent", &spec.name), ("var", var)]),
+        None => f("{agent} not found: install {program}", &[("agent", &spec.name), ("program", spec.argv.first().map_or("", String::as_str))]),
+    }
+}
+
+/// One line per missing item, before the user presses Send.
+fn readiness(app: &mut FilmcraftApp, ui: &mut egui::Ui, ctx: &egui::Context, snap: &Snapshot) {
+    let t = app.tokens;
+    if let Some(line) = &snap.missing {
+        let r = ui.label(egui::RichText::new(line).size(11.0).color(t.danger));
+        app.auto.add_response("bashcut.agent.ready.agent", &r, line);
+    }
+    if !hints::control_on() {
+        let line = s("Control channel off: the agent cannot edit the open project.");
+        let r = ui.label(egui::RichText::new(line).size(11.0).color(t.text_dim)).on_hover_text(s(HOW_TO_TURN_ON));
+        app.auto.add_response("bashcut.agent.ready.control", &r, line);
+    }
+    if !snap.has_project {
+        ui.horizontal_wrapped(|ui| {
+            let line = s("Project not saved: conversations will not be kept");
+            let r = ui.label(egui::RichText::new(line).size(11.0).color(t.text_dim));
+            app.auto.add_response("bashcut.agent.ready.project", &r, line);
+            if button(app, ui, "bashcut.agent.save", s("Save…"), true)
+                && let Err(e) = crate::menus::invoke(app, ctx, "file.save", json!({}))
+            {
+                app.ui.status = e;
+            }
+        });
+    }
+}
+
 fn header(app: &mut FilmcraftApp, ui: &mut egui::Ui, ctx: &egui::Context, v: &mut View, snap: &Snapshot, running: bool) {
     ui.horizontal(|ui| {
         let mut chosen = None;
         let combo = egui::ComboBox::from_id_salt("bashcut.agent.picker").selected_text(snap.agent.1.as_str()).width(120.0).show_ui(ui, |ui| {
-            for (id, name) in &snap.agents {
-                if ui.selectable_label(*id == snap.agent.0, name.as_str()).clicked() {
+            for (id, name, found) in &snap.agents {
+                let label = if *found { name.clone() } else { f("{agent} (not installed)", &[("agent", name)]) };
+                let r = ui.add_enabled(*found || *id == snap.agent.0, egui::Button::selectable(*id == snap.agent.0, label.as_str()));
+                app.auto.add_response(&format!("bashcut.agent.picker.{id}"), &r, &label);
+                if r.clicked() {
                     chosen = Some(id.clone());
                 }
             }
@@ -290,7 +339,7 @@ fn tool_group(app: &mut FilmcraftApp, ui: &mut egui::Ui, at: usize, key: &str, g
     app.auto.add_response(&format!("bashcut.agent.tool.{at}"), &head.header_response, &title);
 }
 
-fn input(app: &mut FilmcraftApp, ui: &mut egui::Ui, ctx: &egui::Context, v: &mut View, running: bool) {
+fn input(app: &mut FilmcraftApp, ui: &mut egui::Ui, ctx: &egui::Context, v: &mut View, running: bool, missing: Option<&str>) {
     // Enter sends, Shift+Enter is a new line: take the Enter press away before the text box sees it
     let focused = ctx.memory(|m| m.has_focus(input_id()));
     let enter = focused
@@ -310,8 +359,13 @@ fn input(app: &mut FilmcraftApp, ui: &mut egui::Ui, ctx: &egui::Context, v: &mut
     );
     app.auto.add_response("bashcut.agent.input", &r, "message");
     ui.horizontal(|ui| {
-        let can_send = !running && !v.input.trim().is_empty();
-        let clicked = button(app, ui, "bashcut.agent.send", s("Send"), can_send);
+        let can_send = !running && !v.input.trim().is_empty() && missing.is_none();
+        let mut r = ui.add_enabled(can_send, egui::Button::new(s("Send")));
+        if let Some(why) = missing {
+            r = r.on_disabled_hover_text(why);
+        }
+        app.auto.add_response("bashcut.agent.send", &r, s("Send"));
+        let clicked = r.clicked();
         let text = v.input.trim().to_string();
         if (clicked || (enter && can_send)) && call(app, ctx, v, "send", json!({"text": text})) {
             v.input.clear();
@@ -320,4 +374,31 @@ fn input(app: &mut FilmcraftApp, ui: &mut egui::Ui, ctx: &egui::Context, v: &mut
             call(app, ctx, v, "stop", json!({}));
         }
     });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::super::strings::set_language;
+    use super::*;
+
+    #[test]
+    fn missing_agent_line_names_the_override() {
+        set_language(Some("en"));
+        let fake = bashcut_agent::AgentSpec::claude_code(Some("bashcut-no-such-agent-ux7".into()));
+        assert!(!hints::agent_found(&fake));
+        assert_eq!(missing_line(&fake), "Claude Code not found: install it, or set BASHCUT_CLAUDE");
+        let codex = bashcut_agent::AgentSpec::codex(Some("bashcut-no-such-codex-ux7".into()));
+        assert_eq!(missing_line(&codex), "Codex not found: install it, or set BASHCUT_CODEX");
+        assert_eq!(f("{agent} (not installed)", &[("agent", "Codex")]), "Codex (not installed)");
+        let plugin = bashcut_agent::AgentSpec { id: "x".into(), name: "X".into(), argv: vec!["xagent".into()], ..Default::default() };
+        assert_eq!(missing_line(&plugin), "X not found: install xagent");
+        set_language(Some("vi"));
+        for line in [missing_line(&fake), missing_line(&plugin), f("{agent} (not installed)", &[("agent", "Codex")])] {
+            assert!(!line.contains("not found") && !line.contains("not installed"), "{line}");
+        }
+        for k in ["Control channel off: the agent cannot edit the open project.", "Project not saved: conversations will not be kept", "Save…"] {
+            assert_ne!(s(k), k);
+        }
+        set_language(None);
+    }
 }

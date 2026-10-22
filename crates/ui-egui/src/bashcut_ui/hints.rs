@@ -4,10 +4,13 @@
 //! - [`control_on`]: the app was started with its control channel (`--control <port>`).
 //! - [`python_found`], [`cli_found`]: `python3` (`py -3` on Windows) and the engine start, the
 //!   same lookups as `bashcut-doctor`; asked once per session (each is a process call).
+//! - [`agent_found`]: an agent's program (its first argument) is a file or on `PATH`; a lookup,
+//!   no process call.
 //! - [`friendly`]: a raw error as a sentence plus "See Troubleshooting", or unchanged.
 //! - [`CONTROL_OFF`], [`HOW_TO_TURN_ON`]: the "control channel is off" line and its tooltip
 //!   (English keys for [`s`]).
 
+use std::path::Path;
 use std::process::{Command, Stdio};
 use std::sync::OnceLock;
 
@@ -35,6 +38,39 @@ pub fn python_found() -> bool {
 pub fn cli_found() -> bool {
     static FOUND: OnceLock<bool> = OnceLock::new();
     *FOUND.get_or_init(|| starts(&bashcut_batch::cli::default_cli().to_string_lossy(), &["--version"]))
+}
+
+/// The agent's program (`claude`, `codex`, `BASHCUT_CLAUDE`'s path, a plugin's `argv[0]`) is a
+/// file, or a command found on `PATH`.
+pub fn agent_found(spec: &bashcut_agent::AgentSpec) -> bool {
+    spec.argv.first().is_some_and(|p| program_found(p, std::env::var_os("PATH").as_deref()))
+}
+
+/// `program` is a path to a file, or a bare name found in one of `path`'s folders (with
+/// `PATHEXT`'s extensions on Windows).
+fn program_found(program: &str, path: Option<&std::ffi::OsStr>) -> bool {
+    let program = program.trim();
+    if program.is_empty() {
+        return false;
+    }
+    let p = Path::new(program);
+    if p.components().count() > 1 || p.is_absolute() {
+        return p.is_file() || with_exts(p).iter().any(|c| c.is_file());
+    }
+    let Some(path) = path else { return false };
+    std::env::split_paths(path).any(|dir| {
+        let c = dir.join(program);
+        c.is_file() || with_exts(&c).iter().any(|c| c.is_file())
+    })
+}
+
+/// `p` with each Windows executable extension (none elsewhere).
+fn with_exts(p: &Path) -> Vec<std::path::PathBuf> {
+    if !cfg!(windows) {
+        return Vec::new();
+    }
+    let exts = std::env::var("PATHEXT").unwrap_or_else(|_| ".EXE;.CMD;.BAT;.COM".into());
+    exts.split(';').filter(|e| !e.is_empty()).take(16).map(|e| p.with_extension(e.trim_start_matches('.'))).collect()
 }
 
 fn starts(program: &str, args: &[&str]) -> bool {
@@ -80,6 +116,20 @@ mod tests {
         assert_eq!(friendly("bad_params: lines is not a file"), "bad_params: lines is not a file");
         assert_eq!(friendly("cannot start `git`"), "cannot start `git`");
         set_language(None);
+    }
+
+    #[test]
+    fn agent_program_lookup() {
+        let missing = bashcut_agent::AgentSpec::claude_code(Some("bashcut-no-such-agent-ux7".into()));
+        assert!(!agent_found(&missing));
+        assert!(!agent_found(&bashcut_agent::AgentSpec::default()));
+        let Ok(exe) = std::env::current_exe() else { return };
+        assert!(agent_found(&bashcut_agent::AgentSpec::codex(Some(exe.to_string_lossy().into_owned()))));
+        let (Some(dir), Some(name)) = (exe.parent(), exe.file_stem()) else { return };
+        let name = name.to_string_lossy();
+        assert!(program_found(&name, Some(dir.as_os_str())), "bare name on PATH");
+        assert!(!program_found(&name, None));
+        assert!(!program_found("  ", Some(dir.as_os_str())));
     }
 
     #[test]
