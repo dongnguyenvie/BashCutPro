@@ -92,11 +92,14 @@ pub fn data_dir() -> Option<PathBuf> {
 /// Written into our folder after the import; lists what was copied, so the import never runs twice.
 pub const IMPORT_MARKER: &str = "bashcut/imported-from-filmcraft.txt";
 
+/// The folder under the data folder where the plugin host installs plugins (`<data dir>/bashcut-plugins`).
+pub const PLUGINS_DIR: &str = "bashcut-plugins";
+
 /// What the import copies: settings (with the recent projects list), export presets, our `bashcut/`
 /// files (profiles, templates, looks, batch presets, agent and side-panel settings) and installed
 /// plugins. Not `Auto-Save`, `Recovery`, `Logs` or graphics state (FilmCraft's own), nor `models`
 /// (gigabytes: [`models_dir`] links FilmCraft's files per file).
-pub const IMPORTED: &[&str] = &["preferences.json", "export-presets.json", "bashcut", "bashcut-plugins"];
+pub const IMPORTED: &[&str] = &["preferences.json", "export-presets.json", "bashcut", PLUGINS_DIR];
 
 /// Runtime files of the open window inside `bashcut/` that must not follow (a stale port and pid).
 const NOT_IMPORTED: &[&str] = &["automation.json"];

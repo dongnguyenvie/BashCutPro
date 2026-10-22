@@ -904,7 +904,7 @@ fn cli(sh: &Shared) -> String {
 
 /// `<data dir>/bashcut-plugins`, where the plugin host installs plugins (`{plugins}`).
 fn plugins_dir(sh: &Shared) -> PathBuf {
-    sh.opts.data_dir.clone().or_else(crate::presets::default_data_dir).unwrap_or_default().join("bashcut-plugins")
+    sh.opts.data_dir.clone().or_else(crate::presets::default_data_dir).unwrap_or_default().join(bashcut_dirs::PLUGINS_DIR)
 }
 
 fn data_dir_args(sh: &Shared) -> Vec<String> {

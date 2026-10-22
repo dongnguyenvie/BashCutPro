@@ -63,7 +63,7 @@ fn plugins_dir(s: &Session, p: &Value) -> Option<PathBuf> {
     if let Some(d) = str_p(p, "pluginsDir").filter(|d| !d.is_empty()) {
         return Some(PathBuf::from(d));
     }
-    s.export_presets.dir().map(Path::to_path_buf).or_else(crate::autosave::default_data_dir).map(|d| d.join("bashcut-plugins"))
+    s.export_presets.dir().map(Path::to_path_buf).or_else(crate::autosave::default_data_dir).map(|d| d.join(bashcut_dirs::PLUGINS_DIR))
 }
 
 /// Hooks for `event` declared by the installed plugins, in plugin-folder order.
