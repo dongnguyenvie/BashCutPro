@@ -91,7 +91,7 @@ pub fn draw(app: &mut FilmcraftApp, ui: &mut egui::Ui) {
 
     header(app, ui, &ctx, &mut v, &snap, running);
     if let Some(e) = &v.status {
-        let r = ui.label(egui::RichText::new(e).size(11.0).color(egui::Color32::from_rgb(0xe0, 0x6c, 0x5f)));
+        let r = ui.label(egui::RichText::new(e).size(11.0).color(t.danger));
         app.auto.add_response("bashcut.agent.status", &r, e);
     }
     if !snap.has_project {
@@ -242,7 +242,7 @@ fn transcript(app: &mut FilmcraftApp, ui: &mut egui::Ui, items: &[Item]) {
                 ui.label(egui::RichText::new(line).size(11.0).color(t.accent));
             }
             Item::Error { message } => {
-                ui.label(egui::RichText::new(message).size(11.0).color(egui::Color32::from_rgb(0xe0, 0x6c, 0x5f)));
+                ui.label(egui::RichText::new(message).size(11.0).color(t.danger));
             }
             Item::Notice { message } => {
                 ui.label(egui::RichText::new(message).size(10.5).color(t.text_dim));

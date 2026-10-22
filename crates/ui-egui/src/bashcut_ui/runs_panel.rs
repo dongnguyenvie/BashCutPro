@@ -34,6 +34,15 @@ fn state_label(st: JobState) -> &'static str {
     }
 }
 
+/// Done and a hand-off are good news (accent), a run that broke is `danger`, the rest is quiet.
+fn state_color(st: JobState, t: &crate::theme::Tokens) -> egui::Color32 {
+    match st {
+        JobState::Succeeded | JobState::HandOff => t.accent,
+        JobState::Failed | JobState::Crashed | JobState::TimedOut => t.danger,
+        JobState::Running | JobState::Cancelled => t.text_dim,
+    }
+}
+
 pub fn draw(app: &mut FilmcraftApp, ui: &mut egui::Ui) {
     let ctx = ui.ctx().clone();
     let t = app.tokens;
@@ -45,7 +54,7 @@ pub fn draw(app: &mut FilmcraftApp, ui: &mut egui::Ui) {
     };
 
     if let Some(e) = &v.status {
-        let r = ui.label(egui::RichText::new(e).size(11.0).color(egui::Color32::from_rgb(0xe0, 0x6c, 0x5f)));
+        let r = ui.label(egui::RichText::new(e).size(11.0).color(t.danger));
         app.auto.add_response("bashcut.runs.status", &r, e);
     }
     if jobs.is_empty() {
@@ -64,7 +73,7 @@ pub fn draw(app: &mut FilmcraftApp, ui: &mut egui::Ui) {
             // State first from the right, so a long title truncates instead of running under it.
             ui.horizontal(|ui| {
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    ui.label(egui::RichText::new(s(state_label(j.state))).size(11.0).color(if j.state == JobState::Succeeded { t.accent } else { t.text_dim }));
+                    ui.label(egui::RichText::new(s(state_label(j.state))).size(11.0).color(state_color(j.state, &t)));
                     ui.with_layout(egui::Layout::left_to_right(egui::Align::Center), |ui| {
                         ui.add(egui::Label::new(egui::RichText::new(&j.title).color(t.text)).truncate()).on_hover_text(&j.title);
                     });
@@ -113,4 +122,24 @@ pub fn draw(app: &mut FilmcraftApp, ui: &mut egui::Ui) {
     }
     v.logs.retain(|id| jobs.iter().any(|j| j.id == *id));
     ctx.data_mut(|d| d.insert_temp(key(), v));
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::theme::{ThemeKind, Tokens};
+
+    #[test]
+    fn run_states_use_the_theme_colours() {
+        for kind in [ThemeKind::Dark, ThemeKind::Light] {
+            let t = Tokens::for_kind(kind);
+            for st in [JobState::Failed, JobState::Crashed, JobState::TimedOut] {
+                assert_eq!(state_color(st, &t), t.danger);
+            }
+            assert_eq!(state_color(JobState::Succeeded, &t), t.accent);
+            assert_eq!(state_color(JobState::HandOff, &t), t.accent);
+            assert_eq!(state_color(JobState::Cancelled, &t), t.text_dim);
+            assert_eq!(state_color(JobState::Running, &t), t.text_dim);
+        }
+    }
 }

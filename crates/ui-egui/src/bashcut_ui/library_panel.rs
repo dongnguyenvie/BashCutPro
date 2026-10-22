@@ -352,7 +352,7 @@ pub fn draw(app: &mut FilmcraftApp, ui: &mut egui::Ui) {
         }
     });
     if let Some((ok, msg)) = &p.status {
-        let color = if *ok { t.text_dim } else { egui::Color32::from_rgb(0xe0, 0x6c, 0x5f) };
+        let color = if *ok { t.text_dim } else { t.danger };
         let r = ui.label(egui::RichText::new(msg).size(11.0).color(color));
         app.auto.add_response("bashcut.library.status", &r, msg);
     }
@@ -464,7 +464,7 @@ fn online_row(app: &mut FilmcraftApp, ui: &mut egui::Ui, ctx: &egui::Context, p:
         }
         let licence = text(item, "license");
         let (lic, color) = if licence.is_empty() {
-            (s("Licence unknown: check before publishing").to_string(), egui::Color32::from_rgb(0xe0, 0x6c, 0x5f))
+            (s("Licence unknown: check before publishing").to_string(), t.danger)
         } else {
             (f("Licence: {licence}", &[("licence", licence.as_str())]), t.accent)
         };

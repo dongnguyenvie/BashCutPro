@@ -206,7 +206,7 @@ pub fn draw(app: &mut FilmcraftApp, ui: &mut egui::Ui) {
     let pack = looks::pack();
 
     if let Some((ok, msg)) = &p.status {
-        let color = if *ok { t.text_dim } else { egui::Color32::from_rgb(0xe0, 0x6c, 0x5f) };
+        let color = if *ok { t.text_dim } else { t.danger };
         let r = ui.label(egui::RichText::new(msg).size(11.0).color(color));
         app.auto.add_response("bashcut.looks.status", &r, msg);
     }
