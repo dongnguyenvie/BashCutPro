@@ -118,6 +118,16 @@ params, then the button's own `params`, then (list buttons) `"item": <item id>`.
 `bashcut.plugins.view {plugin}` (the job and view, or null) and `bashcut.plugins.click {plugin, button, item?,
 itemButton?, values?}` (returns the new job).
 
+## Languages (`i18n`, I18N1)
+
+A manifest may carry translations of what a person reads: `"i18n": {"vi": {"name", "summary"}}` on the plugin,
+`"i18n": {"vi": {"title", "help"}}` on a setting, an action or a param (format: `bashcutpro-plugins/README.md`,
+"Manifest"). The field is optional and `bashcut-plugin/1` stays the schema: an older manifest without it loads as
+before. The Plugins panel shows the BashCutPro UI language (`bashcut.ui.setLanguage`, else the app's) through
+`Manifest::name_in` / `summary_in`, `Setting::title_in` / `help_in`, `Action::title_in` and `Param::title_in`; a
+missing or empty translation falls back to the English field. Choice values, the registry list (Install rows) and the
+command palette stay English for now. Automation ids and labels keep the English names.
+
 ## Testing
 
 Never-crash rules apply (`AGENTS.md` §0): plugin output is hostile input, parsed with caps and no panics.

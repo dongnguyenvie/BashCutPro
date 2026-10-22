@@ -12,7 +12,7 @@ use serde_json::{Map, Value, json};
 
 use super::hints::{self, CONTROL_OFF, HOW_TO_TURN_ON};
 use super::plugins;
-use super::strings::{f, s};
+use super::strings::{self, f, s};
 use crate::FilmcraftApp;
 use crate::native_dialogs::FileDialog;
 
@@ -369,13 +369,14 @@ fn plugin_card(app: &mut FilmcraftApp, ui: &mut egui::Ui, ctx: &egui::Context, d
         return;
     };
     let (update, view) = plugins::with(app, ctx, |h| (h.update_for(&p.id), h.view(&p.id).map(|(job, v)| (job, v.clone()))));
-    let head = egui::CollapsingHeader::new(egui::RichText::new(format!("{} {}", m.name, m.version)).color(t.text))
+    let lang = strings::current();
+    let head = egui::CollapsingHeader::new(egui::RichText::new(format!("{} {}", m.name_in(lang), m.version)).color(t.text))
         .id_salt(("bashcut.plugins.card", &p.id))
         .open(view.as_ref().and_then(|(job, _)| (d.shown_view.insert(p.id.clone(), *job) != Some(*job)).then_some(true)))
         .show(ui, |ui| {
             last_run(app, ui, ctx, d, snap, &p.id);
-            if !m.summary.is_empty() {
-                ui.label(egui::RichText::new(plain(&m.summary)).size(11.0).color(t.text_dim));
+            if !m.summary_in(lang).is_empty() {
+                ui.label(egui::RichText::new(plain(m.summary_in(lang))).size(11.0).color(t.text_dim));
             }
             ui.horizontal(|ui| {
                 let updating = snap.installing.contains(&p.id);
@@ -426,9 +427,10 @@ fn settings_form(app: &mut FilmcraftApp, ui: &mut egui::Ui, ctx: &egui::Context,
         let known = plugins::with(app, ctx, |h| h.secrets_set(&m.id)).unwrap_or_default();
         d.stored.insert(m.id.clone(), known);
     }
+    let lang = strings::current();
     for st in &m.settings {
         let k = format!("{}/{}", m.id, st.id);
-        let title = if st.title.is_empty() { st.id.clone() } else { st.title.clone() };
+        let title = if st.title_in(lang).is_empty() { st.id.clone() } else { st.title_in(lang).to_string() };
         if st.is_secret() {
             let stored = d.stored.get(&m.id).and_then(|x| x.get(&st.id)).copied().unwrap_or(false);
             ui.horizontal(|ui| {
@@ -460,8 +462,8 @@ fn settings_form(app: &mut FilmcraftApp, ui: &mut egui::Ui, ctx: &egui::Context,
                 field(app, ui, &id, &title, Spec::setting(st), text);
             });
         }
-        if !st.help.is_empty() {
-            ui.label(egui::RichText::new(plain(&st.help)).size(10.5).color(t.text_dim));
+        if !st.help_in(lang).is_empty() {
+            ui.label(egui::RichText::new(plain(st.help_in(lang))).size(10.5).color(t.text_dim));
         }
     }
     if m.settings.iter().any(|st| !st.is_secret()) && button(app, ui, &format!("bashcut.plugins.{}.settings.save", m.id), s("Save settings"), true) {
@@ -471,7 +473,7 @@ fn settings_form(app: &mut FilmcraftApp, ui: &mut egui::Ui, ctx: &egui::Context,
             values.insert(st.id.clone(), if text.is_empty() { Value::Null } else { Value::String(text) });
         }
         if run(app, ctx, d, "settings", json!({"plugin": m.id, "values": values})).is_some() {
-            d.status = Some((true, f("Saved settings of {plugin}", &[("plugin", &m.name)])));
+            d.status = Some((true, f("Saved settings of {plugin}", &[("plugin", m.name_in(lang))])));
         }
     }
 }
@@ -484,7 +486,8 @@ fn remember_stored(d: &mut Drafts, plugin: &str, v: &Value) {
 
 fn action_row(app: &mut FilmcraftApp, ui: &mut egui::Ui, ctx: &egui::Context, d: &mut Drafts, m: &Manifest, a: &Action) {
     let t = app.tokens;
-    let title = if a.title.is_empty() { a.id.clone() } else { a.title.clone() };
+    let lang = strings::current();
+    let title = if a.title_in(lang).is_empty() { a.id.clone() } else { a.title_in(lang).to_string() };
     let is_open = d.open.as_ref().is_some_and(|(p, x)| *p == m.id && *x == a.id);
     let control = hints::control_on();
     // wrapped, so a long action title stays inside the panel
@@ -610,9 +613,9 @@ fn required(p: &Param) -> bool {
     !p.optional && p.default.is_none() && p.kind != "bool"
 }
 
-/// The param's label: its `title`, else its id in words.
+/// The param's label in the UI language: its `title` (or the manifest's translation of it), else its id in words.
 fn param_title(p: &Param) -> String {
-    p.title.clone().filter(|t| !t.trim().is_empty()).unwrap_or_else(|| humanise(&p.id))
+    p.title_in(strings::current()).map_or_else(|| humanise(&p.id), str::to_string)
 }
 
 /// An id as a label: camelCase, snake_case and kebab-case become words, first one capitalised
@@ -860,6 +863,45 @@ mod tests {
         assert_eq!(param_title(&param("maxCps", "integer")), "Max cps");
         let titled = Param { title: Some("Characters per second".into()), ..param("maxCps", "integer") };
         assert_eq!(param_title(&titled), "Characters per second");
+    }
+
+    #[test]
+    fn manifest_labels_follow_the_ui_language() {
+        // a slice of translate-captions' manifest, with its Vietnamese (I18N1)
+        let m = Manifest::parse(
+            &json!({
+                "schema": "bashcut-plugin/1", "id": "bashcut.translate-captions", "name": "Translate Captions", "version": "0.1.3",
+                "entry": {"command": ["python3", "plugin.py"]}, "output": "bashcut-result/1",
+                "i18n": {"vi": {"name": "Dịch phụ đề"}},
+                "settings": [{"id": "service", "title": "Service", "type": "enum", "choices": ["gemini"], "default": "gemini",
+                    "help": "Who translates. The key is sent only to this service.",
+                    "i18n": {"vi": {"title": "Dịch vụ", "help": "Bên dịch. Khóa chỉ được gửi tới dịch vụ này."}}}],
+                "actions": [{"id": "translate", "title": "Translate captions…", "args": ["translate"], "needs": "project",
+                    "i18n": {"vi": {"title": "Dịch phụ đề…"}},
+                    "params": [{"id": "maxCps", "title": "Max characters a second", "flag": "--max-cps", "type": "integer",
+                        "i18n": {"vi": {"title": "Số ký tự tối đa mỗi giây"}}},
+                        {"id": "brief", "title": "Brief", "flag": "--brief", "type": "string"}]}]
+            })
+            .to_string(),
+        )
+        .unwrap();
+        let (st, a) = (&m.settings[0], &m.actions[0]);
+        super::super::strings::set_language(Some("vi"));
+        let lang = strings::current();
+        assert_eq!(
+            (m.name_in(lang), st.title_in(lang), st.help_in(lang), a.title_in(lang)),
+            ("Dịch phụ đề", "Dịch vụ", "Bên dịch. Khóa chỉ được gửi tới dịch vụ này.", "Dịch phụ đề…")
+        );
+        assert_eq!(
+            (param_title(&a.params[0]), param_title(&a.params[1])),
+            ("Số ký tự tối đa mỗi giây".to_string(), "Brief".to_string()),
+            "untranslated: English"
+        );
+        super::super::strings::set_language(Some("en"));
+        let lang = strings::current();
+        assert_eq!((m.name_in(lang), st.title_in(lang), a.title_in(lang)), ("Translate Captions", "Service", "Translate captions…"));
+        assert_eq!(param_title(&a.params[0]), "Max characters a second");
+        super::super::strings::set_language(None);
     }
 
     #[test]

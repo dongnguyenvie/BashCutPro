@@ -42,6 +42,33 @@ pub struct Manifest {
     pub skills: Vec<String>,
     /// How the Agent section starts it, when `kind` is `agent`.
     pub agent: Option<AgentSection>,
+    /// `name` / `summary` in other languages (see [`I18n`]).
+    pub i18n: I18n,
+}
+
+/// Translations of the text a person sees, by language code (`{"vi": {"title": …, "help": …}}`;
+/// on the plugin `name` / `summary`). Optional: an empty or missing entry falls back to English.
+pub type I18n = BTreeMap<String, Text>;
+
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct Text {
+    #[serde(skip_serializing_if = "String::is_empty")]
+    pub name: String,
+    #[serde(skip_serializing_if = "String::is_empty")]
+    pub summary: String,
+    #[serde(skip_serializing_if = "String::is_empty")]
+    pub title: String,
+    #[serde(skip_serializing_if = "String::is_empty")]
+    pub help: String,
+}
+
+/// `english` in `lang` when the manifest has a non-empty translation, else `english`.
+fn local<'a>(i18n: &'a I18n, lang: &str, english: &'a str, pick: fn(&Text) -> &str) -> &'a str {
+    match i18n.get(lang).map(pick) {
+        Some(x) if !x.trim().is_empty() => x,
+        _ => english,
+    }
 }
 
 /// An agent plugin (`bashcut/in-app-ui.md` §6): the entry plus `args` runs one turn, reading one
@@ -112,11 +139,20 @@ pub struct Setting {
     pub flag: Option<String>,
     pub optional: bool,
     pub help: String,
+    pub i18n: I18n,
 }
 
 impl Setting {
     pub fn is_secret(&self) -> bool {
         self.kind == "secret"
+    }
+
+    pub fn title_in(&self, lang: &str) -> &str {
+        local(&self.i18n, lang, &self.title, |x| &x.title)
+    }
+
+    pub fn help_in(&self, lang: &str) -> &str {
+        local(&self.i18n, lang, &self.help, |x| &x.help)
     }
 }
 
@@ -133,6 +169,13 @@ pub struct Action {
     pub handoff: Option<Handoff>,
     /// The action shows a `bashcut-view/1` form in the plugin's card while it runs (see [`crate::view`]).
     pub view: bool,
+    pub i18n: I18n,
+}
+
+impl Action {
+    pub fn title_in(&self, lang: &str) -> &str {
+        local(&self.i18n, lang, &self.title, |x| &x.title)
+    }
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
@@ -149,6 +192,15 @@ pub struct Param {
     pub minimum: Option<f64>,
     pub maximum: Option<f64>,
     pub title: Option<String>,
+    pub i18n: I18n,
+}
+
+impl Param {
+    /// The label in `lang`, else the English `title`; `None` when the manifest has neither.
+    pub fn title_in(&self, lang: &str) -> Option<&str> {
+        let english = self.title.as_deref().unwrap_or_default();
+        Some(local(&self.i18n, lang, english, |x| &x.title)).filter(|x| !x.trim().is_empty())
+    }
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
@@ -259,6 +311,14 @@ impl Manifest {
             return err(format!("{}: text field too long", self.id));
         }
         Ok(())
+    }
+
+    pub fn name_in(&self, lang: &str) -> &str {
+        local(&self.i18n, lang, &self.name, |x| &x.name)
+    }
+
+    pub fn summary_in(&self, lang: &str) -> &str {
+        local(&self.i18n, lang, &self.summary, |x| &x.summary)
     }
 
     pub fn is_agent(&self) -> bool {
@@ -457,6 +517,34 @@ mod tests {
             ]
         );
         assert_eq!(m.missing_commands(&["file.save".to_string()]), ["captions.list"]);
+    }
+
+    #[test]
+    fn picks_the_ui_language_and_falls_back_to_english() {
+        // a manifest without `i18n` (every one before I18N1) still loads and reads in English
+        let old = Manifest::parse(&sample()).unwrap();
+        assert!(old.i18n.is_empty());
+        assert_eq!((old.name_in("vi"), old.settings[0].title_in("vi"), old.actions[0].title_in("vi")), ("Echo", "Service", "Go"));
+        assert_eq!(old.actions[0].params[0].title_in("vi"), None);
+        let mut v: Value = serde_json::from_str(&sample()).unwrap();
+        v["i18n"] = json!({"vi": {"name": "Tiếng vọng", "summary": ""}});
+        v["settings"][0]["help"] = json!("Who answers.");
+        v["settings"][0]["i18n"] = json!({"vi": {"title": "Dịch vụ", "help": "Bên trả lời."}});
+        v["actions"][0]["i18n"] = json!({"vi": {"title": "Chạy"}});
+        v["actions"][0]["params"][0]["title"] = json!("Language");
+        v["actions"][0]["params"][0]["i18n"] = json!({"vi": {"title": "Ngôn ngữ"}});
+        v["actions"][0]["params"][1]["i18n"] = json!({"vi": {"title": "Số lần"}});
+        let m = Manifest::parse(&v.to_string()).unwrap();
+        assert_eq!((m.name_in("vi"), m.summary_in("vi"), m.name_in("en"), m.name_in("fr")), ("Tiếng vọng", "", "Echo", "Echo"));
+        let s = &m.settings[0];
+        assert_eq!((s.title_in("vi"), s.help_in("vi"), s.title_in("en"), s.help_in("en")), ("Dịch vụ", "Bên trả lời.", "Service", "Who answers."));
+        assert_eq!((m.actions[0].title_in("vi"), m.actions[0].title_in("en")), ("Chạy", "Go"));
+        let p = &m.actions[0].params;
+        assert_eq!(
+            (p[0].title_in("vi"), p[0].title_in("en"), p[1].title_in("vi"), p[1].title_in("en")),
+            (Some("Ngôn ngữ"), Some("Language"), Some("Số lần"), None)
+        );
+        assert!(Manifest::parse(&json!({"i18n": {"vi": "x"}}).to_string()).is_err(), "a translation is an object");
     }
 
     #[test]
