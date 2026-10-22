@@ -321,3 +321,18 @@ pub fn menu_items(session: &filmcraft_engine::Session) -> Vec<MenuItem> {
         })
         .collect()
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// `params` spells the section list out; a new row in [`SECTIONS`] must show up there too.
+    #[test]
+    fn params_list_every_section() {
+        let list = section_ids().join("|");
+        for id in ["bashcut.ui.section", "bashcut.ui.popOut", "bashcut.ui.dockBack"] {
+            let p = params(id);
+            assert!(p.contains(&format!(r#""section":"{list}""#)), "{id}: {p} should list {list}");
+        }
+    }
+}
