@@ -533,10 +533,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "bashcut-cli"
-version = "0.10.0"
-
-[[package]]
 name = "bashcut-connect"
 version = "0.10.0"
 dependencies = [
@@ -573,6 +569,27 @@ dependencies = [
  "log",
  "serde",
  "serde_json",
+]
+
+[[package]]
+name = "bashcutpro-cli"
+version = "0.10.0"
+dependencies = [
+ "filmcraft-automation",
+ "filmcraft-codecs",
+ "filmcraft-engine",
+ "filmcraft-export",
+ "filmcraft-gpu",
+ "filmcraft-media",
+ "filmcraft-mpegts",
+ "filmcraft-mxf",
+ "filmcraft-ogg",
+ "filmcraft-platform",
+ "filmcraft-project",
+ "filmcraft-render",
+ "filmcraft-time",
+ "serde_json",
+ "tokio",
 ]
 
 [[package]]

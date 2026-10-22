@@ -24,7 +24,7 @@ cần chừng 10 GB đĩa trống. Các bước dưới đây dành cho macOS; t
 4. Dựng ứng dụng và các công cụ dòng lệnh, kèm chuyển giọng nói thành chữ:
 
    ```sh
-   cargo build -p filmcraft -p filmcraft-cli -p bashcut-cli -p bashcut-doctor -p bashcut-batch-cli -p bashcut-mcp \
+   cargo build -p filmcraft -p filmcraft-cli -p bashcutpro-cli -p bashcut-doctor -p bashcut-batch-cli -p bashcut-mcp \
      --features filmcraft/whisper,filmcraft-cli/whisper
    ```
 

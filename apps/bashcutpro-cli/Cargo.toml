@@ -1,0 +1,46 @@
+[package]
+name = "bashcutpro-cli"
+description = "bashcutpro (alias bcpro): upstream filmcraft-cli built under the BashCutPro name; build.rs generates the source from apps/filmcraft-cli"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+publish = false
+build = "build.rs"
+
+[lints]
+workspace = true
+
+[[bin]]
+name = "bashcutpro"
+path = "src/main.rs"
+test = false
+
+# The short alias: the same program under a second name (#154).
+[[bin]]
+name = "bcpro"
+path = "src/bin/bcpro.rs"
+test = false
+
+[features]
+default = []
+# Same as filmcraft-cli's `whisper`: speech-to-text on the CPU, and model downloads.
+whisper = ["filmcraft-engine/whisper", "filmcraft-engine/speech-download"]
+
+# Mirrors apps/filmcraft-cli/Cargo.toml [dependencies]; build.rs fails if upstream's list changes.
+[dependencies]
+filmcraft-engine = { workspace = true }
+filmcraft-export = { workspace = true }
+filmcraft-project = { workspace = true }
+filmcraft-render = { workspace = true }
+filmcraft-time = { workspace = true }
+filmcraft-gpu = { workspace = true }
+filmcraft-media = { workspace = true }
+filmcraft-codecs = { workspace = true }
+filmcraft-platform = { workspace = true }
+filmcraft-mxf = { workspace = true }
+filmcraft-mpegts = { workspace = true }
+filmcraft-ogg = { workspace = true }
+filmcraft-automation = { workspace = true }
+serde_json = { workspace = true }
+tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
