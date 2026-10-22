@@ -59,8 +59,7 @@ pub fn show(app: &mut FilmcraftApp, ui: &mut egui::Ui, rect: Rect, st: &mut Stat
     painter.line_segment([rect.left_top(), rect.left_bottom()], Stroke::new(1.0, t.separator));
     let (failures, runs_busy) = runs_activity(&ctx);
     let batch_busy = batch::lock(&batch::shared(&ctx)).is_running();
-    let on_screen = |st: &State, id: &str| st.open.as_deref() == Some(id) || st.popped.iter().any(|p| p == id);
-    if on_screen(st, "runs") {
+    if st.on_screen("runs") {
         st.see_failures(&failures);
     }
     for (i, sec) in SECTIONS.iter().enumerate() {

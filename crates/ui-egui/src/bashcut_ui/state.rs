@@ -182,6 +182,11 @@ impl State {
         self.open = Some(section.to_string());
     }
 
+    /// `section` is on screen: docked in the side panel or popped out.
+    pub fn on_screen(&self, section: &str) -> bool {
+        self.open.as_deref() == Some(section) || self.popped.iter().any(|s| s == section)
+    }
+
     /// Runs is on screen: the `failed` jobs are seen (ids no longer listed are forgotten).
     pub fn see_failures(&mut self, failed: &[u64]) {
         self.seen_failures = failed.iter().copied().collect();
@@ -250,11 +255,14 @@ mod tests {
         st.pop_out("runs");
         assert_eq!(st.open, None);
         assert_eq!(st.popped, vec!["runs".to_string()]);
+        assert!(st.on_screen("runs"), "popped out counts as on screen");
+        assert!(!st.on_screen("agent"));
         st.show("runs");
         assert_eq!(st.open, None, "a popped-out section stays floating");
         st.dock_back("runs");
         assert_eq!(st.open.as_deref(), Some("runs"));
         assert!(st.popped.is_empty());
+        assert!(st.on_screen("runs"), "docked counts as on screen");
     }
 
     #[test]
