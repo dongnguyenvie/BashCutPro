@@ -312,7 +312,7 @@ mod tests {
     }
 
     fn finished(state: JobState, result: Option<PluginResult>, error: Option<&str>) -> Job {
-        let mut j = Job::new(7, JobKind::Run { plugin: "test.fake".into(), action: "speak".into() }, "Fake ▸ Speak".into());
+        let mut j = Job::new(7, JobKind::Run { plugin: "test.fake".into(), action: "speak".into() }, "Fake › Speak".into());
         j.state = state;
         j.params.insert("text".into(), json!("xin chào"));
         let end = if state == JobState::Succeeded { End::Succeeded } else { End::Failed };

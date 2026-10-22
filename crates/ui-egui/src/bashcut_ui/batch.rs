@@ -470,7 +470,7 @@ fn plugin_step(app: &mut FilmcraftApp, ctx: &egui::Context, plugin: &str, action
     let env = settings::env_for(m, &values, &MemoryStore::default()).into_iter().collect();
     let name = if m.name.is_empty() { m.id.as_str() } else { m.name.as_str() };
     let title = if a.title.is_empty() { a.id.as_str() } else { a.title.trim_end_matches('…') };
-    Ok(Step { label: Some(format!("{name} ▸ {title}")), plugin: Some(ProcessStep { argv, env }), ..Step::default() })
+    Ok(Step { label: Some(format!("{name} › {title}")), plugin: Some(ProcessStep { argv, env }), ..Step::default() })
 }
 
 /// An output from `{profile, name?}` (the runner exports it with the profile's loudness and caption
