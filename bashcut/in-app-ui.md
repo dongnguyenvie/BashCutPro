@@ -42,8 +42,11 @@ It does not copy BashCut's Swift UI. It is built for FilmCraft's egui shell and 
   rough cut, draft) with Approve / Change / Stop, and a Stop button that ends the turn.
 - **Plugins**: installed plugins from `registry.json`, install / update / remove, settings form generated from the
   manifest (secrets go to the OS key store), actions with a params form, and the plugin's own view when it has one.
-- **Runs**: plugin runs and agent turns with progress (from the plugin's stderr), result, log, Cancel, and
-  "Send to agent" for a hand-off result (`bashcut-result/1`, exit 3).
+- **Runs**: plugin runs, installs and registry checks with progress (from the plugin's stderr), elapsed time, the
+  full error of a failed run, Retry, Copy log, Reveal for result paths, Cancel, and "Send to agent" for a hand-off
+  result (`bashcut-result/1`, exit 3). A running batch adds one row, "Batch: n of m · Open Batch"; its items live in
+  the Batch section. Agent turns live in the Agent section, not here (UX6; the last run per plugin also shows in its
+  card, UX5).
 
 ### 1a. Built for batch and for better results (2026-10-20)
 
@@ -61,7 +64,8 @@ BashCut's. The UI follows from that:
   appear as markers (rule 1 below) and in the Agent section's gate cards with the measurement behind them.
 - **Command palette** (#52): one search over commands, plugin actions, looks, profiles, recipes and batch presets,
   with current shortcuts; the fastest path for users who do not want the agent.
-- **Long jobs never block**: every run (plugin, batch item, agent turn) shows in Runs with honest staged progress;
+- **Long jobs never block**: plugin runs, installs and registry checks show in Runs with honest staged progress (a
+  running batch as one row that opens the Batch section; agent turns in the Agent section);
   sections are non-modal and follow the current selection.
 - **Agents see less, act surer**: compact timeline summary and typed errors (#50), atomic grouped edits as one undo
   step (#44), auto-connect to the open window with a project lock (#51).

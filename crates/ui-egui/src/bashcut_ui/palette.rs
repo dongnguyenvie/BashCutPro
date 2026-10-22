@@ -247,7 +247,7 @@ fn command_item(id: &str, label: &str, menu: &[String], signature: &str, shortcu
         key: format!("command:{id}"),
         kind: if id.starts_with("bashcut.") { Kind::Pro } else { Kind::Command },
         label: label.to_string(),
-        detail: if menu.is_empty() { id.to_string() } else { format!("{} · {id}", menu.join(" ▸ ")) },
+        detail: if menu.is_empty() { id.to_string() } else { format!("{} · {id}", menu.join(" › ")) },
         shortcut,
         enabled,
         command: id.to_string(),
@@ -280,10 +280,11 @@ pub fn command_items(session: &filmcraft_engine::Session) -> Vec<Item> {
 
 /// Every action of the installed plugins (`bashcut.plugins.run`).
 pub fn plugin_items(installed: &[Installed]) -> Vec<Item> {
+    let lang = super::strings::current();
     let mut v = Vec::new();
     for p in installed {
         let Some(m) = &p.manifest else { continue };
-        let plugin = if m.name.is_empty() { p.id.as_str() } else { m.name.as_str() };
+        let plugin = if m.name_in(lang).is_empty() { p.id.as_str() } else { m.name_in(lang) };
         for a in &m.actions {
             let defaults: Map<String, Value> = a.params.iter().filter_map(|x| x.default.clone().map(|d| (x.id.clone(), d))).collect();
             let signature = a
@@ -295,8 +296,8 @@ pub fn plugin_items(installed: &[Installed]) -> Vec<Item> {
             v.push(Item {
                 key: format!("plugin:{}/{}", p.id, a.id),
                 kind: Kind::Plugin,
-                label: format!("{plugin}: {}", if a.title.is_empty() { a.id.as_str() } else { a.title.as_str() }),
-                detail: m.summary.clone(),
+                label: format!("{plugin}: {}", if a.title_in(lang).is_empty() { a.id.as_str() } else { a.title_in(lang) }),
+                detail: m.summary_in(lang).to_string(),
                 shortcut: None,
                 enabled: true,
                 command: "bashcut.plugins.run".into(),
@@ -668,7 +669,7 @@ pub fn show(app: &mut FilmcraftApp, ctx: &egui::Context) {
                 act = Some(a);
             }
             if let Some(e) = &p.error {
-                ui.colored_label(egui::Color32::from_rgb(0xe0, 0x60, 0x60), e.as_str());
+                ui.colored_label(app.tokens.danger, e.as_str());
             }
         });
     });
