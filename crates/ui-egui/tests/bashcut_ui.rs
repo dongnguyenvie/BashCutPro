@@ -597,6 +597,75 @@ fn plugin_action_forms_follow_the_manifest() {
     let _ = std::fs::remove_dir_all(&data);
 }
 
+/// Started without `--control` (as every test is): the Plugins section says so before any click,
+/// a project action's Run waits for the channel with the reason, and a plugin whose interpreter
+/// is missing shows the sentence, not `os error 2`. `BASHCUT_UI_SHOTS=<dir>` saves both languages.
+#[test]
+fn plugins_say_the_control_channel_is_off_and_errors_read_as_sentences() {
+    if std::env::var_os("FILMCRAFT_CONTROL_PORT").is_some() {
+        eprintln!("FILMCRAFT_CONTROL_PORT is set: skipped");
+        return;
+    }
+    let data = std::env::temp_dir().join(format!("bashcut-ui-hints-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&data);
+    let plugin = data.join("bashcut-plugins").join("test.hints");
+    std::fs::create_dir_all(&plugin).unwrap();
+    // an interpreter no machine has: starting it fails like a missing python3
+    let manifest = json!({
+        "schema": "bashcut-plugin/1", "id": "test.hints", "name": "Hints", "version": "0.1.0", "summary": "test plugin",
+        "entry": {"command": ["python3-bashcut-missing", "plugin.py"]}, "output": "bashcut-result/1",
+        "connect": {"bridge": ["--bridge", "{address}"]},
+        "actions": [
+            {"id": "translate", "title": "Translate captions…", "args": ["translate"], "needs": "project", "params": [
+                {"id": "target", "flag": "--target", "type": "enum", "default": "vi", "choices": ["vi", "en"]}]},
+            {"id": "describe", "title": "Describe shots", "args": ["describe"], "needs": "project"},
+            {"id": "check", "title": "Check the key", "args": ["check"], "needs": "none"}
+        ]
+    });
+    std::fs::write(plugin.join("bashcut-plugin.json"), manifest.to_string()).unwrap();
+
+    let mut session = Session::default();
+    session.start_autosave(filmcraft_engine::autosave::AutosaveConfig::new(&data)).expect("data dir");
+    session.execute("file.openDemoProject", json!({})).expect("demo project");
+    let (tx, rx) = channel();
+    let app = FilmcraftApp::new(session).with_control(rx);
+    let harness = Harness::builder().with_size(egui::vec2(W, H)).with_max_steps(10_000).build_eframe(move |_cc| app);
+    let mut d = Driver { harness, tx };
+    d.frames(4);
+    let element = |d: &mut Driver, id: &str| -> Value {
+        let v = d.ok("ui.elements", json!({"prefix": id}));
+        v.as_array().and_then(|a| a.iter().find(|e| e["id"] == json!(id)).cloned()).unwrap_or(Value::Null)
+    };
+
+    d.click("bashcut.rail.plugins");
+    let setup = element(&mut d, "bashcut.plugins.setup");
+    assert!(setup["label"].as_str().is_some_and(|l| l.starts_with("Control channel is off")), "{setup}");
+    d.click("bashcut.plugins.test.hints");
+    assert_eq!(element(&mut d, "bashcut.plugins.test.hints.action.describe")["enabled"], json!(false), "▶ waits for the channel");
+    assert!(d.has("bashcut.plugins.test.hints.action.describe.blocked"), "the reason sits beside it");
+    assert_eq!(element(&mut d, "bashcut.plugins.test.hints.describe.batch")["enabled"], json!(true), "a batch needs no channel");
+    d.click("bashcut.plugins.test.hints.action.translate");
+    assert_eq!(element(&mut d, "bashcut.plugins.test.hints.translate.run")["enabled"], json!(false), "Run waits for the channel");
+    assert_eq!(element(&mut d, "bashcut.plugins.test.hints.translate.batch")["enabled"], json!(true));
+    if let Some(dir) = std::env::var_os("BASHCUT_UI_SHOTS").map(std::path::PathBuf::from) {
+        std::fs::create_dir_all(&dir).unwrap();
+        for lang in ["en", "vi"] {
+            d.exec("bashcut.ui.setLanguage", json!({"language": lang}));
+            d.frames(3);
+            d.harness.render().unwrap().save(dir.join(format!("plugins-control-off-{lang}.png"))).unwrap();
+        }
+        d.exec("bashcut.ui.setLanguage", json!({"language": null}));
+    }
+    // a needs-none action runs, and its spawn error reads as a sentence
+    d.click("bashcut.plugins.test.hints.action.check");
+    let status = element(&mut d, "bashcut.plugins.status");
+    let text = status["label"].as_str().unwrap_or_default();
+    assert!(text.starts_with("Python 3 was not found") && text.ends_with("See Troubleshooting."), "{status}");
+    assert!(!text.contains("os error"), "{text}");
+    assert!(d.harness.state().ui_error.is_none(), "{:?}", d.harness.state().ui_error);
+    let _ = std::fs::remove_dir_all(&data);
+}
+
 /// The test plugins' Python runs (`py -3` on Windows, where `python3` may be the Store's stub).
 fn has_python() -> bool {
     let (exe, args): (&str, &[&str]) = if cfg!(windows) { ("py", &["-3", "--version"]) } else { ("python3", &["--version"]) };

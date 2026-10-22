@@ -153,6 +153,15 @@ no value shows "–" and is left to the plugin's default. `path` adds **Browse�
 picks one file. `plugins_panel::field` / `Spec` are `pub(super)` so other forms (the Batch step form) draw the same
 fields.
 
+Setup hints (UX4, `bashcut_ui/hints.rs`): started without the control channel, Plugins shows one dim line at the top
+("Control channel is off…", `bashcut.plugins.setup`, tooltip: how to turn it on). A `needs: "project"` action then
+says "needs the control channel" (`…action.<action>.blocked`, same tooltip) instead of "uses the open project": its ▶
+and its form's **Run** are disabled, with the channel reason and "Fill in: …" as one list in **Run**'s tooltip. The
+form still opens and **Run on many files…** stays enabled, because a batch opens the project file itself and needs no
+channel. Error status lines go through `hints::friendly`, which turns the known setup errors (`python3` or
+`claude` cannot start, `no_cli`, `needs the open project`) into one sentence plus "See Troubleshooting".
+`hints::python_found` / `cli_found` are the `bashcut-doctor` lookups, asked once per session, for other sections (UX7).
+
 Built in #52 (P): `bashcut_ui/palette.rs`, a foreground `egui::Area` drawn at the end of `layout` in every mode.
 Cmd/Ctrl+Shift+P (`bashcut.palette.open`, Window ▸ BashCutPro ▸ Command Palette…) opens it; Cmd/Ctrl+K stays
 upstream's Add Edit. Items: engine and UI commands (live shortcut and enabled state), `bashcut.*` commands, plugin

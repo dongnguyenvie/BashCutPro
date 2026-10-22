@@ -193,3 +193,12 @@ Run a plugin action from Plugins and it shows up here.	Chạy một thao tác pl
 Browse…	Chọn tệp…
 Fill in: {fields}	Cần điền: {fields}
 Not set: the plugin's default is used	Chưa đặt: dùng giá trị mặc định của plugin
+# setup hints (hints.rs)
+Control channel is off: actions that edit the open project cannot run.	Kênh điều khiển đang tắt: các thao tác sửa dự án đang mở không chạy được.
+How to turn it on: quit BashCutPro and start it with its control channel. Mac: open -a BashCutPro --args --control 9876. Or set FILMCRAFT_CONTROL_PORT=9876 first.	Cách bật: thoát BashCutPro rồi mở lại kèm kênh điều khiển. Mac: open -a BashCutPro --args --control 9876. Hoặc đặt FILMCRAFT_CONTROL_PORT=9876 trước.
+needs the control channel	cần kênh điều khiển
+See Troubleshooting.	Xem mục Khắc phục sự cố.
+Python 3 was not found: install Python 3.9 or newer, then run the action again.	Không tìm thấy Python 3: hãy cài Python 3.9 trở lên rồi chạy lại thao tác.
+Claude Code was not found: install it and sign in (run claude in a terminal), then try again.	Không tìm thấy Claude Code: hãy cài rồi đăng nhập (chạy claude trong terminal), sau đó thử lại.
+The BashCutPro engine (bashcutpro or filmcraft-cli) was not found next to the app: reinstall BashCutPro or build it.	Không tìm thấy bộ máy BashCutPro (bashcutpro hoặc filmcraft-cli) cạnh ứng dụng: hãy cài lại hoặc build lại BashCutPro.
+This action edits the open project, so it needs the control channel: start BashCutPro with --control 9876.	Thao tác này sửa dự án đang mở nên cần kênh điều khiển: hãy mở BashCutPro kèm --control 9876.
