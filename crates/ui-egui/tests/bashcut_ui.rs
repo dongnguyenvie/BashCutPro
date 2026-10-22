@@ -1074,32 +1074,21 @@ fn batch_steps_with_empty_required_params_block_the_run() {
     std::fs::write(plugin.join("bashcut-plugin.json"), manifest.to_string()).unwrap();
     let input = data.join("a.mp4");
     std::fs::write(&input, b"x").unwrap();
-    let mut session = Session::default();
-    session.start_autosave(filmcraft_engine::autosave::AutosaveConfig::new(&data)).expect("data dir");
-    session.execute("file.openDemoProject", json!({})).expect("demo project");
-    let (tx, rx) = channel();
-    let app = FilmcraftApp::new(session).with_control(rx);
-    let harness = Harness::builder().with_size(egui::vec2(W, H)).with_max_steps(10_000).build_eframe(move |_cc| app);
-    let mut d = Driver { harness, tx };
-    d.frames(4);
-    let element = |d: &mut Driver, id: &str| -> Value {
-        let v = d.ok("ui.elements", json!({"prefix": id}));
-        v.as_array().and_then(|a| a.iter().find(|e| e["id"] == json!(id)).cloned()).unwrap_or(Value::Null)
-    };
+    let mut d = Driver::with_data(&data, |_| {});
     d.click("bashcut.rail.batch");
     d.exec("bashcut.batch.addInput", json!({"paths": [input]}));
     d.exec("bashcut.batch.addStep", json!({"plugin": "test.ask", "action": "go", "params": {"burn": false}}));
     let step = d.exec("bashcut.batch.state", json!({}))["draft"]["steps"][0].clone();
     assert_eq!(step["pluginAction"], json!({"plugin": "test.ask", "action": "go", "params": {"burn": false}, "missing": ["answer"]}));
     d.frames(2);
-    assert_eq!(element(&mut d, "bashcut.batch.step.0.error")["label"], json!("Fill in: Answer"));
-    assert_eq!(element(&mut d, "bashcut.batch.run")["enabled"], json!(false), "Run batch waits");
-    assert_eq!(element(&mut d, "bashcut.batch.run.blocked")["label"], json!("Step 1: fill in Answer"));
+    assert_eq!(d.element("bashcut.batch.step.0.error")["label"], json!("Fill in: Answer"));
+    assert_eq!(d.element("bashcut.batch.run")["enabled"], json!(false), "Run batch waits");
+    assert_eq!(d.element("bashcut.batch.run.blocked")["label"], json!("Step 1: fill in Answer"));
     let v = d.call("engine.execute", json!({"command": "bashcut.batch.run", "params": {"cli": "nope"}}));
     assert!(v.to_string().contains("fill in answer"), "the command refuses too: {v}");
     d.exec("bashcut.ui.setLanguage", json!({"language": "vi"}));
     d.frames(3);
-    assert_eq!(element(&mut d, "bashcut.batch.run.blocked")["label"], json!("Bước 1: cần điền Answer"));
+    assert_eq!(d.element("bashcut.batch.run.blocked")["label"], json!("Bước 1: cần điền Answer"));
     d.exec("bashcut.ui.setLanguage", json!({"language": null}));
 
     // the form reads back the `false` (the command line can't show it) and fills the blank
@@ -1113,12 +1102,12 @@ fn batch_steps_with_empty_required_params_block_the_run() {
     assert!(step["pluginAction"].get("missing").is_none());
     d.frames(2);
     assert!(!d.has("bashcut.batch.step.0.error"));
-    assert_eq!(element(&mut d, "bashcut.batch.run")["enabled"], json!(true));
+    assert_eq!(d.element("bashcut.batch.run")["enabled"], json!(true));
 
     // a step whose plugin is not installed: greyed, with Install
     d.exec("bashcut.batch.addStep", json!({"step": {"plugin": {"argv": ["x"]}, "pluginAction": {"plugin": "gone.plugin", "action": "go"}}}));
     d.frames(2);
-    assert_eq!(element(&mut d, "bashcut.batch.step.1")["enabled"], json!(false));
+    assert_eq!(d.element("bashcut.batch.step.1")["enabled"], json!(false));
     assert!(d.has("bashcut.batch.step.1.notInstalled") && d.has("bashcut.batch.step.1.install"));
     assert!(d.harness.state().ui_error.is_none(), "{:?}", d.harness.state().ui_error);
     let _ = std::fs::remove_dir_all(&data);
@@ -1271,47 +1260,27 @@ print(json.dumps({'ok': True, 'data': {'path': '/out/toast.wav'}}))
     });
     std::fs::write(plugin.join("bashcut-plugin.json"), manifest.to_string()).unwrap();
 
-    let mut session = Session::default();
-    session.start_autosave(filmcraft_engine::autosave::AutosaveConfig::new(&data)).expect("data dir");
-    session.execute("file.openDemoProject", json!({})).expect("demo project");
-    let (tx, rx) = channel();
-    let mut app = FilmcraftApp::new(session).with_control(rx);
     let reveals = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
     let counter = reveals.clone();
-    app.hooks.open_path = Some(Box::new(move |_, _| Err(format!("cannot reveal ({})", counter.fetch_add(1, std::sync::atomic::Ordering::SeqCst) + 1))));
-    let harness = Harness::builder().with_size(egui::vec2(W, H)).with_max_steps(10_000).build_eframe(move |_cc| app);
-    let mut d = Driver { harness, tx };
-    d.frames(4);
+    let mut d = Driver::with_data(&data, move |app| {
+        app.hooks.open_path = Some(Box::new(move |_, _| Err(format!("cannot reveal ({})", counter.fetch_add(1, std::sync::atomic::Ordering::SeqCst) + 1))));
+    });
     let run = |d: &mut Driver, action: &str| {
         let job = d.exec("bashcut.plugins.run", json!({"plugin": "test.toast", "action": action}))["job"].as_u64().expect("a job");
-        for _ in 0..1000 {
-            if d.exec("bashcut.plugins.job", json!({"job": job}))["state"] != json!("running") {
-                break;
-            }
-            std::thread::sleep(std::time::Duration::from_millis(20));
-        }
+        d.wait_job(job);
         d.frames(3);
         job
     };
-    // the toasts on screen as (id, label), after a few frames at most for `want` of them
+    // the toasts on screen as (id, label), once there are `want` of them (else the last ones)
+    fn listed(v: &Value) -> Vec<(String, String)> {
+        let toast = |e: &Value| {
+            e["id"].as_str().filter(|id| id.matches('.').count() == 2).map(|id| (id.to_string(), e["label"].as_str().unwrap_or_default().to_string()))
+        };
+        v.as_array().map(|a| a.iter().filter_map(toast).collect()).unwrap_or_default()
+    }
     let toasts = |d: &mut Driver, want: usize| {
-        let mut got = Vec::new();
-        for _ in 0..20 {
-            let v = d.ok("ui.elements", json!({"prefix": "bashcut.toast."}));
-            got = v
-                .as_array()
-                .unwrap()
-                .iter()
-                .filter_map(|e| {
-                    e["id"].as_str().filter(|id| id.matches('.').count() == 2).map(|id| (id.to_string(), e["label"].as_str().unwrap_or_default().to_string()))
-                })
-                .collect::<Vec<_>>();
-            if got.len() == want {
-                break;
-            }
-            d.frames(1);
-        }
-        got
+        let v = d.wait(|d| d.ok("ui.elements", json!({"prefix": "bashcut.toast."})), |v| listed(v).len() == want);
+        listed(&v)
     };
 
     let good = run(&mut d, "good");
