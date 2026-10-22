@@ -185,7 +185,10 @@ reads **Updating…** while the host installs that id, so a double click starts 
 "Failed: …" under its row (`bashcut.plugins.<id>.install.status`). The first time Plugins is drawn with a data folder
 and no registry (and no check made yet), it checks the registry once; the line under **Available**
 (`bashcut.plugins.registry.status`) says "Checking the registry…", "N plugins available" / "All plugins are installed",
-or "Could not check …", with the registry location as its tooltip.
+or "Could not check …", with the registry location as its tooltip. Headless tests never reach the network: their
+`Driver::with_data` points the host at an empty local `registry.json` (`bashcut.plugins.registry {location}`, or
+`BASHCUT_PLUGIN_REGISTRY=<file>` for a child test process) before anything draws, and wait on async state with the
+bounded `Driver::wait*` helpers (TS1).
 
 Built in #52 (P): `bashcut_ui/palette.rs`, a foreground `egui::Area` drawn at the end of `layout` in every mode.
 Cmd/Ctrl+Shift+P (`bashcut.palette.open`, Window ▸ BashCutPro ▸ Command Palette…) opens it; Cmd/Ctrl+K stays
