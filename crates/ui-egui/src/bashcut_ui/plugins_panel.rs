@@ -614,7 +614,7 @@ fn required(p: &Param) -> bool {
 }
 
 /// The param's label in the UI language: its `title` (or the manifest's translation of it), else its id in words.
-fn param_title(p: &Param) -> String {
+pub(super) fn param_title(p: &Param) -> String {
     p.title_in(strings::current()).map_or_else(|| humanise(&p.id), str::to_string)
 }
 
@@ -648,7 +648,7 @@ pub(super) fn humanise(id: &str) -> String {
 /// A form's text as the param's JSON value; `None` when left empty. Numbers go out as JSON
 /// numbers, clamped to the manifest's bounds (text that isn't one is sent as is, for the plugin to
 /// refuse).
-fn param_value(p: &Param, text: &str) -> Option<Value> {
+pub(super) fn param_value(p: &Param, text: &str) -> Option<Value> {
     let text_value = || Some(Value::String(text.to_string()));
     match p.kind.as_str() {
         "bool" => Some(Value::Bool(text == "true")),

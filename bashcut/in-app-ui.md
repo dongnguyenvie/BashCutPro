@@ -270,7 +270,10 @@ labels or subclips (§1 rule 1). A project opened in upstream FilmCraft still wo
 ### 6a. Batch section in detail (#46)
 
 - **Build**: inputs (drop zone, Add files…, Add folder…; drops on the zone are taken by hook H12 before upstream's
-  import sees them), steps (search over engine commands, plugin actions and kit recipes; each row opens its JSON),
+  import sees them), steps (search over engine commands, plugin actions and kit recipes; a plugin step opens its action's form, the
+  Plugins section's fields with labels in the UI language, read back from its command line and rebuilt by `setStep`
+  on Apply; any other step opens its JSON under the command's signature, and Apply stays disabled while it does not
+  parse),
   outputs (output profiles, exported with their loudness and caption rules, or export presets), name, items at once, on failure
   go on / stop, projects folder (default `batch/` next to the first input). Plugin steps keep the action's command
   line with absolute program paths and its non-secret settings as environment; secrets never go into a pipeline.
