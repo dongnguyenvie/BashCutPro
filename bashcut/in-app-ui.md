@@ -138,7 +138,9 @@ Built in #34: `bashcut_ui/{mod,rail,side_panel,state,strings}.rs`. Sections are 
 (id, title, icon, blurb, `draw` fn); a later ticket adds its row and a `draw` in its own file. Commands so far:
 `bashcut.ui.state`, `toggleRail`, `focusAgent` (Cmd/Ctrl+Alt+Shift+A), `section {section, open?}`, `closePanel`,
 `setWidth {width}`, `popOut {section?}`, `dockBack {section}`, `setLanguage {language}`, `show.<section>`
-(Window ▸ BashCutPro). Our files go under `<data dir>` = the session's auto-save data dir (`bashcut_ui::data_dir`);
+(Window ▸ BashCutPro), and `setLanguage.follow`, `setLanguage.en`, `setLanguage.vi` (no params; Window ▸
+BashCutPro ▸ Language ▸ Follow App / English / Tiếng Việt, each running `setLanguage` with its code; `follow`
+clears our override so the interface language is used). Our files go under `<data dir>` = the session's auto-save data dir (`bashcut_ui::data_dir`);
 with no persistence (headless tests) nothing is read or written.
 
 Built in #31 (U1): `bashcut_ui/plugins.rs` keeps one `bashcut_plugin_host::Host` in context data (key
@@ -237,7 +239,11 @@ preview need an HTTP image loader / player (later, or through plugin views #37).
   them like upstream widgets.
 - **Strings**: English in code, translations in `bashcut_ui/strings/<lang>.tsv` (Vietnamese first), looked up by
   `bashcut_ui::strings::s` (interface language, or our own override `bashcut.ui.setLanguage {language:"vi"}`).
-  Upstream's `.tsv` files are never edited and no i18n hook is needed.
+  Upstream's `.tsv` files are never edited and no i18n hook is needed. `strings.rs` tests guard the catalog: every
+  `s("…")` / `f("…")` literal, section, menu label and status word has a row, strings looked up through a variable
+  (library kinds, palette kinds, kit recipe titles and summaries) are listed explicitly, and a key may appear only
+  once (a later row would silently replace an earlier one). The palette shows recipe titles and summaries in the UI
+  language; plugin manifest text uses the manifest's own `i18n` (`plugin-host.md`, incl. choice labels).
 - **Theme and icons**: upstream `Tokens` (dark/light follow upstream); our icons are drawn in `bashcut_ui` (no
   edit to upstream's `icons.rs` enum).
 

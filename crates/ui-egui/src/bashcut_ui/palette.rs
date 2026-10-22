@@ -47,6 +47,8 @@ pub enum Kind {
 }
 
 impl Kind {
+    pub const ALL: [Kind; 7] = [Kind::Command, Kind::Pro, Kind::Plugin, Kind::Look, Kind::Profile, Kind::Template, Kind::Recipe];
+
     pub fn label(self) -> &'static str {
         match self {
             Kind::Command => "Command",
@@ -348,8 +350,8 @@ pub fn recipe_items() -> Vec<Item> {
         .map(|(id, title, purpose)| Item {
             key: format!("recipe:{id}"),
             kind: Kind::Recipe,
-            label: title.to_string(),
-            detail: format!("{purpose} · bcp:{id}"),
+            label: s(title).to_string(),
+            detail: format!("{} · bcp:{id}", s(purpose)),
             shortcut: None,
             enabled: true,
             command: "bashcut.palette.recipe".into(),
@@ -841,9 +843,8 @@ mod tests {
     #[test]
     fn kind_column_is_translated() {
         use super::super::strings::set_language;
-        let kinds = [Kind::Command, Kind::Pro, Kind::Plugin, Kind::Look, Kind::Profile, Kind::Template, Kind::Recipe];
         set_language(Some("vi"));
-        let vi: Vec<&str> = kinds.iter().map(|k| s(k.label())).collect();
+        let vi: Vec<&str> = Kind::ALL.iter().map(|k| s(k.label())).collect();
         set_language(None);
         assert_eq!(vi, ["Lệnh", "BashCutPro", "Plugin", "Màu phim", "Hồ sơ xuất", "Mẫu", "Công thức"]);
     }

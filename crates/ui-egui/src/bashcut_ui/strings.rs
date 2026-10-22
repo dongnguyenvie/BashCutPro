@@ -181,9 +181,42 @@ mod tests {
             keys.extend(c.menu.into_iter().filter(|p| p != "Window").map(|p| ("menu".to_string(), p)));
             keys.push(("menu".into(), c.label));
         }
+        // looked up through a variable, which the scan cannot see: list them here
+        for (_, label) in super::super::library_panel::KINDS {
+            keys.push(("library_panel.rs".into(), label.into()));
+        }
+        for (_, title, purpose) in super::super::palette::RECIPES {
+            keys.push(("palette.rs".into(), title.to_string()));
+            keys.push(("palette.rs".into(), purpose.to_string()));
+        }
+        for k in super::super::palette::Kind::ALL {
+            keys.push(("palette.rs".into(), k.label().into()));
+        }
         assert!(keys.len() > 100, "the scan found only {} strings", keys.len());
         let gaps = untranslated(keys);
         assert!(gaps.is_empty(), "strings with no row in strings/vi.tsv:\n{gaps}");
+    }
+
+    /// The English keys `src` (a catalog file) has more than once, byte for byte.
+    fn duplicates(src: &str) -> Vec<&str> {
+        let mut seen = std::collections::HashSet::new();
+        let mut v: Vec<&str> = src
+            .lines()
+            .filter(|l| !l.trim().is_empty() && !l.starts_with('#'))
+            .filter_map(|l| l.split_once('\t').map(|(k, _)| k))
+            .filter(|k| !seen.insert(*k))
+            .collect();
+        v.sort_unstable();
+        v.dedup();
+        v
+    }
+
+    #[test]
+    fn vietnamese_catalog_has_no_duplicate_keys() {
+        // a later row silently replaces an earlier one in the catalog
+        let dups = duplicates(include_str!("strings/vi.tsv"));
+        assert!(dups.is_empty(), "keys listed more than once in strings/vi.tsv: {dups:?}");
+        assert_eq!(duplicates("# c\nSave\tLưu\nSave…\tLưu…\nSave\tGhi\n"), ["Save"]);
     }
 
     #[test]
