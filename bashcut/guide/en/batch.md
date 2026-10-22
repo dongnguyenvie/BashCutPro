@@ -10,8 +10,12 @@ step is saved, so a stopped batch picks up where it was.
 
 Open **Batch** on the rail (or **Run on many files…** from a plugin action or the agent).
 
+**Start from:** at the top loads one of your presets or opens a recent batch (each reads "name · date · n done /
+m failed"), so a saved setup is one click away.
+
 1. **Inputs**: drop files or folders on the panel, or use **Add files…** / **Add folder…**. Video, audio and image
-   files and existing projects (`.fcproj`) are all fine. A project you add is copied, never changed.
+   files and existing projects (`.fcproj`) are all fine. A project you add is copied, never changed. The ✕ after a
+   file removes it; **Clear all** (next to the file count) empties the inputs and keeps the rest of the batch.
 2. **Steps**: **＋ Add step** opens a search over commands, plugin actions and recipes (the same search as the
    palette). Steps run in order on each project.
 3. **Outputs**: **＋ Add output** and pick an **Output profile** (TikTok, Reels, Shorts, YouTube, YouTube 4K, Facebook
@@ -19,7 +23,7 @@ Open **Batch** on the rail (or **Run on many files…** from a plugin action or 
    projects are the result.
 4. **Name** the batch, choose how many items run **At once**, and **When an item fails**: **go on** with the others
    or **stop**. **Projects** shows where the projects go (by default next to the first input, in `batch/`;
-   **Choose…** to change it).
+   **Choose…** to change it, ✕ to go back to the default).
 5. **Run batch**.
 
 **Save as preset** keeps the whole setup for next time; **Presets** lists them.

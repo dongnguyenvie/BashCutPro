@@ -70,6 +70,28 @@ fn file_name(path: &str) -> String {
     std::path::Path::new(path).file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_else(|| path.to_string())
 }
 
+/// `ms` (epoch) as a UTC `YYYY-MM-DD`.
+fn date(ms: u64) -> String {
+    // days to civil date (Howard Hinnant's algorithm)
+    let z = i64::try_from(ms / 86_400_000).unwrap_or(0).saturating_add(719_468);
+    let era = z.div_euclid(146_097);
+    let doe = z.rem_euclid(146_097);
+    let yoe = (doe - doe / 1460 + doe / 36_524 - doe / 146_096) / 365;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let d = doy - (153 * mp + 2) / 5 + 1;
+    let m = if mp < 10 { mp + 3 } else { mp - 9 };
+    let y = yoe.saturating_add(era.saturating_mul(400)).saturating_add(i64::from(m <= 2));
+    format!("{y:04}-{m:02}-{d:02}")
+}
+
+/// A recent job as "name · date · n done / m failed".
+fn recent_label(r: &batch::Recent) -> String {
+    let name = if r.name.is_empty() { file_name(&r.job) } else { r.name.clone() };
+    let counts = f("{done} done / {failed} failed", &[("done", &r.done.to_string()), ("failed", &r.failed.to_string())]);
+    format!("{name} · {} · {counts}", date(r.at))
+}
+
 fn heading(app: &FilmcraftApp, ui: &mut egui::Ui, text: &str) {
     ui.add_space(6.0);
     ui.label(egui::RichText::new(s(text)).strong().color(app.tokens.text));
@@ -91,6 +113,7 @@ pub fn draw(app: &mut FilmcraftApp, ui: &mut egui::Ui) {
         }
     }
 
+    start_from(app, ui, &ctx, &mut v, &recent, running);
     inputs(app, ui, &ctx, &mut v, &shared, &draft.inputs);
     steps(app, ui, &ctx, &mut v, &draft.steps);
     outputs(app, ui, &ctx, &mut v, &draft.outputs);
@@ -115,7 +138,7 @@ pub fn draw(app: &mut FilmcraftApp, ui: &mut egui::Ui) {
     if !recent.is_empty() {
         heading(app, ui, "Recent batches");
         for (i, r) in recent.iter().enumerate().take(8) {
-            let label = format!("{} · {}", if r.name.is_empty() { "batch" } else { r.name.as_str() }, file_name(&r.job));
+            let label = recent_label(r);
             if button(app, ui, &format!("bashcut.batch.recent.{i}"), &label, !running) {
                 call(app, &ctx, &mut v, "openJob", json!({"job": r.job}));
             }
@@ -124,9 +147,62 @@ pub fn draw(app: &mut FilmcraftApp, ui: &mut egui::Ui) {
     ctx.data_mut(|d| d.insert_temp(key(), v));
 }
 
+/// "Start from: [preset / recent ▾]": load a saved preset or open a recent job, before anything else.
+fn start_from(app: &mut FilmcraftApp, ui: &mut egui::Ui, ctx: &egui::Context, v: &mut View, recent: &[batch::Recent], running: bool) {
+    let presets = super::data_dir(app).map(|d| bashcut_batch::presets::list(&d)).unwrap_or_default();
+    if presets.is_empty() && recent.is_empty() {
+        return;
+    }
+    let mut chosen = None;
+    let mut items = Vec::new();
+    ui.horizontal(|ui| {
+        ui.label(s("Start from:"));
+        let combo = egui::ComboBox::from_id_salt("bashcut.batch.startFrom")
+            .selected_text(s("preset / recent"))
+            .width(ui.available_width().min(240.0))
+            .truncate()
+            .show_ui(ui, |ui| {
+                for name in &presets {
+                    let r = ui.selectable_label(false, f("Preset: {name}", &[("name", name)]));
+                    items.push((format!("bashcut.batch.startFrom.preset.{name}"), r.clone(), name.clone()));
+                    if r.clicked() {
+                        chosen = Some(json!({"preset": name}));
+                    }
+                }
+                if !presets.is_empty() && !recent.is_empty() {
+                    ui.separator();
+                }
+                for (i, r) in recent.iter().enumerate().take(8) {
+                    let label = recent_label(r);
+                    let resp = ui.add_enabled(!running, egui::Button::selectable(false, label.as_str()));
+                    items.push((format!("bashcut.batch.startFrom.recent.{i}"), resp.clone(), label));
+                    if resp.clicked() {
+                        chosen = Some(json!({"job": r.job}));
+                    }
+                }
+            });
+        app.auto.add_response("bashcut.batch.startFrom", &combo.response, s("Start from:"));
+    });
+    for (id, r, label) in &items {
+        app.auto.add_response(id, r, label);
+    }
+    if let Some(p) = chosen {
+        call(app, ctx, v, "startFrom", p);
+    }
+}
+
 fn inputs(app: &mut FilmcraftApp, ui: &mut egui::Ui, ctx: &egui::Context, v: &mut View, shared: &batch::Shared, list: &[String]) {
     let t = app.tokens;
-    heading(app, ui, "Inputs");
+    ui.horizontal(|ui| {
+        heading(app, ui, "Inputs");
+        if !list.is_empty() {
+            let n = list.len().to_string();
+            ui.label(egui::RichText::new(f("{n} files ·", &[("n", &n)])).size(10.5).color(t.text_dim));
+            if button(app, ui, "bashcut.batch.clearInputs", s("Clear all"), true) {
+                call(app, ctx, v, "clearInputs", json!({}));
+            }
+        }
+    });
     let hovering = ctx.input(|i| !i.raw.hovered_files.is_empty());
     let frame = egui::Frame::group(ui.style()).stroke(egui::Stroke::new(1.0, if hovering { t.accent } else { t.text_dim })).show(ui, |ui| {
         ui.set_width(ui.available_width());
@@ -135,11 +211,11 @@ fn inputs(app: &mut FilmcraftApp, ui: &mut egui::Ui, ctx: &egui::Context, v: &mu
         }
         for (i, path) in list.iter().enumerate() {
             ui.horizontal(|ui| {
+                let r = ui.label(egui::RichText::new(file_name(path)).color(t.text)).on_hover_text(path);
+                app.auto.add_response(&format!("bashcut.batch.input.{i}"), &r, path);
                 if button(app, ui, &format!("bashcut.batch.input.{i}.remove"), "✕", true) {
                     call(app, ctx, v, "removeInput", json!({"index": i}));
                 }
-                let r = ui.label(egui::RichText::new(file_name(path)).color(t.text)).on_hover_text(path);
-                app.auto.add_response(&format!("bashcut.batch.input.{i}"), &r, path);
             });
         }
     });
@@ -432,18 +508,26 @@ fn settings(app: &mut FilmcraftApp, ui: &mut egui::Ui, ctx: &egui::Context, v: &
             call(app, ctx, v, "set", json!({"onFailure": "stop"}));
         }
     });
+    // buttons from the right, so a long folder truncates instead of pushing them out
     ui.horizontal(|ui| {
-        let shown = if draft.projects_folder.is_empty() { s("next to the first input, in batch/").to_string() } else { draft.projects_folder.clone() };
-        let r = ui.label(egui::RichText::new(f("Projects: {folder}", &[("folder", &shown)])).size(10.5).color(t.text_dim));
-        app.auto.add_response("bashcut.batch.projects", &r, &shown);
-        if button(app, ui, "bashcut.batch.projects.choose", s("Choose…"), true) {
-            let b = batch::shared(ctx);
-            app.pick_ui(FileDialog::Folder { at: None }, move |_, paths| {
-                if let Some(p) = paths.into_iter().next() {
-                    batch::lock(&b).draft.projects_folder = p;
-                }
-            });
-        }
+        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+            if !draft.projects_folder.is_empty() && button(app, ui, "bashcut.batch.projects.reset", "✕", true) {
+                call(app, ctx, v, "set", json!({"projectsFolder": ""}));
+            }
+            if button(app, ui, "bashcut.batch.projects.choose", s("Choose…"), true) {
+                let b = batch::shared(ctx);
+                app.pick_ui(FileDialog::Folder { at: None }, move |_, paths| {
+                    if let Some(p) = paths.into_iter().next() {
+                        batch::lock(&b).draft.projects_folder = p;
+                    }
+                });
+            }
+            let shown = if draft.projects_folder.is_empty() { s("next to the first input, in batch/").to_string() } else { draft.projects_folder.clone() };
+            let text = egui::RichText::new(f("Projects: {folder}", &[("folder", &shown)])).size(10.5).color(t.text_dim);
+            let r =
+                ui.with_layout(egui::Layout::left_to_right(egui::Align::Center), |ui| ui.add(egui::Label::new(text).truncate()).on_hover_text(&shown)).inner;
+            app.auto.add_response("bashcut.batch.projects", &r, &shown);
+        })
     });
 }
 
@@ -575,6 +659,15 @@ fn presets(app: &mut FilmcraftApp, ui: &mut egui::Ui, ctx: &egui::Context, v: &m
 mod tests {
     use super::palette::Kind;
     use super::*;
+
+    #[test]
+    fn recent_rows_read_name_date_and_counts() {
+        assert_eq!(date(0), "1970-01-01");
+        assert_eq!(date(1_709_164_800_000), "2024-02-29");
+        assert_eq!(date(u64::MAX), date(u64::MAX), "no overflow");
+        let r = batch::Recent { job: "/jobs/promo-1".into(), name: String::new(), at: 1_792_627_200_000, done: 3, failed: 1 };
+        assert_eq!(recent_label(&r), "promo-1 · 2026-10-22 · 3 done / 1 failed");
+    }
 
     #[test]
     fn searched_steps_drop_the_blanks_and_keep_the_label() {

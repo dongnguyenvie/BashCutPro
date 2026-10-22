@@ -112,6 +112,12 @@ Outputs	Đầu ra
 Queue	Hàng đợi
 Presets	Mẫu thiết lập
 Recent batches	Các lượt gần đây
+Start from:	Bắt đầu từ:
+preset / recent	mẫu / lượt gần đây
+Preset: {name}	Mẫu: {name}
+{done} done / {failed} failed	{done} xong / {failed} lỗi
+{n} files ·	{n} tệp ·
+Clear all	Xoá hết
 Drop files or folders here, or add them below.	Thả tệp hoặc thư mục vào đây, hoặc thêm ở bên dưới.
 Add files…	Thêm tệp…
 Add folder…	Thêm thư mục…

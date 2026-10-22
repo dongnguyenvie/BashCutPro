@@ -277,15 +277,20 @@ labels or subclips (§1 rule 1). A project opened in upstream FilmCraft still wo
   outputs (output profiles, exported with their loudness and caption rules, or export presets), name, items at once, on failure
   go on / stop, projects folder (default `batch/` next to the first input). Plugin steps keep the action's command
   line with absolute program paths and its non-secret settings as environment; secrets never go into a pipeline.
+- **Start from** (UX12): the first row, "Start from: [preset / recent ▾]", loads a preset or opens a recent job
+  (`bashcut.batch.startFrom` with `preset` or `job`); recent entries read "name · date (UTC) · n done / m failed",
+  the counts kept in `batch.json` when a job finishes or is opened. Inputs show "n files · Clear all"
+  (`bashcut.batch.clearInputs`; `clear` resets the whole draft) and a ✕ after each name; a chosen projects folder has
+  a ✕ back to the default.
 - **Start from elsewhere**: "Run on many files…" on a plugin action (Plugins section) and on an agent tool row
   prefill a draft with that step (`bashcut.batch.prefill`) and open the section.
 - **Run**: `bashcut_batch::run` on a background thread (under `catch_unwind`) with the app's data folder; the panel
   re-reads the job book every 500 ms. Per item: status, the running step, a progress bar weighted by learned step
   times (kept in `<data dir>/bashcut/batch.json` with recent jobs), errors, outputs, **Open to fix / Retry / Reveal**.
   Retry failed, Cancel, Reveal folder for the whole batch. Presets save the draft as a `bashcut-batch` preset.
-- **Commands**: `bashcut.batch.{state, draft, clear, addInput, removeInput, addStep, prefill, setStep, removeStep,
+- **Commands**: `bashcut.batch.{state, draft, clear, addInput, removeInput, clearInputs, addStep, prefill, setStep, removeStep,
   moveStep, addOutput, removeOutput, set, run, cancel, retry, open, reveal, presets, savePreset, loadPreset,
-  deletePreset, recent, openJob, durations}`; `run` / `retry` take `cli` (default: `filmcraft-cli` next to the app).
+  deletePreset, recent, openJob, startFrom, durations}`; `run` / `retry` take `cli` (default: `filmcraft-cli` next to the app).
 - **Not yet**: output thumbnails (outputs are listed by file name).
 
 ## 7. Plugin views
