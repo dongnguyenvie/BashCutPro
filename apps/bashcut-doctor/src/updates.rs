@@ -39,7 +39,7 @@ fn registry(env: &dyn Env, opts: &Options) -> Option<Value> {
 }
 
 fn plugins(env: &dyn Env, opts: &Options, out: &mut Vec<Finding>) {
-    let dir = opts.plugins_dir.clone().or_else(|| opts.data_dir.clone().or_else(|| data_dir(env)).map(|d| d.join("bashcut-plugins")));
+    let dir = opts.plugins_dir.clone().or_else(|| opts.data_dir.clone().or_else(|| data_dir(env)).map(|d| d.join(bashcut_dirs::PLUGINS_DIR)));
     let Some(dir) = dir else { return };
     let installed = installed_plugins(env, &dir);
     if installed.is_empty() {

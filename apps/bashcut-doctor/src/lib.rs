@@ -166,7 +166,7 @@ pub fn run_checks(env: &dyn Env, opts: &Options) -> Report {
     let data = opts.data_dir.clone().or_else(|| data_dir(env));
     check_cli(env, opts, &mut r);
     check_kit(env, opts, &mut r);
-    let plugins = opts.plugins_dir.clone().or_else(|| data.as_ref().map(|d| d.join("bashcut-plugins")));
+    let plugins = opts.plugins_dir.clone().or_else(|| data.as_ref().map(|d| d.join(bashcut_dirs::PLUGINS_DIR)));
     check_plugins(env, plugins.as_deref(), &mut r);
     check_models(env, opts, data.as_deref(), &mut r);
     check_agents(env, &mut r);
@@ -360,7 +360,7 @@ fn check_plugins(env: &dyn Env, dir: Option<&Path>, r: &mut Report) {
 }
 
 fn check_models(env: &dyn Env, opts: &Options, data: Option<&Path>, r: &mut Report) {
-    let manifest_path = env.var("BASHCUT_MODELS_MANIFEST").map(PathBuf::from).or_else(|| data.map(|d| d.join("bashcut-plugins").join("models.json")));
+    let manifest_path = env.var("BASHCUT_MODELS_MANIFEST").map(PathBuf::from).or_else(|| data.map(|d| d.join(bashcut_dirs::PLUGINS_DIR).join("models.json")));
     let Some(manifest_path) = manifest_path else { return };
     let Some(manifest) = read_json(env, &manifest_path) else {
         r.findings.push(Finding::new("models", Level::Info, format!("no model manifest at {}", manifest_path.display())));
