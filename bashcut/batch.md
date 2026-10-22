@@ -1,12 +1,12 @@
 # Batch runner (`bashcut-batch`)
 
 Issue #45. Batch runs are first-class and headless: every input becomes its own project, up to `concurrency` items
-run at once, each step in its own `filmcraft-cli` process, and the job book survives the runner, the app or the
+run at once, each step in its own engine (`bashcutpro`) process, and the job book survives the runner, the app or the
 machine stopping. BashCut ran items one at a time inside the open app; here the app does not need to be open.
 
 | Path | What |
 |---|---|
-| `crates/bashcut-batch/` | library (L4, no workspace deps): pipeline format, job book, runner, presets |
+| `crates/bashcut-batch/` | library (L4; only `bashcut-dirs`: data folder, engine lookup): pipeline format, job book, runner, presets |
 | `apps/bashcut-batch/` | the `bashcut-batch` command (package `bashcut-batch-cli`, L6) |
 | `crates/bashcut-batch/tests/batch.rs` | integration tests against a fake `filmcraft-cli` (`tests/support/fake_cli.rs`) |
 
@@ -76,10 +76,13 @@ Each item has the steps `create`, `step-1`…, `export-1`…:
 
 | Step | Process |
 |---|---|
-| create | copy (template / input project), or `filmcraft-cli run create.jsonl --save-as <tmp>`; renamed to `<name>.fcproj` when done, so a half-made project never takes the name |
-| engine step | `filmcraft-cli run step-N.jsonl --project <name>.fcproj --save --compact` (the CLI stops at the first failing line, before saving) |
+| create | copy (template / input project), or `<cli> run create.jsonl --save-as <tmp>`; renamed to `<name>.fcproj` when done, so a half-made project never takes the name |
+| engine step | `<cli> run step-N.jsonl --project <name>.fcproj --save --compact` (the CLI stops at the first failing line, before saving) |
 | plugin / agent | its argv in the item folder (agent: in the project's folder), env `BASHCUT_PROJECT`, `BASHCUTPRO_CLI` and `BASHCUT_FILMCRAFT_CLI` (the engine), `BASHCUT_BATCH_ITEM`, `BASHCUT_BATCH_JOB` |
-| export | `filmcraft-cli export <out> --project … --preset … --compact`; with a profile, `filmcraft-cli run` on one `bashcut.profiles.apply {profile, path, wait: true}` line |
+| export | `<cli> export <out> --project … --preset … --compact`; with a profile, `<cli> run` on one `bashcut.profiles.apply {profile, path, wait: true}` line |
+
+`<cli>` is the engine (`bashcutpro` first, `bashcut_dirs::engine`); every engine row goes through one helper,
+`runner::run_engine` (adds `--data-dir`, logs to `<itemDir>/<key>`).
 
 Exit statuses map to error categories: 0 ok, 1 `command` (`offlineMedia` for an export that drew placeholders), 2
 `usage`, 3 `handoff` (item `needsAttention`; once a person or agent has done that step, `retry --items <name>

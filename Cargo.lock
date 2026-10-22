@@ -529,6 +529,7 @@ name = "bashcut-batch-cli"
 version = "0.10.0"
 dependencies = [
  "bashcut-batch",
+ "bashcut-dirs",
  "serde_json",
 ]
 
