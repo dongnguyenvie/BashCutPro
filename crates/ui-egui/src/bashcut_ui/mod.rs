@@ -22,6 +22,7 @@ pub mod plugins;
 pub mod plugins_panel;
 pub mod rail;
 pub mod runs_panel;
+pub mod shared;
 pub mod side_panel;
 pub mod state;
 pub mod strings;

@@ -21,17 +21,12 @@ fn key() -> egui::Id {
 
 /// This app's host, created on first use with the session's data dir.
 pub fn host(app: &FilmcraftApp, ctx: &egui::Context) -> Shared {
-    if let Some(h) = ctx.data(|d| d.get_temp::<Shared>(key())) {
-        return h;
-    }
-    let h: Shared = Arc::new(Mutex::new(Host::new(super::data_dir(app), Arc::new(OsKeyStore))));
-    ctx.data_mut(|d| d.insert_temp(key(), h.clone()));
-    h
+    super::shared::get_or_init(ctx, key(), || Host::new(super::data_dir(app), Arc::new(OsKeyStore)))
 }
 
 /// The host if one was created already (nothing has used plugins yet otherwise).
 pub fn existing(ctx: &egui::Context) -> Option<Shared> {
-    ctx.data(|d| d.get_temp::<Shared>(key()))
+    super::shared::existing(ctx, key())
 }
 
 /// Run `f` with the host locked.

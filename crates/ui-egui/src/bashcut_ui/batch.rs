@@ -251,12 +251,7 @@ fn key() -> egui::Id {
 
 /// This app's batch state, created on first use.
 pub fn shared(ctx: &egui::Context) -> Shared {
-    if let Some(b) = ctx.data(|d| d.get_temp::<Shared>(key())) {
-        return b;
-    }
-    let b: Shared = Arc::new(Mutex::new(Batch::default()));
-    ctx.data_mut(|d| d.insert_temp(key(), b.clone()));
-    b
+    super::shared::get_or_init(ctx, key(), Batch::default)
 }
 
 pub fn lock(b: &Shared) -> MutexGuard<'_, Batch> {
@@ -265,7 +260,7 @@ pub fn lock(b: &Shared) -> MutexGuard<'_, Batch> {
 
 /// Collect a finished run and re-read the book of a running job (called by `layout` every frame).
 pub fn poll(ctx: &egui::Context, dir: Option<&Path>) {
-    let Some(b) = ctx.data(|d| d.get_temp::<Shared>(key())) else { return };
+    let Some(b) = super::shared::existing::<Batch>(ctx, key()) else { return };
     let mut g = lock(&b);
     g.load_once(dir);
     let finished = g.running.as_ref().and_then(|r| r.slot.lock().unwrap_or_else(PoisonError::into_inner).take());
@@ -298,7 +293,7 @@ pub fn poll(ctx: &egui::Context, dir: Option<&Path>) {
 /// Files dropped on the Batch section become inputs instead of being imported into the open
 /// project (the hook before `handle_drops` in `lib.rs`).
 pub fn take_drops(app: &FilmcraftApp, ctx: &egui::Context) {
-    let Some(b) = ctx.data(|d| d.get_temp::<Shared>(key())) else { return };
+    let Some(b) = super::shared::existing::<Batch>(ctx, key()) else { return };
     let Some(zone) = lock(&b).drop_zone.take() else { return };
     if ctx.input(|i| i.raw.dropped_files.is_empty()) {
         return;

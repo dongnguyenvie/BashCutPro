@@ -38,12 +38,7 @@ fn agents(app: &FilmcraftApp, ctx: &egui::Context) -> Vec<AgentSpec> {
 
 /// This app's agent, created on first use.
 pub fn host(app: &FilmcraftApp, ctx: &egui::Context) -> Shared {
-    if let Some(h) = ctx.data(|d| d.get_temp::<Shared>(key())) {
-        return h;
-    }
-    let h: Shared = Arc::new(Mutex::new(Agent::new(agents(app, ctx))));
-    ctx.data_mut(|d| d.insert_temp(key(), h.clone()));
-    h
+    super::shared::get_or_init(ctx, key(), || Agent::new(agents(app, ctx)))
 }
 
 /// Run `f` with the agent locked.
@@ -55,7 +50,7 @@ pub fn with<R>(app: &FilmcraftApp, ctx: &egui::Context, f: impl FnOnce(&mut Agen
 
 /// Collect the running turn's events (called by `layout` every frame).
 pub fn poll(ctx: &egui::Context) {
-    let Some(h) = ctx.data(|d| d.get_temp::<Shared>(key())) else { return };
+    let Some(h) = super::shared::existing::<Agent>(ctx, key()) else { return };
     let running = h.lock().unwrap_or_else(PoisonError::into_inner).poll();
     if running {
         ctx.request_repaint_after(Duration::from_millis(100));
