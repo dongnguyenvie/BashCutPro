@@ -899,7 +899,7 @@ fn item_env(sh: &Shared, ctx: &Ctx) -> Vec<(String, String)> {
 }
 
 fn cli(sh: &Shared) -> String {
-    path_arg(&crate::cli::engine(&sh.opts.cli))
+    path_arg(&sh.opts.cli)
 }
 
 /// `<data dir>/bashcut-plugins`, where the plugin host installs plugins (`{plugins}`).
@@ -931,7 +931,7 @@ fn speech_model(pipeline: &Pipeline, opts: &Options) -> Option<String> {
         return None;
     }
     let settings = opts.data_dir.clone().or_else(crate::presets::default_data_dir).and_then(|d| crate::speech::settings_model(&d));
-    let models = crate::speech::engine_models(&crate::cli::engine(&opts.cli), &dir_args(opts), &opts.env);
+    let models = crate::speech::engine_models(&opts.cli, &dir_args(opts), &opts.env);
     crate::speech::choose(settings.as_deref(), models.as_ref())
 }
 
