@@ -10,6 +10,7 @@ use bashcut_plugin_host::manifest::{Action, Manifest, Param, Setting};
 use bashcut_plugin_host::registry::Entry;
 use serde_json::{Map, Value, json};
 
+use super::hints::{self, CONTROL_OFF, HOW_TO_TURN_ON};
 use super::plugins;
 use super::strings::{f, s};
 use crate::FilmcraftApp;
@@ -56,7 +57,8 @@ fn plain(text: &str) -> String {
     text.replace('`', "")
 }
 
-/// Run `bashcut.plugins.<name>` and keep its outcome for the status line.
+/// Run `bashcut.plugins.<name>` and keep its outcome for the status line (a known setup error as
+/// its sentence, [`hints::friendly`]).
 fn run(app: &mut FilmcraftApp, ctx: &egui::Context, d: &mut Drafts, name: &str, params: Value) -> Option<Value> {
     match plugins::invoke(app, ctx, name, &params) {
         Ok(v) => {
@@ -64,7 +66,7 @@ fn run(app: &mut FilmcraftApp, ctx: &egui::Context, d: &mut Drafts, name: &str, 
             Some(v)
         }
         Err(e) => {
-            d.status = Some((false, e));
+            d.status = Some((false, hints::friendly(&e)));
             None
         }
     }
@@ -85,6 +87,12 @@ pub fn draw(app: &mut FilmcraftApp, ui: &mut egui::Ui) {
     }
     let can_install = super::data_dir(app).is_some();
 
+    // before any click: without the control channel, project actions cannot run
+    if !hints::control_on() {
+        let r = ui.label(egui::RichText::new(s(CONTROL_OFF)).size(11.0).color(t.text_dim)).on_hover_text(s(HOW_TO_TURN_ON));
+        app.auto.add_response("bashcut.plugins.setup", &r, s(CONTROL_OFF));
+        ui.add_space(4.0);
+    }
     if let Some((ok, msg)) = &d.status {
         let color = if *ok { t.text_dim } else { t.danger };
         let r = ui.label(egui::RichText::new(msg).size(11.0).color(color));
@@ -274,10 +282,16 @@ fn action_row(app: &mut FilmcraftApp, ui: &mut egui::Ui, ctx: &egui::Context, d:
     let t = app.tokens;
     let title = if a.title.is_empty() { a.id.clone() } else { a.title.clone() };
     let is_open = d.open.as_ref().is_some_and(|(p, x)| *p == m.id && *x == a.id);
+    let control = hints::control_on();
     // wrapped, so a long action title stays inside the panel
     ui.horizontal_wrapped(|ui| {
         let label = if a.params.is_empty() { format!("▶ {title}") } else { title.clone() };
-        let r = ui.add(egui::Button::new(label.as_str()).wrap());
+        // ▶ runs at once, so it waits for the channel; a form still opens (its batch needs none)
+        let now = a.params.is_empty().then(|| run_blocker(control, a, &[])).flatten();
+        let mut r = ui.add_enabled(now.is_none(), egui::Button::new(label.as_str()).wrap());
+        if let Some(why) = &now {
+            r = r.on_disabled_hover_text(why);
+        }
         app.auto.add_response(&format!("bashcut.plugins.{}.action.{}", m.id, a.id), &r, &label);
         if r.clicked() {
             if a.params.is_empty() {
@@ -286,8 +300,11 @@ fn action_row(app: &mut FilmcraftApp, ui: &mut egui::Ui, ctx: &egui::Context, d:
                 d.open = if is_open { None } else { Some((m.id.clone(), a.id.clone())) };
             }
         }
-        if a.needs == "project" {
+        if a.needs == "project" && control {
             ui.label(egui::RichText::new(s("uses the open project")).size(10.5).color(t.text_dim));
+        } else if a.needs == "project" {
+            let r = ui.label(egui::RichText::new(s("needs the control channel")).size(10.5).color(t.text_dim)).on_hover_text(s(HOW_TO_TURN_ON));
+            app.auto.add_response(&format!("bashcut.plugins.{}.action.{}.blocked", m.id, a.id), &r, s("needs the control channel"));
         }
         // with parameters, the button sits in the form so the batch takes their values
         if a.needs == "project" && a.params.is_empty() {
@@ -309,16 +326,30 @@ fn action_row(app: &mut FilmcraftApp, ui: &mut egui::Ui, ctx: &egui::Context, d:
             });
         }
         let missing = missing(d, m, a);
-        let why = (!missing.is_empty()).then(|| f("Fill in: {fields}", &[("fields", &missing.join(", "))]));
+        let why = run_blocker(control, a, &missing);
         ui.horizontal(|ui| {
             if gated_button(app, ui, &format!("bashcut.plugins.{}.{}.run", m.id, a.id), s("Run"), why.as_deref()) {
                 start(app, ctx, d, m, a);
             }
+            // a batch opens the project files itself: only the empty fields hold it back
             if a.needs == "project" {
-                batch_button(app, ui, ctx, d, m, a, why.as_deref());
+                batch_button(app, ui, ctx, d, m, a, run_blocker(true, a, &missing).as_deref());
             }
         });
     });
+}
+
+/// Why Run can't start `a` yet, one reason per line: a project action without the control channel
+/// ([`hints::control_on`]), then the empty required fields; `None` when it can.
+fn run_blocker(control: bool, a: &Action, missing: &[String]) -> Option<String> {
+    let mut reasons = Vec::new();
+    if a.needs == "project" && !control {
+        reasons.push(s(HOW_TO_TURN_ON).to_string());
+    }
+    if !missing.is_empty() {
+        reasons.push(f("Fill in: {fields}", &[("fields", &missing.join(", "))]));
+    }
+    (!reasons.is_empty()).then(|| reasons.join("\n"))
 }
 
 /// A button disabled while `why` says what is missing (shown when hovered); `true` when clicked.
@@ -340,7 +371,7 @@ fn batch_button(app: &mut FilmcraftApp, ui: &mut egui::Ui, ctx: &egui::Context, 
     let params = form_params(d, m, a);
     match super::batch::invoke(app, ctx, "prefill", &json!({"plugin": m.id, "action": a.id, "params": params})) {
         Ok(_) => d.open = None,
-        Err(e) => d.status = Some((false, e)),
+        Err(e) => d.status = Some((false, hints::friendly(&e))),
     }
 }
 
@@ -582,6 +613,21 @@ mod tests {
         assert_eq!(missing(&d, &m, &a), ["Answer"]);
         d.params.insert("p/apply/answer".into(), "/tmp/a.json".into());
         assert!(missing(&d, &m, &a).is_empty());
+    }
+
+    #[test]
+    fn run_waits_for_the_control_channel_and_the_required_fields() {
+        let project = Action { id: "translate".into(), needs: "project".into(), ..Action::default() };
+        let none = Action { id: "check-key".into(), needs: "none".into(), ..Action::default() };
+        super::super::strings::set_language(Some("en"));
+        let answer = ["Answer".to_string()];
+        assert_eq!(run_blocker(true, &project, &[]), None);
+        assert_eq!(run_blocker(false, &none, &[]), None);
+        assert_eq!(run_blocker(false, &project, &[]).as_deref(), Some(HOW_TO_TURN_ON));
+        assert_eq!(run_blocker(true, &project, &answer).as_deref(), Some("Fill in: Answer"));
+        let both = run_blocker(false, &project, &answer).unwrap_or_default();
+        assert_eq!(both.lines().collect::<Vec<_>>(), [HOW_TO_TURN_ON, "Fill in: Answer"], "one list, the channel first");
+        super::super::strings::set_language(None);
     }
 
     #[test]

@@ -11,10 +11,11 @@ cài). Hàng loạt chạy nó trước khi bắt đầu.
 
 | Bạn thấy | Cách xử lý |
 |---|---|
-| Thao tác plugin báo *needs the open project: start BashCutPro with --control &lt;port&gt;* | Thoát rồi mở ứng dụng kèm kênh điều khiển: thêm `--control 9876` (Mac: `open -a BashCutPro --args --control 9876`), hoặc đặt `FILMCRAFT_CONTROL_PORT=9876` trước. Tìm kiếm, tải về và các thao tác không sửa dự án vẫn chạy được khi không có nó. |
-| Plugin không chạy | Plugin cần Python 3.9 trở lên (`bashcut-doctor` nêu tên plugin). Cài Python rồi chạy lại thao tác. |
+| Mục Plugin ghi *Kênh điều khiển đang tắt*, nút **Chạy** của thao tác sửa dự án bị mờ kèm *cần kênh điều khiển*, hoặc thao tác báo *needs the open project* | Thoát rồi mở ứng dụng kèm kênh điều khiển: thêm `--control 9876` (Mac: `open -a BashCutPro --args --control 9876`), hoặc đặt `FILMCRAFT_CONTROL_PORT=9876` trước. Tìm kiếm, tải về và các thao tác không sửa dự án vẫn chạy được khi không có nó. |
+| Plugin không chạy, hoặc báo *Không tìm thấy Python 3* | Plugin cần Python 3.9 trở lên (`bashcut-doctor` nêu tên plugin). Cài Python rồi chạy lại thao tác. |
+| Lượt chạy báo *Không tìm thấy bộ máy BashCutPro (bashcutpro hoặc filmcraft-cli) cạnh ứng dụng* | Plugin sửa dự án qua bộ máy nằm cạnh ứng dụng. Cài lại BashCutPro, hoặc build theo [Bắt đầu](getting-started.md), hoặc trỏ `BASHCUTPRO_CLI` tới nó. |
 | Lượt chạy ghi **Cần trợ lý** | Plugin không tự làm xong (ví dụ dịch mà không có khóa API). Bấm **Gửi cho trợ lý** trong Tác vụ, hoặc thêm khóa trong **Cài đặt** của plugin rồi chạy lại. |
-| Mục Trợ lý không làm gì | Cài Claude Code và đăng nhập (`claude` trong cửa sổ dòng lệnh). Lưu dự án trước. |
+| Mục Trợ lý không làm gì, hoặc báo *Không tìm thấy Claude Code* | Cài Claude Code và đăng nhập (`claude` trong cửa sổ dòng lệnh). Lưu dự án trước. |
 | Một mục hàng loạt **cần xem lại** | Xem [Sửa một mục cần sửa](batch.md#sửa-một-mục-cần-sửa). Mục bị dừng giữa chừng một bước (máy ngủ hoặc treo) cũng nằm ở đây: mở, kiểm tra, **Chạy lại**. |
 | Hàng loạt đứng chờ, không chạy mục mới | Máy thiếu bộ nhớ hoặc ổ đĩa; nó tự chạy tiếp khi đủ chỗ. Dọn bớt ổ đĩa, hoặc giảm số **Cùng lúc**. |
 | Thư viện ▸ Trực tuyến ghi *Chưa rõ giấy phép* | Nguồn không ghi giấy phép. Đừng đăng tệp đó khi chưa biết rõ. |

@@ -11,10 +11,11 @@ never installs anything by itself). Batches run it before they start.
 
 | You see | What to do |
 |---|---|
-| A plugin action says it *needs the open project: start BashCutPro with --control &lt;port&gt;* | Quit and start the app with its control channel: add `--control 9876` (Mac: `open -a BashCutPro --args --control 9876`), or set `FILMCRAFT_CONTROL_PORT=9876` first. Searches, downloads and other actions that do not edit the project work without it. |
-| A plugin will not run | It needs Python 3.9 or newer (`bashcut-doctor` names the plugin). Install Python and run the action again. |
+| Plugins says *Control channel is off*, a project action's **Run** is greyed out with *needs the control channel*, or an action says it *needs the open project* | Quit and start the app with its control channel: add `--control 9876` (Mac: `open -a BashCutPro --args --control 9876`), or set `FILMCRAFT_CONTROL_PORT=9876` first. Searches, downloads and other actions that do not edit the project work without it. |
+| A plugin will not run, or says *Python 3 was not found* | It needs Python 3.9 or newer (`bashcut-doctor` names the plugin). Install Python and run the action again. |
+| A run says *The BashCutPro engine (bashcutpro or filmcraft-cli) was not found next to the app* | Plugins edit the project through the engine beside the app. Reinstall BashCutPro, or build it as [Getting started](getting-started.md) shows, or point `BASHCUTPRO_CLI` at it. |
 | A run says **Needs the agent** | The plugin could not finish alone (for example a translation without an API key). **Send to agent** in Runs, or add the key in the plugin's **Settings** and run it again. |
-| The Agent section does nothing | Install Claude Code and sign in (`claude` in a terminal). Save the project first. |
+| The Agent section does nothing, or says *Claude Code was not found* | Install Claude Code and sign in (`claude` in a terminal). Save the project first. |
 | A batch item **needs attention** | See [Fixing an item that needs a fix](batch.md#fixing-an-item-that-needs-a-fix). An item stopped in the middle of a step (the computer slept or crashed) also lands here: open it, check it, **Retry**. |
 | A batch waits and does not start new items | It is short of memory or disk space; it goes on by itself when there is room. Free some disk space, or lower **At once**. |
 | Library ▸ Online shows *Licence unknown* | The source gave no licence. Do not publish it until you know. |
