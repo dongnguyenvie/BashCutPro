@@ -147,7 +147,7 @@ pub fn layout(app: &mut FilmcraftApp, ui: &mut egui::Ui, body: egui::Rect) -> eg
         st.save_if_changed(dir.as_deref());
     }
     // Runs counts as on screen only where it draws: the rail shown, Edit mode, docked or popped out
-    let runs_visible = st.rail && app.ui.mode == crate::state::Mode::Edit && (st.open.as_deref() == Some("runs") || st.popped.iter().any(|p| p == "runs"));
+    let runs_visible = st.rail && app.ui.mode == crate::state::Mode::Edit && st.on_screen("runs");
     st.put(&ctx);
     toast::show(app, &ctx, runs_visible);
     palette::show(app, &ctx);
