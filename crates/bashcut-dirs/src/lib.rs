@@ -5,9 +5,12 @@
 //! sits next to the executable (#139: a portable install never writes to `%APPDATA%`).
 //!
 //! No workspace dependencies: the engine (through a one-line hook in `autosave::default_data_dir`),
-//! `bashcut-batch`, `bashcut-connect` and `bashcut-doctor` all ask [`data_dir`].
+//! `bashcut-batch`, `bashcut-connect`, `bashcut-doctor` and the UI all ask [`data_dir`]. [`engine`] is
+//! the one engine-binary lookup (`bashcutpro` → `bcpro` → `filmcraft-cli`).
 
 use std::path::{Path, PathBuf};
+
+pub mod engine;
 
 /// The marker upstream's portable installs put next to the executable (`autosave::PORTABLE_MARKER`).
 pub const PORTABLE_MARKER: &str = "portable.txt";

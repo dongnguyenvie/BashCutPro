@@ -71,7 +71,7 @@ and its own docs (`CLAUDE.md`, `AGENTS.md`, `docs/`) still apply in full.
 |---|---|
 | MCP: `bashcutpro mcp` | every engine command, project / sequence inspection, frame render; `--bridge` drives the open app |
 | Control channel: `filmcraft --control <port>` | JSON lines: `engine.execute`, UI state, screenshots, clicks |
-| CLI | `bashcutpro export --preset …` (`bashcutpro`, alias `bcpro`, runs upstream's `filmcraft-cli` beside it, #154) |
+| CLI | `bashcutpro export --preset …` (`bashcutpro`, alias `bcpro`: upstream's CLI built under our name by `apps/bashcutpro-cli`, SB2; consumers find it with `bashcut_dirs::engine`, #154) |
 | `.fcproj` | UTF-8 JSON with a schema version (`docs/project-files.md`) |
 | Data files | effect presets JSON, export presets, `.fcgt` templates (`graphics.template.install`), `.cube` / `.3dl` LUTs, SRT / VTT / SCC / TTML captions, label presets |
 | Web build | `window.filmcraft` (`docs/web.md`) |
