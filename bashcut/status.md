@@ -2,7 +2,7 @@
 
 Update this file when you finish a step or the plan changes. Keep "Next" short and ordered.
 
-_Last updated: 2026-10-20_
+_Last updated: 2026-10-23_
 
 ## Done
 
@@ -90,6 +90,13 @@ _Last updated: 2026-10-20_
 - Bench #58 re-score (round 2, after #198, #201, #202, #207, #210, #212 and kit #43-#54): all 6 Pro jobs re-run with
   `bashcut-batch --kit` ([bench/2026-10-20-rescore.md](bench/2026-10-20-rescore.md)): Pro wins 3, ties 3, loses
   none. Follow-ups #219 (tutorial needs ~150 agent turns) and #220 (owner: music licence filter in the kit).
+- **UX round (2026-10-23)**: audit [ux-audit-2026-10.md](ux-audit-2026-10.md) (UX0), then UX1–UX6 (tokens, hints,
+  plugin cards, run outcome in the card, Runs rows with error / Retry / Reveal), UX9–UX12 (rail, language menu,
+  Batch step form, Batch start-from row), I18N1 (manifest vi titles and help), FX1/FX2 in the plugins repo, PL1
+  polish (danger colour in the palette, '›' instead of the missing '▸' in run titles, localized palette plugin
+  rows), and the upstream FilmCraft v0.10 sync (UP1). Still open: audit §9 "Not ticketed" P3s (R2, R4, R5, A4, A5,
+  B4, L1, P6, X6); Batch step required params; Step storing plugin / action / params; choice labels in vi; a
+  finished-run toast; control-channel self-start (needs an owner / security decision).
 
 ## Next
 

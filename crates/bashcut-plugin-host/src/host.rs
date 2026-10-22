@@ -392,7 +392,7 @@ impl Host {
             spec.handoff_exit = h.exit;
         }
         let running = Running::start(spec)?;
-        let title = format!("{} ▸ {}", if m.name.is_empty() { &m.id } else { &m.name }, a.title.trim_end_matches('…'));
+        let title = format!("{} › {}", if m.name.is_empty() { &m.id } else { &m.name }, a.title.trim_end_matches('…'));
         let id = self.add_job(JobKind::Run { plugin: plugin.to_string(), action: action.to_string() }, title);
         if let Some(j) = self.job_mut(id) {
             j.then = a.handoff.as_ref().map(|h| h.then.clone()).filter(|t| !t.is_empty());
