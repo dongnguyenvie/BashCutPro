@@ -1260,47 +1260,27 @@ print(json.dumps({'ok': True, 'data': {'path': '/out/toast.wav'}}))
     });
     std::fs::write(plugin.join("bashcut-plugin.json"), manifest.to_string()).unwrap();
 
-    let mut session = Session::default();
-    session.start_autosave(filmcraft_engine::autosave::AutosaveConfig::new(&data)).expect("data dir");
-    session.execute("file.openDemoProject", json!({})).expect("demo project");
-    let (tx, rx) = channel();
-    let mut app = FilmcraftApp::new(session).with_control(rx);
     let reveals = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
     let counter = reveals.clone();
-    app.hooks.open_path = Some(Box::new(move |_, _| Err(format!("cannot reveal ({})", counter.fetch_add(1, std::sync::atomic::Ordering::SeqCst) + 1))));
-    let harness = Harness::builder().with_size(egui::vec2(W, H)).with_max_steps(10_000).build_eframe(move |_cc| app);
-    let mut d = Driver { harness, tx };
-    d.frames(4);
+    let mut d = Driver::with_data(&data, move |app| {
+        app.hooks.open_path = Some(Box::new(move |_, _| Err(format!("cannot reveal ({})", counter.fetch_add(1, std::sync::atomic::Ordering::SeqCst) + 1))));
+    });
     let run = |d: &mut Driver, action: &str| {
         let job = d.exec("bashcut.plugins.run", json!({"plugin": "test.toast", "action": action}))["job"].as_u64().expect("a job");
-        for _ in 0..1000 {
-            if d.exec("bashcut.plugins.job", json!({"job": job}))["state"] != json!("running") {
-                break;
-            }
-            std::thread::sleep(std::time::Duration::from_millis(20));
-        }
+        d.wait_job(job);
         d.frames(3);
         job
     };
-    // the toasts on screen as (id, label), after a few frames at most for `want` of them
+    // the toasts on screen as (id, label), once there are `want` of them (else the last ones)
+    fn listed(v: &Value) -> Vec<(String, String)> {
+        let toast = |e: &Value| {
+            e["id"].as_str().filter(|id| id.matches('.').count() == 2).map(|id| (id.to_string(), e["label"].as_str().unwrap_or_default().to_string()))
+        };
+        v.as_array().map(|a| a.iter().filter_map(toast).collect()).unwrap_or_default()
+    }
     let toasts = |d: &mut Driver, want: usize| {
-        let mut got = Vec::new();
-        for _ in 0..20 {
-            let v = d.ok("ui.elements", json!({"prefix": "bashcut.toast."}));
-            got = v
-                .as_array()
-                .unwrap()
-                .iter()
-                .filter_map(|e| {
-                    e["id"].as_str().filter(|id| id.matches('.').count() == 2).map(|id| (id.to_string(), e["label"].as_str().unwrap_or_default().to_string()))
-                })
-                .collect::<Vec<_>>();
-            if got.len() == want {
-                break;
-            }
-            d.frames(1);
-        }
-        got
+        let v = d.wait(|d| d.ok("ui.elements", json!({"prefix": "bashcut.toast."})), |v| listed(v).len() == want);
+        listed(&v)
     };
 
     let good = run(&mut d, "good");
