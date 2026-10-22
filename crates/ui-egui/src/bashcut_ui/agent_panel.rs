@@ -290,7 +290,7 @@ fn transcript(app: &mut FilmcraftApp, ui: &mut egui::Ui, items: &[Item]) {
             Item::Assistant { text } => {
                 ui.add_space(6.0);
                 ui.label(egui::RichText::new(s("Agent")).size(10.5).strong().color(t.text_dim));
-                ui.add(egui::Label::new(egui::RichText::new(text).color(t.text)).selectable(true).wrap());
+                super::markdown::show(ui, text, t.text, t.text_dim);
             }
             Item::Tool { .. } => {
                 let key = item.tool_key().unwrap_or_default();

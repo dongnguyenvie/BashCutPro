@@ -269,6 +269,8 @@ labels or subclips (§1 rule 1). A project opened in upstream FilmCraft still wo
 - **Stop**: ends the agent's turn (its process group); the project stays as it is.
 - **Plugin hand-offs**: Runs ▸ Send to agent (`bashcut.plugins.sendToAgent`) sends the run's result and the
   plugin's `handoff.then` as the next message.
+- **Agent replies (UX8)** render minimal Markdown (`bashcut_ui/markdown.rs`): `#`/`##` headings, `-`/`1.` lists,
+  `**bold**`, `*em*`, inline code, fenced code in a monospace frame; replies past 256 KB are cut with "…".
 - **Empty transcript (UX8)**: three kit recipes (Plan a vlog, Hook and script, Finish for posting) as example
   prompts; a click fills the message box with `Use the bcp:<id> recipe on this project.` and does not send. Under
   them: "The agent stops at each stage for your approval." Automation ids `bashcut.agent.example.<recipe id>`.
