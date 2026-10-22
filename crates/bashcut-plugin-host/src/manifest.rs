@@ -68,7 +68,7 @@ pub struct Text {
 }
 
 /// `english` in `lang` when the manifest has a non-empty translation, else `english`.
-fn local<'a>(i18n: &'a I18n, lang: &str, english: &'a str, pick: fn(&Text) -> &str) -> &'a str {
+pub(crate) fn local<'a>(i18n: &'a I18n, lang: &str, english: &'a str, pick: fn(&Text) -> &str) -> &'a str {
     match i18n.get(lang).map(pick) {
         Some(x) if !x.trim().is_empty() => x,
         _ => english,

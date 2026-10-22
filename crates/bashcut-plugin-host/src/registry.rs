@@ -36,6 +36,20 @@ pub struct Entry {
     pub path: String,
     pub manifest: String,
     pub source: Source,
+    /// `name` / `summary` in other languages, as in the manifest (`{"vi": {"name", "summary"}}`).
+    pub i18n: manifest::I18n,
+}
+
+impl Entry {
+    /// The name in `lang` when the registry has a non-empty one, else the English `name`.
+    pub fn name_in(&self, lang: &str) -> &str {
+        manifest::local(&self.i18n, lang, &self.name, |x| &x.name)
+    }
+
+    /// The summary in `lang` when the registry has a non-empty one, else the English `summary`.
+    pub fn summary_in(&self, lang: &str) -> &str {
+        manifest::local(&self.i18n, lang, &self.summary, |x| &x.summary)
+    }
 }
 
 /// A folder of a git repository at a ref.
@@ -149,6 +163,21 @@ mod tests {
         assert_eq!(split_location("o/r@v1.0"), ("o/r".to_string(), "v1.0".to_string()));
         assert_eq!(split_location("o/r"), ("o/r".to_string(), "main".to_string()));
         assert_eq!(split_location("ssh://git@host/o/r").1, "main");
+    }
+
+    #[test]
+    fn entry_text_follows_the_language() {
+        // an entry without `i18n` (every one before VI3) reads in English
+        let old = Registry::parse(&sample().to_string()).unwrap();
+        assert_eq!((old.plugins[0].name_in("vi"), old.plugins[0].summary_in("vi")), ("Echo", ""));
+        let mut v = sample();
+        v["plugins"][0]["summary"] = json!("Says it back.");
+        v["plugins"][0]["i18n"] = json!({"vi": {"name": "Tiếng vọng", "summary": " "}});
+        let r = Registry::parse(&v.to_string()).unwrap();
+        let e = &r.plugins[0];
+        assert_eq!((e.name_in("vi"), e.summary_in("vi"), e.name_in("en"), e.summary_in("en")), ("Tiếng vọng", "Says it back.", "Echo", "Says it back."));
+        v["plugins"][0]["i18n"] = json!({"vi": "x"});
+        assert!(Registry::parse(&v.to_string()).is_err(), "a translation is an object");
     }
 
     #[test]
