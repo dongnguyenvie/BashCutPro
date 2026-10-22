@@ -11,7 +11,7 @@ when it is the simpler route and stays under our control: recorded, small, and c
 1. **Add first; modify when it is worth it.** Prefer an addition (our files, a hook, a wrapper). Edit, delete or
    reorder upstream lines when the addition would be clearly worse (more code, a fragile wrapper, a worse UX), and
    the edit stays under control: small, in a file upstream rarely touches (§3: cold, ≲ 20 commits in 30 days), one
-   row in `UPSTREAM.md` "Carried edits" (kind `edits`, why, until), and re-applied by merge + `rerere` at each sync.
+   row in `UPSTREAM.md` "Carried edits" (kind `edits`, or `deletes` for a removed file; why, until), and re-applied by merge + `rerere` at each sync.
    Hot files (§3) and high-churn structs (`UiState`, `FilmcraftApp`, `Session`, `Project`) still go through hooks
    and our own files: an edit there conflicts on nearly every sync.
 2. **Our code goes in our files**: `bashcut-*` crates, `apps/bashcut-*`, `crates/<crate>/src/bashcut/` or

@@ -147,17 +147,18 @@ class Ledger:
         for r in carried or []:
             globs = re.findall(r"`([^`]+)`", r.get("files", ""))
             kind = r.get("kind", "").strip().lower()
-            if not globs or kind not in ("additions", "edits"):
+            if not globs or kind not in ("additions", "edits", "deletes"):
                 self.errors.append("bad Carried edits row: %s" % r)
                 continue
             for g in globs:
                 self.carried.append((g, kind, r.get("why", "")))
 
     def carried_kind(self, path):
-        for g, kind, _ in self.carried:
-            if fnmatch.fnmatchcase(path, g):
-                return kind
-        return None
+        # a `deletes` row wins over a broader `edits` glob that also matches the file
+        kinds = [kind for g, kind, _ in self.carried if fnmatch.fnmatchcase(path, g)]
+        if "deletes" in kinds:
+            return "deletes"
+        return kinds[0] if kinds else None
 
 
 # ---------------------------------------------------------------- diff
@@ -245,6 +246,11 @@ def hot_counts(upstream_ref, paths):
 def classify(f, ledger, problems):
     """Kind of carried change for an upstream file; appends rule breaks to `problems`."""
     kind = ledger.carried_kind(f.path)
+    if kind == "deletes":
+        if f.status == "D":
+            return "deleted"
+        problems.append("%s: listed as deleted in UPSTREAM.md but still present" % f.path)
+        return "VIOLATION"
     if kind == "edits":
         # a hook may also sit in a carried-edit file: count it so its row is not reported as stale
         for _, _, runs in f.hunks:
@@ -328,6 +334,14 @@ def footprint(args):
         minus += f.removed
         if f.path.endswith(".rs"):
             rust += f.added + f.removed
+
+    if touched is None:
+        # a merge can bring a deleted file back unchanged, so it shows in no diff: look at the tree
+        tree = git("ls-files") if args.worktree else git("ls-tree", "-r", "--name-only", "HEAD")
+        seen = {f.path for f, _, _ in rows}
+        for path in sorted(set(tree.splitlines()) - seen - {""}):
+            if ledger.carried_kind(path) == "deletes":
+                problems.append("%s: listed as deleted in UPSTREAM.md but still present" % path)
 
     for hook in ledger.hooks:
         if hook.first.find(MARKER) < 0:

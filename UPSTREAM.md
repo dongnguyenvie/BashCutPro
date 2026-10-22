@@ -90,7 +90,8 @@ the hook; the footprint check reports any inserted upstream line that no row cov
 ## Carried edits
 
 Upstream files we change beyond hooks. `additions`: only inserted lines (no hook row needed), `edits`: any change,
-re-applied by hand (or `rerere`) when a merge conflicts. Keep `edits` rows small and in cold files (bashcut/extending-upstream.md §1).
+re-applied by hand (or `rerere`) when a merge conflicts, `deletes`: upstream files we removed (on a modify/delete
+conflict keep the deletion; the footprint check fails if one comes back). Keep `edits` rows small and in cold files (bashcut/extending-upstream.md §1).
 
 | Files | Kind | Why | Until |
 |---|---|---|---|
@@ -100,6 +101,7 @@ re-applied by hand (or `rerere`) when a merge conflicts. Keep `edits` rows small
 | `apps/filmcraft/build.rs` | edits | Windows exe icon and version info (5 lines; 1 commit in 30 days); `winresource` appends icons, so a second `set_icon` hook would not replace upstream's | keep while cold |
 | `packaging/**`, `omastore.toml` | edits | branding in packaging ([rebrand.md](bashcut/rebrand.md)); upstream's shared release workflow runs these scripts directly (no pre-step), all cold (≤ 5 commits in 30 days) | generator: #39 comment |
 | `NOTICE`, `LICENSE-MIT`, `ATTRIBUTION.md`, `.gitignore`, `AGENTS.md`, `CLAUDE.md` | additions | our copyright lines, asset rows, `.local/`, the pointer to `bashcut/README.md` | keep |
+| `.coderabbit.yaml`, `sonar-project.properties`, `.github/workflows/sonarcloud.yml` | deletes | unused services: we run neither CodeRabbit nor SonarCloud (owner decision 2026-10-23, [decisions.md](bashcut/decisions.md)) | never; on a modify/delete conflict keep the deletion |
 | `Cargo.lock` | additions | lock entries of our `bashcut-*` crates | keep: on merge take upstream's file, `cargo check` re-adds ours |
 
 ## Footprint check
