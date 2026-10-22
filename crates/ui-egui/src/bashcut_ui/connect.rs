@@ -5,8 +5,9 @@
 //! a second (headless) engine on the same project. Written again when the open project changes,
 //! removed when the window closes; readers also check that `pid` is alive.
 //!
-//! The channel binds 127.0.0.1 only and has no token (`token` stays `null`): any local process of
-//! any user that can reach the port can drive the window, which is why it only runs when asked for.
+//! The channel binds 127.0.0.1 only and has no token (`token` stays `null`): any local process
+//! that can reach the port can drive the window. It runs by default (CC1, [`super::control`]);
+//! the Agent section's setting and `BASHCUT_CONTROL=0` turn it off.
 
 use std::io::Write;
 use std::path::{Path, PathBuf};
@@ -35,7 +36,11 @@ pub fn control_port(args: &[String], env: Option<&str>) -> Option<u16> {
     env.map(str::trim).filter(|p| !p.is_empty()).and_then(|p| p.parse().ok())
 }
 
-fn this_process_port() -> Option<u16> {
+/// The port from the launch hook ([`super::control`], on by default), else the command line / env.
+pub fn this_process_port() -> Option<u16> {
+    if let Some(p) = super::control::launched() {
+        return p;
+    }
     static PORT: OnceLock<Option<u16>> = OnceLock::new();
     *PORT.get_or_init(|| {
         let args: Vec<String> = std::env::args_os().skip(1).map(|a| a.to_string_lossy().into_owned()).collect();

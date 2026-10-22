@@ -34,9 +34,9 @@ Claude Code. The in-app Agent section offers both: pick Claude Code or Codex in 
 Claude Code or Codex in a terminal can drive the open window too:
 
 1. Install the agent kit (the first-run setup offers it), which registers BashCutPro's tools with the agent.
-2. Start BashCutPro with its control channel: add `--control 9876` when starting it (on a Mac:
-   `open -a BashCutPro --args --control 9876`), or set `FILMCRAFT_CONTROL_PORT=9876` before starting it. The window
-   then tells agents where to find it.
+2. Open BashCutPro as usual. Its control channel starts by itself (on this computer only, 127.0.0.1) and the window
+   tells agents where to find it. To keep agents out, untick **Allow AI agents to control BashCutPro** in the Agent
+   section (applies at the next start), or set `BASHCUT_CONTROL=0`. `--control <port>` still picks a fixed port.
 3. Ask the agent in the terminal; it connects to the open window by itself. With no window open, it works on the
    project file directly, and it refuses to open a project the window already has open.
 

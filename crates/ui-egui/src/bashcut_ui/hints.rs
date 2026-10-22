@@ -1,7 +1,7 @@
 //! Setup hints (`bashcut/ux-audit-2026-10.md` X1): what the machine lacks, asked before the user
 //! presses Run, and the known setup errors as one sentence each.
 //!
-//! - [`control_on`]: the app was started with its control channel (`--control <port>`).
+//! - [`control_on`]: the app runs its control channel (on by default, see [`super::control`]).
 //! - [`python_found`], [`cli_found`]: `python3` (`py -3` on Windows) and the engine start, the
 //!   same lookups as `bashcut-doctor`; asked once per session (each is a process call).
 //! - [`agent_found`]: an agent's program (its first argument) is a file or on `PATH`; a lookup,
@@ -21,7 +21,8 @@ use super::strings::s;
 pub const CONTROL_OFF: &str = "Control channel is off: actions that edit the open project cannot run.";
 
 /// How to turn the control channel on (the tooltip of [`CONTROL_OFF`] and of disabled actions).
-pub const HOW_TO_TURN_ON: &str = "How to turn it on: quit BashCutPro and start it with its control channel. Mac: open -a BashCutPro --args --control 9876. Or set FILMCRAFT_CONTROL_PORT=9876 first.";
+pub const HOW_TO_TURN_ON: &str =
+    "How to turn it on: tick “Allow AI agents to control BashCutPro” in the Agent section and restart BashCutPro (and unset BASHCUT_CONTROL=0 if it is set).";
 
 /// The app has its control channel, so plugins can edit the open project.
 pub fn control_on() -> bool {

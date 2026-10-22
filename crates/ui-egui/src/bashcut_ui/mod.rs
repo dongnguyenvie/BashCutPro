@@ -12,6 +12,7 @@ pub mod agent_panel;
 pub mod batch;
 pub mod batch_panel;
 pub mod connect;
+pub mod control;
 pub mod hints;
 pub mod library_panel;
 pub mod looks_panel;

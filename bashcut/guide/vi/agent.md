@@ -34,9 +34,9 @@ cài hiện "(chưa cài)" ở đó, kèm một dòng dưới tiêu đề chỉ 
 Claude Code hoặc Codex chạy trong cửa sổ dòng lệnh cũng điều khiển được cửa sổ đang mở:
 
 1. Cài bộ kỹ năng trợ lý (bước thiết lập lần đầu có đề nghị), bộ này đăng ký công cụ của BashCutPro với trợ lý.
-2. Mở BashCutPro kèm kênh điều khiển: thêm `--control 9876` khi mở (trên Mac:
-   `open -a BashCutPro --args --control 9876`), hoặc đặt `FILMCRAFT_CONTROL_PORT=9876` trước khi mở. Cửa sổ sẽ báo cho
-   trợ lý biết nơi tìm nó.
+2. Mở BashCutPro như bình thường. Kênh điều khiển tự bật (chỉ trong máy này, 127.0.0.1) và cửa sổ báo cho trợ lý biết
+   nơi tìm nó. Muốn chặn trợ lý, bỏ chọn **Cho phép trợ lý AI điều khiển BashCutPro** trong mục Trợ lý (áp dụng ở lần
+   mở sau), hoặc đặt `BASHCUT_CONTROL=0`. `--control <port>` vẫn dùng được để chọn cổng cố định.
 3. Ra lệnh cho trợ lý trong cửa sổ dòng lệnh; nó tự kết nối vào cửa sổ đang mở. Khi không có cửa sổ nào mở, nó làm việc
    thẳng trên tệp dự án, và từ chối mở một dự án mà cửa sổ đang mở.
 

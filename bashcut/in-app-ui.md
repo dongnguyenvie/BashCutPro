@@ -149,7 +149,8 @@ Commands `bashcut.plugins.{list, registry {location?}, install|update {plugin}, 
 values?}, setSecret {plugin, setting, value?}, run {plugin, action, params?, timeoutSeconds?, bridge?}, runs, job
 {job}, cancel {job}, clear, sendToAgent {job}}` all go through `Host::command`, so the buttons, the control channel
 and MCP share one code path (`sendToAgent` answers `sent: false` until the Agent section, #35). Runs connect with
-`--bridge 127.0.0.1:<port>` when the app was started with `--control <port>` (or `FILMCRAFT_CONTROL_PORT`), and get
+`--bridge 127.0.0.1:<port>` while the app serves its control channel (on by default, CC1; `--control <port>` or
+`FILMCRAFT_CONTROL_PORT` pick the port), and get
 `--cli` = `filmcraft-cli` next to the app. Automation ids: `bashcut.plugins.registry.refresh`,
 `bashcut.plugins.<id>[.install|.update|.remove]`, `bashcut.plugins.<id>.settings.<setting>` / `.settings.save`,
 `bashcut.plugins.<id>.secret.<setting>[.save|.clear]`, `bashcut.plugins.<id>.action.<action>[.param.<param>]`,
@@ -162,6 +163,13 @@ is filled. `integer` / `number` are drag values clamped to `minimum..=maximum` a
 no value shows "–" and is left to the plugin's default. `path` adds **Browse…** (`…param.<param>.browse`), which
 picks one file. `plugins_panel::field` / `Spec` are `pub(super)` so other forms (the Batch step form) draw the same
 fields.
+
+Control channel on by default (CC1, `bashcut_ui/control.rs`): with no `--control` / `FILMCRAFT_CONTROL_PORT`, the
+launch hook in `apps/filmcraft/src/main.rs` takes port 9876 on 127.0.0.1 when free, else one the OS picks, and
+`automation.json` names it as before. Off when the user unticks **Allow AI agents to control BashCutPro** (Agent
+section, `bashcut.agent.allowControl`, writes `<data dir>/bashcut/agents-off`) or with `BASHCUT_CONTROL=0`; a change
+applies at the next start ("Restart BashCutPro to apply."). When the setting turned it off, the "off" lines below
+get a **Turn on** button (`bashcut.plugins.turnOn`). An explicit `--control` always wins.
 
 Setup hints (UX4, `bashcut_ui/hints.rs`): started without the control channel, Plugins shows one dim line at the top
 ("Control channel is off…", `bashcut.plugins.setup`, tooltip: how to turn it on). A `needs: "project"` action then
@@ -273,8 +281,8 @@ labels or subclips (§1 rule 1). A project opened in upstream FilmCraft still wo
 - **Start**: user picks an agent: Claude Code (`claude`, or `BASHCUT_CLAUDE`) or an agent plugin (`kind: "agent"`
   in `bashcut-plugin.json`, with an `agent` section: `args`, `mcpConfig` (`{config}`), `resume` (`{session}`) and
   `events`, only `claude-stream-json` so far). The app writes a temporary MCP config for
-  `filmcraft-cli mcp --bridge 127.0.0.1:<control port>` and starts the agent with the kit's skills available; without
-  `--control <port>` an agent that needs the app says so instead of starting.
+  `filmcraft-cli mcp --bridge 127.0.0.1:<control port>` and starts the agent with the kit's skills available; with the
+  control channel off (CC1: on by default) an agent that needs the app says so instead of starting.
 - **Turn** (`crates/bashcut-agent`, `process.rs`): one child process per turn. The message plus a short context line
   (project, active sequence, selection, playhead) goes in as one stream-json user message, stdin closes, and events
   stream back into the transcript (`stream_json.rs`, `transcript.rs`). The next turn resumes the agent's session

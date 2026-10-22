@@ -56,8 +56,12 @@ pub fn poll(ctx: &egui::Context) {
     }
 }
 
-/// The open app's control address, if it serves one (`--control <port>` or `FILMCRAFT_CONTROL_PORT`).
+/// The open app's control address, if it serves one (on by default, [`super::control`]; else
+/// `--control <port>` or `FILMCRAFT_CONTROL_PORT`).
 pub fn bridge_address() -> Option<String> {
+    if let Some(p) = super::control::launched() {
+        return p.map(|p| format!("127.0.0.1:{p}"));
+    }
     static ADDR: OnceLock<Option<String>> = OnceLock::new();
     ADDR.get_or_init(|| {
         let from_env = std::env::var("FILMCRAFT_CONTROL_PORT").ok().and_then(|p| p.trim().parse::<u16>().ok());

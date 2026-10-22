@@ -230,6 +230,7 @@ pub fn draw(app: &mut FilmcraftApp, ui: &mut egui::Ui) {
     if !hints::control_on() {
         let r = ui.label(egui::RichText::new(s(CONTROL_OFF)).size(11.0).color(t.text_dim)).on_hover_text(s(HOW_TO_TURN_ON));
         app.auto.add_response("bashcut.plugins.setup", &r, s(CONTROL_OFF));
+        super::control::turn_on_button(app, ui, "bashcut.plugins.turnOn");
         ui.add_space(4.0);
     }
     let color = if d.status.as_ref().is_some_and(|(ok, _)| *ok) { t.text_dim } else { t.danger };
