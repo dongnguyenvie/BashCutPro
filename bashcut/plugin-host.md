@@ -125,8 +125,22 @@ A manifest may carry translations of what a person reads: `"i18n": {"vi": {"name
 "Manifest"). The field is optional and `bashcut-plugin/1` stays the schema: an older manifest without it loads as
 before. The Plugins panel shows the BashCutPro UI language (`bashcut.ui.setLanguage`, else the app's) through
 `Manifest::name_in` / `summary_in`, `Setting::title_in` / `help_in`, `Action::title_in` and `Param::title_in`; a
-missing or empty translation falls back to the English field. Choice values, the registry list (Install rows) and the
-command palette stay English for now. Automation ids and labels keep the English names.
+missing or empty translation falls back to the English field. The registry list (Install rows) and the command
+palette stay English for now. Automation ids and labels keep the English names.
+
+**Choice labels (VI2).** An `enum` setting or param may label its choices per language with a `choices` map inside
+the same `i18n` entry, from choice value to label:
+
+```json
+{"id": "service", "title": "Service", "type": "enum", "choices": ["gemini", "openai"], "default": "gemini",
+ "i18n": {"vi": {"title": "Dịch vụ", "choices": {"gemini": "Gemini (Google)", "openai": "OpenAI"}}}}
+```
+
+The combo box shows the label (`Setting::choice_in` / `Param::choice_in`, `manifest::choice_label`); the value
+(`gemini`) is still what is saved, validated and passed to the plugin. A value missing from the map, or mapped to an
+empty string, shows as the value itself, so the map may be partial. There is no English label map: in English the
+value is shown. Optional and backward compatible (`bashcut-plugin/1` unchanged); a non-object `choices` there
+rejects the manifest.
 
 ## Testing
 

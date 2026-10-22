@@ -5,7 +5,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use bashcut_plugin_host::install::Installed;
-use bashcut_plugin_host::manifest::{Action, Manifest, Param, Setting};
+use bashcut_plugin_host::manifest::{self, Action, I18n, Manifest, Param, Setting};
 use bashcut_plugin_host::registry::Entry;
 use bashcut_plugin_host::{Job, JobKind, JobState};
 use serde_json::{Map, Value, json};
@@ -685,17 +685,24 @@ fn value_text(v: &Value) -> String {
 pub(super) struct Spec<'a> {
     pub kind: &'a str,
     pub choices: Option<&'a [String]>,
+    /// The manifest's translations, for the choice labels.
+    pub i18n: Option<&'a I18n>,
     pub minimum: Option<f64>,
     pub maximum: Option<f64>,
 }
 
 impl<'a> Spec<'a> {
     pub fn param(p: &'a Param) -> Self {
-        Spec { kind: &p.kind, choices: p.choices.as_deref(), minimum: p.minimum, maximum: p.maximum }
+        Spec { kind: &p.kind, choices: p.choices.as_deref(), i18n: Some(&p.i18n), minimum: p.minimum, maximum: p.maximum }
+    }
+
+    /// The label of choice `value` in the UI language (`i18n.<lang>.choices`), else the value.
+    pub fn choice_label(&self, value: &str) -> String {
+        self.i18n.map_or(value, |i| manifest::choice_label(i, strings::current(), value)).to_string()
     }
 
     pub fn setting(st: &'a Setting) -> Self {
-        Spec { kind: &st.kind, choices: st.choices.as_deref(), ..Spec::default() }
+        Spec { kind: &st.kind, choices: st.choices.as_deref(), i18n: Some(&st.i18n), ..Spec::default() }
     }
 }
 
@@ -710,10 +717,10 @@ pub(super) fn field(app: &mut FilmcraftApp, ui: &mut egui::Ui, id: &str, label: 
         r
     } else if let Some(choices) = spec.choices {
         egui::ComboBox::from_id_salt(id)
-            .selected_text(text.as_str())
+            .selected_text(spec.choice_label(text))
             .show_ui(ui, |ui| {
                 for c in choices {
-                    ui.selectable_value(text, c.clone(), c.as_str());
+                    ui.selectable_value(text, c.clone(), spec.choice_label(c));
                 }
             })
             .response
@@ -873,9 +880,10 @@ mod tests {
                 "schema": "bashcut-plugin/1", "id": "bashcut.translate-captions", "name": "Translate Captions", "version": "0.1.3",
                 "entry": {"command": ["python3", "plugin.py"]}, "output": "bashcut-result/1",
                 "i18n": {"vi": {"name": "Dịch phụ đề"}},
-                "settings": [{"id": "service", "title": "Service", "type": "enum", "choices": ["gemini"], "default": "gemini",
+                "settings": [{"id": "service", "title": "Service", "type": "enum", "choices": ["gemini", "openai"], "default": "gemini",
                     "help": "Who translates. The key is sent only to this service.",
-                    "i18n": {"vi": {"title": "Dịch vụ", "help": "Bên dịch. Khóa chỉ được gửi tới dịch vụ này."}}}],
+                    "i18n": {"vi": {"title": "Dịch vụ", "help": "Bên dịch. Khóa chỉ được gửi tới dịch vụ này.",
+                        "choices": {"gemini": "Gemini (Google)"}}}}],
                 "actions": [{"id": "translate", "title": "Translate captions…", "args": ["translate"], "needs": "project",
                     "i18n": {"vi": {"title": "Dịch phụ đề…"}},
                     "params": [{"id": "maxCps", "title": "Max characters a second", "flag": "--max-cps", "type": "integer",
@@ -897,7 +905,11 @@ mod tests {
             ("Số ký tự tối đa mỗi giây".to_string(), "Brief".to_string()),
             "untranslated: English"
         );
+        let spec = Spec::setting(st);
+        assert_eq!((spec.choice_label("gemini"), spec.choice_label("openai")), ("Gemini (Google)".into(), "openai".into()));
+        assert_eq!(Spec::param(&a.params[1]).choice_label("x"), "x");
         super::super::strings::set_language(Some("en"));
+        assert_eq!(Spec::setting(st).choice_label("gemini"), "gemini");
         let lang = strings::current();
         assert_eq!((m.name_in(lang), st.title_in(lang), a.title_in(lang)), ("Translate Captions", "Service", "Translate captions…"));
         assert_eq!(param_title(&a.params[0]), "Max characters a second");
