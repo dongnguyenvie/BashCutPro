@@ -224,6 +224,16 @@ SUBS = [
         + '\n      <Component Id="BashcutSetup">\n        <File Id="BashcutSetupPs1" Source="$(var.BinDir)\\bashcut-setup.ps1" KeyPath="yes" />\n      </Component>\n',
         1,
     ),
+    # SB5: the Linux copy names BashCutPro where it tells the user what it installs or builds
+    ("linux/install.sh", "  echo 'Installs FilmCraft and", "  echo 'Installs BashCutPro and", 1),
+    ("linux/install.sh", "printf 'Installed FilmCraft in ", "printf 'Installed BashCutPro in ", 1),
+    ("linux/package.sh", "# Build and package FilmCraft for Linux", "# Build and package BashCutPro for Linux", 1),
+    ("linux/package.sh", 'echo "==> FilmCraft $VERSION', 'echo "==> BashCutPro $VERSION', 1),
+    ("linux/flatpak-bundle.sh", "# Repackage a FilmCraft Linux tarball", "# Repackage a BashCutPro Linux tarball", 1),
+    ("linux/flatpak-bundle.sh", 'echo "==> FilmCraft $VERSION', 'echo "==> BashCutPro $VERSION', 1),
+    ("linux/flatpak/ai.storyteller.filmcraft.yml", "# Flatpak manifest for FilmCraft,", "# Flatpak manifest for BashCutPro,", 1),
+    ("linux/flatpak/ai.storyteller.filmcraft.yml", "video editors do, FilmCraft reads", "video editors do, BashCutPro reads", 1),
+    ("linux/flatpak/ai.storyteller.filmcraft.bundle.yml", "video editors do, FilmCraft reads", "video editors do, BashCutPro reads", 1),
 ]
 
 
@@ -257,13 +267,13 @@ RENAMES = [
 
 
 # SB4: the copy's Linux files use BashCutPro's own app id, so a BashCutPro package never replaces FilmCraft's desktop
-# file, metainfo, MIME file, icons or Flatpak. Files named after the id are renamed and every mention replaced, except
-# the window class: the app binary still sets upstream's id as its Wayland app id / X11 class (apps/filmcraft/src/main.rs
-# with_app_id), and StartupWMClass is how the desktop matches its window to our desktop file. The .fcproj MIME type
-# keeps upstream's name (application/x-filmcraft, a shared format): whichever app was installed last opens it.
+# file, metainfo, MIME file, icons or Flatpak. Files named after the id are renamed and every mention replaced, the
+# window class included: the app sets the same id as its Wayland app id / X11 class (bashcut_brand::APP_ID, hook in
+# apps/filmcraft/src/main.rs, SB5), and StartupWMClass is how the desktop matches its window to our desktop file. The
+# .fcproj MIME type keeps upstream's name (application/x-filmcraft, a shared format): whichever app was installed
+# last opens it.
 UPSTREAM_ID = "ai.storyteller.filmcraft"
 APP_ID = "com.birchapps.bashcutpro"
-WINDOW_CLASS = "StartupWMClass=%s" % UPSTREAM_ID
 # icons named after the id, copied from the brand folder into the copy (linux/icons/hicolor/<size>/apps/APP_ID.*)
 ICON_DIR = os.path.join("bashcut", "brand", "app-icon", "hicolor")
 
@@ -321,11 +331,7 @@ def linux_app_id(root, out):
             path = os.path.join(dirpath, name)
             with open(path, encoding="utf-8", newline="") as fh:
                 text = fh.read()
-            if UPSTREAM_ID in text:
-                keep = WINDOW_CLASS in text
-                text = text.replace(UPSTREAM_ID, APP_ID)
-                if keep:
-                    text = text.replace("StartupWMClass=%s" % APP_ID, WINDOW_CLASS)
+            text = text.replace(UPSTREAM_ID, APP_ID)
             if dirpath == flatpak and name.endswith(".yml"):
                 # the from-source manifest builds the checkout and the cargo sources upstream's docs vendor
                 rel = lambda p: os.path.relpath(os.path.realpath(p), os.path.realpath(flatpak)).replace(os.sep, "/")

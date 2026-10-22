@@ -132,6 +132,7 @@ fn main() -> eframe::Result {
     }
     let started = loop {
         let mut options = native_options(launch.control_port.is_some());
+        options.viewport.app_id = Some(filmcraft_ui_egui::bashcut_brand::APP_ID.to_owned()); // BashCutPro: our Wayland app id / X11 class (bashcut/extending-upstream.md)
         // Before eframe creates the wgpu instance (e.g. no OpenGL on Windows, see graphics.rs).
         graphics::apply(&mut options, graphics.mode(), backend_override);
         let app_created = Arc::new(AtomicBool::new(false));

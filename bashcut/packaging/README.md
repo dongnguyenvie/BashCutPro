@@ -24,9 +24,11 @@ The copy's Linux files use `com.birchapps.bashcutpro` instead of upstream's `ai.
 packages never replace an installed FilmCraft's desktop entry, icons, MIME file or Flatpak (decisions.md, SB4).
 `generate.py` renames the files named after the id, replaces the id in every copied Linux file, copies the
 hicolor icons from `$BRAND_ICON_DIR` (default `bashcut/brand/app-icon`) under the new name to
-`linux/icons/hicolor/`, and points `package.sh` / `flatpak-bundle.sh` at the copy (`HERE`). Exceptions:
-`StartupWMClass=ai.storyteller.filmcraft` (the binary's window id) and the `.fcproj` type
-`application/x-filmcraft` (shared with FilmCraft: the last installed app opens `.fcproj`).
+`linux/icons/hicolor/`, and points `package.sh` / `flatpak-bundle.sh` at the copy (`HERE`). The app sets the same
+id as its Wayland app id / X11 class (`bashcut_brand::APP_ID`, a hook in `apps/filmcraft/src/main.rs`, SB5), so
+`StartupWMClass=com.birchapps.bashcutpro` matches the window to our desktop entry. One exception: the `.fcproj` type
+`application/x-filmcraft` (shared with FilmCraft: the last installed app opens `.fcproj`). The copy's `install.sh`,
+`package.sh`, `flatpak-bundle.sh` messages and the Flatpak manifests' comments name BashCutPro (SUBS, SB5).
 
 | Generated (`target/bashcut-packaging/linux/`) | Installed as (deb/rpm/AppImage/tar; Flatpak under `/app`) |
 |---|---|
@@ -89,5 +91,5 @@ and `bashcut-doctor --json`.
 
 Tests: `python3 bashcut/packaging/test_generate.py` (every substitution matches upstream's current files once, the
 copies parse, the WiX source is valid XML, no generated Linux file names or mentions `ai.storyteller.filmcraft`
-outside `StartupWMClass` or ships `filmcraft-cli`, the Flatpak manifests parse and find their sources; on Linux,
+(`StartupWMClass` included) or ships `filmcraft-cli`, the Flatpak manifests parse and find their sources; on Linux,
 upstream's installer test runs on the copy).

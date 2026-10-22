@@ -11,10 +11,9 @@ decides something; don't change an old one, add a new one that supersedes it.
   manifests, generated as `target/bashcut-packaging/linux/flatpak/com.birchapps.bashcutpro{,.bundle}.yml`), so a
   BashCutPro package installs beside FilmCraft's without replacing its menu entry, icons or Flatpak. Both Flatpak
   manifests build/install `bashcutpro`, `bcpro` and the Pro tools; none ships `filmcraft-cli`.
-- **Kept upstream's:** the app binary (`filmcraft`, Exec line) and its window id: the binary sets
-  `ai.storyteller.filmcraft` as Wayland app id / X11 class (`with_app_id` in `apps/filmcraft/src/main.rs`), so the
-  desktop file says `StartupWMClass=ai.storyteller.filmcraft` and the desktop still matches the window to our
-  entry. The `.fcproj` MIME type keeps `application/x-filmcraft` (shared format): with both apps installed,
+- **Kept upstream's:** the app binary name (`filmcraft`, Exec line). Its window id is ours since SB5: a hook in
+  `apps/filmcraft/src/main.rs` sets `bashcut_brand::APP_ID` (`com.birchapps.bashcutpro`) as Wayland app id / X11
+  class after upstream's `with_app_id`, and the desktop file says `StartupWMClass=com.birchapps.bashcutpro`. The `.fcproj` MIME type keeps `application/x-filmcraft` (shared format): with both apps installed,
   whichever was installed last opens `.fcproj` by default.
 - **Flathub from source:** run `python3 bashcut/packaging/generate.py --out target/bashcut-packaging` first, then
   `flatpak-builder … target/bashcut-packaging/linux/flatpak/com.birchapps.bashcutpro.yml` (its sources are the

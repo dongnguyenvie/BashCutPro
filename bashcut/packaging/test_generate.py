@@ -78,6 +78,17 @@ class GenerateTest(unittest.TestCase):
                 r = subprocess.run([bash, "-n", os.path.join(self.out, *rel.split("/"))], capture_output=True, text=True)
                 self.assertEqual(r.returncode, 0, rel + ": " + r.stderr)
 
+    def test_linux_copy_names_bashcutpro(self):
+        # SB5: what the Linux scripts print and the Flatpak manifests' comments name BashCutPro, not FilmCraft
+        generate.generate(ROOT, self.out)
+        install = self.read("linux/install.sh")
+        self.assertIn("printf 'Installed BashCutPro in ", install)
+        self.assertNotIn("FilmCraft", install)
+        for rel in ("linux/package.sh", "linux/flatpak-bundle.sh"):
+            self.assertIn('echo "==> BashCutPro $VERSION', self.read(rel), rel)
+        for rel in ("linux/flatpak/%s.yml" % generate.APP_ID, "linux/flatpak/%s.bundle.yml" % generate.APP_ID):
+            self.assertNotIn("FilmCraft", self.read(rel), rel)
+
     def test_linux_packages_use_our_app_id(self):
         # SB4: desktop file, metainfo, MIME file, icons and Flatpak are com.birchapps.bashcutpro, never FilmCraft's
         generate.generate(ROOT, self.out)
@@ -91,10 +102,10 @@ class GenerateTest(unittest.TestCase):
                     continue
                 text = self.read(rel)
                 self.assertNotIn("filmcraft-cli", text, rel)
-                # only the window class the app binary sets is upstream's id
-                left = [l for l in text.splitlines() if generate.UPSTREAM_ID in l]
-                self.assertEqual(left, [generate.WINDOW_CLASS] if name.endswith(".desktop") else [], rel)
+                # the window class too: the app sets our id (bashcut_brand::APP_ID, SB5)
+                self.assertNotIn(generate.UPSTREAM_ID, text, rel)
         desktop = self.read("linux/%s.desktop" % app)
+        self.assertIn("StartupWMClass=%s\n" % app, desktop)
         self.assertIn("Icon=%s\n" % app, desktop)
         self.assertIn("Exec=filmcraft %F\n", desktop)
         meta = xml.dom.minidom.parseString(self.read("linux/%s.metainfo.xml.in" % app).replace("@VERSION@", "1").replace("@DATE@", "2026-01-01"))
