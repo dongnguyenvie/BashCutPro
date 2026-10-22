@@ -26,7 +26,10 @@ cài). Hàng loạt chạy nó trước khi bắt đầu.
 
 Trong thư mục dữ liệu riêng của BashCutPro (`~/Library/Application Support/BashCutPro` trên Mac, `%APPDATA%\BashCutPro`
 trên Windows, `~/.local/share/bashcutpro` trên Linux; bản cài di động dùng thư mục `data` cạnh ứng dụng). Đây không
-phải thư mục của FilmCraft, nên có thể cài BashCutPro và FilmCraft song song mà không dùng chung thiết lập:
+phải thư mục của FilmCraft, nên có thể cài BashCutPro và FilmCraft song song mà không dùng chung thiết lập. Lần mở
+đầu tiên, BashCutPro chép một lần thiết lập, dự án gần đây, mẫu xuất, hồ sơ, mẫu hàng loạt và plugin từ FilmCraft
+(danh sách nằm trong `bashcut/imported-from-filmcraft.txt`); mô hình giọng nói không được chép mà dùng thẳng từ thư
+mục của FilmCraft cho đến khi BashCutPro có thư mục `models` riêng:
 
 - `bashcut/`: hồ sơ xuất, mẫu dự án, màu phim, mẫu hàng loạt và thiết lập của bảng bên;
 - `bashcut-plugins/`: plugin đã cài và tệp chúng tải về;

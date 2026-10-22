@@ -70,9 +70,90 @@ impl Host<'_> {
     }
 }
 
-/// BashCutPro's data folder for this process (see the crate docs).
+/// BashCutPro's data folder for this process (see the crate docs). The first call in a process
+/// runs the one-time [`import_from`] FilmCraft's folder when ours does not exist yet.
 pub fn data_dir() -> Option<PathBuf> {
-    Host::current().data_dir()
+    let host = Host::current();
+    let ours = host.data_dir()?;
+    static IMPORT: std::sync::Once = std::sync::Once::new();
+    IMPORT.call_once(|| {
+        if let Some(fc) = host.filmcraft_dir()
+            && let Some(copied) = import_from(&fc, &ours)
+        {
+            eprintln!("BashCutPro: first launch, copied from {}: {}", fc.display(), copied.join(", "));
+        }
+    });
+    Some(ours)
+}
+
+/// Written into our folder after the import; lists what was copied, so the import never runs twice.
+pub const IMPORT_MARKER: &str = "bashcut/imported-from-filmcraft.txt";
+
+/// What the import copies: settings (with the recent projects list), export presets, our `bashcut/`
+/// files (profiles, templates, looks, batch presets, agent and side-panel settings) and installed
+/// plugins. Not `Auto-Save`, `Recovery`, `Logs` or graphics state (FilmCraft's own), nor `models`
+/// (gigabytes: [`models_dir`] reads FilmCraft's in place).
+pub const IMPORTED: &[&str] = &["preferences.json", "export-presets.json", "bashcut", "bashcut-plugins"];
+
+/// Runtime files of the open window inside `bashcut/` that must not follow (a stale port and pid).
+const NOT_IMPORTED: &[&str] = &["automation.json"];
+
+/// The one-time import (SB1): when `ours` does not exist and `filmcraft` does, copies [`IMPORTED`]
+/// and writes [`IMPORT_MARKER`]. Returns what was copied, `None` when it did not run. Best effort:
+/// a file that fails to copy is left out of the list, never an error.
+pub fn import_from(filmcraft: &Path, ours: &Path) -> Option<Vec<String>> {
+    if ours.exists() || !filmcraft.is_dir() || ours.join(IMPORT_MARKER).exists() {
+        return None;
+    }
+    std::fs::create_dir_all(ours.join("bashcut")).ok()?;
+    let mut copied = Vec::new();
+    for name in IMPORTED {
+        let from = filmcraft.join(name);
+        if copy_tree(&from, &ours.join(name), 0) {
+            copied.push((*name).to_string());
+        }
+    }
+    let log = format!("BashCutPro copied these from {} on its first launch:\n{}\n", filmcraft.display(), copied.join("\n"));
+    let _ = std::fs::write(ours.join(IMPORT_MARKER), log);
+    Some(copied)
+}
+
+/// Copies a file or a folder (no symlinks, at most 16 levels deep); whether anything was copied.
+fn copy_tree(from: &Path, to: &Path, depth: u32) -> bool {
+    let Ok(meta) = std::fs::symlink_metadata(from) else { return false };
+    if meta.is_file() {
+        return to.parent().is_some_and(|p| std::fs::create_dir_all(p).is_ok()) && std::fs::copy(from, to).is_ok();
+    }
+    if !meta.is_dir() || depth > 16 {
+        return false;
+    }
+    let Ok(rd) = std::fs::read_dir(from) else { return false };
+    let _ = std::fs::create_dir_all(to);
+    let mut any = false;
+    for e in rd.flatten() {
+        let name = e.file_name();
+        if depth == 0 && NOT_IMPORTED.iter().any(|n| name == *n) {
+            continue;
+        }
+        any |= copy_tree(&e.path(), &to.join(&name), depth + 1);
+    }
+    any
+}
+
+/// Where speech and voice models live: ours (`<data dir>/models`) when it exists, else FilmCraft's
+/// when that exists (so the same gigabytes are not downloaded twice), else ours.
+pub fn models_dir_in(ours: &Path, filmcraft: Option<&Path>) -> PathBuf {
+    let mine = ours.join("models");
+    match filmcraft.map(|f| f.join("models")) {
+        Some(theirs) if !mine.is_dir() && theirs.is_dir() => theirs,
+        _ => mine,
+    }
+}
+
+/// [`models_dir_in`] for this process.
+pub fn models_dir() -> Option<PathBuf> {
+    let ours = data_dir()?;
+    Some(models_dir_in(&ours, Host::current().filmcraft_dir().as_deref()))
 }
 
 /// Upstream FilmCraft's per-user folder, read only (see [`Host::filmcraft_dir`]).
@@ -87,6 +168,17 @@ macro_rules! data_dir_first {
     () => {
         if cfg!(not(test)) {
             return $crate::data_dir();
+        }
+    };
+}
+
+/// The hook in the engine's `transcript::models_dir`: returns [`models_dir`] early, except in the
+/// engine's own unit tests. A macro so the hook stays one line.
+#[macro_export]
+macro_rules! models_dir_first {
+    () => {
+        if cfg!(not(test)) {
+            return $crate::models_dir();
         }
     };
 }
