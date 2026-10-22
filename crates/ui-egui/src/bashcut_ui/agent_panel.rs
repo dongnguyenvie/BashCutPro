@@ -113,6 +113,11 @@ pub fn draw(app: &mut FilmcraftApp, ui: &mut egui::Ui) {
         egui::ScrollArea::vertical().id_salt("bashcut.agent.transcript").max_height(height).auto_shrink([false, false]).stick_to_bottom(true).show(ui, |ui| {
             if snap.items.is_empty() {
                 ui.label(egui::RichText::new(f("Ask {agent} to edit this project.", &[("agent", &snap.agent.1)])).size(11.0).color(t.text_dim));
+                if let Some(prompt) = examples(app, ui) {
+                    v.input = prompt;
+                    ctx.memory_mut(|m| m.request_focus(input_id()));
+                }
+                ui.label(egui::RichText::new(s("The agent stops at each stage for your approval.")).size(11.0).color(t.text_dim));
             }
             transcript(app, ui, &snap.items);
             if running {
@@ -256,6 +261,22 @@ fn gate_card(app: &mut FilmcraftApp, ui: &mut egui::Ui, ctx: &egui::Context, v: 
 }
 
 /// The transcript; consecutive tool calls with the same key fold into one row.
+/// Kit recipes ([`super::palette::RECIPES`]) offered as example prompts on an empty transcript.
+const EXAMPLES: &[&str] = &["vlog-plan", "vlog-hook-script", "vlog-publish"];
+
+/// One button per [`EXAMPLES`] recipe; the clicked one's prompt fills the message box (not sent).
+fn examples(app: &mut FilmcraftApp, ui: &mut egui::Ui) -> Option<String> {
+    let mut picked = None;
+    ui.add_space(4.0);
+    for (id, name, _) in super::palette::RECIPES.iter().filter(|(id, ..)| EXAMPLES.contains(id)) {
+        if button(app, ui, &format!("bashcut.agent.example.{id}"), s(name), true) {
+            picked = Some(format!("Use the bcp:{id} recipe on this project."));
+        }
+    }
+    ui.add_space(4.0);
+    picked
+}
+
 fn transcript(app: &mut FilmcraftApp, ui: &mut egui::Ui, items: &[Item]) {
     let t = app.tokens;
     let mut i = 0;

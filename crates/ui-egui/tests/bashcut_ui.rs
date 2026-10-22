@@ -267,6 +267,13 @@ fn agent_section_draws_and_gates_show_as_cards() {
         assert!(d.has(id), "{id}");
     }
     assert!(!d.has("bashcut.gate.approve"), "no plan, no gate");
+    // the empty transcript offers three kit recipes as example prompts; a click fills, never sends
+    for id in ["vlog-plan", "vlog-hook-script", "vlog-publish"] {
+        assert!(d.has(&format!("bashcut.agent.example.{id}")), "{id} example");
+    }
+    d.click("bashcut.agent.example.vlog-plan");
+    d.frames(2);
+    assert_eq!(d.exec("bashcut.agent.transcript", json!({}))["items"], json!([]), "not sent");
     let st = d.exec("bashcut.agent.state", json!({}));
     assert_eq!(st["agent"]["id"], json!("claude-code"));
     assert_eq!(st["status"]["state"], json!("idle"));
