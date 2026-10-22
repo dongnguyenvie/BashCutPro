@@ -206,7 +206,7 @@ Fill in: {fields}	Cần điền: {fields}
 Not set: the plugin's default is used	Chưa đặt: dùng giá trị mặc định của plugin
 # setup hints (hints.rs)
 Control channel is off: actions that edit the open project cannot run.	Kênh điều khiển đang tắt: các thao tác sửa dự án đang mở không chạy được.
-How to turn it on: quit BashCutPro and start it with its control channel. Mac: open -a BashCutPro --args --control 9876. Or set FILMCRAFT_CONTROL_PORT=9876 first.	Cách bật: thoát BashCutPro rồi mở lại kèm kênh điều khiển. Mac: open -a BashCutPro --args --control 9876. Hoặc đặt FILMCRAFT_CONTROL_PORT=9876 trước.
+How to turn it on: tick “Allow AI agents to control BashCutPro” in the Agent section and restart BashCutPro (and unset BASHCUT_CONTROL=0 if it is set).	Cách bật: chọn “Cho phép trợ lý AI điều khiển BashCutPro” trong mục Trợ lý rồi khởi động lại BashCutPro (và bỏ BASHCUT_CONTROL=0 nếu đã đặt).
 needs the control channel	cần kênh điều khiển
 See Troubleshooting.	Xem mục Khắc phục sự cố.
 Python 3 was not found: install Python 3.9 or newer, then run the action again.	Không tìm thấy Python 3: hãy cài Python 3.9 trở lên rồi chạy lại thao tác.
@@ -294,3 +294,7 @@ LUTs	LUT
 Effect presets	Mẫu hiệu ứng
 Templates	Mẫu dựng
 Brand kits	Bộ nhận diện
+Allow AI agents to control BashCutPro	Cho phép trợ lý AI điều khiển BashCutPro
+Lets agents and plugins on this computer edit the open project (127.0.0.1 only).	Cho phép trợ lý AI và plugin trên máy này sửa dự án đang mở (chỉ 127.0.0.1).
+Restart BashCutPro to apply.	Khởi động lại BashCutPro để áp dụng.
+Turn on	Bật

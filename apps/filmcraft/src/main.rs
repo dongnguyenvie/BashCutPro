@@ -191,6 +191,7 @@ fn native_options(agent: bool) -> eframe::NativeOptions {
 /// and confirms the graphics mode once two frames have painted.
 fn app_creator(launch: Launch, graphics: graphics::GraphicsStart, created: Arc<AtomicBool>) -> eframe::AppCreator<'static> {
     let Launch { control_port, control_input_only, files, demo, startup_flag, recover, data_dir, graphics: _ } = launch;
+    let control_port = filmcraft_ui_egui::bashcut_ui::control::launch_port(control_port, data_dir.clone().or_else(default_data_dir).as_deref()); // BashCutPro: control channel on by default (bashcut/extending-upstream.md)
     Box::new(move |cc| {
         created.store(true, Ordering::Relaxed);
         // A fallback graphics mode says so in the window, with a button back to the default.

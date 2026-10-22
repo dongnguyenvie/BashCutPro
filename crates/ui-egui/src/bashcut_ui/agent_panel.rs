@@ -160,6 +160,7 @@ fn readiness(app: &mut FilmcraftApp, ui: &mut egui::Ui, ctx: &egui::Context, sna
         let r = ui.label(egui::RichText::new(line).size(11.0).color(t.text_dim)).on_hover_text(s(HOW_TO_TURN_ON));
         app.auto.add_response("bashcut.agent.ready.control", &r, line);
     }
+    super::control::setting(app, ui);
     if !snap.has_project {
         ui.horizontal_wrapped(|ui| {
             let line = s("Project not saved: conversations will not be kept");

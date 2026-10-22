@@ -11,7 +11,7 @@ never installs anything by itself). Batches run it before they start.
 
 | You see | What to do |
 |---|---|
-| Plugins says *Control channel is off*, a project action's **Run** is greyed out with *needs the control channel*, or an action says it *needs the open project* | Quit and start the app with its control channel: add `--control 9876` (Mac: `open -a BashCutPro --args --control 9876`), or set `FILMCRAFT_CONTROL_PORT=9876` first. Searches, downloads and other actions that do not edit the project work without it. |
+| Plugins says *Control channel is off*, a project action's **Run** is greyed out with *needs the control channel*, or an action says it *needs the open project* | The channel is on by default, so it was turned off: tick **Allow AI agents to control BashCutPro** in the Agent section (or press **Turn on**) and restart BashCutPro; if `BASHCUT_CONTROL=0` is set, unset it. `--control 9876` also turns it on for one start. Searches, downloads and other actions that do not edit the project work without it. |
 | A plugin will not run, or says *Python 3 was not found* | It needs Python 3.9 or newer (`bashcut-doctor` names the plugin). Install Python and run the action again. |
 | A run says *The BashCutPro engine (bashcutpro or filmcraft-cli) was not found next to the app* | Plugins edit the project through the engine beside the app. Reinstall BashCutPro, or build it as [Getting started](getting-started.md) shows, or point `BASHCUTPRO_CLI` at it. |
 | A run says **Needs the agent** | The plugin could not finish alone (for example a translation without an API key). **Send to agent** in Runs, or add the key in the plugin's **Settings** and run it again. |

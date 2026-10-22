@@ -3,6 +3,21 @@
 Newest first. Each entry: what was decided, why, and what it rules out. Add an entry when the owner
 decides something; don't change an old one, add a new one that supersedes it.
 
+## 2026-10-23: Control channel on by default (CC1)
+
+- **Decided (owner):** make agents "just work". The app starts its control channel at launch with no flag: port 9876
+  when free, else a free one, bound to **127.0.0.1 only**. Discovery is the existing
+  `<data dir>/bashcut/automation.json` (`address`, `pid`, `project`; removed on close; readers skip a dead pid), so
+  `bashcut-mcp`, plugins and the Agent section needed no new reader; no separate `control.json`. No prompt, no token.
+- **Opt-out:** the Agent section's "Allow AI agents to control BashCutPro" (default on; off writes
+  `<data dir>/bashcut/agents-off`) or `BASHCUT_CONTROL=0`. Applies at the next start: the server is created with the
+  window. `--control <port>` / `FILMCRAFT_CONTROL_PORT` still win.
+- **Security note:** loopback only, never `0.0.0.0`; any process of the same user can already drive the app (it can
+  read and write the project files and the data folder), so the channel adds no new reach for remote attackers. The
+  server refuses non-JSON lines (browser `fetch` junk) and caps lines and connections (upstream `control_server.rs`).
+  On a shared multi-user machine other local users can reach a loopback port: they should turn the setting off.
+- **Rules out:** binding any non-loopback address; a mandatory token or a confirmation prompt.
+
 ## 2026-10-23: Linux packages use the app id `com.birchapps.bashcutpro` (SB4)
 
 - **Decided:** the generated Linux packaging (`bashcut/packaging/generate.py`, no upstream edit) ships

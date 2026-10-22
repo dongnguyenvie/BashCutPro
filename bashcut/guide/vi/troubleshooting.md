@@ -11,7 +11,7 @@ cài). Hàng loạt chạy nó trước khi bắt đầu.
 
 | Bạn thấy | Cách xử lý |
 |---|---|
-| Mục Plugin ghi *Kênh điều khiển đang tắt*, nút **Chạy** của thao tác sửa dự án bị mờ kèm *cần kênh điều khiển*, hoặc thao tác báo *needs the open project* | Thoát rồi mở ứng dụng kèm kênh điều khiển: thêm `--control 9876` (Mac: `open -a BashCutPro --args --control 9876`), hoặc đặt `FILMCRAFT_CONTROL_PORT=9876` trước. Tìm kiếm, tải về và các thao tác không sửa dự án vẫn chạy được khi không có nó. |
+| Mục Plugin ghi *Kênh điều khiển đang tắt*, nút **Chạy** của thao tác sửa dự án bị mờ kèm *cần kênh điều khiển*, hoặc thao tác báo *needs the open project* | Kênh này bật sẵn, nên nó đã bị tắt: chọn **Cho phép trợ lý AI điều khiển BashCutPro** trong mục Trợ lý (hoặc bấm **Bật**) rồi khởi động lại BashCutPro; nếu có đặt `BASHCUT_CONTROL=0` thì bỏ đi. `--control 9876` cũng bật nó cho một lần mở. Tìm kiếm, tải về và các thao tác không sửa dự án vẫn chạy được khi không có nó. |
 | Plugin không chạy, hoặc báo *Không tìm thấy Python 3* | Plugin cần Python 3.9 trở lên (`bashcut-doctor` nêu tên plugin). Cài Python rồi chạy lại thao tác. |
 | Lượt chạy báo *Không tìm thấy bộ máy BashCutPro (bashcutpro hoặc filmcraft-cli) cạnh ứng dụng* | Plugin sửa dự án qua bộ máy nằm cạnh ứng dụng. Cài lại BashCutPro, hoặc build theo [Bắt đầu](getting-started.md), hoặc trỏ `BASHCUTPRO_CLI` tới nó. |
 | Lượt chạy ghi **Cần trợ lý** | Plugin không tự làm xong (ví dụ dịch mà không có khóa API). Bấm **Gửi cho trợ lý** trong Tác vụ, hoặc thêm khóa trong **Cài đặt** của plugin rồi chạy lại. |
