@@ -10,7 +10,8 @@ What the copy adds on every OS: speech-to-text (`--features whisper` for `filmcr
 built under our name by `apps/bashcutpro-cli`; it takes `filmcraft-cli`'s place, so a package never clashes with an
 installed FilmCraft, SB2), `bashcut-doctor`, `bashcut-batch`, `bashcut-mcp` (built
 with the app) and
-the optional first-run setup (`bashcut/packaging/share/`). Data files stay where they are; only scripts and the
+the optional first-run setup (`bashcut/packaging/share/`). On Linux the copy uses our own app id `com.birchapps.bashcutpro`
+(desktop file, metainfo, MIME file, icons, both Flatpak manifests; SB4). Data files stay where they are; only scripts and the
 manifests that list files (nfpm.yaml, the WiX source, the Linux tarball installer) are copied and changed.
 
     python3 bashcut/packaging/generate.py --out target/bashcut-packaging [--root .] [--check]
@@ -105,8 +106,56 @@ SUBS = [
         'mkdir -p "$STAGE/usr/share/bashcutpro" && cp "$ROOT/bashcut/packaging/share/"* "$STAGE/usr/share/bashcutpro/"\n' % BINS_SH,
         1,
     ),
-    ("linux/package.sh", '"$HERE/install.sh"', '"$BASHCUT_PACKAGING/linux/install.sh"', 1),
-    ("linux/package.sh", '"$HERE/nfpm.yaml"', '"$BASHCUT_PACKAGING/linux/nfpm.yaml"', 1),
+    # SB4: the copy's install.sh, nfpm.yaml, desktop file, metainfo, MIME file and icons (renamed to APP_ID)
+    ("linux/package.sh", 'HERE="$ROOT/packaging/linux"\n', 'HERE="$BASHCUT_PACKAGING/linux"\n', 1),
+    ("linux/package.sh", 'cp -R "$BRAND_ICON_DIR/hicolor" ', 'cp -R "$HERE/icons/hicolor" ', 1),
+    ("linux/package.sh", '"$BRAND_ICON_DIR/hicolor/256x256/apps/$APP_ID.png"', '"$HERE/icons/hicolor/256x256/apps/$APP_ID.png"', 1),
+    ("linux/flatpak-bundle.sh", 'HERE="$ROOT/packaging/linux"\n', 'HERE="$BASHCUT_PACKAGING/linux"\n', 1),
+    (
+        "linux/flatpak/ai.storyteller.filmcraft.bundle.yml",
+        "      - install -Dm755 bin/filmcraft-cli /app/bin/filmcraft-cli\n",
+        "      - install -Dm755 bin/filmcraft-cli /app/bin/filmcraft-cli\n"
+        "      # BashCutPro: Pro tools and the first-run setup\n"
+        + "".join("      - install -Dm755 bin/%s /app/bin/%s\n" % (b, b) for b in PRO_BINS)
+        + "      - mkdir -p /app/share/bashcutpro && cp -R share/bashcutpro/. /app/share/bashcutpro/\n",
+        1,
+    ),
+    # SB4: the from-source manifest in the copy builds and installs ours; flatpak-builder reads it from the copy
+    # (`flatpak-builder … target/bashcut-packaging/linux/flatpak/com.birchapps.bashcutpro.yml`)
+    ("linux/flatpak/ai.storyteller.filmcraft.yml", "-p filmcraft -p filmcraft-cli %s" % FEATURES, BUILD, 1),
+    (
+        "linux/flatpak/ai.storyteller.filmcraft.yml",
+        "      - install -Dm755 target/release/filmcraft-cli /app/bin/filmcraft-cli\n",
+        "      - install -Dm755 target/release/filmcraft-cli /app/bin/filmcraft-cli\n"
+        "      # BashCutPro: Pro tools and the first-run setup\n"
+        + "".join("      - install -Dm755 target/release/%s /app/bin/%s\n" % (b, b) for b in PRO_BINS)
+        + "      - mkdir -p /app/share/bashcutpro && cp bashcut/packaging/share/* /app/share/bashcutpro/\n",
+        1,
+    ),
+    ("linux/flatpak/ai.storyteller.filmcraft.yml", " packaging/linux/ai.storyteller.filmcraft.", " bashcut-packaging/linux/ai.storyteller.filmcraft.", 3),
+    ("linux/flatpak/ai.storyteller.filmcraft.yml", "cp -R bashcut/brand/app-icon/hicolor ", "cp -R bashcut-packaging/linux/icons/hicolor ", 1),
+    (
+        "linux/flatpak/ai.storyteller.filmcraft.yml",
+        "build-flatpak packaging/linux/flatpak/ai.storyteller.filmcraft.yml\n",
+        "build-flatpak target/bashcut-packaging/linux/flatpak/ai.storyteller.filmcraft.yml\n",
+        1,
+    ),
+    (
+        "linux/flatpak/ai.storyteller.filmcraft.yml",
+        "From the repo root:\n#\n",
+        "From the repo root:\n#\n"
+        "#   python3 bashcut/packaging/generate.py --out target/bashcut-packaging   # BashCutPro: writes this file (SB4)\n",
+        1,
+    ),
+    ("linux/flatpak/ai.storyteller.filmcraft.yml", "        path: ../../..\n", "        path: @ROOT@\n", 1),
+    (
+        "linux/flatpak/ai.storyteller.filmcraft.yml",
+        "      - cargo-sources.json\n",
+        "      # BashCutPro: the generated desktop file, metainfo, MIME file and icons\n"
+        "      - type: dir\n        path: ..\n        dest: bashcut-packaging/linux\n"
+        "      - @CARGO_SOURCES@\n",
+        1,
+    ),
     (
         "linux/nfpm.yaml",
         "  - src: ${STAGE}/usr/bin/filmcraft-cli\n    dst: /usr/bin/filmcraft-cli\n    file_info: { mode: 0755 }\n",
@@ -193,6 +242,8 @@ RENAME_FILES = [
     "linux/nfpm.yaml",
     "linux/flatpak-bundle.sh",
     "linux/flatpak/ai.storyteller.filmcraft.bundle.yml",
+    "linux/flatpak/ai.storyteller.filmcraft.yml",
+    "linux/test_install.py",
     "freebsd/package.sh",
     "windows/package.ps1",
     "windows/filmcraft.wxs",
@@ -203,6 +254,18 @@ RENAMES = [
     ('Id="FilmcraftCliExe"', 'Id="BashcutproExe"'),
     ("filmcraft-cli", "bashcutpro"),
 ]
+
+
+# SB4: the copy's Linux files use BashCutPro's own app id, so a BashCutPro package never replaces FilmCraft's desktop
+# file, metainfo, MIME file, icons or Flatpak. Files named after the id are renamed and every mention replaced, except
+# the window class: the app binary still sets upstream's id as its Wayland app id / X11 class (apps/filmcraft/src/main.rs
+# with_app_id), and StartupWMClass is how the desktop matches its window to our desktop file. The .fcproj MIME type
+# keeps upstream's name (application/x-filmcraft, a shared format): whichever app was installed last opens it.
+UPSTREAM_ID = "ai.storyteller.filmcraft"
+APP_ID = "com.birchapps.bashcutpro"
+WINDOW_CLASS = "StartupWMClass=%s" % UPSTREAM_ID
+# icons named after the id, copied from the brand folder into the copy (linux/icons/hicolor/<size>/apps/APP_ID.*)
+ICON_DIR = os.path.join("bashcut", "brand", "app-icon", "hicolor")
 
 
 class Fail(Exception):
@@ -246,7 +309,50 @@ def generate(root, out):
             text = text.replace(old, new)
         with open(path, "w", encoding="utf-8", newline="") as fh:
             fh.write(text)
+    linux_app_id(root, out)
     return len(SUBS)
+
+
+def linux_app_id(root, out):
+    linux = os.path.join(out, "linux")
+    flatpak = os.path.join(linux, "flatpak")
+    for dirpath, _dirs, files in os.walk(linux):
+        for name in files:
+            path = os.path.join(dirpath, name)
+            with open(path, encoding="utf-8", newline="") as fh:
+                text = fh.read()
+            if UPSTREAM_ID in text:
+                keep = WINDOW_CLASS in text
+                text = text.replace(UPSTREAM_ID, APP_ID)
+                if keep:
+                    text = text.replace("StartupWMClass=%s" % APP_ID, WINDOW_CLASS)
+            if dirpath == flatpak and name.endswith(".yml"):
+                # the from-source manifest builds the checkout and the cargo sources upstream's docs vendor
+                rel = lambda p: os.path.relpath(os.path.realpath(p), os.path.realpath(flatpak)).replace(os.sep, "/")
+                text = text.replace("@ROOT@", rel(root))
+                text = text.replace("@CARGO_SOURCES@", rel(os.path.join(root, "packaging", "linux", "flatpak", "cargo-sources.json")))
+            with open(path, "w", encoding="utf-8", newline="") as fh:
+                fh.write(text)
+            if UPSTREAM_ID in name:
+                os.replace(path, os.path.join(dirpath, name.replace(UPSTREAM_ID, APP_ID)))
+    src = os.environ.get("BRAND_ICON_DIR")
+    src = os.path.join(src, "hicolor") if src else os.path.join(root, ICON_DIR)
+    if not os.path.isdir(src):
+        raise Fail("%s: no hicolor icons for the Linux packages" % src)
+    found = 0
+    for size in sorted(os.listdir(src)):
+        apps = os.path.join(src, size, "apps")
+        if not os.path.isdir(apps):
+            continue
+        for name in sorted(os.listdir(apps)):
+            # licence sidecars stay in the source tree (ATTRIBUTION.md); packages carry the image only
+            if name.startswith(UPSTREAM_ID + ".") and not name.endswith(".attribution"):
+                dst = os.path.join(linux, "icons", "hicolor", size, "apps")
+                os.makedirs(dst, exist_ok=True)
+                shutil.copyfile(os.path.join(apps, name), os.path.join(dst, APP_ID + name[len(UPSTREAM_ID):]))
+                found += 1
+    if not found:
+        raise Fail("%s: no %s.* icons to ship as %s" % (src, UPSTREAM_ID, APP_ID))
 
 
 def main(argv=None):

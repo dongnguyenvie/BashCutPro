@@ -38,7 +38,7 @@ class GenerateTest(unittest.TestCase):
         self.assertIn("bashcut-mcp.exe", wxs)
         # the Pro command line ships under both names, in place of filmcraft-cli (#154, SB2)
         for rel in generate.RENAME_FILES:
-            self.assertNotIn("filmcraft-cli", self.read(rel), rel)
+            self.assertNotIn("filmcraft-cli", self.read(rel.replace(generate.UPSTREAM_ID, generate.APP_ID)), rel)
         for b in ("bashcutpro", "bcpro"):
             self.assertIn("\\%s.exe" % b, wxs)
             self.assertIn("/usr/bin/%s" % b, self.read("linux/nfpm.yaml"))
@@ -74,9 +74,80 @@ class GenerateTest(unittest.TestCase):
         xml.dom.minidom.parse(os.path.join(self.out, "windows", "filmcraft.wxs"))
         bash = shutil.which("bash")
         if bash:
-            for rel in ("env.sh", "macos/package.sh", "linux/package.sh", "linux/install.sh", "freebsd/package.sh"):
+            for rel in ("env.sh", "macos/package.sh", "linux/package.sh", "linux/install.sh", "linux/flatpak-bundle.sh", "freebsd/package.sh"):
                 r = subprocess.run([bash, "-n", os.path.join(self.out, *rel.split("/"))], capture_output=True, text=True)
                 self.assertEqual(r.returncode, 0, rel + ": " + r.stderr)
+
+    def test_linux_packages_use_our_app_id(self):
+        # SB4: desktop file, metainfo, MIME file, icons and Flatpak are com.birchapps.bashcutpro, never FilmCraft's
+        generate.generate(ROOT, self.out)
+        linux = os.path.join(self.out, "linux")
+        app = generate.APP_ID
+        for dirpath, _dirs, files in os.walk(linux):
+            for name in files:
+                rel = os.path.relpath(os.path.join(dirpath, name), self.out)
+                self.assertNotIn(generate.UPSTREAM_ID, name, rel)
+                if name.endswith(".png"):
+                    continue
+                text = self.read(rel)
+                self.assertNotIn("filmcraft-cli", text, rel)
+                # only the window class the app binary sets is upstream's id
+                left = [l for l in text.splitlines() if generate.UPSTREAM_ID in l]
+                self.assertEqual(left, [generate.WINDOW_CLASS] if name.endswith(".desktop") else [], rel)
+        desktop = self.read("linux/%s.desktop" % app)
+        self.assertIn("Icon=%s\n" % app, desktop)
+        self.assertIn("Exec=filmcraft %F\n", desktop)
+        meta = xml.dom.minidom.parseString(self.read("linux/%s.metainfo.xml.in" % app).replace("@VERSION@", "1").replace("@DATE@", "2026-01-01"))
+        self.assertEqual(meta.getElementsByTagName("id")[0].firstChild.data, app)
+        self.assertEqual(meta.getElementsByTagName("launchable")[0].firstChild.data, app + ".desktop")
+        mime = xml.dom.minidom.parseString(self.read("linux/%s.mime.xml" % app))
+        # .fcproj keeps upstream's shared type name; whichever app was installed last opens it
+        self.assertEqual(mime.getElementsByTagName("mime-type")[0].getAttribute("type"), "application/x-filmcraft")
+        self.assertEqual(mime.getElementsByTagName("icon")[0].getAttribute("name"), app)
+        for icon in ("256x256/apps/%s.png" % app, "scalable/apps/%s.svg" % app):
+            self.assertTrue(os.path.isfile(os.path.join(linux, "icons", "hicolor", *icon.split("/"))), icon)
+        for rel in ("linux/package.sh", "linux/flatpak-bundle.sh", "linux/install.sh"):
+            self.assertRegex(self.read(rel), r"(?i)app_id=%s\n" % app.replace(".", r"\."), rel)
+        for rel in ("linux/package.sh", "linux/flatpak-bundle.sh"):
+            self.assertIn('HERE="$BASHCUT_PACKAGING/linux"\n', self.read(rel), rel)
+        self.assertNotIn("BRAND_ICON_DIR", self.read("linux/package.sh"))
+        self.assertIn("--command=bashcutpro ", self.read("linux/flatpak-bundle.sh"))
+        for rel in ("linux/flatpak/%s.yml" % app, "linux/flatpak/%s.bundle.yml" % app):
+            text = self.read(rel)
+            self.assertIn("\nid: %s\n" % app, text, rel)
+            for b in ["bashcutpro"] + generate.PRO_BINS:
+                self.assertIn("/app/bin/%s\n" % b, text, rel)
+
+    def test_the_flatpak_source_manifest_finds_its_files(self):
+        # flatpak-builder reads the generated manifest: its sources are the checkout and the generated Linux files
+        generate.generate(ROOT, self.out)
+        flatpak = os.path.join(self.out, "linux", "flatpak")
+        text = self.read("linux/flatpak/%s.yml" % generate.APP_ID)
+        self.assertIn("-p filmcraft -p bashcutpro-cli --features filmcraft/whisper,bashcutpro-cli/whisper", text)
+        paths = [l.split("path:", 1)[1].strip() for l in text.splitlines() if l.strip().startswith("path:")]
+        self.assertEqual(os.path.realpath(os.path.join(flatpak, paths[0])), os.path.realpath(ROOT))
+        self.assertEqual(os.path.realpath(os.path.join(flatpak, paths[1])), os.path.realpath(os.path.join(self.out, "linux")))
+        self.assertIn("      - %s\n" % os.path.relpath(os.path.realpath(os.path.join(ROOT, "packaging", "linux", "flatpak", "cargo-sources.json")), os.path.realpath(flatpak)), text)
+        for rel in set(w for w in text.split() if w.startswith("bashcut-packaging/linux/")):
+            self.assertTrue(os.path.exists(os.path.join(self.out, rel[len("bashcut-packaging/"):].rstrip("/"))), rel)
+        self.assertTrue(os.path.isdir(os.path.join(ROOT, "bashcut", "packaging", "share")))
+        try:
+            import yaml
+        except ImportError:
+            return
+        for name in ("%s.yml", "%s.bundle.yml"):
+            with open(os.path.join(flatpak, name % generate.APP_ID), encoding="utf-8") as fh:
+                doc = yaml.safe_load(fh)
+            self.assertEqual((doc["id"], doc["command"]), (generate.APP_ID, "filmcraft"))
+
+    def test_the_copied_tarball_installer_installs_ours(self):
+        # upstream's installer test, run on the copy (needs GNU realpath -m, so Linux)
+        generate.generate(ROOT, self.out)
+        r = subprocess.run(["realpath", "-m", "/a/../b"], capture_output=True, text=True) if shutil.which("realpath") else None
+        if not r or r.returncode != 0:
+            self.skipTest("no GNU realpath -m")
+        r = subprocess.run([sys.executable, os.path.join(self.out, "linux", "test_install.py")], capture_output=True, text=True)
+        self.assertEqual(r.returncode, 0, r.stderr)
 
     def test_the_app_keeps_its_executable_and_ships_the_engine_cli(self):
         # Mac volumes ignore case: copying bashcutpro beside BashCutPro replaced the app executable (#187)
@@ -111,6 +182,7 @@ class GenerateTest(unittest.TestCase):
     def test_crlf_checkouts_keep_their_line_endings(self):
         fake = os.path.join(self.tmp, "root")
         shutil.copytree(os.path.join(ROOT, "packaging"), os.path.join(fake, "packaging"))
+        shutil.copytree(os.path.join(ROOT, generate.ICON_DIR), os.path.join(fake, generate.ICON_DIR))
         path = os.path.join(fake, "packaging", "linux", "nfpm.yaml")
         with open(path, encoding="utf-8", newline="") as fh:
             text = fh.read().replace("\r\n", "\n").replace("\n", "\r\n")
