@@ -232,11 +232,8 @@ pub fn draw(app: &mut FilmcraftApp, ui: &mut egui::Ui) {
         app.auto.add_response("bashcut.plugins.setup", &r, s(CONTROL_OFF));
         ui.add_space(4.0);
     }
-    if let Some((ok, msg)) = &d.status {
-        let color = if *ok { t.text_dim } else { t.danger };
-        let r = ui.label(egui::RichText::new(msg).size(11.0).color(color));
-        app.auto.add_response("bashcut.plugins.status", &r, msg);
-    }
+    let color = if d.status.as_ref().is_some_and(|(ok, _)| *ok) { t.text_dim } else { t.danger };
+    super::toast::status_line(app, ui, "bashcut.plugins.status", d.status.as_ref().map(|(_, m)| m.as_str()), color);
 
     // installed
     ui.label(egui::RichText::new(s("Installed")).strong().color(t.text));

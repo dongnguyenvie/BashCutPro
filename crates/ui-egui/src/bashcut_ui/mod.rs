@@ -24,6 +24,7 @@ pub mod runs_panel;
 pub mod side_panel;
 pub mod state;
 pub mod strings;
+pub mod toast;
 pub mod view;
 
 use std::path::PathBuf;
@@ -144,7 +145,10 @@ pub fn layout(app: &mut FilmcraftApp, ui: &mut egui::Ui, body: egui::Rect) -> eg
     if !ctx.input(|i| i.pointer.any_down()) {
         st.save_if_changed(dir.as_deref());
     }
+    // Runs counts as on screen only where it draws: the rail shown, Edit mode, docked or popped out
+    let runs_visible = st.rail && app.ui.mode == crate::state::Mode::Edit && (st.open.as_deref() == Some("runs") || st.popped.iter().any(|p| p == "runs"));
     st.put(&ctx);
+    toast::show(app, &ctx, runs_visible);
     palette::show(app, &ctx);
     dock
 }

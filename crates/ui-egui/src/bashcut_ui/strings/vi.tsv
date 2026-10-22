@@ -282,3 +282,6 @@ Prompt a missing shot	Viết prompt cho cảnh còn thiếu
 Prompts for AI video and image models	Prompt cho mô hình AI tạo video và ảnh
 Plugin not installed	Chưa cài plugin
 Step {n}: fill in {fields}	Bước {n}: cần điền {fields}
+✓ {action} finished	✓ {action} đã xong
+✕ {action} failed	✕ {action} bị lỗi
+Show	Xem

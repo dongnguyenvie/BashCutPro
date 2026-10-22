@@ -1364,3 +1364,129 @@ fn a_failed_run_puts_a_dot_on_runs_until_runs_opens() {
     assert!(d.harness.state().ui_error.is_none(), "{:?}", d.harness.state().ui_error);
     let _ = std::fs::remove_dir_all(&data);
 }
+
+/// RN1: a run that ends while Runs is not on screen toasts once ("✓ … finished" / "✕ … failed", en
+/// and vi), Show opens Runs on that run, and with Runs open nothing toasts. Runs' status line has a
+/// ✕ and comes back only when its message changes.
+#[test]
+fn a_finished_run_toasts_once_and_status_lines_dismiss() {
+    let data = std::env::temp_dir().join(format!("bashcut-ui-toast-{}", std::process::id()));
+    if !has_python() {
+        eprintln!("python not found: skipped");
+        return;
+    }
+    let _ = std::fs::remove_dir_all(&data);
+    let plugin = data.join("bashcut-plugins").join("test.toast");
+    std::fs::create_dir_all(&plugin).unwrap();
+    let script = "import json, sys
+if sys.argv[1:] == ['bad']:
+    sys.exit(4)
+print(json.dumps({'ok': True, 'data': {'path': '/out/toast.wav'}}))
+";
+    std::fs::write(plugin.join("plugin.py"), script).unwrap();
+    let manifest = json!({
+        "schema": "bashcut-plugin/1", "id": "test.toast", "name": "Toast", "version": "0.1.0", "summary": "test plugin",
+        "entry": {"command": ["python3", "plugin.py"], "windows": ["py", "-3", "plugin.py"]},
+        "output": "bashcut-result/1",
+        "actions": [
+            {"id": "good", "title": "Good", "args": ["good"], "needs": "none"},
+            {"id": "bad", "title": "Bad", "args": ["bad"], "needs": "none"}
+        ]
+    });
+    std::fs::write(plugin.join("bashcut-plugin.json"), manifest.to_string()).unwrap();
+
+    let mut session = Session::default();
+    session.start_autosave(filmcraft_engine::autosave::AutosaveConfig::new(&data)).expect("data dir");
+    session.execute("file.openDemoProject", json!({})).expect("demo project");
+    let (tx, rx) = channel();
+    let mut app = FilmcraftApp::new(session).with_control(rx);
+    let reveals = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let counter = reveals.clone();
+    app.hooks.open_path = Some(Box::new(move |_, _| Err(format!("cannot reveal ({})", counter.fetch_add(1, std::sync::atomic::Ordering::SeqCst) + 1))));
+    let harness = Harness::builder().with_size(egui::vec2(W, H)).with_max_steps(10_000).build_eframe(move |_cc| app);
+    let mut d = Driver { harness, tx };
+    d.frames(4);
+    let run = |d: &mut Driver, action: &str| {
+        let job = d.exec("bashcut.plugins.run", json!({"plugin": "test.toast", "action": action}))["job"].as_u64().expect("a job");
+        for _ in 0..1000 {
+            if d.exec("bashcut.plugins.job", json!({"job": job}))["state"] != json!("running") {
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(20));
+        }
+        d.frames(3);
+        job
+    };
+    // the toasts on screen as (id, label), after a few frames at most for `want` of them
+    let toasts = |d: &mut Driver, want: usize| {
+        let mut got = Vec::new();
+        for _ in 0..20 {
+            let v = d.ok("ui.elements", json!({"prefix": "bashcut.toast."}));
+            got = v
+                .as_array()
+                .unwrap()
+                .iter()
+                .filter_map(|e| {
+                    e["id"].as_str().filter(|id| id.matches('.').count() == 2).map(|id| (id.to_string(), e["label"].as_str().unwrap_or_default().to_string()))
+                })
+                .collect::<Vec<_>>();
+            if got.len() == want {
+                break;
+            }
+            d.frames(1);
+        }
+        got
+    };
+
+    let good = run(&mut d, "good");
+    let j = d.exec("bashcut.plugins.job", json!({"job": good}));
+    assert_eq!(j["state"], json!("succeeded"), "{j}");
+    let shown = toasts(&mut d, 1);
+    assert_eq!(shown.len(), 1, "{shown:?}");
+    assert_eq!(shown[0].0, format!("bashcut.toast.{good}"));
+    assert!(shown[0].1.starts_with('✓') && shown[0].1.ends_with("finished"), "{shown:?}");
+    d.frames(5);
+    assert_eq!(toasts(&mut d, 1).len(), 1, "once per run");
+    d.click(&format!("bashcut.toast.{good}.dismiss"));
+    assert!(toasts(&mut d, 0).is_empty());
+    d.frames(5);
+    assert!(toasts(&mut d, 0).is_empty(), "a dismissed toast stays gone");
+
+    d.exec("bashcut.ui.setLanguage", json!({"language": "vi"}));
+    let bad = run(&mut d, "bad");
+    let shown = toasts(&mut d, 1);
+    assert_eq!(shown.len(), 1, "{shown:?}");
+    assert!(shown[0].1.starts_with('✕') && shown[0].1.ends_with("bị lỗi"), "{shown:?}");
+    assert!(d.has(&format!("bashcut.toast.{bad}.show")));
+    d.click(&format!("bashcut.toast.{bad}.show"));
+    d.frames(2);
+    assert_eq!(d.state()["open"], json!("runs"), "Show opens Runs");
+    assert!(d.has(&format!("bashcut.runs.{bad}")), "on that run");
+    assert!(toasts(&mut d, 0).is_empty());
+    d.exec("bashcut.ui.setLanguage", json!({"language": null}));
+
+    // with Runs open, a finished run does not toast
+    let seen = run(&mut d, "good");
+    d.frames(3);
+    assert!(toasts(&mut d, 0).is_empty());
+
+    // Runs' status line: ✕ hides it, a new message brings it back
+    let status = |d: &mut Driver| {
+        d.ok("ui.elements", json!({"prefix": "bashcut.runs.status"}))
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|e| e["id"] == json!("bashcut.runs.status"))
+            .map(|e| e["label"].as_str().unwrap_or_default().to_string())
+    };
+    d.click(&format!("bashcut.runs.{seen}.reveal.0"));
+    assert_eq!(status(&mut d).as_deref(), Some("cannot reveal (1)"));
+    d.click("bashcut.runs.status.dismiss");
+    assert_eq!(status(&mut d), None);
+    d.frames(5);
+    assert_eq!(status(&mut d), None, "stays dismissed while the message is the same");
+    d.click(&format!("bashcut.runs.{seen}.reveal.0"));
+    assert_eq!(status(&mut d).as_deref(), Some("cannot reveal (2)"), "a new message comes back");
+    assert!(d.harness.state().ui_error.is_none(), "{:?}", d.harness.state().ui_error);
+    let _ = std::fs::remove_dir_all(&data);
+}

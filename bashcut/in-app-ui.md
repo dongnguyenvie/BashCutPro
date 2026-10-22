@@ -187,6 +187,16 @@ and no registry (and no check made yet), it checks the registry once; the line u
 (`bashcut.plugins.registry.status`) says "Checking the registry…", "N plugins available" / "All plugins are installed",
 or "Could not check …", with the registry location as its tooltip.
 
+Finished-run toasts and dismissable status lines (RN1, `bashcut_ui/toast.rs`, audit X3): a plugin run
+(`JobKind::Run`) that ends while Runs is not on screen (not docked or popped out, rail hidden, or not Edit mode)
+gets one toast, "✓ <run title> finished" or "✕ <run title> failed" (`bashcut.toast.<job>`), with **Show**
+(`….show`: opens Runs, which outlines that run in the accent colour and scrolls to it) and ✕ (`….dismiss`). Toasts
+are a foreground `egui::Area` at the bottom right, left of the rail, at most 3, each for 8 s; opening Runs clears
+them. No upstream hook: upstream's `FilmcraftApp::toast` is one string without buttons. **Decision:** cancelled runs,
+installs and registry checks do not toast (the canceller knows; installs show under their row). The panel-top status
+lines of Plugins and Runs (`bashcut.plugins.status`, `bashcut.runs.status`) go through `toast::status_line`: a ✕
+(`….status.dismiss`) hides the line until its message changes or the status clears and comes back.
+
 Built in #52 (P): `bashcut_ui/palette.rs`, a foreground `egui::Area` drawn at the end of `layout` in every mode.
 Cmd/Ctrl+Shift+P (`bashcut.palette.open`, Window ▸ BashCutPro ▸ Command Palette…) opens it; Cmd/Ctrl+K stays
 upstream's Add Edit. Items: engine and UI commands (live shortcut and enabled state), `bashcut.*` commands, plugin
