@@ -194,6 +194,41 @@ fn vietnamese_strings() {
     d.exec("bashcut.ui.setLanguage", json!({"language": null}));
 }
 
+/// Window ▸ BashCutPro ▸ Language: three checked items that switch the panels at once (UX11).
+#[test]
+fn language_menu_switches_and_checks_the_current_language() {
+    let checked = || {
+        let items = filmcraft_ui_egui::menus::default_menu_items();
+        let mine: Vec<_> = items.into_iter().filter(|i| i.id.starts_with("bashcut.ui.setLanguage.")).collect();
+        assert_eq!(mine.len(), 3, "Follow App, English, Tiếng Việt");
+        let on: Vec<String> = mine.iter().filter(|i| i.checked == Some(true)).map(|i| i.id.clone()).collect();
+        assert_eq!(on.len(), 1, "one check: {on:?}");
+        (on[0].clone(), mine)
+    };
+    let mut d = Driver::demo();
+    d.click("bashcut.rail.plugins");
+    let (on, mine) = checked();
+    assert_eq!(on, "bashcut.ui.setLanguage.follow");
+    assert!(mine.iter().all(|i| i.path == ["Window", "BashCutPro", "Language"]), "{:?}", mine[0].path);
+
+    d.exec("bashcut.ui.setLanguage.vi", json!({}));
+    let v = d.ok("ui.elements", json!({"prefix": "bashcut.panel.title"}));
+    assert_eq!(v[0]["label"], json!("Plugin"), "the open panel switched");
+    assert_eq!(d.state()["language"], json!("vi"), "saved in the rail state");
+    let (on, mine) = checked();
+    assert_eq!(on, "bashcut.ui.setLanguage.vi");
+    assert!(mine.iter().all(|i| i.path == ["Window", "BashCutPro", "Ngôn ngữ"]), "the submenu reads in Vietnamese");
+    assert!(mine.iter().any(|i| i.label == "Theo ứng dụng"));
+
+    d.exec("bashcut.ui.setLanguage.en", json!({}));
+    assert_eq!(checked().0, "bashcut.ui.setLanguage.en");
+    let v = d.ok("ui.elements", json!({"prefix": "bashcut.panel.title"}));
+    assert_eq!(v[0]["label"], json!("Plugins"));
+    d.exec("bashcut.ui.setLanguage.follow", json!({}));
+    assert_eq!(checked().0, "bashcut.ui.setLanguage.follow");
+    assert_eq!(d.state()["language"], json!(null));
+}
+
 #[test]
 fn plugins_and_runs_sections_draw_and_commands_answer() {
     let mut d = Driver::demo();
