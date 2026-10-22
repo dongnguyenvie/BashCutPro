@@ -1,5 +1,5 @@
 //! Batch presets: saved pipelines in `<data dir>/bashcut/batch-presets/<name>.json`. The data dir
-//! is FilmCraft's (`FILMCRAFT_DATA_DIR`, else the platform's application-data folder), so presets
+//! is BashCutPro's (`bashcut_dirs`: `BASHCUTPRO_DATA_DIR` / `FILMCRAFT_DATA_DIR`, else its own per-user folder), so presets
 //! sit next to the user's export presets. A preset's relative paths resolve against the working
 //! folder when it runs; `run --input` / `--projects` replace its inputs and projects folder.
 
@@ -7,19 +7,9 @@ use crate::book::write_atomic;
 use crate::pipeline::{self, Pipeline};
 use std::path::{Path, PathBuf};
 
-/// FilmCraft's data directory, as the engine finds it (portable installs aside).
+/// BashCutPro's data directory (`bashcut_dirs::data_dir`: its own folder next to FilmCraft's).
 pub fn default_data_dir() -> Option<PathBuf> {
-    let env = |k: &str| std::env::var_os(k).filter(|v| !v.is_empty()).map(PathBuf::from);
-    if let Some(d) = env("FILMCRAFT_DATA_DIR") {
-        return Some(d);
-    }
-    if cfg!(target_os = "macos") {
-        return env("HOME").map(|h| h.join("Library/Application Support/FilmCraft"));
-    }
-    if cfg!(windows) {
-        return env("APPDATA").map(|h| h.join("FilmCraft"));
-    }
-    env("XDG_DATA_HOME").map(|d| d.join("filmcraft")).or_else(|| env("HOME").map(|h| h.join(".local/share/filmcraft")))
+    bashcut_dirs::data_dir()
 }
 
 pub fn presets_dir(data_dir: &Path) -> PathBuf {

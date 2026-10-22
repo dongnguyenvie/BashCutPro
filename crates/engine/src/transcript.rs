@@ -31,6 +31,7 @@ fn spec(id: &'static str, label: &'static str, menu: &'static [&'static str], pa
 
 /// Where downloaded speech models live (`<data dir>/models`).
 pub fn models_dir() -> Option<std::path::PathBuf> {
+    bashcut_dirs::models_dir_first!(); // BashCutPro: ours, else FilmCraft's models in place (bashcut/rebrand.md)
     crate::autosave::default_data_dir().map(|d| d.join("models"))
 }
 

@@ -6,7 +6,7 @@
 //! - [`roots`]: where an agent may write (the project's folder and `BASHCUTPRO_ROOTS`).
 //! - [`guard`]: checks MCP `tools/call` requests for writes outside those roots.
 //!
-//! No workspace dependencies; `apps/bashcut-mcp` puts it together.
+//! Only workspace dependency: `bashcut-dirs`; `apps/bashcut-mcp` puts it together.
 
 pub mod automation;
 pub mod guard;
@@ -15,20 +15,10 @@ pub mod roots;
 
 use std::path::PathBuf;
 
-/// FilmCraft's data directory, as the engine finds it (`FILMCRAFT_DATA_DIR`, else the platform's
-/// application-data folder; a portable install passes `--data-dir`).
+/// BashCutPro's data directory, as the engine finds it (`bashcut_dirs::data_dir`; a portable
+/// install passes `--data-dir`).
 pub fn default_data_dir() -> Option<PathBuf> {
-    let env = |k: &str| std::env::var_os(k).filter(|v| !v.is_empty()).map(PathBuf::from);
-    if let Some(d) = env("FILMCRAFT_DATA_DIR") {
-        return Some(d);
-    }
-    if cfg!(target_os = "macos") {
-        return env("HOME").map(|h| h.join("Library/Application Support/FilmCraft"));
-    }
-    if cfg!(windows) {
-        return env("APPDATA").map(|h| h.join("FilmCraft"));
-    }
-    env("XDG_DATA_HOME").map(|d| d.join("filmcraft")).or_else(|| env("HOME").map(|h| h.join(".local/share/filmcraft")))
+    bashcut_dirs::data_dir()
 }
 
 /// Whether a process with this id runs (best effort: `kill -0` on Unix, `tasklist` on Windows).

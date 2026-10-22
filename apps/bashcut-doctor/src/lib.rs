@@ -121,19 +121,12 @@ impl Report {
     }
 }
 
-/// FilmCraft's data directory, as the app finds it: `FILMCRAFT_DATA_DIR`, else the per-user folder.
+/// BashCutPro's data directory, as the app finds it (`bashcut_dirs`: `BASHCUTPRO_DATA_DIR` /
+/// `FILMCRAFT_DATA_DIR`, a portable install, else its own per-user folder next to FilmCraft's).
 pub fn data_dir(env: &dyn Env) -> Option<PathBuf> {
-    if let Some(d) = env.var("FILMCRAFT_DATA_DIR") {
-        return Some(PathBuf::from(d));
-    }
-    match env.os() {
-        "macos" => env.var("HOME").map(|h| PathBuf::from(h).join("Library/Application Support/FilmCraft")),
-        "windows" => env.var("APPDATA").map(|a| PathBuf::from(a).join("FilmCraft")),
-        _ => env
-            .var("XDG_DATA_HOME")
-            .map(|d| PathBuf::from(d).join("filmcraft"))
-            .or_else(|| env.var("HOME").map(|h| PathBuf::from(h).join(".local/share/filmcraft"))),
-    }
+    let var = |k: &str| env.var(k);
+    let exe_dir = std::env::current_exe().ok().and_then(|e| e.parent().map(Path::to_path_buf));
+    bashcut_dirs::Host { var: &var, os: env.os(), exe_dir }.data_dir()
 }
 
 fn home(env: &dyn Env) -> Option<PathBuf> {

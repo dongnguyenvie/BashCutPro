@@ -24,7 +24,7 @@ In a batch, choose the profile under **Outputs** ([Batch](batch.md)). The palett
 
 ## Your own profiles
 
-A profile is a small JSON file. Put yours in `<data folder>/bashcut/profiles/` (the data folder is FilmCraft's:
-`~/Library/Application Support/FilmCraft` on a Mac, `%APPDATA%\FilmCraft` on Windows, `~/.local/share/filmcraft` on
+A profile is a small JSON file. Put yours in `<data folder>/bashcut/profiles/` (the data folder is BashCutPro's:
+`~/Library/Application Support/BashCutPro` on a Mac, `%APPDATA%\BashCutPro` on Windows, `~/.local/share/bashcutpro` on
 Linux). A file with the same `id` as a built-in profile replaces it. Run **Compile Output Profiles to Export Presets**
 again afterwards.

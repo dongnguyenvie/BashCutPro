@@ -1,0 +1,9 @@
+[package]
+name = "bashcut-dirs"
+description = "BashCutPro data folder: its own per-user folder next to FilmCraft's, portable installs, one-time import"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[dependencies]

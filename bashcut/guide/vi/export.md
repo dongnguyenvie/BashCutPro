@@ -24,6 +24,6 @@ Khi chạy hàng loạt, chọn hồ sơ ở **Đầu ra** ([Hàng loạt](batch
 ## Hồ sơ của riêng bạn
 
 Một hồ sơ là một tệp JSON nhỏ. Đặt tệp của bạn trong `<thư mục dữ liệu>/bashcut/profiles/` (thư mục dữ liệu của
-FilmCraft: `~/Library/Application Support/FilmCraft` trên Mac, `%APPDATA%\FilmCraft` trên Windows,
-`~/.local/share/filmcraft` trên Linux). Tệp có cùng `id` với một hồ sơ có sẵn sẽ thay hồ sơ đó. Sau đó chạy lại
+BashCutPro: `~/Library/Application Support/BashCutPro` trên Mac, `%APPDATA%\BashCutPro` trên Windows,
+`~/.local/share/bashcutpro` trên Linux). Tệp có cùng `id` với một hồ sơ có sẵn sẽ thay hồ sơ đó. Sau đó chạy lại
 **Compile Output Profiles to Export Presets**.

@@ -519,6 +519,7 @@ dependencies = [
 name = "bashcut-batch"
 version = "0.10.0"
 dependencies = [
+ "bashcut-dirs",
  "serde",
  "serde_json",
 ]
@@ -539,14 +540,20 @@ version = "0.10.0"
 name = "bashcut-connect"
 version = "0.10.0"
 dependencies = [
+ "bashcut-dirs",
  "serde",
  "serde_json",
 ]
 
 [[package]]
+name = "bashcut-dirs"
+version = "0.10.0"
+
+[[package]]
 name = "bashcut-doctor"
 version = "0.10.0"
 dependencies = [
+ "bashcut-dirs",
  "serde_json",
  "sha2",
 ]
@@ -1977,6 +1984,7 @@ name = "filmcraft-engine"
 version = "0.10.0"
 dependencies = [
  "bashcut-analysis",
+ "bashcut-dirs",
  "craft-docpath",
  "filmcraft-audio-dsp",
  "filmcraft-captions",

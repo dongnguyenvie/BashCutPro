@@ -3,6 +3,24 @@
 Newest first. Each entry: what was decided, why, and what it rules out. Add an entry when the owner
 decides something; don't change an old one, add a new one that supersedes it.
 
+## 2026-10-22: BashCutPro has its own data folder (SB1)
+
+- **Decided:** BashCutPro keeps its state in `BashCutPro` (macOS `~/Library/Application Support`, Windows
+  `%APPDATA%`) or `bashcutpro` (XDG), not FilmCraft's folder, so both apps install side by side without sharing
+  state. One crate, `bashcut-dirs`, answers for the engine (one-line hook in `autosave::default_data_dir`; the
+  engine's own unit tests still see upstream's folder), `bashcut-batch`, `bashcut-connect` and `bashcut-doctor`.
+  `BASHCUTPRO_DATA_DIR` overrides, `FILMCRAFT_DATA_DIR` still works (scripts and the kit set it), and upstream's
+  portable rule stays (#139: `portable.txt` next to the exe means `<exe dir>/data`, never `%APPDATA%`).
+- **One-time import:** the first time our folder is asked for and does not exist while FilmCraft's does, we copy
+  `preferences.json` (settings and recent projects), `export-presets.json`, `bashcut/` (without the open window's
+  `automation.json`) and `bashcut-plugins/`, and write `bashcut/imported-from-filmcraft.txt` (the log; never runs
+  twice). Not copied: `Auto-Save`, `Recovery`, `Logs`, graphics state and `models`.
+- **Models:** `transcript::models_dir` (hook) uses our `models` folder when it exists, else FilmCraft's in place
+  (no duplicate gigabytes). Folder-level, not per file: while it falls back, a newly downloaded model lands in
+  FilmCraft's folder too.
+- **Why:** owner decision 2026-10-22. eframe's app name stays "FilmCraft": the build has no eframe persistence, so
+  it stores nothing under that name.
+
 ## 2026-10-23: Delete upstream's CodeRabbit and SonarCloud config
 
 - **Decided:** remove `.coderabbit.yaml`, `sonar-project.properties` and `.github/workflows/sonarcloud.yml`, recorded
