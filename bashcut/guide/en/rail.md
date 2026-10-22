@@ -32,12 +32,16 @@ Plugins are small programs that run beside the app and bring their results in as
 
 ![The Plugins section with two plugins installed](../img/plugins.png)
 
-1. Open **Plugins** and press **Check registry** to see what is available.
-2. **Install** the ones you want. Most need Python 3.9 or newer on the computer.
+1. Open **Plugins**: the first time, it checks the registry by itself and lists what is available (**Refresh** checks
+   again; hover "N plugins available" to see where the list comes from).
+2. **Install** the ones you want (the button says **Installing…** until it is done). Most need Python 3.9 or newer on
+   the computer.
 3. Open a plugin's **Settings** to fill in its options. API keys are kept in your system's key store (Keychain,
    Windows Credential Manager…), never in a file.
 4. Each **action** has a small form; **Run** starts it. Actions that edit the open project need the app to have been
    started with its control channel (see [Troubleshooting](troubleshooting.md)).
+5. The plugin's card then shows how the run goes: **Running 40 %**, **Done** or **Failed:** and the reason. **Open in
+   Runs** shows its log; **✕** hides the line.
 
 Removing a plugin also forgets its stored keys.
 

@@ -20,7 +20,6 @@ Available	Có thể cài
 No plugins installed yet.	Chưa cài plugin nào.
 Check registry	Kiểm tra kho plugin
 Refresh	Làm mới
-Checking {location}…	Đang kiểm tra {location}…
 Registry: {location}	Kho plugin: {location}
 No data folder in this session: plugins cannot be installed.	Phiên này không có thư mục dữ liệu: không thể cài plugin.
 Install	Cài đặt
@@ -36,7 +35,6 @@ Save settings	Lưu cài đặt
 Saved settings of {plugin}	Đã lưu cài đặt của {plugin}
 uses the open project	dùng dự án đang mở
 Run	Chạy
-Started run {job}	Đã bắt đầu lượt chạy {job}
 Nothing has run yet.	Chưa có gì chạy.
 Clear finished	Xóa mục đã xong
 Cancel	Hủy
@@ -208,3 +206,15 @@ Python 3 was not found: install Python 3.9 or newer, then run the action again.	
 Claude Code was not found: install it and sign in (run claude in a terminal), then try again.	Không tìm thấy Claude Code: hãy cài rồi đăng nhập (chạy claude trong terminal), sau đó thử lại.
 The BashCutPro engine (bashcutpro or filmcraft-cli) was not found next to the app: reinstall BashCutPro or build it.	Không tìm thấy bộ máy BashCutPro (bashcutpro hoặc filmcraft-cli) cạnh ứng dụng: hãy cài lại hoặc build lại BashCutPro.
 This action edits the open project, so it needs the control channel: start BashCutPro with --control 9876.	Thao tác này sửa dự án đang mở nên cần kênh điều khiển: hãy mở BashCutPro kèm --control 9876.
+# run outcome in the plugin card (UX5)
+Running…	Đang chạy…
+Running {percent} %	Đang chạy {percent} %
+Failed: {error}	Lỗi: {error}
+Open in Runs	Mở trong Tác vụ
+Dismiss	Ẩn
+Installing…	Đang cài…
+Updating…	Đang cập nhật…
+Checking the registry…	Đang kiểm tra kho plugin…
+{n} plugins available	Có {n} plugin
+1 plugin available	Có 1 plugin
+All plugins are installed	Đã cài hết các plugin
