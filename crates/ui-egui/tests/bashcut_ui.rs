@@ -3,7 +3,9 @@
 
 #![allow(dead_code)]
 
+use std::path::Path;
 use std::sync::mpsc::{Sender, channel};
+use std::time::Duration;
 
 use egui_kittest::Harness;
 use filmcraft_engine::Session;
@@ -13,6 +15,8 @@ use serde_json::{Value, json};
 
 const W: f32 = 1600.0;
 const H: f32 = 980.0;
+/// Upper bound of [`Driver::wait`]: about a minute even on a loaded machine running tests in parallel.
+const WAIT_TRIES: usize = 3000;
 
 struct Driver {
     harness: Harness<'static, FilmcraftApp>,
@@ -25,6 +29,36 @@ impl Driver {
         session.execute("file.openDemoProject", json!({})).expect("demo project");
         let (tx, rx) = channel();
         let app = FilmcraftApp::new(session).with_control(rx);
+        let harness = Harness::builder().with_size(egui::vec2(W, H)).with_max_steps(10_000).build_eframe(move |_cc| app);
+        let mut d = Driver { harness, tx };
+        d.frames(4);
+        d
+    }
+
+    /// A session saving into `data` (so plugins install there) with the demo project open,
+    /// `setup` applied to the app, and the registry pointed at an empty `data/registry.json`
+    /// (`bashcut.plugins.registry {location}`) before anything draws: Plugins' first-open check
+    /// reads that file and nothing goes to the network.
+    fn with_data(data: &Path, setup: impl FnOnce(&mut FilmcraftApp)) -> Self {
+        let mut d = Self::with_env_registry(data, setup);
+        std::fs::create_dir_all(data).unwrap();
+        let path = data.join("registry.json");
+        std::fs::write(&path, json!({"schema": "bashcut-registry/1", "name": "test", "plugins": []}).to_string()).unwrap();
+        d.exec("bashcut.plugins.registry", json!({"location": path.to_string_lossy()}));
+        let at = d.exec("bashcut.plugins.list", json!({}))["location"].clone();
+        assert!(at.as_str().is_some_and(|l| l.starts_with(&*path.to_string_lossy())), "the registry is the local file: {at}");
+        d
+    }
+
+    /// Like [`Driver::with_data`] but the registry is whatever `BASHCUT_PLUGIN_REGISTRY` names;
+    /// only for a test that sets it to a local file (a child test process, never the network).
+    fn with_env_registry(data: &Path, setup: impl FnOnce(&mut FilmcraftApp)) -> Self {
+        let mut session = Session::default();
+        session.start_autosave(filmcraft_engine::autosave::AutosaveConfig::new(data)).expect("data dir");
+        session.execute("file.openDemoProject", json!({})).expect("demo project");
+        let (tx, rx) = channel();
+        let mut app = FilmcraftApp::new(session).with_control(rx);
+        setup(&mut app);
         let harness = Harness::builder().with_size(egui::vec2(W, H)).with_max_steps(10_000).build_eframe(move |_cc| app);
         let mut d = Driver { harness, tx };
         d.frames(4);
@@ -83,6 +117,38 @@ impl Driver {
 
     fn state(&mut self) -> Value {
         self.exec("bashcut.ui.state", json!({}))
+    }
+
+    /// The automation entry `id` (`Value::Null` when it is not on screen).
+    fn element(&mut self, id: &str) -> Value {
+        let v = self.ok("ui.elements", json!({"prefix": id}));
+        v.as_array().and_then(|a| a.iter().find(|e| e["id"] == json!(id)).cloned()).unwrap_or(Value::Null)
+    }
+
+    /// Read `read` until `done` holds for it, a frame (plus 10 ms for background threads and child
+    /// processes) between tries, at most [`WAIT_TRIES`] times; the last value comes back either way,
+    /// so the caller's assert shows what was there. Every wait on async state goes through here.
+    fn wait(&mut self, mut read: impl FnMut(&mut Self) -> Value, done: impl Fn(&Value) -> bool) -> Value {
+        let mut v = read(self);
+        for _ in 0..WAIT_TRIES {
+            if done(&v) {
+                break;
+            }
+            self.frames(1);
+            std::thread::sleep(Duration::from_millis(10));
+            v = read(self);
+        }
+        v
+    }
+
+    /// The entry `id` once `done` holds for it (see [`Driver::wait`]).
+    fn wait_element(&mut self, id: &str, done: impl Fn(&Value) -> bool) -> Value {
+        self.wait(|d| d.element(id), done)
+    }
+
+    /// Plugin job `job` once it is no longer running.
+    fn wait_job(&mut self, job: u64) -> Value {
+        self.wait(|d| d.exec("bashcut.plugins.job", json!({"job": job})), |j| j["state"] != json!("running"))
     }
 }
 
@@ -290,7 +356,7 @@ fn agent_section_draws_and_gates_show_as_cards() {
     std::fs::create_dir_all(&side).unwrap();
     std::fs::write(side.join("plan.json"), r#"{"gates":[{"stage":"rough cut","summary":"9 clips","evidence":["cut list"],"state":"pending"}]}"#).unwrap();
     d.harness.state_mut().session.path = Some(project.to_string_lossy().into_owned());
-    d.frames(3);
+    d.wait_element("bashcut.gate.approve", |e| !e.is_null());
     assert!(d.has("bashcut.gate.approve"), "gate card");
     assert!(d.has("bashcut.gate.change"));
     assert_eq!(d.exec("bashcut.agent.gate", json!({}))["stage"], json!("rough cut"));
@@ -402,23 +468,14 @@ fn batch_section_runs_a_batch_with_a_fake_cli() {
     assert!(d.has("bashcut.batch.step.0"), "step row");
     assert!(d.has("bashcut.batch.output.0.remove"), "output row");
 
-    let finished = |d: &mut Driver| {
-        for _ in 0..600 {
-            let st = d.exec("bashcut.batch.state", json!({}));
-            if st["running"] == json!(false) {
-                return st;
-            }
-            std::thread::sleep(std::time::Duration::from_millis(50));
-        }
-        panic!("the batch did not finish");
-    };
+    let finished = |d: &mut Driver| d.wait(|d| d.exec("bashcut.batch.state", json!({})), |st| st["running"] == json!(false));
     d.exec("bashcut.batch.run", json!({"cli": cli}));
     let st = finished(&mut d);
     assert_eq!(st["counts"]["done"], json!(1), "{st}");
     assert_eq!(st["counts"]["failed"], json!(1), "{st}");
     let b = st["items"].as_array().unwrap().iter().find(|i| i["name"] == json!("b")).unwrap().clone();
     assert_eq!(b["status"], json!("failed"), "{b}");
-    d.frames(3);
+    d.wait_element("bashcut.batch.item.b.error", |e| !e.is_null());
     assert!(d.has("bashcut.batch.item.b.error"), "the failure is shown");
     assert!(d.has("bashcut.batch.item.b.retry"), "retry on the failed item");
     assert!(d.has("bashcut.batch.item.a.reveal"));
@@ -497,30 +554,15 @@ fn a_plugin_view_draws_its_rows_and_buttons_run_actions() {
     });
     std::fs::write(plugin.join("bashcut-plugin.json"), manifest.to_string()).unwrap();
 
-    let mut session = Session::default();
-    session.start_autosave(filmcraft_engine::autosave::AutosaveConfig::new(&data)).expect("data dir");
-    session.execute("file.openDemoProject", json!({})).expect("demo project");
-    let (tx, rx) = channel();
-    let app = FilmcraftApp::new(session).with_control(rx);
-    let harness = Harness::builder().with_size(egui::vec2(W, H)).with_max_steps(10_000).build_eframe(move |_cc| app);
-    let mut d = Driver { harness, tx };
-    d.frames(4);
-    offline_registry(&mut d, &data);
+    let mut d = Driver::with_data(&data, |_| {});
 
     assert_eq!(d.exec("bashcut.plugins.view", json!({"plugin": "test.views"})), Value::Null);
     d.exec("bashcut.plugins.run", json!({"plugin": "test.views", "action": "review"}));
-    let mut shown = Value::Null;
-    for _ in 0..600 {
-        shown = d.exec("bashcut.plugins.view", json!({"plugin": "test.views"}));
-        if !shown.is_null() {
-            break;
-        }
-        std::thread::sleep(std::time::Duration::from_millis(20));
-    }
+    let shown = d.wait(|d| d.exec("bashcut.plugins.view", json!({"plugin": "test.views"})), |v| !v.is_null());
     assert_eq!(shown["view"]["rows"].as_array().map(Vec::len), Some(8), "{shown}");
     let review = shown["job"].as_u64().unwrap();
     assert_eq!(d.state()["open"], json!("plugins"), "a view action opens its plugin's card");
-    d.frames(3);
+    d.wait_element("bashcut.view.test.views.row7", |e| !e.is_null());
     for id in [
         "bashcut.view.test.views.title",
         "bashcut.view.test.views.row0",
@@ -541,14 +583,7 @@ fn a_plugin_view_draws_its_rows_and_buttons_run_actions() {
     let runs = d.exec("bashcut.plugins.runs", json!({}));
     let accept = runs.as_array().unwrap().iter().filter_map(|r| r["id"].as_u64()).max().unwrap();
     assert_ne!(accept, review, "the click started a run");
-    let mut job = Value::Null;
-    for _ in 0..600 {
-        job = d.exec("bashcut.plugins.job", json!({"job": accept}));
-        if job["state"] != json!("running") {
-            break;
-        }
-        std::thread::sleep(std::time::Duration::from_millis(20));
-    }
+    let job = d.wait_job(accept);
     assert_eq!(job["state"], json!("succeeded"), "{job}");
     assert_eq!(job["outcome"]["result"]["data"]["args"], json!(["--lang", "vi", "--item", "c2"]));
     // the control channel presses buttons with its own values
@@ -590,30 +625,17 @@ fn plugin_action_forms_follow_the_manifest() {
     });
     std::fs::write(plugin.join("bashcut-plugin.json"), manifest.to_string()).unwrap();
 
-    let mut session = Session::default();
-    session.start_autosave(filmcraft_engine::autosave::AutosaveConfig::new(&data)).expect("data dir");
-    session.execute("file.openDemoProject", json!({})).expect("demo project");
-    let (tx, rx) = channel();
-    let mut app = FilmcraftApp::new(session).with_control(rx);
-    app.hooks.pick_files = Some(Box::new(|_| vec!["/tmp/answer.json".to_string()]));
-    let harness = Harness::builder().with_size(egui::vec2(W, H)).with_max_steps(10_000).build_eframe(move |_cc| app);
-    let mut d = Driver { harness, tx };
-    d.frames(4);
-    offline_registry(&mut d, &data);
+    let mut d = Driver::with_data(&data, |app| app.hooks.pick_files = Some(Box::new(|_| vec!["/tmp/answer.json".to_string()])));
 
     d.click("bashcut.rail.plugins");
     d.click("bashcut.plugins.test.forms");
     d.click("bashcut.plugins.test.forms.action.go");
-    let label = |d: &mut Driver, id: &str| -> Value {
-        let v = d.ok("ui.elements", json!({"prefix": id}));
-        v.as_array().and_then(|a| a.iter().find(|e| e["id"] == json!(id)).cloned()).unwrap_or(Value::Null)
-    };
     let param = "bashcut.plugins.test.forms.action.go.param";
-    assert_eq!(label(&mut d, &format!("{param}.target"))["label"], json!("Target"));
-    assert_eq!(label(&mut d, &format!("{param}.maxCps"))["label"], json!("Max cps"));
-    assert_eq!(label(&mut d, &format!("{param}.out_dir"))["label"], json!("Save to"), "a title wins over the id");
+    assert_eq!(d.element(&format!("{param}.target"))["label"], json!("Target"));
+    assert_eq!(d.element(&format!("{param}.maxCps"))["label"], json!("Max cps"));
+    assert_eq!(d.element(&format!("{param}.out_dir"))["label"], json!("Save to"), "a title wins over the id");
     // `answer` is required and empty: Run waits for it
-    assert_eq!(label(&mut d, "bashcut.plugins.test.forms.go.run")["enabled"], json!(false));
+    assert_eq!(d.element("bashcut.plugins.test.forms.go.run")["enabled"], json!(false));
     // an integer field takes no letters
     d.click(&format!("{param}.maxCps"));
     d.ok("ui.type", json!({"text": "abc"}));
@@ -621,19 +643,12 @@ fn plugin_action_forms_follow_the_manifest() {
     d.frames(3);
     // Browse… fills the path (the picker answers in a later frame)
     d.click(&format!("{param}.answer.browse"));
-    d.frames(3);
-    assert_eq!(label(&mut d, "bashcut.plugins.test.forms.go.run")["enabled"], json!(true), "the path was filled");
+    let run = d.wait_element("bashcut.plugins.test.forms.go.run", |e| e["enabled"] == json!(true));
+    assert_eq!(run["enabled"], json!(true), "the path was filled");
     d.click("bashcut.plugins.test.forms.go.run");
     let runs = d.exec("bashcut.plugins.runs", json!({}));
     let id = runs.as_array().unwrap().iter().filter_map(|r| r["id"].as_u64()).max().expect("a run started");
-    let mut job = Value::Null;
-    for _ in 0..600 {
-        job = d.exec("bashcut.plugins.job", json!({"job": id}));
-        if job["state"] != json!("running") {
-            break;
-        }
-        std::thread::sleep(std::time::Duration::from_millis(20));
-    }
+    let job = d.wait_job(id);
     assert_eq!(job["state"], json!("succeeded"), "{job}");
     let args = job["outcome"]["result"]["data"]["args"].clone();
     assert_eq!(args, json!(["go", "--target", "vi", "--max-cps", "17", "--answer", "/tmp/answer.json"]), "{job}");
@@ -668,30 +683,18 @@ fn plugins_say_the_control_channel_is_off_and_errors_read_as_sentences() {
     });
     std::fs::write(plugin.join("bashcut-plugin.json"), manifest.to_string()).unwrap();
 
-    let mut session = Session::default();
-    session.start_autosave(filmcraft_engine::autosave::AutosaveConfig::new(&data)).expect("data dir");
-    session.execute("file.openDemoProject", json!({})).expect("demo project");
-    let (tx, rx) = channel();
-    let app = FilmcraftApp::new(session).with_control(rx);
-    let harness = Harness::builder().with_size(egui::vec2(W, H)).with_max_steps(10_000).build_eframe(move |_cc| app);
-    let mut d = Driver { harness, tx };
-    d.frames(4);
-    offline_registry(&mut d, &data);
-    let element = |d: &mut Driver, id: &str| -> Value {
-        let v = d.ok("ui.elements", json!({"prefix": id}));
-        v.as_array().and_then(|a| a.iter().find(|e| e["id"] == json!(id)).cloned()).unwrap_or(Value::Null)
-    };
+    let mut d = Driver::with_data(&data, |_| {});
 
     d.click("bashcut.rail.plugins");
-    let setup = element(&mut d, "bashcut.plugins.setup");
+    let setup = d.element("bashcut.plugins.setup");
     assert!(setup["label"].as_str().is_some_and(|l| l.starts_with("Control channel is off")), "{setup}");
     d.click("bashcut.plugins.test.hints");
-    assert_eq!(element(&mut d, "bashcut.plugins.test.hints.action.describe")["enabled"], json!(false), "▶ waits for the channel");
+    assert_eq!(d.element("bashcut.plugins.test.hints.action.describe")["enabled"], json!(false), "▶ waits for the channel");
     assert!(d.has("bashcut.plugins.test.hints.action.describe.blocked"), "the reason sits beside it");
-    assert_eq!(element(&mut d, "bashcut.plugins.test.hints.describe.batch")["enabled"], json!(true), "a batch needs no channel");
+    assert_eq!(d.element("bashcut.plugins.test.hints.describe.batch")["enabled"], json!(true), "a batch needs no channel");
     d.click("bashcut.plugins.test.hints.action.translate");
-    assert_eq!(element(&mut d, "bashcut.plugins.test.hints.translate.run")["enabled"], json!(false), "Run waits for the channel");
-    assert_eq!(element(&mut d, "bashcut.plugins.test.hints.translate.batch")["enabled"], json!(true));
+    assert_eq!(d.element("bashcut.plugins.test.hints.translate.run")["enabled"], json!(false), "Run waits for the channel");
+    assert_eq!(d.element("bashcut.plugins.test.hints.translate.batch")["enabled"], json!(true));
     if let Some(dir) = std::env::var_os("BASHCUT_UI_SHOTS").map(std::path::PathBuf::from) {
         std::fs::create_dir_all(&dir).unwrap();
         for lang in ["en", "vi"] {
@@ -704,7 +707,8 @@ fn plugins_say_the_control_channel_is_off_and_errors_read_as_sentences() {
     // a needs-none action runs, and its spawn error reads as a sentence in its card
     d.click("bashcut.plugins.test.hints.action.check");
     assert!(!d.has("bashcut.plugins.status"), "not at the top of the panel");
-    let status = element(&mut d, "bashcut.plugins.test.hints.last");
+    // the spawn fails on the host's thread: the card says so a frame or more later
+    let status = d.wait_element("bashcut.plugins.test.hints.last", |e| e["label"].as_str().is_some_and(|l| l.starts_with("Failed")));
     let text = status["label"].as_str().unwrap_or_default();
     assert!(text.starts_with("Failed: Python 3 was not found") && text.ends_with("See Troubleshooting."), "{status}");
     assert!(!text.contains("os error"), "{text}");
@@ -743,33 +747,14 @@ fn a_failed_run_shows_its_error_and_retries_and_a_result_path_shows_reveal() {
     });
     std::fs::write(plugin.join("bashcut-plugin.json"), manifest.to_string()).unwrap();
 
-    let mut session = Session::default();
-    session.start_autosave(filmcraft_engine::autosave::AutosaveConfig::new(&data)).expect("data dir");
-    session.execute("file.openDemoProject", json!({})).expect("demo project");
-    let (tx, rx) = channel();
-    let app = FilmcraftApp::new(session).with_control(rx);
-    let harness = Harness::builder().with_size(egui::vec2(W, H)).with_max_steps(10_000).build_eframe(move |_cc| app);
-    let mut d = Driver { harness, tx };
-    d.frames(4);
-    let wait = |d: &mut Driver, job: u64| {
-        let mut j = Value::Null;
-        for _ in 0..600 {
-            j = d.exec("bashcut.plugins.job", json!({"job": job}));
-            if j["state"] != json!("running") {
-                break;
-            }
-            std::thread::sleep(std::time::Duration::from_millis(20));
-        }
-        j
-    };
+    let mut d = Driver::with_data(&data, |_| {});
 
     let failed = d.exec("bashcut.plugins.run", json!({"plugin": "test.runs", "action": "fail", "params": {"word": "hi"}}))["job"].as_u64().unwrap();
-    assert_eq!(wait(&mut d, failed)["state"], json!("failed"));
+    assert_eq!(d.wait_job(failed)["state"], json!("failed"));
     // a run no longer switches to Runs (UX5): open it
     d.click("bashcut.rail.runs");
     assert_eq!(d.state()["open"], json!("runs"));
-    d.frames(3);
-    let error = d.ok("ui.elements", json!({"prefix": format!("bashcut.runs.{failed}.error")}));
+    let error = d.wait_element(&format!("bashcut.runs.{failed}.error"), |e| !e.is_null());
     assert!(error.to_string().contains("no_key: set the API key in settings"), "{error}");
     assert!(d.has(&format!("bashcut.runs.{failed}.copyLog")));
     assert!(!d.has(&format!("bashcut.runs.{failed}.reveal.0")));
@@ -777,26 +762,17 @@ fn a_failed_run_shows_its_error_and_retries_and_a_result_path_shows_reveal() {
     let runs = d.exec("bashcut.plugins.runs", json!({}));
     let again = runs.as_array().unwrap().iter().filter_map(|r| r["id"].as_u64()).max().unwrap();
     assert_ne!(again, failed, "Retry started a new run");
-    let j = wait(&mut d, again);
+    let j = d.wait_job(again);
     assert_eq!(j["kind"], json!({"type": "run", "plugin": "test.runs", "action": "fail"}));
     assert_eq!(j["params"], json!({"word": "hi"}), "the same params");
 
     let made = d.exec("bashcut.plugins.run", json!({"plugin": "test.runs", "action": "make"}))["job"].as_u64().unwrap();
-    assert_eq!(wait(&mut d, made)["state"], json!("succeeded"));
-    d.frames(3);
-    assert!(d.has(&format!("bashcut.runs.{made}.reveal.0")), "data.path shows Reveal");
+    assert_eq!(d.wait_job(made)["state"], json!("succeeded"));
+    let reveal = d.wait_element(&format!("bashcut.runs.{made}.reveal.0"), |e| !e.is_null());
+    assert!(!reveal.is_null(), "data.path shows Reveal");
     assert!(!d.has(&format!("bashcut.runs.{made}.retry")) && !d.has(&format!("bashcut.runs.{made}.error")));
     assert!(d.harness.state().ui_error.is_none(), "{:?}", d.harness.state().ui_error);
     let _ = std::fs::remove_dir_all(&data);
-}
-
-/// Point the host at an empty local registry (`bashcut.plugins.registry {location}`) before
-/// Plugins first draws, so its first-open check does not go to the network.
-fn offline_registry(d: &mut Driver, data: &std::path::Path) {
-    std::fs::create_dir_all(data).unwrap();
-    let path = data.join("registry.json");
-    std::fs::write(&path, json!({"schema": "bashcut-registry/1", "name": "test", "plugins": []}).to_string()).unwrap();
-    d.exec("bashcut.plugins.registry", json!({"location": path.to_string_lossy()}));
 }
 
 /// UX5: the first open of Plugins checks the registry with no click and says how many plugins it
@@ -850,18 +826,7 @@ fn plugin_cards_show_the_last_run_and_install_waits() {
         std::fs::write(plugin.join("bashcut-plugin.json"), manifest.to_string()).unwrap();
     }
 
-    let mut session = Session::default();
-    session.start_autosave(filmcraft_engine::autosave::AutosaveConfig::new(&data)).expect("data dir");
-    session.execute("file.openDemoProject", json!({})).expect("demo project");
-    let (tx, rx) = channel();
-    let app = FilmcraftApp::new(session).with_control(rx);
-    let harness = Harness::builder().with_size(egui::vec2(W, H)).with_max_steps(10_000).build_eframe(move |_cc| app);
-    let mut d = Driver { harness, tx };
-    d.frames(4);
-    let element = |d: &mut Driver, id: &str| -> Value {
-        let v = d.ok("ui.elements", json!({"prefix": id}));
-        v.as_array().and_then(|a| a.iter().find(|e| e["id"] == json!(id)).cloned()).unwrap_or(Value::Null)
-    };
+    let mut d = Driver::with_env_registry(&data, |_| {});
     let jobs = |d: &mut Driver, kind: &str| -> Vec<Value> {
         let runs = d.exec("bashcut.plugins.runs", json!({}));
         runs.as_array().cloned().unwrap_or_default().into_iter().filter(|r| r["kind"]["type"] == json!(kind)).collect()
@@ -870,14 +835,7 @@ fn plugin_cards_show_the_last_run_and_install_waits() {
     // the first open checks the registry by itself, once
     d.exec("bashcut.ui.setLanguage", json!({"language": "en"}));
     d.click("bashcut.rail.plugins");
-    let mut line = Value::Null;
-    for _ in 0..200 {
-        d.frames(1);
-        line = element(&mut d, "bashcut.plugins.registry.status");
-        if line["label"] == json!("2 plugins available") {
-            break;
-        }
-    }
+    let line = d.wait_element("bashcut.plugins.registry.status", |e| e["label"] == json!("2 plugins available"));
     assert_eq!(line["label"], json!("2 plugins available"), "{line}");
     assert!(d.has("bashcut.plugins.test.slow.install"), "the list shows without a click");
     d.click("bashcut.rail.runs");
@@ -888,10 +846,9 @@ fn plugin_cards_show_the_last_run_and_install_waits() {
     d.ok("ui.click", json!({"id": "bashcut.plugins.test.slow.install"}));
     d.frames(1);
     let _ = d.call("ui.click", json!({"id": "bashcut.plugins.test.slow.install"}));
-    d.frames(3);
-    let install = element(&mut d, "bashcut.plugins.test.slow.install");
+    let install = d.wait_element("bashcut.plugins.test.slow.install", |e| e["label"] == json!("Installing…"));
     assert_eq!((install["label"].clone(), install["enabled"].clone()), (json!("Installing…"), json!(false)), "{install}");
-    assert_eq!(element(&mut d, "bashcut.plugins.test.other.install")["enabled"], json!(true), "only that plugin waits");
+    assert_eq!(d.element("bashcut.plugins.test.other.install")["enabled"], json!(true), "only that plugin waits");
     assert_eq!(jobs(&mut d, "install").len(), 1, "one install");
     if let Some(dir) = std::env::var_os("BASHCUT_UI_SHOTS").map(std::path::PathBuf::from) {
         std::fs::create_dir_all(&dir).unwrap();
@@ -907,15 +864,7 @@ fn plugin_cards_show_the_last_run_and_install_waits() {
     if python {
         d.click("bashcut.plugins.test.card");
         d.click("bashcut.plugins.test.card.action.fail");
-        let mut last = Value::Null;
-        for _ in 0..600 {
-            d.frames(1);
-            last = element(&mut d, "bashcut.plugins.test.card.last");
-            if last["label"].as_str().is_some_and(|l| l.starts_with("Failed")) {
-                break;
-            }
-            std::thread::sleep(std::time::Duration::from_millis(10));
-        }
+        let last = d.wait_element("bashcut.plugins.test.card.last", |e| e["label"].as_str().is_some_and(|l| l.starts_with("Failed")));
         assert_eq!(last["label"], json!("Failed: bad_params: no captions in the sequence"), "{last}");
         assert_eq!(d.state()["open"], json!("plugins"), "no switch to Runs");
         assert!(!d.has("bashcut.plugins.status"), "no panel-top status");
@@ -1006,34 +955,13 @@ fn library_added_status_clears_after_a_few_seconds() {
     });
     std::fs::write(plugin.join("bashcut-plugin.json"), manifest.to_string()).unwrap();
 
-    let mut session = Session::default();
-    session.start_autosave(filmcraft_engine::autosave::AutosaveConfig::new(&data)).expect("data dir");
-    session.execute("file.openDemoProject", json!({})).expect("demo project");
-    let (tx, rx) = channel();
-    let app = FilmcraftApp::new(session).with_control(rx);
-    let harness = Harness::builder().with_size(egui::vec2(W, H)).with_max_steps(10_000).build_eframe(move |_cc| app);
-    let mut d = Driver { harness, tx };
-    d.frames(4);
+    let mut d = Driver::with_data(&data, |_| {});
 
     d.exec("bashcut.ui.library.search", json!({"tab": "online", "kind": "music", "query": "calm"}));
-    let mut results = Value::Null;
-    for _ in 0..600 {
-        results = d.exec("bashcut.ui.library.results", json!({}));
-        if results["items"].as_array().is_some_and(|a| !a.is_empty()) {
-            break;
-        }
-        std::thread::sleep(std::time::Duration::from_millis(20));
-    }
+    let results = d.wait(|d| d.exec("bashcut.ui.library.results", json!({})), |r| r["items"].as_array().is_some_and(|a| !a.is_empty()));
     assert_eq!(results["items"][0]["title"], json!("Calm tone"), "{results}");
     d.exec("bashcut.ui.library.add", json!({"index": 0}));
-    let mut status = Value::Null;
-    for _ in 0..600 {
-        status = d.exec("bashcut.ui.library.results", json!({}))["status"].clone();
-        if status.as_str().is_some_and(|s| s.starts_with("Added")) {
-            break;
-        }
-        std::thread::sleep(std::time::Duration::from_millis(20));
-    }
+    let status = d.wait(|d| d.exec("bashcut.ui.library.results", json!({}))["status"].clone(), |s| s.as_str().is_some_and(|s| s.starts_with("Added")));
     assert_eq!(status, json!("Added Calm tone to the project"));
     // the harness steps a quarter second a frame: still shown after 1 s, gone after 7.5 s
     d.frames(4);
@@ -1080,18 +1008,7 @@ fn batch_plugin_steps_edit_as_a_form_and_bad_json_cannot_apply() {
             {"id": "burn", "flag": "--burn", "type": "bool", "optional": true}]}]
     });
     std::fs::write(plugin.join("bashcut-plugin.json"), manifest.to_string()).unwrap();
-    let mut session = Session::default();
-    session.start_autosave(filmcraft_engine::autosave::AutosaveConfig::new(&data)).expect("data dir");
-    session.execute("file.openDemoProject", json!({})).expect("demo project");
-    let (tx, rx) = channel();
-    let app = FilmcraftApp::new(session).with_control(rx);
-    let harness = Harness::builder().with_size(egui::vec2(W, H)).with_max_steps(10_000).build_eframe(move |_cc| app);
-    let mut d = Driver { harness, tx };
-    d.frames(4);
-    let element = |d: &mut Driver, id: &str| -> Value {
-        let v = d.ok("ui.elements", json!({"prefix": id}));
-        v.as_array().and_then(|a| a.iter().find(|e| e["id"] == json!(id)).cloned()).unwrap_or(Value::Null)
-    };
+    let mut d = Driver::with_data(&data, |_| {});
     d.click("bashcut.rail.batch");
     d.exec("bashcut.batch.addStep", json!({"plugin": "test.cap", "action": "translate", "params": {"target": "en", "burn": true}}));
     d.exec("bashcut.batch.addStep", json!({"command": "markers.add", "params": {"name": "Hook"}}));
@@ -1101,11 +1018,11 @@ fn batch_plugin_steps_edit_as_a_form_and_bad_json_cannot_apply() {
     d.click("bashcut.batch.step.0");
     let param = "bashcut.batch.step.0.param";
     assert!(!d.has("bashcut.batch.step.0.json"), "no JSON for a plugin step");
-    assert_eq!(element(&mut d, &format!("{param}.target"))["label"], json!("Target language"));
+    assert_eq!(d.element(&format!("{param}.target"))["label"], json!("Target language"));
     assert!(d.has(&format!("{param}.burn")) && d.has(&format!("{param}.note")));
     d.exec("bashcut.ui.setLanguage", json!({"language": "vi"}));
     d.frames(3);
-    assert_eq!(element(&mut d, &format!("{param}.target"))["label"], json!("Ngôn ngữ đích"), "the label in the UI language");
+    assert_eq!(d.element(&format!("{param}.target"))["label"], json!("Ngôn ngữ đích"), "the label in the UI language");
     if let Some(dir) = std::env::var_os("BASHCUT_UI_SHOTS").map(std::path::PathBuf::from) {
         std::fs::create_dir_all(&dir).unwrap();
         for lang in ["en", "vi"] {
@@ -1128,12 +1045,12 @@ fn batch_plugin_steps_edit_as_a_form_and_bad_json_cannot_apply() {
 
     // the engine step: its signature over the JSON; JSON that doesn't parse can't be applied
     d.click("bashcut.batch.step.1");
-    assert!(element(&mut d, "bashcut.batch.step.1.signature")["label"].as_str().is_some_and(|l| l.contains("name")));
-    assert_eq!(element(&mut d, "bashcut.batch.step.1.apply")["enabled"], json!(true));
+    assert!(d.element("bashcut.batch.step.1.signature")["label"].as_str().is_some_and(|l| l.contains("name")));
+    assert_eq!(d.element("bashcut.batch.step.1.apply")["enabled"], json!(true));
     d.click("bashcut.batch.step.1.json");
     d.ok("ui.type", json!({"text": "}"}));
     d.frames(3);
-    assert_eq!(element(&mut d, "bashcut.batch.step.1.apply")["enabled"], json!(false), "invalid JSON");
+    assert_eq!(d.element("bashcut.batch.step.1.apply")["enabled"], json!(false), "invalid JSON");
     assert!(d.harness.state().ui_error.is_none(), "{:?}", d.harness.state().ui_error);
     let _ = std::fs::remove_dir_all(&data);
 }
@@ -1225,18 +1142,7 @@ fn batch_starts_from_a_preset_and_clears_inputs() {
     // 2026-10-22 UTC
     let recent = json!({"recent": [{"job": data.join("no-job").to_string_lossy(), "name": "promo", "at": 1_792_627_200_000u64, "done": 3, "failed": 1}]});
     std::fs::write(data.join("bashcut").join("batch.json"), recent.to_string()).unwrap();
-    let mut session = Session::default();
-    session.start_autosave(filmcraft_engine::autosave::AutosaveConfig::new(&data)).expect("data dir");
-    session.execute("file.openDemoProject", json!({})).expect("demo project");
-    let (tx, rx) = channel();
-    let app = FilmcraftApp::new(session).with_control(rx);
-    let harness = Harness::builder().with_size(egui::vec2(W, H)).with_max_steps(10_000).build_eframe(move |_cc| app);
-    let mut d = Driver { harness, tx };
-    d.frames(4);
-    let element = |d: &mut Driver, id: &str| -> Value {
-        let v = d.ok("ui.elements", json!({"prefix": id}));
-        v.as_array().and_then(|a| a.iter().find(|e| e["id"] == json!(id)).cloned()).unwrap_or(Value::Null)
-    };
+    let mut d = Driver::with_data(&data, |_| {});
     d.click("bashcut.rail.batch");
     d.exec("bashcut.batch.addStep", json!({"command": "markers.add", "params": {"name": "Hook"}}));
     d.exec("bashcut.batch.set", json!({"name": "hooks"}));
@@ -1250,7 +1156,7 @@ fn batch_starts_from_a_preset_and_clears_inputs() {
     let (row, input) = (d.rect("bashcut.batch.startFrom").expect("start-from row"), d.rect("bashcut.batch.input.0").expect("input row"));
     assert!(row[1] < input[1], "{row:?} / {input:?}");
     d.click("bashcut.batch.startFrom");
-    let r = element(&mut d, "bashcut.batch.startFrom.recent.0");
+    let r = d.element("bashcut.batch.startFrom.recent.0");
     assert_eq!(r["label"], json!("promo · 2026-10-22 · 3 done / 1 failed"));
     d.click("bashcut.batch.startFrom.preset.hooks");
     let draft = d.exec("bashcut.batch.state", json!({}))["draft"].clone();
@@ -1263,9 +1169,9 @@ fn batch_starts_from_a_preset_and_clears_inputs() {
     d.exec("bashcut.batch.addInput", json!({"paths": clips}));
     d.exec("bashcut.ui.setLanguage", json!({"language": "vi"}));
     d.frames(3);
-    assert_eq!(element(&mut d, "bashcut.batch.clearInputs")["label"], json!("Xoá hết"));
+    assert_eq!(d.element("bashcut.batch.clearInputs")["label"], json!("Xoá hết"));
     d.click("bashcut.batch.startFrom");
-    assert_eq!(element(&mut d, "bashcut.batch.startFrom.recent.0")["label"], json!("promo · 2026-10-22 · 3 xong / 1 lỗi"));
+    assert_eq!(d.element("bashcut.batch.startFrom.recent.0")["label"], json!("promo · 2026-10-22 · 3 xong / 1 lỗi"));
     d.harness.key_press(egui::Key::Escape);
     d.frames(2);
     if let Some(dir) = std::env::var_os("BASHCUT_UI_SHOTS").map(std::path::PathBuf::from) {
@@ -1304,38 +1210,17 @@ fn a_failed_run_puts_a_dot_on_runs_until_runs_opens() {
     });
     std::fs::write(plugin.join("bashcut-plugin.json"), manifest.to_string()).unwrap();
 
-    let mut session = Session::default();
-    session.start_autosave(filmcraft_engine::autosave::AutosaveConfig::new(&data)).expect("data dir");
-    session.execute("file.openDemoProject", json!({})).expect("demo project");
-    let (tx, rx) = channel();
-    let app = FilmcraftApp::new(session).with_control(rx);
-    let harness = Harness::builder().with_size(egui::vec2(W, H)).with_max_steps(10_000).build_eframe(move |_cc| app);
-    let mut d = Driver { harness, tx };
-    d.frames(4);
-    // the rail's label for Runs once it reads `want` (a few frames at most), else the last one
+    let mut d = Driver::with_data(&data, |_| {});
+    // the rail's label for Runs once it reads `want`, else the last one
     let label_of = |d: &mut Driver, want: &str| {
-        let mut got = String::new();
-        for _ in 0..20 {
-            let v = d.ok("ui.elements", json!({"prefix": "bashcut.rail.runs"}));
-            got = v[0]["label"].as_str().unwrap_or_default().to_string();
-            if got == want {
-                break;
-            }
-            d.frames(1);
-        }
-        got
+        let v = d.wait_element("bashcut.rail.runs", |e| e["label"] == json!(want));
+        v["label"].as_str().unwrap_or_default().to_string()
     };
     assert_eq!(label_of(&mut d, "Runs"), "Runs");
 
-    // Plugins' first open checks the registry (a network job): let it end and see it in Runs first
+    // the registry check (of the local file) ends; see it in Runs first
     d.click("bashcut.rail.plugins");
-    for _ in 0..1500 {
-        let runs = d.exec("bashcut.plugins.runs", json!({}));
-        if !runs.as_array().is_some_and(|r| r.iter().any(|j| j["state"] == json!("running"))) {
-            break;
-        }
-        std::thread::sleep(std::time::Duration::from_millis(20));
-    }
+    d.wait(|d| d.exec("bashcut.plugins.runs", json!({})), |r| !r.as_array().is_some_and(|r| r.iter().any(|j| j["state"] == json!("running"))));
     d.click("bashcut.rail.runs");
     d.click("bashcut.rail.plugins");
     assert_eq!(label_of(&mut d, "Runs"), "Runs");
@@ -1343,16 +1228,7 @@ fn a_failed_run_puts_a_dot_on_runs_until_runs_opens() {
     let job = d.exec("bashcut.plugins.run", json!({"plugin": "test.fails", "action": "go"}))["job"].as_u64().expect("a job");
     d.exec("bashcut.ui.show.plugins", json!({}));
     assert_eq!(label_of(&mut d, "Runs: running"), "Runs: running");
-    let mut state = Value::Null;
-    for _ in 0..1000 {
-        state = d.exec("bashcut.plugins.job", json!({"job": job}))["state"].clone();
-        if state != json!("running") {
-            break;
-        }
-        std::thread::sleep(std::time::Duration::from_millis(20));
-    }
-    assert_eq!(state, json!("failed"));
-    d.frames(2);
+    assert_eq!(d.wait_job(job)["state"], json!("failed"));
     assert_eq!(label_of(&mut d, "Runs: failed"), "Runs: failed", "the failure shows on the rail while Plugins is open");
     d.exec("bashcut.ui.setLanguage", json!({"language": "vi"}));
     assert_eq!(label_of(&mut d, "Tác vụ: lỗi"), "Tác vụ: lỗi");
