@@ -31,7 +31,7 @@ the places that now point here are listed in [`../rebrand.md`](../rebrand.md).
 | `app-icon/bashcutpro-macos-512.png` | runtime Dock icon on macOS (Apple grid; `apps/filmcraft/src/main.rs`) |
 | `app-icon/bashcutpro.icns` | macOS bundle icon (`packaging/macos/package.sh`) |
 | `app-icon/bashcutpro.ico` | Windows icon, 16–256 px (`apps/filmcraft/build.rs`, `packaging/windows/package.ps1`) |
-| `app-icon/hicolor/…/ai.storyteller.filmcraft.png`, `.svg` | Linux icon theme (named after the desktop file id, still upstream's) |
+| `app-icon/hicolor/…/ai.storyteller.filmcraft.png`, `.svg` | Linux icon theme; the Linux packages ship them as `com.birchapps.bashcutpro.*`, our app id (`bashcut/packaging/generate.py`, SB4/SB5). The source files keep upstream's name for the carried Flatpak edit and `bashcut_brand::app_icon` |
 | `wordmark/bashcutpro-wordmark.svg` / `.png` | wordmark, dark ink (`crates/ui-egui/src/brand.rs`) |
 | `wordmark/bashcutpro-wordmark-white.svg` / `.png` | wordmark, white ink |
 

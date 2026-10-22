@@ -10,6 +10,11 @@
 /// The product name shown in the About dialog.
 pub const NAME: &str = "BashCutPro";
 
+/// The window's Wayland app id / X11 class (upstream: `ai.storyteller.filmcraft`), set by the hook in
+/// `apps/filmcraft/src/main.rs` after upstream's. Same id as the Linux packages' desktop file, metainfo
+/// and icons (`bashcut/packaging/generate.py`, SB4), so the desktop matches the window to our entry.
+pub const APP_ID: &str = "com.birchapps.bashcutpro";
+
 /// The licence and third-party notices, linked from About.
 pub const NOTICE_URL: &str = "https://github.com/dongnguyenvie/BashCutPro/blob/main/NOTICE";
 
