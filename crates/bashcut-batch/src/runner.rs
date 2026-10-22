@@ -567,27 +567,21 @@ fn run_step(sh: &Shared, idx: usize, s: usize, step: StepRef, ctx: &Ctx) -> Resu
                 let line =
                     CommandLine { id: "bashcut.profiles.apply".into(), params: serde_json::json!({"profile": profile, "path": path_arg(&out), "wait": true}) };
                 let script = write_script(ctx, &key, std::slice::from_ref(&line))?;
-                let mut argv = vec![cli(sh), "run".into(), path_arg(&script), "--project".into(), path_arg(&ctx.project), "--compact".into()];
-                argv.extend(data_dir_args(sh));
-                let spec = Spec { argv, cwd: Some(ctx.dir.clone()), env: sh.opts.env.clone(), timeout, log: ctx.dir.join(&key) };
-                let ended = spawn(sh, idx, s, &spec)?;
-                outcome(ended, &spec.log, &key)?;
+                let args = vec!["run".into(), path_arg(&script), "--project".into(), path_arg(&ctx.project), "--compact".into()];
+                run_engine(sh, idx, s, ctx, &key, args, timeout)?;
                 return Ok(vec![out.to_string_lossy().into_owned()]);
             }
-            let mut argv = vec![cli(sh), "export".into(), path_arg(&out), "--project".into(), path_arg(&ctx.project), "--compact".into()];
+            let mut args = vec!["export".into(), path_arg(&out), "--project".into(), path_arg(&ctx.project), "--compact".into()];
             if let Some(p) = &o.preset {
-                argv.extend(["--preset".into(), p.clone()]);
+                args.extend(["--preset".into(), p.clone()]);
             }
             if let Some(f) = &o.format {
-                argv.extend(["--format".into(), f.clone()]);
+                args.extend(["--format".into(), f.clone()]);
             }
             if let Some(v) = &o.settings {
-                argv.extend(["--settings".into(), ctx.vars.expand_value(v).to_string()]);
+                args.extend(["--settings".into(), ctx.vars.expand_value(v).to_string()]);
             }
-            argv.extend(data_dir_args(sh));
-            let spec = Spec { argv, cwd: Some(ctx.dir.clone()), env: sh.opts.env.clone(), timeout, log: ctx.dir.join(&key) };
-            let ended = spawn(sh, idx, s, &spec)?;
-            outcome(ended, &spec.log, &key)?;
+            run_engine(sh, idx, s, ctx, &key, args, timeout)?;
             Ok(vec![out.to_string_lossy().into_owned()])
         }
     }
@@ -615,11 +609,8 @@ fn create(sh: &Shared, idx: usize, s: usize, ctx: &Ctx) -> Result<(), ErrorInfo>
             _ => pipeline::default_create_commands(),
         };
         let script = write_script(ctx, "create", &lines)?;
-        let mut argv = vec![cli(sh), "run".into(), path_arg(&script), "--save-as".into(), path_arg(&tmp), "--compact".into()];
-        argv.extend(data_dir_args(sh));
-        let spec = Spec { argv, cwd: Some(ctx.dir.clone()), env: sh.opts.env.clone(), timeout: None, log: ctx.dir.join("create") };
-        let ended = spawn(sh, idx, s, &spec)?;
-        outcome(ended, &spec.log, "create")?;
+        let args = vec!["run".into(), path_arg(&script), "--save-as".into(), path_arg(&tmp), "--compact".into()];
+        run_engine(sh, idx, s, ctx, "create", args, None)?;
         if !tmp.is_file() {
             return Err(ErrorInfo::new(Category::Command, "create: the engine saved no project"));
         }
@@ -721,12 +712,9 @@ fn review_step(sh: &Shared, idx: usize, s: usize, ctx: &Ctx, key: &str, profile:
     let targets = agent::review_targets(before, &agent::sequences(&inspect));
     let lines = agent::review_lines(&targets, agent::active_sequence(&inspect), profile);
     let script = write_script(ctx, key, &lines)?;
-    let mut argv = vec![cli(sh), "run".into(), path_arg(&script), "--project".into(), path_arg(&ctx.project), "--save".into(), "--compact".into()];
-    argv.extend(data_dir_args(sh));
-    let spec = Spec { argv, cwd: Some(ctx.dir.clone()), env: sh.opts.env.clone(), timeout: None, log: ctx.dir.join(key) };
-    let ended = spawn(sh, idx, s, &spec)?;
-    outcome(ended, &spec.log, key)?;
-    let mut results = agent::results(&process::out_path(&spec.log), "bashcut.review.run");
+    let args = vec!["run".into(), path_arg(&script), "--project".into(), path_arg(&ctx.project), "--save".into(), "--compact".into()];
+    let log = run_engine(sh, idx, s, ctx, key, args, None)?;
+    let mut results = agent::results(&process::out_path(&log), "bashcut.review.run");
     if targets.is_empty() {
         return results.pop().ok_or_else(|| ErrorInfo::new(Category::Command, format!("{key}: no bashcut.review.run result")));
     }
@@ -753,12 +741,9 @@ fn start_sequences(sh: &Shared, idx: usize, s: usize, ctx: &Ctx, key: &str) -> R
 fn inspect_step(sh: &Shared, idx: usize, s: usize, ctx: &Ctx, key: &str) -> Result<Value, ErrorInfo> {
     let line = CommandLine { id: "project.inspect".into(), params: serde_json::json!({}) };
     let script = write_script(ctx, key, std::slice::from_ref(&line))?;
-    let mut argv = vec![cli(sh), "run".into(), path_arg(&script), "--project".into(), path_arg(&ctx.project), "--compact".into()];
-    argv.extend(data_dir_args(sh));
-    let spec = Spec { argv, cwd: Some(ctx.dir.clone()), env: sh.opts.env.clone(), timeout: None, log: ctx.dir.join(key) };
-    let ended = spawn(sh, idx, s, &spec)?;
-    outcome(ended, &spec.log, key)?;
-    agent::results(&process::out_path(&spec.log), "project.inspect")
+    let args = vec!["run".into(), path_arg(&script), "--project".into(), path_arg(&ctx.project), "--compact".into()];
+    let log = run_engine(sh, idx, s, ctx, key, args, None)?;
+    agent::results(&process::out_path(&log), "project.inspect")
         .pop()
         .ok_or_else(|| ErrorInfo::new(Category::Command, format!("{key}: no project.inspect result")))
 }
@@ -774,11 +759,21 @@ fn engine_step(sh: &Shared, idx: usize, s: usize, ctx: &Ctx, key: &str, lines: &
     }
     let lines = with_clean;
     let script = write_script(ctx, key, &lines)?;
-    let mut argv = vec![cli(sh), "run".into(), path_arg(&script), "--project".into(), path_arg(&ctx.project), "--save".into(), "--compact".into()];
+    let args = vec!["run".into(), path_arg(&script), "--project".into(), path_arg(&ctx.project), "--save".into(), "--compact".into()];
+    run_engine(sh, idx, s, ctx, key, args, timeout).map(|_| Vec::new())
+}
+
+/// One engine process for step `s` of item `idx`: `<cli> <args> [--data-dir …]` in the item folder,
+/// logged to `<itemDir>/<key>`; returns that log path once the engine succeeded.
+fn run_engine(sh: &Shared, idx: usize, s: usize, ctx: &Ctx, key: &str, args: Vec<String>, timeout: Option<Duration>) -> Result<PathBuf, ErrorInfo> {
+    let mut argv = Vec::with_capacity(args.len().saturating_add(3));
+    argv.push(cli(sh));
+    argv.extend(args);
     argv.extend(data_dir_args(sh));
     let spec = Spec { argv, cwd: Some(ctx.dir.clone()), env: sh.opts.env.clone(), timeout, log: ctx.dir.join(key) };
     let ended = spawn(sh, idx, s, &spec)?;
-    outcome(ended, &spec.log, key).map(|()| Vec::new())
+    outcome(ended, &spec.log, key)?;
+    Ok(spec.log)
 }
 
 /// `<itemDir>/<key>.jsonl`: one `{"id","params"}` per line, placeholders filled in.
