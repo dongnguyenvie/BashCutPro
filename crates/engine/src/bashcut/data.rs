@@ -13,8 +13,12 @@ pub fn folder(s: &Session, p: &Value, sub: &str) -> Option<PathBuf> {
     if let Some(d) = str_p(p, "dir").filter(|d| !d.is_empty()) {
         return Some(PathBuf::from(d));
     }
-    let base = s.export_presets.dir().map(std::path::Path::to_path_buf).or_else(crate::autosave::default_data_dir)?;
-    Some(base.join("bashcut").join(sub))
+    Some(base(s)?.join("bashcut").join(sub))
+}
+
+/// The session's data dir (where its export presets live: `--data-dir`, the app's own), else the default one.
+pub fn base(s: &Session) -> Option<PathBuf> {
+    s.export_presets.dir().map(std::path::Path::to_path_buf).or_else(crate::autosave::default_data_dir)
 }
 
 /// `v` rounded to `places` decimals, for results (the one rounding rule for every `bashcut.*` report).
