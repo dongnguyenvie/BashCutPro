@@ -15,6 +15,7 @@ pub mod connect;
 pub mod hints;
 pub mod library_panel;
 pub mod looks_panel;
+pub mod markdown;
 pub mod palette;
 pub mod plugins;
 pub mod plugins_panel;
