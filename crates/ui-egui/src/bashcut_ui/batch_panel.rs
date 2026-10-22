@@ -10,8 +10,9 @@ use serde_json::{Map, Value, json};
 
 use super::batch;
 use super::palette::{self, Item};
-use super::plugins_panel::{Spec, button, field, gated_button, param_title, param_value, required, value_text};
+use super::plugins_panel::{Spec, field, gated_button, param_title, param_value, required, value_text};
 use super::strings::{f, s};
+use super::widgets::button;
 use crate::FilmcraftApp;
 use crate::native_dialogs::FileDialog;
 use bashcut_batch::book::now_ms;

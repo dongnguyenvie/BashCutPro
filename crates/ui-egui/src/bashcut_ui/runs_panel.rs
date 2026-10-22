@@ -10,8 +10,8 @@ use serde_json::{Value, json};
 
 use super::batch;
 use super::plugins;
-use super::plugins_panel::button;
 use super::strings::{f, s};
+use super::widgets::button;
 use crate::FilmcraftApp;
 
 /// `result.data` keys whose values are files a run wrote (`bashcut/plugin-host.md` §Results): a
