@@ -1,20 +1,18 @@
 #!/usr/bin/env python3
 """BashCutPro packaging generator (#64): a copy of upstream's `packaging/` that also ships the Pro pieces.
 
-The packaging scripts re-exec the copy this writes (bash: `bashcut/brand/packaging.env`, already sourced by
-`packaging/env.sh`; Windows: one hook line in `packaging/windows/package.ps1`), so upstream's packaging files are
-never edited for the Pro pieces. Every change is an exact-match substitution that must match the expected number of
-times: when upstream rewrites a line we depend on, packaging fails loudly here instead of shipping without our tools.
+The packaging scripts re-exec the copy this writes (bash: `bashcut/brand/packaging.env`, sourced by
+`packaging/env.sh`; Windows: one hook line in `packaging/windows/package.ps1` runs `bashcut/packaging/package.ps1`),
+so upstream's packaging files are never edited. Every change is an exact-match substitution that must match the
+expected number of times: when upstream rewrites a line we depend on, this fails loudly instead of shipping without
+our tools. Same input, byte-identical output (test_generate.py).
 
-What the copy adds on every OS: speech-to-text (`--features whisper` for `filmcraft` and `filmcraft-cli`, #146), the binaries `bashcutpro` and its alias `bcpro` (the Pro command line: upstream's engine
-built under our name by `apps/bashcutpro-cli`; it takes `filmcraft-cli`'s place, so a package never clashes with an
-installed FilmCraft, SB2), `bashcut-doctor`, `bashcut-batch`, `bashcut-mcp` (built
-with the app) and
-the optional first-run setup (`bashcut/packaging/share/`). On Linux the copy uses our own app id `com.birchapps.bashcutpro`
-(desktop file, metainfo, MIME file, icons, both Flatpak manifests; SB4). Data files stay where they are; only scripts and the
-manifests that list files (nfpm.yaml, the WiX source, the Linux tarball installer) are copied and changed.
+The copy adds: speech-to-text (`--features whisper` for `filmcraft` and the engine CLI, #146); the Pro command line
+`bashcutpro` + alias `bcpro` in `filmcraft-cli`'s place (SB2); `bashcut-doctor`, `bashcut-batch`, `bashcut-mcp`;
+the first-run setup (`bashcut/packaging/share/`); on Linux our app id `com.birchapps.bashcutpro` (SB4). Only scripts
+and the manifests that list files are copied and changed. Details: bashcut/packaging/README.md.
 
-    python3 bashcut/packaging/generate.py --out target/bashcut-packaging [--root .] [--check]
+    python3 bashcut/packaging/generate.py --out target/bashcut-packaging [--root .]
 """
 
 import argparse

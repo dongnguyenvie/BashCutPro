@@ -13,6 +13,7 @@
 # Options: --port N (default: a free port from 19000), --timeout S (60), --out DIR (target/smoke),
 #          --expect-title TEXT (BashCutPro), --no-isa, --isa-allow FILE (bashcut/scripts/isa-allow.txt)
 # Needs: bash (for /dev/tcp), objdump or llvm-objdump for the scan (x86-64 binaries only).
+# No `set -e` on purpose (bashcut/scripts/README.md): every check runs and reports, and the exit code counts the FAILs.
 set -u
 
 here="$(cd "$(dirname "$0")" && pwd)"

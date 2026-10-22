@@ -34,7 +34,7 @@ These modify upstream lines (all listed in `UPSTREAM.md` "Carried edits", with t
 | Workflows manual only | `.github/workflows/*.yml` (`on:` blocks) | owner decision (2026-10-20): keep, re-apply on merge |
 | Branding in code | `crates/ui-egui/src/{brand,links}.rs`, `apps/filmcraft/build.rs` | kept: cold files (≤ 4 upstream commits in 30 days) a hook can't cover; the hot ones (`main.rs`, `header.rs`, `dialogs.rs`) carry one hook each since #39 |
 | Branding in packaging | `packaging/**`, `omastore.toml` | kept: cold, run as-is by upstream's shared release workflow; a packaging-time generator is sketched in #39 |
-| Additions only (fine) | `NOTICE`, `LICENSE-MIT`, `ATTRIBUTION.md`, `.gitignore`, one pointer line in `AGENTS.md` / `CLAUDE.md`, `i18n/mod.rs` hook, `ui-egui/src/lib.rs` mod line | keep |
+| Additions only (fine) | `NOTICE`, `LICENSE-MIT`, `ATTRIBUTION.md`, `.gitignore`, pointer lines (blockquote at the top) in `AGENTS.md` / `CLAUDE.md`, `i18n/mod.rs` hook, `ui-egui/src/lib.rs` mod line | keep |
 
 ## 2. Extension points (how to add without modifying)
 

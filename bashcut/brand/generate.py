@@ -10,6 +10,7 @@ Needs: fontTools (pip install fonttools). Then run bashcut/brand/render.sh for t
 .ico files. Usage: python3 bashcut/brand/generate.py
 """
 
+import argparse
 import os
 
 from fontTools.pens.svgPathPen import SVGPathPen
@@ -163,9 +164,15 @@ def wordmark_svg(dark_ink):
     )
 
 
-if __name__ == "__main__":
+def main(argv=None):
+    argparse.ArgumentParser(description=__doc__.splitlines()[0]).parse_args(argv)
     os.makedirs(os.path.join(HERE, "app-icon"), exist_ok=True)
     os.makedirs(os.path.join(HERE, "wordmark"), exist_ok=True)
     write("app-icon/bashcutpro.svg", tile_svg(True, "BashCutPro"))
     write("wordmark/bashcutpro-wordmark.svg", wordmark_svg(True))
     write("wordmark/bashcutpro-wordmark-white.svg", wordmark_svg(False))
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

@@ -178,6 +178,27 @@ class GenerateTest(unittest.TestCase):
             else:
                 self.assertIn("bashcutpro", bins)
 
+    def test_the_output_is_deterministic(self):
+        # same input, byte-identical tree (bashcut/scripts/README.md): two runs into different folders
+        again = os.path.join(self.tmp, "again")
+        generate.generate(ROOT, self.out)
+        generate.generate(ROOT, again)
+
+        def tree(top):
+            files = {}
+            for dirpath, _dirs, names in os.walk(top):
+                for name in names:
+                    path = os.path.join(dirpath, name)
+                    with open(path, "rb") as fh:
+                        files[os.path.relpath(path, top)] = (fh.read(), os.access(path, os.X_OK))
+            return files
+
+        first, second = tree(self.out), tree(again)
+        self.assertTrue(first)
+        self.assertEqual(sorted(first), sorted(second))
+        for rel in first:
+            self.assertEqual(first[rel], second[rel], rel)
+
     def test_a_changed_upstream_line_fails_loudly(self):
         fake = os.path.join(self.tmp, "root")
         shutil.copytree(os.path.join(ROOT, "packaging"), os.path.join(fake, "packaging"))
