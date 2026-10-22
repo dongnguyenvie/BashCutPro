@@ -36,16 +36,18 @@ class GenerateTest(unittest.TestCase):
                 self.assertIn(b, text, rel)
         wxs = self.read("windows/filmcraft.wxs")
         self.assertIn("bashcut-mcp.exe", wxs)
-        # the Pro command line ships under both names, filmcraft-cli stays beside it (#154)
-        for b in ("bashcutpro", "bcpro", "filmcraft-cli"):
+        # the Pro command line ships under both names, in place of filmcraft-cli (#154, SB2)
+        for rel in generate.RENAME_FILES:
+            self.assertNotIn("filmcraft-cli", self.read(rel), rel)
+        for b in ("bashcutpro", "bcpro"):
             self.assertIn("\\%s.exe" % b, wxs)
             self.assertIn("/usr/bin/%s" % b, self.read("linux/nfpm.yaml"))
         self.assertIn('Component Id="BashcutDoctor"', wxs)
         self.assertIn('File Id="BcproExe"', wxs)
-        self.assertIn("-p bashcutpro-cli --features bashcutpro-cli/whisper", self.read("windows/package.ps1"))
+        self.assertIn("-p filmcraft -p bashcutpro-cli --features", self.read("windows/package.ps1"))
         # speech-to-text ships in the app and the engine CLI on every OS (#146)
         for rel in ("macos/package.sh", "linux/package.sh", "freebsd/package.sh", "windows/package.ps1"):
-            self.assertIn("--features filmcraft/whisper,filmcraft-cli/whisper", self.read(rel), rel)
+            self.assertIn("--features filmcraft/whisper,bashcutpro-cli/whisper", self.read(rel), rel)
         self.assertIn("/usr/bin/bashcut-doctor", self.read("linux/nfpm.yaml"))
         self.assertIn("BASHCUT_ROOT", self.read("env.sh"))
         # upstream's own files are untouched
@@ -87,7 +89,7 @@ class GenerateTest(unittest.TestCase):
         for brand, left_out in (("BashCutPro", "bashcutpro"), ("Other", None)):
             r = subprocess.run([bash, "-c", "\n".join(lines) + '\necho $APP_BINS'], env={"BRAND_NAME": brand, "PATH": os.environ["PATH"]}, capture_output=True, text=True)
             bins = r.stdout.split()
-            self.assertIn("filmcraft-cli", bins, brand)
+            self.assertNotIn("filmcraft-cli", bins, brand)
             self.assertIn("bcpro", bins, brand)
             if left_out:
                 self.assertNotIn(left_out, bins)

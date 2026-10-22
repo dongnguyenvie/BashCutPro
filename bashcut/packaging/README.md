@@ -7,9 +7,9 @@ scripts for them.
 
 | Piece | macOS (.app / CLI zip) | Windows (MSI / portable zip) | Linux (tar, deb, rpm, AppImage) / FreeBSD |
 |---|---|---|---|
-| `bashcutpro` and its alias `bcpro` (#154, beside `filmcraft-cli`), `bashcut-doctor`, `bashcut-batch`, `bashcut-mcp` | `Contents/MacOS/` with `filmcraft-cli` (only `bcpro` there: `bashcutpro` would replace `BashCutPro` on a Mac volume, #187); CLI zip | install folder; portable zip | `/usr/bin` (FreeBSD: `bin/`) |
+| `bashcutpro` and its alias `bcpro` (#154, in place of `filmcraft-cli`, SB2), `bashcut-doctor`, `bashcut-batch`, `bashcut-mcp` | `Contents/MacOS/` (only `bcpro` there: `bashcutpro` would replace `BashCutPro` on a Mac volume, #187); CLI zip | install folder; portable zip | `/usr/bin` (FreeBSD: `bin/`) |
 | first-run setup `bashcut-setup.sh` / `.ps1` | `Contents/Resources/bashcut/`; CLI zip | install folder; portable zip | `/usr/share/bashcutpro/` (FreeBSD: `share/bashcutpro/`) |
-| speech-to-text (`--features whisper` for `filmcraft` and `filmcraft-cli`, #146; candle on the CPU) | app and CLI | app and CLI | app and CLI |
+| speech-to-text (`--features whisper` for `filmcraft` and `bashcutpro-cli`, #146; candle on the CPU) | app and CLI | app and CLI | app and CLI |
 
 The batch presets and the kit's caption skills start by transcribing. The Whisper models are not packaged: they
 download on first use (`bashcutpro exec transcript.downloadModel`, or Text panel > Transcribe); until then
@@ -27,8 +27,9 @@ Profiles, templates and looks are built into the binaries (`bashcut.profiles.*`,
    (`BASHCUT_BRANDED=1`, `BASHCUT_ROOT` pins the checkout).
 2. Windows: one inserted hook line in `packaging/windows/package.ps1` (row in `UPSTREAM.md`) runs
    `bashcut/packaging/package.ps1`, which does the same for PowerShell.
-3. `generate.py` applies exact-match substitutions (`SUBS`): build our packages with the app
-   (`-p bashcutpro-cli --features bashcutpro-cli/whisper -p bashcut-doctor -p bashcut-batch-cli -p bashcut-mcp`), stage, strip and sign the binaries, add them to
+3. `generate.py` applies exact-match substitutions (`SUBS`), then renames `filmcraft-cli` to `bashcutpro` in the
+   copied scripts and manifests (`RENAMES`: `-p bashcutpro-cli`, its `whisper` feature, the staged/installed file): build our packages with the app
+   (`-p bashcut-doctor -p bashcut-batch-cli -p bashcut-mcp`), stage, strip and sign the binaries, add them to
    `nfpm.yaml`, the WiX source and the Linux tarball installer, copy `share/`. A substitution that no longer matches
    upstream's text fails the packaging run with the file and line to update; it never ships silently without our tools.
 4. `BASHCUT_PACKAGING_PLAIN=1` packages upstream's files unchanged (for comparing).

@@ -7,7 +7,8 @@ never edited for the Pro pieces. Every change is an exact-match substitution tha
 times: when upstream rewrites a line we depend on, packaging fails loudly here instead of shipping without our tools.
 
 What the copy adds on every OS: speech-to-text (`--features whisper` for `filmcraft` and `filmcraft-cli`, #146), the binaries `bashcutpro` and its alias `bcpro` (the Pro command line: upstream's engine
-built under our name by `apps/bashcutpro-cli`, SB2; `filmcraft-cli` still ships beside it for now), `bashcut-doctor`, `bashcut-batch`, `bashcut-mcp` (built
+built under our name by `apps/bashcutpro-cli`; it takes `filmcraft-cli`'s place, so a package never clashes with an
+installed FilmCraft, SB2), `bashcut-doctor`, `bashcut-batch`, `bashcut-mcp` (built
 with the app) and
 the optional first-run setup (`bashcut/packaging/share/`). Data files stay where they are; only scripts and the
 manifests that list files (nfpm.yaml, the WiX source, the Linux tarball installer) are copied and changed.
@@ -20,9 +21,10 @@ import os
 import shutil
 import sys
 
-# bashcutpro and its alias bcpro (#154, SB2): the engine CLI generated from filmcraft-cli under our name (apps/bashcutpro-cli)
-PRO_BINS = ["bashcutpro", "bcpro", "bashcut-doctor", "bashcut-batch", "bashcut-mcp"]
-PRO_PACKAGES = "-p bashcutpro-cli --features bashcutpro-cli/whisper -p bashcut-doctor -p bashcut-batch-cli -p bashcut-mcp"
+# Our binaries next to the app. bashcutpro (#154, SB2: upstream's engine CLI generated under our name by
+# apps/bashcutpro-cli) is not listed: it takes filmcraft-cli's place in upstream's lines (RENAMES); bcpro is its alias.
+PRO_BINS = ["bcpro", "bashcut-doctor", "bashcut-batch", "bashcut-mcp"]
+PRO_PACKAGES = "-p bashcut-doctor -p bashcut-batch-cli -p bashcut-mcp"
 BINS_SH = " ".join(PRO_BINS)
 # speech-to-text in the app and the engine CLI (#146): the batch presets and caption skills start by
 # transcribing; models still download on first use (`transcript.downloadModel`)
@@ -61,7 +63,7 @@ SUBS = [
         "macos/package.sh",
         'copy_font_licences "$APP/Contents/Resources"\n',
         'copy_font_licences "$APP/Contents/Resources"\n'
-        "# BashCutPro: Pro tools beside the app executable, with the filmcraft-cli that bashcutpro/bcpro run (#187);\n"
+        "# BashCutPro: Pro tools beside the app executable, the engine CLI among them (#187, SB2);\n"
         "# Mac volumes ignore case, so a tool named like the executable (bashcutpro, BashCutPro) is left out: bcpro covers it\n"
         'brand_lc="$(printf %%s "$BRAND_NAME" | tr "[:upper:]" "[:lower:]")"\n'
         'APP_BINS=""; for b in filmcraft-cli %s; do [ "$b" = "$brand_lc" ] || APP_BINS="$APP_BINS $b"; done\n'
@@ -182,6 +184,27 @@ SUBS = [
 CARRIED = [("linux/flatpak/ai.storyteller.filmcraft.yml", "-p filmcraft -p filmcraft-cli %s" % FEATURES)]
 
 
+# SB2: after SUBS, these copied files ship bashcutpro where upstream ships filmcraft-cli, so a BashCutPro package never
+# clashes with an installed FilmCraft. (old, new) in order; each file must contain filmcraft-cli, and none may be left.
+RENAME_FILES = [
+    "macos/package.sh",
+    "linux/package.sh",
+    "linux/install.sh",
+    "linux/nfpm.yaml",
+    "linux/flatpak-bundle.sh",
+    "linux/flatpak/ai.storyteller.filmcraft.bundle.yml",
+    "freebsd/package.sh",
+    "windows/package.ps1",
+    "windows/filmcraft.wxs",
+]
+RENAMES = [
+    ("-p filmcraft-cli ", "-p bashcutpro-cli "),
+    ("filmcraft-cli/whisper", "bashcutpro-cli/whisper"),
+    ('Id="FilmcraftCliExe"', 'Id="BashcutproExe"'),
+    ("filmcraft-cli", "bashcutpro"),
+]
+
+
 class Fail(Exception):
     pass
 
@@ -211,6 +234,16 @@ def generate(root, out):
         text = text.replace(old, new)
         if crlf:
             text = text.replace("\n", "\r\n")
+        with open(path, "w", encoding="utf-8", newline="") as fh:
+            fh.write(text)
+    for rel in RENAME_FILES:
+        path = os.path.join(out, *rel.split("/"))
+        with open(path, encoding="utf-8", newline="") as fh:
+            text = fh.read()
+        if "filmcraft-cli" not in text:
+            raise Fail("packaging/%s: no filmcraft-cli to rename to bashcutpro; upstream changed it: update RENAME_FILES in %s" % (rel, __file__))
+        for old, new in RENAMES:
+            text = text.replace(old, new)
         with open(path, "w", encoding="utf-8", newline="") as fh:
             fh.write(text)
     return len(SUBS)

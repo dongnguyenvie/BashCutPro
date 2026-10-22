@@ -34,8 +34,12 @@ decides something; don't change an old one, add a new one that supersedes it.
   byte-identical and keeps its own tests (the copy has none).
 - **Loud failure:** `build.rs` fails the build when an anchor string, the file list, the `mod` lines, the crate
   attribute or upstream's `[dependencies]` change, naming what to update.
-- **Lookups:** our tools still try `bashcutpro` first, then `filmcraft-cli` (dev builds). Batch runs the found
-  binary directly on every OS (no wrapper to see through).
+- **Lookups:** our tools try `bashcutpro`, then `bcpro` (the only name inside the macOS app bundle, #187), then
+  `filmcraft-cli` (dev builds). Batch runs the found binary directly on every OS (no wrapper to see through).
+- **Packages:** `bashcut/packaging/generate.py` renames `filmcraft-cli` to `bashcutpro` in the copied scripts and
+  manifests (`RENAMES`, loud when a listed file has nothing to rename), so no package ships `filmcraft-cli`.
+  Not yet: upstream's Flatpak source manifest (`packaging/linux/flatpak/*.yml`, read by flatpak-builder directly)
+  and the Linux ids `com.birchapps.bashcutpro`.
 
 ## 2026-10-23: Delete upstream's CodeRabbit and SonarCloud config
 

@@ -4,8 +4,9 @@
 use std::ffi::OsStr;
 use std::path::{Path, PathBuf};
 
-/// The engine's names, preferred first.
-pub const NAMES: &[&str] = &["bashcutpro", "filmcraft-cli"];
+/// The engine's names, preferred first. `bcpro` (the alias) is the one inside a macOS app bundle, where
+/// `bashcutpro` would clash with the `BashCutPro` executable on a case-insensitive volume (#187).
+pub const NAMES: &[&str] = &["bashcutpro", "bcpro", "filmcraft-cli"];
 /// The environment variables that name it, preferred first (`BASHCUT_FILMCRAFT_CLI` is the older
 /// name batch and `bashcut-mcp` used).
 pub const ENV: &[&str] = &["BASHCUTPRO_CLI", "BASHCUT_FILMCRAFT_CLI", "FILMCRAFT_CLI"];

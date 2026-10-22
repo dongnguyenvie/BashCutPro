@@ -215,7 +215,7 @@ fn find_cli(a: &Args) -> String {
     if let Some(c) = named {
         return c;
     }
-    let names: Vec<String> = ["bashcutpro", "filmcraft-cli"].iter().map(|n| format!("{n}{}", std::env::consts::EXE_SUFFIX)).collect();
+    let names: Vec<String> = ["bashcutpro", "bcpro", "filmcraft-cli"].iter().map(|n| format!("{n}{}", std::env::consts::EXE_SUFFIX)).collect();
     let beside = std::env::current_exe().ok().and_then(|e| e.parent().and_then(|d| names.iter().map(|n| d.join(n)).find(|p| p.is_file())));
     let path: Vec<PathBuf> = std::env::var_os("PATH").map(|p| std::env::split_paths(&p).collect()).unwrap_or_default();
     let on_path = || names.iter().find_map(|n| path.iter().map(|d| d.join(n)).find(|p| p.is_file()));
