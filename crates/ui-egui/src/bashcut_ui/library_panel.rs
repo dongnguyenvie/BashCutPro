@@ -153,6 +153,11 @@ fn save(p: &mut Panel, dir: Option<&Path>) {
     p.saved = Some(text);
 }
 
+/// A Mine row's kind tag: the kind's translated label, or the raw id for a kind the app doesn't know.
+fn mine_kind_label(kind: &str) -> &str {
+    MINE_KINDS.iter().find(|(id, _)| !id.is_empty() && *id == kind).map_or(kind, |(_, label)| s(label))
+}
+
 fn cache_key(online: bool, kind: &str, query: &str) -> String {
     format!("{}|{kind}|{}", if online { "online" } else { "mine" }, query.trim().to_lowercase())
 }
@@ -519,7 +524,7 @@ fn mine_row(app: &mut FilmcraftApp, ui: &mut egui::Ui, ctx: &egui::Context, p: &
     let r = egui::Frame::new().inner_margin(egui::Margin::same(4)).corner_radius(t.radius_sm).fill(t.panel_bg).show(ui, |ui| {
         ui.horizontal(|ui| {
             ui.label(egui::RichText::new(text(item, "title")).strong().color(t.text));
-            ui.label(egui::RichText::new(text(item, "kind")).size(10.5).color(t.text_faint));
+            ui.label(egui::RichText::new(mine_kind_label(&text(item, "kind"))).size(10.5).color(t.text_faint));
             let fav = item.get("favourite").and_then(Value::as_bool).unwrap_or(false);
             if button(app, ui, &format!("{id}.favourite"), if fav { "★" } else { "☆" }, true) {
                 let mut params = BTreeMap::new();
@@ -654,6 +659,15 @@ mod tests {
         assert!(!p.results.contains_key(&cache_key(true, "music", "q0")));
         assert!(p.results.contains_key(&cache_key(true, "music", &format!("q{}", MAX_CACHE + 4))));
         assert_eq!(cache_key(true, "music", " Lofi "), cache_key(true, "music", "lofi"));
+    }
+
+    #[test]
+    fn mine_rows_tag_the_kind_label() {
+        assert_eq!(mine_kind_label("text-style"), s("Text styles"));
+        assert_eq!(mine_kind_label("effect-preset"), s("Effect presets"));
+        assert_eq!(mine_kind_label("brand-kit"), s("Brand kits"));
+        assert_eq!(mine_kind_label("mystery"), "mystery", "unknown kinds show their id");
+        assert_eq!(mine_kind_label(""), "", "no kind is not \"Everything\"");
     }
 
     #[test]
