@@ -288,8 +288,9 @@ fn registry_row(app: &mut FilmcraftApp, ui: &mut egui::Ui, ctx: &egui::Context, 
     let supported = e.supports(bashcut_plugin_host::os());
     // one install at a time: the button waits while the host installs this id
     let installing = snap.installing.contains(&e.id);
+    let lang = strings::current();
     ui.horizontal(|ui| {
-        ui.label(egui::RichText::new(format!("{} {}", e.name, e.version)).color(t.text));
+        ui.label(egui::RichText::new(format!("{} {}", e.name_in(lang), e.version)).color(t.text));
         let label = if installing { s("Installing…") } else { s("Install") };
         if button(app, ui, &format!("bashcut.plugins.{}.install", e.id), label, can_install && supported && !installing) {
             run(app, ctx, d, "install", json!({"plugin": e.id}));
@@ -298,8 +299,8 @@ fn registry_row(app: &mut FilmcraftApp, ui: &mut egui::Ui, ctx: &egui::Context, 
             ui.label(egui::RichText::new(s("Not available on this system")).size(10.5).color(t.text_dim));
         }
     });
-    if !e.summary.is_empty() {
-        ui.label(egui::RichText::new(plain(&e.summary)).size(11.0).color(t.text_dim));
+    if !e.summary_in(lang).is_empty() {
+        ui.label(egui::RichText::new(plain(e.summary_in(lang))).size(11.0).color(t.text_dim));
     }
     // a failed install says why next to its button
     if let Some(j) = snap.newest_install.get(&e.id).and_then(|id| snap.jobs.get(id)).filter(|j| !j.state.is_running() && j.state != JobState::Succeeded) {

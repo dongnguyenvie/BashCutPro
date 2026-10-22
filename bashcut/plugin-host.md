@@ -125,8 +125,9 @@ A manifest may carry translations of what a person reads: `"i18n": {"vi": {"name
 "Manifest"). The field is optional and `bashcut-plugin/1` stays the schema: an older manifest without it loads as
 before. The Plugins panel shows the BashCutPro UI language (`bashcut.ui.setLanguage`, else the app's) through
 `Manifest::name_in` / `summary_in`, `Setting::title_in` / `help_in`, `Action::title_in` and `Param::title_in`; a
-missing or empty translation falls back to the English field. The registry list (Install rows) and the command
-palette stay English for now. Automation ids and labels keep the English names.
+missing or empty translation falls back to the English field. A `registry.json` entry may carry the same
+`"i18n": {"vi": {"name", "summary"}}` (VI3 fills it); the Install rows show it through `Entry::name_in` /
+`summary_in`, with the same fallback. Command names in the palette stay English for now. Automation ids and labels keep the English names.
 
 **Choice labels (VI2).** An `enum` setting or param may label its choices per language with a `choices` map inside
 the same `i18n` entry, from choice value to label:
