@@ -24,8 +24,9 @@ never installs anything by itself). Batches run it before they start.
 
 ## Where BashCutPro keeps things
 
-In FilmCraft's data folder (`~/Library/Application Support/FilmCraft` on a Mac, `%APPDATA%\FilmCraft` on Windows,
-`~/.local/share/filmcraft` on Linux):
+In BashCutPro's own data folder (`~/Library/Application Support/BashCutPro` on a Mac, `%APPDATA%\BashCutPro` on
+Windows, `~/.local/share/bashcutpro` on Linux; a portable install uses the `data` folder next to the app). It is not
+FilmCraft's folder, so BashCutPro and FilmCraft can be installed side by side without sharing settings:
 
 - `bashcut/`: your profiles, templates, looks, batch presets, and the side panel's settings;
 - `bashcut-plugins/`: installed plugins and their downloads;

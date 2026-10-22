@@ -504,6 +504,7 @@ pub fn portable_data_dir(exe_dir: &Path) -> Option<PathBuf> {
 /// macOS `~/Library/Application Support/FilmCraft`, Windows `%APPDATA%\FilmCraft`,
 /// elsewhere `$XDG_DATA_HOME/filmcraft` or `~/.local/share/filmcraft`.
 pub fn default_data_dir() -> Option<PathBuf> {
+    bashcut_dirs::data_dir_first!(); // BashCutPro: our own data folder, next to FilmCraft's (bashcut/rebrand.md)
     let env = |k: &str| std::env::var_os(k).filter(|v| !v.is_empty()).map(PathBuf::from);
     if let Some(d) = env("FILMCRAFT_DATA_DIR") {
         return Some(d);

@@ -14,5 +14,6 @@ name = "bashcut-doctor"
 path = "src/main.rs"
 
 [dependencies]
+bashcut-dirs = { path = "../../crates/bashcut-dirs" }
 serde_json = { workspace = true }
 sha2 = "0.10"

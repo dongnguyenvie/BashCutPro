@@ -9,7 +9,7 @@ re-apply ours.
 ## Rules
 
 - Only what a user sees changes. Crates (`filmcraft-*`), binaries (`filmcraft`, `filmcraft-cli`),
-  modules, command ids (`help.discord`…), automation ids, `FILMCRAFT_*` env vars, data folders, file
+  modules, command ids (`help.discord`…), automation ids, `FILMCRAFT_*` env vars, file
   formats (`.fcproj`, `.fcgt`, UTI `ai.storyteller.filmcraft.project`) and `filmcraft://` resources keep
   their names.
 - **One exception, the command line (#154, owner decision 2026-10-20).** Users and agents type the CLI's name, so
@@ -39,6 +39,7 @@ re-apply ours.
 | Windows MSI UpgradeCode | `31E6FB14-…` | `B6658EBC-E524-4423-AA52-C08E9B38AACB` (new; never change it again) |
 | Manufacturer / vendor | Learning Machines LLC | Birch Apps (owner to confirm) |
 | Linux package name | `filmcraft` | `bashcutpro` |
+| Data folder (SB1) | `~/Library/Application Support/FilmCraft`, `%APPDATA%\FilmCraft`, XDG `filmcraft` | `…/BashCutPro`, `%APPDATA%\BashCutPro`, XDG `bashcutpro` (`crates/bashcut-dirs`; `BASHCUTPRO_DATA_DIR`, then `FILMCRAFT_DATA_DIR`, then portable `<exe dir>/data`); engine hook in `autosave::default_data_dir` |
 | Linux app id / desktop file | `ai.storyteller.filmcraft` | unchanged (see "Not done") |
 | Community link (`help.discord`) | discord.gg/artcraft | github.com/dongnguyenvie/BashCutPro/discussions |
 | Website (`help.website`) | getartcraft.com | bashcut.birchapps.com |

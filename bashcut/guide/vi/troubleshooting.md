@@ -24,8 +24,9 @@ cài). Hàng loạt chạy nó trước khi bắt đầu.
 
 ## BashCutPro lưu mọi thứ ở đâu
 
-Trong thư mục dữ liệu của FilmCraft (`~/Library/Application Support/FilmCraft` trên Mac, `%APPDATA%\FilmCraft` trên
-Windows, `~/.local/share/filmcraft` trên Linux):
+Trong thư mục dữ liệu riêng của BashCutPro (`~/Library/Application Support/BashCutPro` trên Mac, `%APPDATA%\BashCutPro`
+trên Windows, `~/.local/share/bashcutpro` trên Linux; bản cài di động dùng thư mục `data` cạnh ứng dụng). Đây không
+phải thư mục của FilmCraft, nên có thể cài BashCutPro và FilmCraft song song mà không dùng chung thiết lập:
 
 - `bashcut/`: hồ sơ xuất, mẫu dự án, màu phim, mẫu hàng loạt và thiết lập của bảng bên;
 - `bashcut-plugins/`: plugin đã cài và tệp chúng tải về;

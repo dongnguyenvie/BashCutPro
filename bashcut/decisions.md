@@ -3,6 +3,17 @@
 Newest first. Each entry: what was decided, why, and what it rules out. Add an entry when the owner
 decides something; don't change an old one, add a new one that supersedes it.
 
+## 2026-10-22: BashCutPro has its own data folder (SB1)
+
+- **Decided:** BashCutPro keeps its state in `BashCutPro` (macOS `~/Library/Application Support`, Windows
+  `%APPDATA%`) or `bashcutpro` (XDG), not FilmCraft's folder, so both apps install side by side without sharing
+  state. One crate, `bashcut-dirs`, answers for the engine (one-line hook in `autosave::default_data_dir`; the
+  engine's own unit tests still see upstream's folder), `bashcut-batch`, `bashcut-connect` and `bashcut-doctor`.
+  `BASHCUTPRO_DATA_DIR` overrides, `FILMCRAFT_DATA_DIR` still works (scripts and the kit set it), and upstream's
+  portable rule stays (#139: `portable.txt` next to the exe means `<exe dir>/data`, never `%APPDATA%`).
+- **Why:** owner decision 2026-10-22. eframe's app name stays "FilmCraft": the build has no eframe persistence, so
+  it stores nothing under that name.
+
 ## 2026-10-23: Delete upstream's CodeRabbit and SonarCloud config
 
 - **Decided:** remove `.coderabbit.yaml`, `sonar-project.properties` and `.github/workflows/sonarcloud.yml`, recorded

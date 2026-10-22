@@ -17,5 +17,6 @@ test = false
 doc = false
 
 [dependencies]
+bashcut-dirs = { path = "../bashcut-dirs" }
 serde = { workspace = true }
 serde_json = { workspace = true }
