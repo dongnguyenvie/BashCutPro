@@ -15,12 +15,33 @@ Newest first. Add a row after every merge from upstream (`upstream.sh merge` pri
 
 | Date (sync) | Upstream commit | Upstream commit date | Note |
 |---|---|---|---|
+| 2026-10-22 | `dd525c93d43b96843aedc50d7fa94a052474f476` | 2026-10-22 | Merge upstream/main (v0.10.0 + 20 commits, 41 commits in all): no conflicts; `sonarcloud.yml` made manual-only (see Sync records) |
 | 2026-10-20 | `105c09bd80e2c86ec7464a2c59a2501eb89ffc5c` | 2026-10-19 | Check with `upstream.sh merge` (#63): already up to date, nothing merged (see Sync records) |
 | 2026-10-20 | `105c09bd80e2c86ec7464a2c59a2501eb89ffc5c` | 2026-10-19 | Initial import (latest tag v0.8.0), PR #2452 merge |
 
 ### Sync records
 
 One entry per sync: what came in, what conflicted, what it cost. Newest first.
+
+**2026-10-22, upstream/main `dd525c93` (v0.10.0 + 20 commits).** `upstream.py merge dd525c93 --no-check --no-fetch
+--branch upstream-sync/2026-10-22` (upstream/main, not the tag: it was 20 commits past `v0.10.0`). **41 commits, 56
+files (+2496 / −166), no conflicts**: rerere had nothing to replay and git merged every hook and carried edit cleanly.
+What came in: hostile-input hardening and mutation-fuzz tests for the video decoders (AV1, MPEG-2, H.264, HEVC, VP8,
+VP9, ProRes, DNx, APV); MP4 damaged-audio allocation fix; AAF/OMF embedded audio never overwrites an existing file
+(new `Services::write_file_new`, default fails closed); auto-save rotation ordered by real time; playback reopens a
+lost audio output every 2 s (`AUDIO_RETRY_S`); macOS Cmd-Q asks to save, and `app.quit` works in control-only mode;
+`filmcraft-cli exec` / `run` wait for `file.exportMedia` unless `"wait": false` (#2342); MCP screenshot uses async
+I/O; release 0.10.0 (workspace version, so our crates are 0.10.0 too); docs drop competitor names
+(`filmcraft-lumetri.png` → `filmcraft-color-panel.png`); CI: shared nix workflow, new `sonarcloud.yml`,
+`.coderabbit.yaml`, `sonar-project.properties`.
+Fixes on top of the merge: `sonarcloud.yml` `on:` set to `workflow_dispatch` only (carried edit; it ran on push and
+PR); `Cargo.lock` re-adds our crates at 0.10.0. API breaks in our adapters: none (`cargo check --workspace` green with
+no change to our code); none of our code implements `Services`, and the batch runner already passes `"wait": true`.
+No upstream change to panels, dock, theme, `UiState` or the `ui()` frame, so the rail and side panel layout is
+unaffected. CLI flags our tools use: unchanged (only the `run` help text grew). `.coderabbit.yaml` and
+`sonar-project.properties` are inert here (no CodeRabbit / SonarCloud on our repo). Churn numbers in
+`bashcut/extending-upstream.md` §3 refreshed (`--no-merges`, the method the table used). Time: about 40 min, most of
+it `cargo check` / tests on a warm `target/`.
 
 **2026-10-20, first run of the tooling (#63).** `git fetch upstream --tags`; `upstream.sh merge --no-check` on
 `upstream-sync/2026-10-20`: the newest tag `v0.9.0` (`4a69a038`, 2026-10-17) is already inside our base and
