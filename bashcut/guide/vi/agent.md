@@ -25,7 +25,9 @@ Bạn cần **Claude Code** đã cài và đăng nhập trên máy (lệnh `clau
 ## Codex
 
 Codex dùng được như trợ lý bên ngoài (bên dưới) và trong các lượt hàng loạt, nơi bước trợ lý có thể dùng `codex` thay
-cho Claude Code. Mục Trợ lý trong ứng dụng hiện dùng Claude Code.
+cho Claude Code. Mục Trợ lý trong ứng dụng có cả hai: chọn Claude Code hoặc Codex trong danh sách trợ lý. Trợ lý chưa
+cài hiện "(chưa cài)" ở đó, kèm một dòng dưới tiêu đề chỉ cách cài hoặc biến cần đặt (`BASHCUT_CLAUDE`,
+`BASHCUT_CODEX`).
 
 ## Trợ lý trong cửa sổ dòng lệnh
 

@@ -82,7 +82,6 @@ New conversation	Cuộc trò chuyện mới
 New	Mới
 No saved conversations.	Chưa có cuộc trò chuyện nào được lưu.
 Note (needed to ask for changes)	Ghi chú (bắt buộc khi yêu cầu sửa)
-Save the project to keep conversations and gates next to it.	Hãy lưu dự án để giữ các cuộc trò chuyện và cổng duyệt bên cạnh nó.
 Send	Gửi
 Stop	Dừng
 Stopping…	Đang dừng…
@@ -224,3 +223,10 @@ Checking the registry…	Đang kiểm tra kho plugin…
 {n} plugins available	Có {n} plugin
 1 plugin available	Có 1 plugin
 All plugins are installed	Đã cài hết các plugin
+# Agent readiness (UX7)
+{agent} not found: install it, or set {var}	{agent} chưa được cài: hãy cài đặt, hoặc đặt biến {var}
+{agent} not found: install {program}	{agent} chưa được cài: hãy cài {program}
+{agent} (not installed)	{agent} (chưa cài)
+Control channel off: the agent cannot edit the open project.	Kênh điều khiển đang tắt: trợ lý không sửa được dự án đang mở.
+Project not saved: conversations will not be kept	Dự án chưa lưu: cuộc trò chuyện sẽ không được giữ lại
+Save…	Lưu…
