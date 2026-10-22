@@ -34,6 +34,7 @@ LEDGER = """# Upstream
 |---|---|---|---|
 | `packaging/**` | edits | branding | test |
 | `NOTICE` | additions | copyright | keep |
+| `packaging/unused.yml` | deletes | unused service | never |
 """
 
 
@@ -156,6 +157,20 @@ class Footprint(Repos):
         rc, out = self.tool("footprint")
         self.assertEqual(rc, 1, out)
         self.assertIn("NOTICE: deletes an upstream file", out)
+
+    def test_deletes_row_allows_the_deletion_and_flags_a_returned_file(self):
+        # `packaging/unused.yml` also matches the `packaging/**` edits row: the deletes row wins
+        self.write(self.up, "packaging/unused.yml", "on: push\n")
+        self.commit(self.up, "v2")
+        self.git(self.fork, "pull", "-q", "--no-rebase", "--no-edit", "upstream", "main")
+        rc, out = self.tool("footprint")
+        self.assertEqual(rc, 1, out)
+        self.assertIn("packaging/unused.yml: listed as deleted in UPSTREAM.md but still present", out)
+        os.remove(os.path.join(self.fork, "packaging/unused.yml"))
+        self.commit(self.fork, "rm")
+        rc, out = self.tool("footprint")
+        self.assertEqual(rc, 0, out)
+        self.assertIn("deleted", out)
 
     def test_stale_and_unmarked_rows_fail(self):
         ledger = LEDGER.format(hook=HOOK) + ""

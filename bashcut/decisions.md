@@ -3,6 +3,13 @@
 Newest first. Each entry: what was decided, why, and what it rules out. Add an entry when the owner
 decides something; don't change an old one, add a new one that supersedes it.
 
+## 2026-10-23: Delete upstream's CodeRabbit and SonarCloud config
+
+- **Decided:** remove `.coderabbit.yaml`, `sonar-project.properties` and `.github/workflows/sonarcloud.yml`, recorded
+  as a `deletes` row in `UPSTREAM.md` Carried edits. On a modify/delete merge conflict keep the deletion;
+  `upstream.sh footprint` fails if one of them comes back.
+- **Why:** owner: "xoá đi, chúng ta không cần"; we use neither service, the files were inert.
+
 ## 2026-10-20: Port every BashCut capability, in Pro's own way
 
 - **Decided:** Pro covers what the Swift BashCut can do, but not by copying it: each capability is ported as a
