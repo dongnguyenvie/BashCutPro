@@ -29,6 +29,11 @@ pub fn host(app: &FilmcraftApp, ctx: &egui::Context) -> Shared {
     h
 }
 
+/// The host if one was created already (nothing has used plugins yet otherwise).
+pub fn existing(ctx: &egui::Context) -> Option<Shared> {
+    ctx.data(|d| d.get_temp::<Shared>(key()))
+}
+
 /// Run `f` with the host locked.
 pub fn with<R>(app: &FilmcraftApp, ctx: &egui::Context, f: impl FnOnce(&mut Host) -> R) -> R {
     let h = host(app, ctx);
@@ -39,7 +44,7 @@ pub fn with<R>(app: &FilmcraftApp, ctx: &egui::Context, f: impl FnOnce(&mut Host
 /// Collect run events (called by `layout` every frame); keeps frames coming while a job runs.
 pub fn poll(ctx: &egui::Context) {
     // no host yet means nothing ever ran: don't create one just to poll it
-    let Some(h) = ctx.data(|d| d.get_temp::<Shared>(key())) else { return };
+    let Some(h) = existing(ctx) else { return };
     let mut g = h.lock().unwrap_or_else(PoisonError::into_inner);
     let was_running = g.any_running();
     let running = g.poll();

@@ -34,6 +34,10 @@ It does not copy BashCut's Swift UI. It is built for FilmCraft's egui shell and 
   **Batch**, **Looks**, **Plugins**, **Runs** (§1a). Plugins that declare a panel add their own icon below. Click
   toggles the side panel; Cmd/Ctrl+Alt+Shift+A focuses Agent (Cmd/Ctrl+Shift+A is upstream's Deselect All);
   **the command palette** (§1a) has its own shortcut (#52; Cmd/Ctrl+K is upstream's Add Edit).
+  An icon's tooltip gives the title, the blurb and the shortcut from the live shortcut map. A dot marks news in a
+  section that is not on screen (UX9): on **Runs**, accent while a plugin job runs and `danger` once a run failed
+  that Runs has not shown yet; on **Batch**, accent while a batch runs. Showing the section (docked or popped out)
+  clears it. The rail button's automation label says so (`Runs: failed`, `Runs: running`, `Batch: running`).
 - **Side panel** (left of the rail): resizable (240–720 px), collapsible, width and open section remembered.
   It takes width from the dock area, so it behaves like a docked panel without being in FilmCraft's dock tree.
   Any section can pop out into a floating window (for a second monitor) and dock back.
@@ -224,6 +228,7 @@ preview need an HTTP image loader / player (later, or through plugin views #37).
 - **UI state** (open section, width, popped-out sections, panel scroll, draft message) is a `bashcut_ui::State`
   kept in egui's context data (`ctx.data_mut(|d| d.get_temp_mut_or_default::<State>(id))`), so `FilmcraftApp`
   gains no field. It is saved to `<data dir>/bashcut/ui.json` when it changes, not in upstream's workspace files.
+  The failed runs Runs has shown (for the rail's dot) are kept there too but never saved: job ids restart with the app.
 - **Background work** (plugin runs, agent processes) runs on threads owned by `bashcut-plugin-host` /
   `bashcut-agent`; the UI polls their channels each frame and asks for a repaint while anything runs. Nothing
   blocks the UI thread. All plugin and agent output is hostile input: capped sizes, no panics (AGENTS.md §0).
