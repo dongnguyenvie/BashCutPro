@@ -426,8 +426,8 @@ fn plugin_action(installed: &[Installed], argv: &[String]) -> Option<(String, Ac
     best.map(|(_, id, a)| (id, a))
 }
 
-/// Each param's text read back from its flag in the command line (a bool is its flag's presence;
-/// one left out is empty, for the plugin's default).
+/// Each param's text read back from its flag in the command line (a bool is `true` with its flag,
+/// `false` with BF1's `--no-<flag>` or neither; one left out is empty, for the plugin's default).
 fn flag_texts(a: &Action, argv: &[String]) -> BTreeMap<String, String> {
     a.params
         .iter()
@@ -773,5 +773,26 @@ mod tests {
         // a trailing flag with no value, or another program, reads nothing
         assert!(plugin_action(&installed, &["other".to_string()]).is_none());
         assert_eq!(flag_texts(&a, &["--to".to_string()])["to"], "");
+    }
+
+    #[test]
+    fn default_true_bools_read_back_from_either_flag() {
+        // BF1: a false default-true bool is saved as `--no-<flag>`
+        let m = bashcut_plugin_host::manifest::Manifest::parse(
+            &json!({"schema": "bashcut-plugin/1", "id": "t", "name": "T", "version": "0.1.0", "entry": {"command": ["t"]},
+                "actions": [{"id": "go", "args": ["go"], "needs": "none", "params": [
+                    {"id": "keep", "flag": "--keep", "type": "bool", "optional": true, "default": true}]}]})
+            .to_string(),
+        )
+        .unwrap();
+        let installed = [Installed { id: "t".into(), dir: "/p".into(), manifest: Some(m), origin: None, error: None }];
+        let read = |args: &[&str]| {
+            let argv: Vec<String> = args.iter().map(|x| x.to_string()).collect();
+            let (_, a) = plugin_action(&installed, &argv).unwrap();
+            flag_texts(&a, &argv)["keep"].clone()
+        };
+        assert_eq!(read(&["t", "go", "--no-keep"]), "false");
+        assert_eq!(read(&["t", "go", "--keep"]), "true");
+        assert_eq!(read(&["t", "go"]), "false", "neither flag reads as before BF1");
     }
 }
