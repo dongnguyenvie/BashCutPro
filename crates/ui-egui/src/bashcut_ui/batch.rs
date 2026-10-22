@@ -403,7 +403,7 @@ fn cli_param(params: &Value, last: Option<&str>) -> Result<String, String> {
         .or_else(|| last.map(str::to_string))
         .or_else(plugins::cli_path)
         .ok_or_else(|| {
-            s("Batches need filmcraft-cli next to the app. Reinstall BashCutPro, or in a source build run `cargo build -p filmcraft-cli`.").to_string()
+            s("Batches need the bashcutpro engine next to the app. Reinstall BashCutPro, or in a source build run `cargo build -p bashcutpro-cli`.").to_string()
         })
 }
 

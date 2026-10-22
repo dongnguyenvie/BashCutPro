@@ -11,7 +11,7 @@ use std::process::ExitCode;
 use std::time::{Duration, Instant};
 
 const HELP: &str = "\
-bashcut-batch: BashCutPro batch pipelines through bashcutpro, the filmcraft-cli engine (headless; the app need not be open)
+bashcut-batch: BashCutPro batch pipelines through the bashcutpro engine (headless; the app need not be open)
 
 USAGE
   bashcut-batch run <pipeline.json> [--id ID] [--input PATH]... [--projects DIR] [--outputs DIR] [RUN OPTIONS]
@@ -45,8 +45,8 @@ RUN OPTIONS
   --agent-concurrency N
                       agent steps at once, across items (overrides the pipeline's agentConcurrency)
   --mcp PATH          bashcut-mcp for agent steps (default: $BASHCUT_MCP, else the one next to this
-                      program; without it agents get filmcraft-cli mcp, writes not limited)
-  --data-dir DIR      FilmCraft data dir: presets, and --data-dir for filmcraft-cli
+                      program; without it agents get bashcutpro mcp, writes not limited)
+  --data-dir DIR      FilmCraft data dir: presets, and --data-dir for the engine
   --kit DIR           the agent kit (bashcutpro-agent-kit): `{kit}` in steps, and agent steps get its
                       skills and scripts (default: $BASHCUT_KIT, else <data dir>/bashcut-kit if there)
   --speech-model ID   the speech model for transcribe steps that name none (default: the one picked

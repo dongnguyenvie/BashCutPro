@@ -621,7 +621,7 @@ fn create(sh: &Shared, idx: usize, s: usize, ctx: &Ctx) -> Result<(), ErrorInfo>
         let ended = spawn(sh, idx, s, &spec)?;
         outcome(ended, &spec.log, "create")?;
         if !tmp.is_file() {
-            return Err(ErrorInfo::new(Category::Command, "create: filmcraft-cli saved no project"));
+            return Err(ErrorInfo::new(Category::Command, "create: the engine saved no project"));
         }
     }
     std::fs::rename(&tmp, &ctx.project).map_err(|e| io(e, &ctx.project))
@@ -864,7 +864,7 @@ fn speech_next_step(detail: &str) -> Option<String> {
         ));
     }
     detail.contains("speech-to-text is not available in this build").then(|| {
-        "Next: install BashCutPro from its installer (it includes speech-to-text) or build with `cargo build -p filmcraft-cli --features whisper`; `bashcut-doctor` checks it".to_string()
+        "Next: install BashCutPro from its installer (it includes speech-to-text) or build with `cargo build -p bashcutpro-cli --features whisper`; `bashcut-doctor` checks it".to_string()
     })
 }
 
