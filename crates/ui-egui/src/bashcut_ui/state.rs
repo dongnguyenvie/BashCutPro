@@ -4,7 +4,7 @@
 //! `<data dir>/bashcut/ui.json` when it changes. The file is hostile input: capped, clamped, and
 //! unknown sections are dropped.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
@@ -37,6 +37,10 @@ pub struct State {
     /// Where each popped-out window was, per monitor: `"<section>@<width>x<height>"` →
     /// `[x, y, width, height]` (see [`window_key`]).
     pub windows: BTreeMap<String, [f32; 4]>,
+    /// Failed plugin runs (job ids) that were on screen in Runs; any other failure puts a dot on
+    /// the rail. Not saved: job ids start over with the app.
+    #[serde(skip)]
+    seen_failures: BTreeSet<u64>,
     /// Read from disk already.
     #[serde(skip)]
     loaded: bool,
@@ -47,7 +51,17 @@ pub struct State {
 
 impl Default for State {
     fn default() -> Self {
-        Self { rail: true, open: None, width: DEFAULT_WIDTH, popped: Vec::new(), language: None, windows: BTreeMap::new(), loaded: false, saved: None }
+        Self {
+            rail: true,
+            open: None,
+            width: DEFAULT_WIDTH,
+            popped: Vec::new(),
+            language: None,
+            windows: BTreeMap::new(),
+            seen_failures: BTreeSet::new(),
+            loaded: false,
+            saved: None,
+        }
     }
 }
 
@@ -168,6 +182,16 @@ impl State {
         self.open = Some(section.to_string());
     }
 
+    /// Runs is on screen: the `failed` jobs are seen (ids no longer listed are forgotten).
+    pub fn see_failures(&mut self, failed: &[u64]) {
+        self.seen_failures = failed.iter().copied().collect();
+    }
+
+    /// One of the `failed` jobs has not been seen in Runs yet.
+    pub fn unseen_failure(&self, failed: &[u64]) -> bool {
+        failed.iter().any(|id| !self.seen_failures.contains(id))
+    }
+
     /// Read `ui.json` once (first frame). A missing or broken file keeps the defaults.
     pub fn load_once(&mut self, data_dir: Option<&Path>, known: &[&str]) {
         if self.loaded {
@@ -231,6 +255,18 @@ mod tests {
         st.dock_back("runs");
         assert_eq!(st.open.as_deref(), Some("runs"));
         assert!(st.popped.is_empty());
+    }
+
+    #[test]
+    fn failures_stay_unseen_until_runs_shows_them() {
+        let mut st = State::default();
+        assert!(!st.unseen_failure(&[]));
+        assert!(st.unseen_failure(&[3]));
+        st.see_failures(&[3]);
+        assert!(!st.unseen_failure(&[3]));
+        assert!(st.unseen_failure(&[3, 7]), "a later failure is news again");
+        // never saved
+        assert!(!serde_json::to_string(&st).unwrap().contains("seen"));
     }
 
     #[test]

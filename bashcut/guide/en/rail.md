@@ -17,6 +17,10 @@ it again to close the panel. The same sections are in **Window ▸ BashCutPro**.
 **Pop out.** The square button in a section's header moves it into its own window (handy on a second screen);
 **Dock back** returns it to the side panel. **Cmd+Alt+Shift+A** jumps to the Agent section.
 
+**Dots on the rail.** Hover an icon for its title, what it is for and its shortcut. A blue dot on **Runs** or
+**Batch** means something is running there; a red dot on **Runs** means a run failed since you last looked. The dot
+goes away when you open the section.
+
 ## The command palette
 
 **Cmd+Shift+P** (or **Window ▸ BashCutPro ▸ Command Palette…**) finds anything by a few letters: commands, looks,

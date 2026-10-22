@@ -17,6 +17,10 @@ này cũng có trong **Window ▸ BashCutPro**.
 **Tách cửa sổ** (Pop out). Nút vuông ở đầu mỗi mục đưa nó ra cửa sổ riêng (tiện khi có màn hình thứ hai);
 **Gắn lại** (Dock back) đưa về bảng bên. **Cmd+Alt+Shift+A** nhảy tới mục Trợ lý.
 
+**Chấm trên thanh bên.** Rê chuột lên một biểu tượng để xem tên, công dụng và phím tắt của nó. Chấm xanh trên
+**Tác vụ** hoặc **Hàng loạt** nghĩa là đang có việc chạy ở đó; chấm đỏ trên **Tác vụ** nghĩa là có lượt chạy bị lỗi kể
+từ lần bạn xem trước. Chấm biến mất khi bạn mở mục đó.
+
 ## Bảng lệnh
 
 **Cmd+Shift+P** (hoặc **Window ▸ BashCutPro ▸ Command Palette…**) tìm mọi thứ chỉ với vài chữ: lệnh, màu phim, hồ sơ

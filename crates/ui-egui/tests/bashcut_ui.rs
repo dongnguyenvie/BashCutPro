@@ -1221,3 +1221,77 @@ fn batch_starts_from_a_preset_and_clears_inputs() {
     assert!(d.harness.state().ui_error.is_none(), "{:?}", d.harness.state().ui_error);
     let _ = std::fs::remove_dir_all(&data);
 }
+
+#[test]
+fn a_failed_run_puts_a_dot_on_runs_until_runs_opens() {
+    let data = std::env::temp_dir().join(format!("bashcut-ui-rail-dot-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&data);
+    let plugin = data.join("bashcut-plugins").join("test.fails");
+    std::fs::create_dir_all(&plugin).unwrap();
+    let manifest = json!({
+        "schema": "bashcut-plugin/1", "id": "test.fails", "name": "Fails", "version": "0.1.0", "summary": "test plugin",
+        "entry": {"command": ["sh", "-c", "sleep 4; exit 4"], "windows": ["powershell", "-NoProfile", "-Command", "Start-Sleep -Milliseconds 4000; exit 4"]}, "output": "bashcut-result/1",
+        "actions": [{"id": "go", "title": "Go", "args": [], "needs": "none"}]
+    });
+    std::fs::write(plugin.join("bashcut-plugin.json"), manifest.to_string()).unwrap();
+
+    let mut session = Session::default();
+    session.start_autosave(filmcraft_engine::autosave::AutosaveConfig::new(&data)).expect("data dir");
+    session.execute("file.openDemoProject", json!({})).expect("demo project");
+    let (tx, rx) = channel();
+    let app = FilmcraftApp::new(session).with_control(rx);
+    let harness = Harness::builder().with_size(egui::vec2(W, H)).with_max_steps(10_000).build_eframe(move |_cc| app);
+    let mut d = Driver { harness, tx };
+    d.frames(4);
+    // the rail's label for Runs once it reads `want` (a few frames at most), else the last one
+    let label_of = |d: &mut Driver, want: &str| {
+        let mut got = String::new();
+        for _ in 0..20 {
+            let v = d.ok("ui.elements", json!({"prefix": "bashcut.rail.runs"}));
+            got = v[0]["label"].as_str().unwrap_or_default().to_string();
+            if got == want {
+                break;
+            }
+            d.frames(1);
+        }
+        got
+    };
+    assert_eq!(label_of(&mut d, "Runs"), "Runs");
+
+    // Plugins' first open checks the registry (a network job): let it end and see it in Runs first
+    d.click("bashcut.rail.plugins");
+    for _ in 0..1500 {
+        let runs = d.exec("bashcut.plugins.runs", json!({}));
+        if !runs.as_array().is_some_and(|r| r.iter().any(|j| j["state"] == json!("running"))) {
+            break;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(20));
+    }
+    d.click("bashcut.rail.runs");
+    d.click("bashcut.rail.plugins");
+    assert_eq!(label_of(&mut d, "Runs"), "Runs");
+
+    let job = d.exec("bashcut.plugins.run", json!({"plugin": "test.fails", "action": "go"}))["job"].as_u64().expect("a job");
+    d.exec("bashcut.ui.show.plugins", json!({}));
+    assert_eq!(label_of(&mut d, "Runs: running"), "Runs: running");
+    let mut state = Value::Null;
+    for _ in 0..1000 {
+        state = d.exec("bashcut.plugins.job", json!({"job": job}))["state"].clone();
+        if state != json!("running") {
+            break;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(20));
+    }
+    assert_eq!(state, json!("failed"));
+    d.frames(2);
+    assert_eq!(label_of(&mut d, "Runs: failed"), "Runs: failed", "the failure shows on the rail while Plugins is open");
+    d.exec("bashcut.ui.setLanguage", json!({"language": "vi"}));
+    assert_eq!(label_of(&mut d, "Tác vụ: lỗi"), "Tác vụ: lỗi");
+    d.exec("bashcut.ui.setLanguage", json!({"language": null}));
+
+    d.click("bashcut.rail.runs");
+    d.click("bashcut.rail.plugins");
+    assert_eq!(label_of(&mut d, "Runs"), "Runs", "seen once Runs was open");
+    assert!(d.harness.state().ui_error.is_none(), "{:?}", d.harness.state().ui_error);
+    let _ = std::fs::remove_dir_all(&data);
+}

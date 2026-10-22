@@ -244,3 +244,9 @@ Plan a vlog	Lên kế hoạch vlog
 Hook and script	Mở đầu và kịch bản
 Finish for posting	Hoàn thiện để đăng
 The agent stops at each stage for your approval.	Agent dừng ở mỗi bước để bạn duyệt.
+# Rail activity dots and tooltips (UX9)
+{section}: failed	{section}: lỗi
+{section}: running	{section}: đang chạy
+A run failed since you last looked.	Có lượt chạy bị lỗi kể từ lần bạn xem trước.
+Running now.	Đang chạy.
+Shortcut: {keys}	Phím tắt: {keys}
