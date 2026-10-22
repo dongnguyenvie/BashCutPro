@@ -15,4 +15,5 @@ path = "src/main.rs"
 
 [dependencies]
 bashcut-batch = { path = "../../crates/bashcut-batch" }
+bashcut-dirs = { path = "../../crates/bashcut-dirs" }
 serde_json = { workspace = true }

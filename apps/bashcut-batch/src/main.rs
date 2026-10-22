@@ -248,7 +248,7 @@ fn open_job(a: &Args) -> Result<Job, Fail> {
 }
 
 fn data_dir(a: &Args) -> Result<PathBuf, Fail> {
-    a.opt("--data-dir").map(PathBuf::from).or_else(presets::default_data_dir).ok_or_else(|| usage("no data dir: pass --data-dir"))
+    a.opt("--data-dir").map(PathBuf::from).or_else(bashcut_dirs::data_dir).ok_or_else(|| usage("no data dir: pass --data-dir"))
 }
 
 /// The pipeline from `pos(at)` or `--preset`, with `--input` / `--projects` / `--outputs` applied. A preset run
@@ -312,7 +312,7 @@ fn find_kit(a: &Args) -> Result<Option<PathBuf>, Fail> {
         }
         return Ok(Some(k));
     }
-    let default = a.opt("--data-dir").map(PathBuf::from).or_else(presets::default_data_dir).map(|d| d.join("bashcut-kit"));
+    let default = a.opt("--data-dir").map(PathBuf::from).or_else(bashcut_dirs::data_dir).map(|d| d.join("bashcut-kit"));
     Ok(default.filter(|k| k.join("skills").is_dir()))
 }
 

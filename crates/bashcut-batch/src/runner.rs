@@ -899,7 +899,12 @@ fn cli(sh: &Shared) -> String {
 
 /// `<data dir>/bashcut-plugins`, where the plugin host installs plugins (`{plugins}`).
 fn plugins_dir(sh: &Shared) -> PathBuf {
-    sh.opts.data_dir.clone().or_else(crate::presets::default_data_dir).unwrap_or_default().join(bashcut_dirs::PLUGINS_DIR)
+    data_dir(sh.opts).unwrap_or_default().join(bashcut_dirs::PLUGINS_DIR)
+}
+
+/// `--data-dir`, else BashCutPro's data folder ([`bashcut_dirs::data_dir`]).
+fn data_dir(opts: &Options) -> Option<PathBuf> {
+    opts.data_dir.clone().or_else(bashcut_dirs::data_dir)
 }
 
 fn data_dir_args(sh: &Shared) -> Vec<String> {
@@ -925,7 +930,7 @@ fn speech_model(pipeline: &Pipeline, opts: &Options) -> Option<String> {
     if !needed {
         return None;
     }
-    let settings = opts.data_dir.clone().or_else(crate::presets::default_data_dir).and_then(|d| crate::speech::settings_model(&d));
+    let settings = data_dir(opts).and_then(|d| crate::speech::settings_model(&d));
     let models = crate::speech::engine_models(&opts.cli, &dir_args(opts), &opts.env);
     crate::speech::choose(settings.as_deref(), models.as_ref())
 }

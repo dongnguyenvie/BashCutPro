@@ -7,11 +7,6 @@ use crate::book::write_atomic;
 use crate::pipeline::{self, Pipeline};
 use std::path::{Path, PathBuf};
 
-/// BashCutPro's data directory (`bashcut_dirs::data_dir`: its own folder next to FilmCraft's).
-pub fn default_data_dir() -> Option<PathBuf> {
-    bashcut_dirs::data_dir()
-}
-
 pub fn presets_dir(data_dir: &Path) -> PathBuf {
     data_dir.join("bashcut").join("batch-presets")
 }
