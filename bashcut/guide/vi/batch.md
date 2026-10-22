@@ -18,6 +18,9 @@ ngày · n xong / m lỗi"), nên thiết lập đã lưu chỉ cách một cú 
    bỏ tệp đó; **Xoá hết** (Clear all, cạnh số tệp) xoá mọi đầu vào và giữ nguyên phần còn lại.
 2. **Các bước** (Steps): **＋ Thêm bước** mở ô tìm lệnh, thao tác plugin và công thức (giống bảng lệnh). Các bước chạy
    lần lượt trên từng dự án.
+   Bấm vào một bước plugin để sửa các ô của nó (ô bắt buộc có dấu `*`). Khi còn ô bắt buộc để trống, bước đó báo
+   **Cần điền: …** màu đỏ và **Chạy hàng loạt** chưa bấm được, kèm tên bước cần sửa. Bước có plugin chưa cài sẽ bị làm mờ
+   với dòng **Chưa cài plugin**: bấm **Cài đặt**, hoặc xoá bước đó.
 3. **Đầu ra** (Outputs): **＋ Thêm đầu ra** rồi chọn một **Hồ sơ xuất** (TikTok, Reels, Shorts, YouTube, YouTube 4K,
    Facebook vuông; xem [Hồ sơ xuất](export.md)) hoặc một **Thiết lập xuất** của bạn. Không có đầu ra cũng được: khi đó
    kết quả là các dự án.

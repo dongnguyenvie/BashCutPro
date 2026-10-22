@@ -18,6 +18,9 @@ m failed"), so a saved setup is one click away.
    file removes it; **Clear all** (next to the file count) empties the inputs and keeps the rest of the batch.
 2. **Steps**: **＋ Add step** opens a search over commands, plugin actions and recipes (the same search as the
    palette). Steps run in order on each project.
+   Click a plugin step to change its fields (required ones are marked `*`). While a required field is empty the step
+   says **Fill in: …** in red and **Run batch** waits, saying which step. A step whose plugin is not installed is
+   greyed out with **Plugin not installed**: click **Install**, or remove the step.
 3. **Outputs**: **＋ Add output** and pick an **Output profile** (TikTok, Reels, Shorts, YouTube, YouTube 4K, Facebook
    square; see [Output profiles](export.md)) or one of your **Export presets**. No output is fine too: then the
    projects are the result.

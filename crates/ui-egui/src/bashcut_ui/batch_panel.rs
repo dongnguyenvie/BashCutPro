@@ -10,7 +10,7 @@ use serde_json::{Map, Value, json};
 
 use super::batch;
 use super::palette::{self, Item};
-use super::plugins_panel::{Spec, button, field, param_title, param_value};
+use super::plugins_panel::{Spec, button, field, gated_button, param_title, param_value, required, value_text};
 use super::strings::{f, s};
 use crate::FilmcraftApp;
 use crate::native_dialogs::FileDialog;
@@ -121,7 +121,8 @@ pub fn draw(app: &mut FilmcraftApp, ui: &mut egui::Ui) {
 
     ui.add_space(6.0);
     ui.horizontal(|ui| {
-        if button(app, ui, "bashcut.batch.run", s("Run batch"), !running && !draft.inputs.is_empty()) {
+        let why = if draft.inputs.is_empty() || running { Some(String::new()) } else { run_blocker(app, &ctx, &draft.steps) };
+        if gated_button(app, ui, "bashcut.batch.run", s("Run batch"), why.as_deref()) {
             call(app, &ctx, &mut v, "run", json!({}));
         }
         if button(app, ui, "bashcut.batch.cancel", s("Cancel"), running) {
@@ -129,6 +130,9 @@ pub fn draw(app: &mut FilmcraftApp, ui: &mut egui::Ui) {
         }
         if !running && draft.inputs.is_empty() {
             ui.label(egui::RichText::new(s("Add files to run the batch.")).size(10.5).color(app.tokens.text_dim));
+        } else if let Some(why) = why.filter(|w| !running && !w.is_empty()) {
+            let r = ui.label(egui::RichText::new(&why).size(10.5).color(app.tokens.danger));
+            app.auto.add_response("bashcut.batch.run.blocked", &r, &why);
         }
     });
     if let Some(book) = &book {
@@ -271,9 +275,21 @@ fn steps(app: &mut FilmcraftApp, ui: &mut egui::Ui, ctx: &egui::Context, v: &mut
     let n = list.len();
     for (i, step) in list.iter().enumerate() {
         let label = step.label.clone().unwrap_or_else(|| step.describe());
+        let source = step_source(app, ctx, step);
         ui.horizontal(|ui| {
             let open = v.editing.as_ref().is_some_and(|(e, _)| *e == i);
-            if button(app, ui, &format!("bashcut.batch.step.{i}"), &format!("{}. {label}", i + 1), true) {
+            // a step whose plugin is gone is greyed out: it can be installed again or removed
+            if let Some(plugin) = step.plugin_action.as_ref().map(|a| a.plugin.clone()).filter(|_| matches!(source, Source::NotInstalled)) {
+                let r = ui.add_enabled(false, egui::Button::new(format!("{}. {label}", i + 1)));
+                app.auto.add_response(&format!("bashcut.batch.step.{i}"), &r, &label);
+                let r = ui.label(egui::RichText::new(s("Plugin not installed")).size(10.5).color(t.text_dim));
+                app.auto.add_response(&format!("bashcut.batch.step.{i}.notInstalled"), &r, s("Plugin not installed"));
+                if button(app, ui, &format!("bashcut.batch.step.{i}.install"), s("Install"), true)
+                    && let Err(e) = super::plugins::invoke(app, ctx, "install", &json!({"plugin": plugin}))
+                {
+                    v.status = Some(e);
+                }
+            } else if button(app, ui, &format!("bashcut.batch.step.{i}"), &format!("{}. {label}", i + 1), true) {
                 v.editing = if open { None } else { Some((i, serde_json::to_string_pretty(step).unwrap_or_default())) };
                 v.form = None;
             }
@@ -292,11 +308,16 @@ fn steps(app: &mut FilmcraftApp, ui: &mut egui::Ui, ctx: &egui::Context, v: &mut
                 }
             });
         });
+        if let Some(missing) = step.missing() {
+            let why = f("Fill in: {fields}", &[("fields", &missing_titles(&source, missing).join(", "))]);
+            let r = ui.label(egui::RichText::new(&why).size(10.5).color(t.danger));
+            app.auto.add_response(&format!("bashcut.batch.step.{i}.error"), &r, &why);
+        }
         let Some((at, text)) = v.editing.clone().filter(|(e, _)| *e == i) else { continue };
         // a plugin step is edited as its action's form, never as its command line
-        let argv = step.plugin.as_ref().map(|p| p.argv.clone()).unwrap_or_default();
-        if let Some((plugin, a)) = super::plugins::with(app, ctx, |h| plugin_action(h.installed(), &argv)) {
-            plugin_form(app, ui, ctx, v, i, step, &plugin, &a, &argv);
+        if let Source::Plugin(plugin, a) = &source {
+            let argv = step.plugin.as_ref().map(|p| p.argv.clone()).unwrap_or_default();
+            plugin_form(app, ui, ctx, v, i, step, plugin, a, &argv);
             continue;
         }
         // an engine command shows what it takes, as the palette does
@@ -339,6 +360,48 @@ fn steps(app: &mut FilmcraftApp, ui: &mut egui::Ui, ctx: &egui::Context, v: &mut
             v.search.clear();
         }
     }
+}
+
+/// Where a step comes from, for its row and form.
+enum Source {
+    /// An installed plugin's action.
+    Plugin(String, Box<Action>),
+    /// A plugin step whose plugin is not installed (any more).
+    NotInstalled,
+    /// An engine command, recipe, or a command line no installed action matches.
+    Other,
+}
+
+/// The step's plugin action: the one it names (`pluginAction`), else (steps saved before it) the
+/// installed action its command line starts with.
+fn step_source(app: &mut FilmcraftApp, ctx: &egui::Context, step: &bashcut_batch::pipeline::Step) -> Source {
+    if let Some(pa) = &step.plugin_action {
+        let found = super::plugins::with(app, ctx, |h| h.plugin(&pa.plugin).and_then(|p| p.manifest.as_ref()).and_then(|m| m.action(&pa.action)).cloned());
+        return found.map_or(Source::NotInstalled, |a| Source::Plugin(pa.plugin.clone(), Box::new(a)));
+    }
+    let argv = step.plugin.as_ref().map(|p| p.argv.clone()).unwrap_or_default();
+    match super::plugins::with(app, ctx, |h| plugin_action(h.installed(), &argv)) {
+        Some((plugin, a)) => Source::Plugin(plugin, Box::new(a)),
+        None => Source::Other,
+    }
+}
+
+/// The titles (in the UI language) of a step's empty required params.
+fn missing_titles(source: &Source, missing: &[String]) -> Vec<String> {
+    missing
+        .iter()
+        .map(|id| match source {
+            Source::Plugin(_, a) => a.params.iter().find(|p| &p.id == id).map_or_else(|| id.clone(), param_title),
+            _ => id.clone(),
+        })
+        .collect()
+}
+
+/// Why **Run batch** waits: the first step with empty required params; `None` when it can run.
+fn run_blocker(app: &mut FilmcraftApp, ctx: &egui::Context, steps: &[bashcut_batch::pipeline::Step]) -> Option<String> {
+    let (i, step) = steps.iter().enumerate().find(|(_, s)| s.missing().is_some())?;
+    let fields = missing_titles(&step_source(app, ctx, step), step.missing().unwrap_or_default()).join(", ");
+    Some(f("Step {n}: fill in {fields}", &[("n", &(i + 1).to_string()), ("fields", &fields)]))
 }
 
 /// The installed plugin action a plugin step was built from (`batch.rs` `plugin_step`): the one
@@ -392,7 +455,11 @@ fn plugin_form(
 ) {
     let mut texts = match v.form.take() {
         Some((at, texts)) if at == i => texts,
-        _ => flag_texts(a, argv),
+        _ => match &step.plugin_action {
+            // the params as given: a `false` the command line can't show reads back as `false`
+            Some(pa) => a.params.iter().map(|p| (p.id.clone(), pa.params.get(&p.id).filter(|v| !v.is_null()).map(value_text).unwrap_or_default())).collect(),
+            None => flag_texts(a, argv),
+        },
     };
     let mut apply = false;
     egui::Frame::group(ui.style()).show(ui, |ui| {
@@ -401,7 +468,7 @@ fn plugin_form(
             let id = format!("bashcut.batch.step.{i}.param.{}", p.id);
             let text = texts.entry(p.id.clone()).or_default();
             ui.horizontal(|ui| {
-                ui.label(title.as_str());
+                ui.label(if required(p) { format!("{title} *") } else { title.clone() });
                 field(app, ui, &id, &title, Spec::param(p), text);
             });
         }

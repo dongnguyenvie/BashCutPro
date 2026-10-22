@@ -561,7 +561,7 @@ fn run_blocker(control: bool, a: &Action, missing: &[String]) -> Option<String> 
 }
 
 /// A button disabled while `why` says what is missing (shown when hovered); `true` when clicked.
-fn gated_button(app: &mut FilmcraftApp, ui: &mut egui::Ui, id: &str, label: &str, why: Option<&str>) -> bool {
+pub(super) fn gated_button(app: &mut FilmcraftApp, ui: &mut egui::Ui, id: &str, label: &str, why: Option<&str>) -> bool {
     let mut r = ui.add_enabled(why.is_none(), egui::Button::new(label));
     if let Some(why) = why {
         r = r.on_disabled_hover_text(why);
@@ -610,7 +610,7 @@ fn missing(d: &Drafts, m: &Manifest, a: &Action) -> Vec<String> {
 }
 
 /// A param the plugin can't run without: not optional and with no default (a checkbox always has a value).
-fn required(p: &Param) -> bool {
+pub(super) fn required(p: &Param) -> bool {
     !p.optional && p.default.is_none() && p.kind != "bool"
 }
 
@@ -673,7 +673,7 @@ fn clamp(n: f64, min: Option<f64>, max: Option<f64>) -> f64 {
     max.filter(|m| m.is_finite() && min.is_none_or(|lo| lo <= *m)).map_or(n, |m| n.min(m))
 }
 
-fn value_text(v: &Value) -> String {
+pub(super) fn value_text(v: &Value) -> String {
     match v {
         Value::String(t) => t.clone(),
         Value::Null => String::new(),

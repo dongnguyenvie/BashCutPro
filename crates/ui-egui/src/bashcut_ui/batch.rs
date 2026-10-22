@@ -11,7 +11,7 @@ use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 use std::time::{Duration, Instant};
 
 use bashcut_batch::book::now_ms;
-use bashcut_batch::pipeline::{self, AgentStep, OnFailure, Output, ProcessStep, Step};
+use bashcut_batch::pipeline::{self, AgentStep, OnFailure, Output, PluginAction, ProcessStep, Step};
 use bashcut_batch::{Book, ItemState, Job, Options, Pipeline, SCHEMA, Status, Summary, presets};
 use bashcut_plugin_host::manifest::Connection;
 use bashcut_plugin_host::settings::{self, MemoryStore};
@@ -458,19 +458,27 @@ fn plugin_step(app: &mut FilmcraftApp, ctx: &egui::Context, plugin: &str, action
     let a = m.action(action).ok_or(format!("{plugin} has no action `{action}`"))?;
     let params: BTreeMap<String, Value> =
         params.and_then(Value::as_object).map(|o| o.iter().map(|(k, v)| (k.clone(), v.clone())).collect()).unwrap_or_default();
-    let cli = plugins::cli_path();
-    let argv = m.command_line(bashcut_plugin_host::os(), action, &Connection::Project("{project}".into()), cli.as_deref(), &params).map_err(|e| e.0)?;
-    let argv = argv
-        .into_iter()
-        .map(|a| {
-            let local = installed.dir.join(&a);
-            if !a.is_empty() && !Path::new(&a).is_absolute() && local.exists() { local.to_string_lossy().into_owned() } else { a }
-        })
-        .collect();
+    // a required param left empty keeps the step (with no command line) so its form can say what is
+    // missing; the batch won't run until it is filled in
+    let given = |id: &str| params.get(id).is_some_and(|v| !v.is_null() && v.as_str().is_none_or(|s| !s.trim().is_empty()));
+    let missing: Vec<String> = a.params.iter().filter(|p| super::plugins_panel::required(p) && !given(&p.id)).map(|p| p.id.clone()).collect();
+    let argv = if missing.is_empty() {
+        let cli = plugins::cli_path();
+        let argv = m.command_line(bashcut_plugin_host::os(), action, &Connection::Project("{project}".into()), cli.as_deref(), &params).map_err(|e| e.0)?;
+        argv.into_iter()
+            .map(|a| {
+                let local = installed.dir.join(&a);
+                if !a.is_empty() && !Path::new(&a).is_absolute() && local.exists() { local.to_string_lossy().into_owned() } else { a }
+            })
+            .collect()
+    } else {
+        Vec::new()
+    };
     let env = settings::env_for(m, &values, &MemoryStore::default()).into_iter().collect();
     let name = if m.name.is_empty() { m.id.as_str() } else { m.name.as_str() };
     let title = if a.title.is_empty() { a.id.as_str() } else { a.title.trim_end_matches('…') };
-    Ok(Step { label: Some(format!("{name} › {title}")), plugin: Some(ProcessStep { argv, env }), ..Step::default() })
+    let source = PluginAction { plugin: plugin.to_string(), action: action.to_string(), params, missing };
+    Ok(Step { label: Some(format!("{name} › {title}")), plugin: Some(ProcessStep { argv, env }), plugin_action: Some(source), ..Step::default() })
 }
 
 /// An output from `{profile, name?}` (the runner exports it with the profile's loudness and caption
