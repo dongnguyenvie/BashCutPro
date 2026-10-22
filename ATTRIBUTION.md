@@ -207,6 +207,12 @@ Screenshots in the user guide (`bashcut/guide/img/`), taken from the app itself 
 | `bashcut/guide/img/plugins.png` | BashCutPro contributors | Original work: screenshot of BashCutPro (`ui.screenshot`), cropped and scaled | MIT OR Apache-2.0 (`LICENSE-MIT`, `LICENSE-APACHE`) |
 | `bashcut/guide/img/runs.png` | BashCutPro contributors | Original work: screenshot of BashCutPro (`ui.screenshot`), cropped and scaled | MIT OR Apache-2.0 (`LICENSE-MIT`, `LICENSE-APACHE`) |
 | `bashcut/guide/img/window.png` | BashCutPro contributors | Original work: screenshot of BashCutPro (`ui.screenshot`), cropped and scaled | MIT OR Apache-2.0 (`LICENSE-MIT`, `LICENSE-APACHE`) |
+| `bashcut/ux-audit/window.png` | BashCutPro contributors | Original work: screenshot of BashCutPro (`ui.screenshot`), cropped and scaled; evidence for `bashcut/ux-audit-2026-10.md` | MIT OR Apache-2.0 (`LICENSE-MIT`, `LICENSE-APACHE`) |
+| `bashcut/ux-audit/agent.png` | BashCutPro contributors | Original work: screenshot of BashCutPro (`ui.screenshot`), cropped and scaled; evidence for `bashcut/ux-audit-2026-10.md` | MIT OR Apache-2.0 (`LICENSE-MIT`, `LICENSE-APACHE`) |
+| `bashcut/ux-audit/plugins-form.png` | BashCutPro contributors | Original work: screenshot of BashCutPro (`ui.screenshot`), cropped and scaled; evidence for `bashcut/ux-audit-2026-10.md` | MIT OR Apache-2.0 (`LICENSE-MIT`, `LICENSE-APACHE`) |
+| `bashcut/ux-audit/runs-failed.png` | BashCutPro contributors | Original work: screenshot of BashCutPro (`ui.screenshot`), cropped and scaled; evidence for `bashcut/ux-audit-2026-10.md` | MIT OR Apache-2.0 (`LICENSE-MIT`, `LICENSE-APACHE`) |
+| `bashcut/ux-audit/batch.png` | BashCutPro contributors | Original work: screenshot of BashCutPro (`ui.screenshot`), cropped and scaled; evidence for `bashcut/ux-audit-2026-10.md` | MIT OR Apache-2.0 (`LICENSE-MIT`, `LICENSE-APACHE`) |
+| `bashcut/ux-audit/library.png` | BashCutPro contributors | Original work: screenshot of BashCutPro (`ui.screenshot`), cropped and scaled; evidence for `bashcut/ux-audit-2026-10.md` | MIT OR Apache-2.0 (`LICENSE-MIT`, `LICENSE-APACHE`) |
 
 ## Bench contact sheets
 

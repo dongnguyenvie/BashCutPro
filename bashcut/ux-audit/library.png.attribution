@@ -1,0 +1,8 @@
+asset:        library.png
+title:        BashCutPro UX audit screenshot: the Library section's Online tab before the Online Resources plugin is installed (dark theme)
+author:       BashCutPro contributors
+source:       original work: screenshot of BashCutPro taken with its ui.screenshot control command on the built-in demo project (generated media), cropped and scaled with sips
+license:      MIT OR Apache-2.0
+license-file: LICENSE-MIT, LICENSE-APACHE
+added:        2026-10-22 by Claude (agent) for Dong Nguyen, UX audit (UX0)
+notes:        Evidence for bashcut/ux-audit-2026-10.md; shows the UI as of main 55d402db.
