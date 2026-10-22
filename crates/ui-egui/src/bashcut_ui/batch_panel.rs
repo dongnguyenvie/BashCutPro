@@ -77,7 +77,7 @@ pub fn draw(app: &mut FilmcraftApp, ui: &mut egui::Ui) {
         let g = batch::lock(&shared);
         (g.draft.clone(), g.book.clone(), g.is_running(), g.error.clone(), g.memory.clone(), g.memory.recent.clone())
     };
-    let err = egui::Color32::from_rgb(0xe0, 0x6c, 0x5f);
+    let err = app.tokens.danger;
     for (id, e) in [("bashcut.batch.status", v.status.clone()), ("bashcut.batch.error", error)] {
         if let Some(e) = e {
             let r = ui.label(egui::RichText::new(&e).size(11.0).color(err));
@@ -363,7 +363,7 @@ fn queue(app: &mut FilmcraftApp, ui: &mut egui::Ui, ctx: &egui::Context, v: &mut
     ui.label(egui::RichText::new(format!("{} · {summary}", s(status_label(book.status)))).size(10.5).color(t.text_dim));
     // the runner waits (low disk) without failing anything: say so, or the queue looks stuck
     if let Some(why) = book.paused.as_ref().filter(|_| running) {
-        let r = ui.label(egui::RichText::new(f("Waiting: {why}", &[("why", why)])).size(10.5).color(egui::Color32::from_rgb(0xe0, 0x6c, 0x5f)));
+        let r = ui.label(egui::RichText::new(f("Waiting: {why}", &[("why", why)])).size(10.5).color(t.text_dim));
         app.auto.add_response("bashcut.batch.paused", &r, why);
     }
     ui.horizontal(|ui| {
@@ -392,7 +392,7 @@ fn item_row(app: &mut FilmcraftApp, ui: &mut egui::Ui, ctx: &egui::Context, v: &
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 let color = match item.status {
                     Status::Done => t.accent,
-                    Status::Failed | Status::NeedsAttention | Status::NeedsFix => egui::Color32::from_rgb(0xe0, 0x6c, 0x5f),
+                    Status::Failed | Status::NeedsAttention | Status::NeedsFix => t.danger,
                     _ => t.text_dim,
                 };
                 ui.label(egui::RichText::new(s(status_label(item.status))).size(11.0).color(color));
@@ -407,7 +407,7 @@ fn item_row(app: &mut FilmcraftApp, ui: &mut egui::Ui, ctx: &egui::Context, v: &
         // a step marked done by hand keeps its old error in the book; the item is fine now
         let error = item.error.as_ref().or_else(|| item.steps.iter().rev().find_map(|s| s.error.as_ref())).filter(|_| item.status != Status::Done);
         if let Some(e) = error {
-            let r = ui.label(egui::RichText::new(&e.message).size(10.5).color(egui::Color32::from_rgb(0xe0, 0x6c, 0x5f)));
+            let r = ui.label(egui::RichText::new(&e.message).size(10.5).color(t.danger));
             app.auto.add_response(&format!("{id}.error"), &r, &e.message);
         }
         for (n, out) in item.outputs().iter().enumerate() {
