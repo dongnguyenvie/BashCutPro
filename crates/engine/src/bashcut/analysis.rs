@@ -26,13 +26,11 @@ const MAX_FRAMES: i64 = 20_000;
 /// Frames are rendered about this wide for picture checks.
 const CHECK_WIDTH: f32 = 160.0;
 
-/// Seconds, rounded to the millisecond, for results.
-pub(crate) fn secs(t: Tick) -> f64 {
-    (t.seconds() * 1000.0).round() / 1000.0
-}
+use super::data::round_to;
+pub(crate) use super::data::secs;
 
 fn round2(v: Option<f64>) -> Option<f64> {
-    v.map(|v| (v * 100.0).round() / 100.0)
+    v.map(|v| round_to(v, 2))
 }
 
 /// `range: {"start": seconds?, "end": seconds?}` clipped to `[lo, hi)`; absent = `[lo, hi)`.
@@ -270,8 +268,8 @@ fn beats_cmd(s: &mut Session, p: &Value) -> Result<Value> {
     Ok(json!({
         "clip": c.0,
         "found": true,
-        "bpm": (found.bpm * 100.0).round() / 100.0,
-        "confidence": (found.confidence * 1000.0).round() / 1000.0,
+        "bpm": round_to(found.bpm, 2),
+        "confidence": round_to(found.confidence, 3),
         "beats": beats_t.iter().map(|t| secs(*t)).collect::<Vec<_>>(),
         "downbeats": downs.iter().map(|t| secs(*t)).collect::<Vec<_>>(),
         "markers": markers,
@@ -312,7 +310,7 @@ pub(crate) fn finding_json(f: &picture::Finding) -> Value {
         "start": secs(Tick(f.start)),
         "end": secs(Tick(f.end)),
         "seconds": secs(Tick(f.end.saturating_sub(f.start))),
-        "value": (f.value * 1000.0).round() / 1000.0,
+        "value": round_to(f.value, 3),
     })
 }
 

@@ -17,6 +17,17 @@ pub fn folder(s: &Session, p: &Value, sub: &str) -> Option<PathBuf> {
     Some(base.join("bashcut").join(sub))
 }
 
+/// `v` rounded to `places` decimals, for results (the one rounding rule for every `bashcut.*` report).
+pub fn round_to(v: f64, places: i32) -> f64 {
+    let k = 10f64.powi(places);
+    (v * k).round() / k
+}
+
+/// Seconds, rounded to the millisecond, for results.
+pub fn secs(t: filmcraft_time::Tick) -> f64 {
+    round_to(t.seconds(), 3)
+}
+
 /// A plain file or folder name (no separators, no `..`): safe to join under one of our folders.
 pub fn plain_name(name: &str) -> bool {
     !name.is_empty() && name.len() <= 128 && name != "." && name != ".." && !name.contains(['/', '\\', ':']) && !name.contains("..")

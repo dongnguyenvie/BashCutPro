@@ -501,7 +501,7 @@ fn create(s: &mut Session, p: &Value) -> Result<Value> {
     let left: Vec<Value> = cues
         .iter()
         .filter(|c| cps(c) > rules.max_cps)
-        .map(|c| json!({"at": (c.start.seconds() * 100.0).round() / 100.0, "cps": (cps(c) * 10.0).round() / 10.0, "text": c.text}))
+        .map(|c| json!({"at": super::data::round_to(c.start.seconds(), 2), "cps": super::data::round_to(cps(c), 1), "text": c.text}))
         .collect();
     let mut out = json!({
         "captions": cues.len(),
