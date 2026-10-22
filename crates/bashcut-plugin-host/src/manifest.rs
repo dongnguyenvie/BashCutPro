@@ -407,8 +407,8 @@ impl Manifest {
                 Some(v) => {
                     let text = param_text(p, v)?;
                     if p.kind == "bool" {
-                        if text == "true" {
-                            argv.push(p.flag.clone());
+                        if let Some(flag) = bool_flag(p, text == "true") {
+                            argv.push(flag);
                         }
                     } else {
                         argv.push(p.flag.clone());
@@ -421,6 +421,19 @@ impl Manifest {
         }
         Ok(argv)
     }
+}
+
+/// The flag for a bool param (BF1): `--x` when true; when false, `--no-x` if the manifest default
+/// is true (the plugin must accept it), else nothing, so default-false bools stay as before.
+pub fn bool_flag(p: &Param, on: bool) -> Option<String> {
+    if on {
+        return Some(p.flag.clone());
+    }
+    if p.default.as_ref().and_then(Value::as_bool) != Some(true) {
+        return None;
+    }
+    let name = p.flag.trim_start_matches('-');
+    Some(format!("--no-{name}"))
 }
 
 fn fill(template: &[String], key: &str, value: &str) -> Vec<String> {
@@ -539,6 +552,25 @@ mod tests {
             ]
         );
         assert_eq!(m.missing_commands(&["file.save".to_string()]), ["captions.list"]);
+    }
+
+    #[test]
+    fn a_default_true_bool_can_be_turned_off() {
+        // BF1: false on a default-true bool sends `--no-<flag>`; a default-false bool still sends nothing
+        let mut v: Value = serde_json::from_str(&sample()).unwrap();
+        v["actions"][0]["params"].as_array_mut().unwrap().push(json!({"id": "keep", "flag": "--keep", "type": "bool", "default": true}));
+        let m = Manifest::parse(&v.to_string()).unwrap();
+        let flags = |extra: &[(&str, Value)]| {
+            let mut params: BTreeMap<String, Value> = [("answer".to_string(), json!("a.json"))].into();
+            params.extend(extra.iter().map(|(k, v)| (k.to_string(), v.clone())));
+            let argv = m.command_line("linux", "go", &Connection::Project("p".into()), None, &params).unwrap();
+            argv.into_iter().filter(|a| a.contains("keep") || a.contains("dry")).collect::<Vec<_>>()
+        };
+        assert_eq!(flags(&[("keep", json!(true))]), ["--keep"]);
+        assert_eq!(flags(&[("keep", json!(false))]), ["--no-keep"]);
+        assert!(flags(&[]).is_empty(), "left out keeps the plugin's own default");
+        assert!(flags(&[("dry", json!(false))]).is_empty(), "default-false bools are unchanged");
+        assert_eq!(flags(&[("dry", json!(true))]), ["--dry"]);
     }
 
     #[test]
