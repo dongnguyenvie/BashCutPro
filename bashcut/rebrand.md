@@ -16,8 +16,8 @@ re-apply ours.
   Pro ships it as `bashcutpro`, short alias `bcpro`, built from upstream's source by `apps/bashcutpro-cli`
   (`build.rs` copies `apps/filmcraft-cli/src` and renames the help/usage/version text; SB2, `decisions.md`).
   Upstream's package, binary, `Cargo.toml` and packaging are not renamed: the installers ship `bashcutpro` and
-  `bcpro` beside `filmcraft-cli` through `bashcut/packaging/generate.py`, and `filmcraft-cli` stays for upstream's
-  docs and scripts. Our tools look for `bashcutpro` first, then `filmcraft-cli`; the env var is `BASHCUTPRO_CLI`,
+  `bcpro` in place of `filmcraft-cli` through `bashcut/packaging/generate.py` (`RENAMES`), so they never clash with an
+  installed FilmCraft. Our tools look for `bashcutpro`, then `bcpro` (the macOS app bundle), then `filmcraft-cli` (dev builds); the env var is `BASHCUTPRO_CLI`,
   falling back to `FILMCRAFT_CLI`. Not `bcp` (SQL Server's bulk copy tool) and not `bashcut` (Swift BashCut).
 - Upstream files are never deleted: `docs/brand/` (the ArtCraft marks) and `assets/app-icon/`
   (FilmCraft's owl) stay in the repository, as the brand licence allows for copies of the
@@ -34,7 +34,7 @@ re-apply ours.
 |---|---|---|
 | Product name (bundle, installer, packages) | FilmCraft | BashCutPro |
 | macOS bundle id | `ai.storyteller.filmcraft` | `com.birchapps.bashcutpro` (owner to confirm) |
-| Command line | `filmcraft-cli` | `bashcutpro`, alias `bcpro` (generated from `filmcraft-cli`'s source; `filmcraft-cli` still ships beside it) |
+| Command line | `filmcraft-cli` | `bashcutpro`, alias `bcpro` (generated from `filmcraft-cli`'s source and shipped in its place) |
 | Release file prefix | `filmcraft-<ver>-…` | `bashcutpro-<ver>-…` (`BRAND_SLUG`) |
 | Windows MSI UpgradeCode | `31E6FB14-…` | `B6658EBC-E524-4423-AA52-C08E9B38AACB` (new; never change it again) |
 | Manufacturer / vendor | Learning Machines LLC | Birch Apps (owner to confirm) |
