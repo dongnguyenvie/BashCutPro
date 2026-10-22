@@ -106,12 +106,8 @@ pub fn draw(app: &mut FilmcraftApp, ui: &mut egui::Ui) {
         (g.draft.clone(), g.book.clone(), g.is_running(), g.error.clone(), g.memory.clone(), g.memory.recent.clone())
     };
     let err = app.tokens.danger;
-    for (id, e) in [("bashcut.batch.status", v.status.clone()), ("bashcut.batch.error", error)] {
-        if let Some(e) = e {
-            let r = ui.label(egui::RichText::new(&e).size(11.0).color(err));
-            app.auto.add_response(id, &r, &e);
-        }
-    }
+    super::toast::status_line(app, ui, "bashcut.batch.status", v.status.as_deref(), err);
+    super::toast::status_line(app, ui, "bashcut.batch.error", error.as_deref(), err);
 
     start_from(app, ui, &ctx, &mut v, &recent, running);
     inputs(app, ui, &ctx, &mut v, &shared, &draft.inputs);

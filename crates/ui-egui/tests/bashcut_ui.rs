@@ -1490,3 +1490,47 @@ print(json.dumps({'ok': True, 'data': {'path': '/out/toast.wav'}}))
     assert!(d.harness.state().ui_error.is_none(), "{:?}", d.harness.state().ui_error);
     let _ = std::fs::remove_dir_all(&data);
 }
+
+/// RN2: Batch's status line gets the same ✕ as Plugins/Runs (Agent shares the helper): dismissed it
+/// stays hidden, and comes back once the status clears and a new one arrives.
+#[test]
+fn batch_status_line_dismisses() {
+    let data = std::env::temp_dir().join(format!("bashcut-ui-rn2-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&data);
+    std::fs::create_dir_all(data.join("bashcut")).unwrap();
+    let recent = json!({"recent": [{"job": data.join("no-job").to_string_lossy(), "name": "gone", "at": 1_792_627_200_000u64, "done": 0, "failed": 0}]});
+    std::fs::write(data.join("bashcut").join("batch.json"), recent.to_string()).unwrap();
+    let mut session = Session::default();
+    session.start_autosave(filmcraft_engine::autosave::AutosaveConfig::new(&data)).expect("data dir");
+    session.execute("file.openDemoProject", json!({})).expect("demo project");
+    let (tx, rx) = channel();
+    let app = FilmcraftApp::new(session).with_control(rx);
+    let harness = Harness::builder().with_size(egui::vec2(W, H)).with_max_steps(10_000).build_eframe(move |_cc| app);
+    let mut d = Driver { harness, tx };
+    d.frames(4);
+    d.click("bashcut.rail.batch");
+    d.frames(2);
+    let status = |d: &mut Driver| {
+        d.ok("ui.elements", json!({"prefix": "bashcut.batch.status"}))
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|e| e["id"] == json!("bashcut.batch.status"))
+            .map(|e| e["label"].as_str().unwrap_or_default().to_string())
+    };
+    assert_eq!(status(&mut d), None);
+    d.click("bashcut.batch.recent.0");
+    let msg = status(&mut d).expect("opening a missing job shows a status");
+    assert!(d.has("bashcut.batch.status.dismiss"));
+    d.click("bashcut.batch.status.dismiss");
+    assert_eq!(status(&mut d), None);
+    d.frames(5);
+    assert_eq!(status(&mut d), None, "stays dismissed while the message is the same");
+    d.click("bashcut.batch.recent.0");
+    assert_eq!(status(&mut d), None, "the same message again stays dismissed");
+    d.click("bashcut.batch.onFailure.skip");
+    d.click("bashcut.batch.recent.0");
+    assert_eq!(status(&mut d), Some(msg), "after the status clears, it comes back");
+    assert!(d.harness.state().ui_error.is_none(), "{:?}", d.harness.state().ui_error);
+    let _ = std::fs::remove_dir_all(&data);
+}
