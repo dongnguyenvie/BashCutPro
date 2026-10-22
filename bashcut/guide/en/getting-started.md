@@ -22,7 +22,7 @@ the same.
 4. Build the app and its command-line tools, with speech to text:
 
    ```sh
-   cargo build -p filmcraft -p filmcraft-cli -p bashcut-cli -p bashcut-doctor -p bashcut-batch-cli -p bashcut-mcp \
+   cargo build -p filmcraft -p filmcraft-cli -p bashcutpro-cli -p bashcut-doctor -p bashcut-batch-cli -p bashcut-mcp \
      --features filmcraft/whisper,filmcraft-cli/whisper
    ```
 

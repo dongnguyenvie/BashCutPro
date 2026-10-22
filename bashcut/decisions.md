@@ -21,6 +21,20 @@ decides something; don't change an old one, add a new one that supersedes it.
 - **Why:** owner decision 2026-10-22. eframe's app name stays "FilmCraft": the build has no eframe persistence, so
   it stores nothing under that name.
 
+## 2026-10-22: `bashcutpro` is generated from upstream `filmcraft-cli` at build time (SB2)
+
+- **Decided:** the `apps/bashcut-cli` wrapper is gone. `apps/bashcutpro-cli` is a small committed crate (bins
+  `bashcutpro` and `bcpro`); its `build.rs` copies `apps/filmcraft-cli/src/*.rs` into `OUT_DIR`, renames the
+  user-visible text (`filmcraft-cli` → `bashcutpro`, "FilmCraft" → "BashCutPro" in help/usage/version/errors) and the
+  bins `include!` the result. Command ids, JSON fields, MCP tool names and `FILMCRAFT_*` vars are unchanged.
+- **Why this layout:** the crate always exists, so `Cargo.lock` is stable and `cargo build` works on a fresh clone
+  without a script; the generated source lives in `target/` only (nothing to gitignore); upstream's crate stays
+  byte-identical and keeps its own tests (the copy has none).
+- **Loud failure:** `build.rs` fails the build when an anchor string, the file list, the `mod` lines, the crate
+  attribute or upstream's `[dependencies]` change, naming what to update.
+- **Lookups:** our tools still try `bashcutpro` first, then `filmcraft-cli` (dev builds). Batch runs the found
+  binary directly on every OS (no wrapper to see through).
+
 ## 2026-10-23: Delete upstream's CodeRabbit and SonarCloud config
 
 - **Decided:** remove `.coderabbit.yaml`, `sonar-project.properties` and `.github/workflows/sonarcloud.yml`, recorded

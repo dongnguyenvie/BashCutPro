@@ -6,8 +6,8 @@ The packaging scripts re-exec the copy this writes (bash: `bashcut/brand/packagi
 never edited for the Pro pieces. Every change is an exact-match substitution that must match the expected number of
 times: when upstream rewrites a line we depend on, packaging fails loudly here instead of shipping without our tools.
 
-What the copy adds on every OS: speech-to-text (`--features whisper` for `filmcraft` and `filmcraft-cli`, #146), the binaries `bashcutpro` and its alias `bcpro` (the Pro command line, installed beside
-`filmcraft-cli`, which stays for upstream's docs and scripts), `bashcut-doctor`, `bashcut-batch`, `bashcut-mcp` (built
+What the copy adds on every OS: speech-to-text (`--features whisper` for `filmcraft` and `filmcraft-cli`, #146), the binaries `bashcutpro` and its alias `bcpro` (the Pro command line: upstream's engine
+built under our name by `apps/bashcutpro-cli`, SB2; `filmcraft-cli` still ships beside it for now), `bashcut-doctor`, `bashcut-batch`, `bashcut-mcp` (built
 with the app) and
 the optional first-run setup (`bashcut/packaging/share/`). Data files stay where they are; only scripts and the
 manifests that list files (nfpm.yaml, the WiX source, the Linux tarball installer) are copied and changed.
@@ -20,9 +20,9 @@ import os
 import shutil
 import sys
 
-# bashcutpro and its alias bcpro (#154): the Pro command line, a wrapper that runs the filmcraft-cli shipped beside it
+# bashcutpro and its alias bcpro (#154, SB2): the engine CLI generated from filmcraft-cli under our name (apps/bashcutpro-cli)
 PRO_BINS = ["bashcutpro", "bcpro", "bashcut-doctor", "bashcut-batch", "bashcut-mcp"]
-PRO_PACKAGES = "-p bashcut-cli -p bashcut-doctor -p bashcut-batch-cli -p bashcut-mcp"
+PRO_PACKAGES = "-p bashcutpro-cli --features bashcutpro-cli/whisper -p bashcut-doctor -p bashcut-batch-cli -p bashcut-mcp"
 BINS_SH = " ".join(PRO_BINS)
 # speech-to-text in the app and the engine CLI (#146): the batch presets and caption skills start by
 # transcribing; models still download on first use (`transcript.downloadModel`)

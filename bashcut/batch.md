@@ -173,8 +173,8 @@ bashcut-batch presets install ../bashcutpro-plugins/packs/batch    # the built-i
 Output is JSON; exit 0 when every item is done, 1 when the job ended failed, stopped, cancelled or needing
 attention, 2 on usage errors. The engine is `--cli`, else `$BASHCUTPRO_CLI` (or the older `$BASHCUT_FILMCRAFT_CLI`,
 then `$FILMCRAFT_CLI`), else `bashcutpro` or `filmcraft-cli` next to `bashcut-batch`, else the same on `PATH`
-(`crates/bashcut-batch/src/cli.rs`, #154). On Windows a step runs the `filmcraft-cli` beside a `bashcutpro`, so the
-memory watch and Cancel reach the engine itself (the wrapper cannot replace itself there as it does on Unix).
+(`crates/bashcut-batch/src/cli.rs`, #154). `bashcutpro` is the engine itself (generated from
+`filmcraft-cli`, SB2), so the memory watch and Cancel reach it directly on every OS.
 
 ## Built-in presets (#59)
 

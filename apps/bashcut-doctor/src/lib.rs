@@ -191,7 +191,7 @@ fn check_cli(env: &dyn Env, opts: &Options, r: &mut Report) {
     let Some(Value::Array(list)) = listed else {
         r.findings.push(
             Finding::new("cli.commands", Level::Warn, "`commands bashcut --json` gave no command list")
-                .fix("rebuild filmcraft-cli (behind bashcutpro) from BashCutPro main"),
+                .fix("rebuild bashcutpro (or filmcraft-cli) from BashCutPro main"),
         );
         return;
     };
@@ -202,7 +202,7 @@ fn check_cli(env: &dyn Env, opts: &Options, r: &mut Report) {
     } else {
         r.findings.push(
             Finding::new("cli.commands", Level::Fail, format!("this build lacks {}", missing.join(", ")))
-                .fix("rebuild filmcraft-cli (behind bashcutpro) from BashCutPro main"),
+                .fix("rebuild bashcutpro (or filmcraft-cli) from BashCutPro main"),
         );
     }
     check_speech(env, &cli, r);
@@ -219,7 +219,7 @@ fn check_speech(env: &dyn Env, cli: &str, r: &mut Report) {
     if models.get("available").and_then(Value::as_bool) != Some(true) {
         r.findings.push(
             Finding::new("speech", Level::Warn, "this engine (filmcraft-cli) has no speech-to-text: transcribing (captions, Vietsub and shorts presets) fails")
-                .fix("use a build with speech-to-text (cargo build -p filmcraft-cli --features whisper)"),
+                .fix("use a build with speech-to-text (cargo build -p bashcutpro-cli --features whisper)"),
         );
         return;
     }
