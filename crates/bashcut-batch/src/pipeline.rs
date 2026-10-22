@@ -4,7 +4,7 @@
 
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashSet};
 use std::path::{Path, PathBuf};
 
 pub const SCHEMA: &str = "bashcut-batch/1";
@@ -427,8 +427,9 @@ impl Pipeline {
             self.extensions.iter().map(|e| e.trim_start_matches('.').to_ascii_lowercase()).collect()
         };
         let mut out: Vec<Input> = Vec::new();
-        let push = |path: PathBuf, out: &mut Vec<Input>| {
-            if !out.iter().any(|i| i.path == path) {
+        let mut seen: HashSet<PathBuf> = HashSet::new();
+        let mut push = |path: PathBuf, out: &mut Vec<Input>| {
+            if seen.insert(path.clone()) {
                 let is_project = extension(&path).as_deref() == Some(PROJECT_EXTENSION);
                 out.push(Input { path, is_project });
             }
@@ -463,16 +464,19 @@ impl Pipeline {
     pub fn item_names(&self, inputs: &[Input]) -> Vec<String> {
         let pattern = self.output_name.as_deref().filter(|p| !p.trim().is_empty()).unwrap_or("{stem}");
         let mut names: Vec<String> = Vec::with_capacity(inputs.len());
+        // lowercased names taken so far: a linear scan per candidate is O(n³) when stems repeat
+        let mut taken: HashSet<String> = HashSet::with_capacity(inputs.len());
         for (i, input) in inputs.iter().enumerate() {
             let stem = input.path.file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_default();
             let raw = pattern.replace("{stem}", &stem).replace("{index}", &format!("{:03}", i.saturating_add(1)));
             let base = safe_name(&raw);
             let mut name = base.clone();
             let mut n: usize = 2;
-            while names.iter().any(|x| x.eq_ignore_ascii_case(&name)) {
+            while taken.contains(&name.to_ascii_lowercase()) {
                 name = format!("{base}-{n}");
                 n = n.saturating_add(1);
             }
+            taken.insert(name.to_ascii_lowercase());
             names.push(name);
         }
         names
