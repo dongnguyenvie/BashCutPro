@@ -839,6 +839,16 @@ mod tests {
     }
 
     #[test]
+    fn kind_column_is_translated() {
+        use super::super::strings::set_language;
+        let kinds = [Kind::Command, Kind::Pro, Kind::Plugin, Kind::Look, Kind::Profile, Kind::Template, Kind::Recipe];
+        set_language(Some("vi"));
+        let vi: Vec<&str> = kinds.iter().map(|k| s(k.label())).collect();
+        set_language(None);
+        assert_eq!(vi, ["Lệnh", "BashCutPro", "Plugin", "Màu phim", "Hồ sơ xuất", "Mẫu", "Công thức"]);
+    }
+
+    #[test]
     fn engine_errors_read_plainly() {
         assert_eq!(plain_error("badParams: invalid parameters for `bashcut.looks.apply`: select clips first"), "Select a clip in the timeline first.");
         assert_eq!(plain_error("disabled: command `edit.cut` is not available right now: nothing selected"), "Nothing selected.");
