@@ -17,6 +17,11 @@
 //! message with a `uuid` and ✕ withdraws a written one with `cancel_async_message` (dropped when the
 //! agent confirms; one it took already stays). Any other agent gets a queued message only when the
 //! turn before it ends (it is held in the app, so ✕ just drops it, and each runs as its own turn).
+//!
+//! Permission requests (AG8): a live agent asks before a tool call that is not pre-allowed
+//! ([`Event::Permission`]); the request waits in [`Agent::permissions`] until the user answers it
+//! ([`Agent::answer_permission`]: allow once, always for this project, deny). Stop, the end of the
+//! turn or of the process deny or drop what still waits, so nothing hangs on an answer.
 
 use std::collections::VecDeque;
 use std::path::{Path, PathBuf};
@@ -28,7 +33,7 @@ use serde_json::{Value, json};
 use crate::plan::{self, Gate};
 use crate::process::{AgentSpec, Live, Turn, TurnEnd, TurnEvent, mcp_config_path, write_mcp_config};
 use crate::store::{self, Conversation};
-use crate::stream_json::{self, Event};
+use crate::stream_json::{self, Answer, Event, Permission};
 use crate::transcript::Item;
 use crate::{Error, Result, err};
 
@@ -46,6 +51,12 @@ const RESULT_WAIT: Duration = Duration::from_secs(5);
 /// drop messages written but not taken yet (`cancel_queued`).
 pub const INTERRUPT_RECEIPT: &str = "interrupt_receipt_v1";
 pub const INTERRUPT_CANCEL_QUEUED: &str = "interrupt_cancel_queued_v1";
+/// Permission requests kept waiting at once; more are denied at once.
+const MAX_PERMISSIONS: usize = 16;
+/// What a denied tool call tells the agent.
+const DENIED: &str = "The user denied this in BashCutPro.";
+/// What a request denied because the turn stopped tells the agent.
+const STOPPED: &str = "The user stopped the turn in BashCutPro.";
 
 /// An interrupt request written to the live agent and not finished yet.
 struct Interrupt {
@@ -159,6 +170,18 @@ pub struct Agent {
     /// The agent reported a sign-in or account problem this turn (AG6): its process is not kept for
     /// the next message (the user may sign in meanwhile), and its exit adds no generic error.
     auth_failed: bool,
+    /// Permission requests waiting for the user, oldest first (AG8).
+    permissions: Vec<Permission>,
+}
+
+/// A waiting permission request as the panel and `bashcut.agent.state` show it.
+#[derive(Clone, Debug, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PermissionView {
+    pub tool: String,
+    pub detail: String,
+    /// "Always for this project" is offered: the agent suggested a rule and the project is saved.
+    pub always: bool,
 }
 
 impl Agent {
@@ -192,6 +215,7 @@ impl Agent {
             closing: None,
             driven: false,
             auth_failed: false,
+            permissions: Vec::new(),
         }
     }
 
@@ -255,6 +279,51 @@ impl Agent {
     /// Queued messages the agent never read since the last call (for the message box).
     pub fn take_unsent(&mut self) -> Vec<String> {
         std::mem::take(&mut self.unsent)
+    }
+
+    /// Permission requests waiting for the user, oldest first.
+    pub fn permissions(&self) -> Vec<PermissionView> {
+        self.permissions
+            .iter()
+            .map(|p| PermissionView { tool: p.tool.clone(), detail: p.detail.clone(), always: !p.rules.is_empty() && self.sidecar.is_some() })
+            .collect()
+    }
+
+    /// Answer the waiting permission request at `index` (AG8). [`Answer::Always`] needs a saved
+    /// project (the rule goes into its folder's `.claude/settings.local.json`) and a suggested rule.
+    pub fn answer_permission(&mut self, index: usize, answer: Answer) -> Result<()> {
+        self.poll();
+        let Some(p) = self.permissions.get(index) else { return err("that permission request is not waiting any more") };
+        if answer == Answer::Always && (p.rules.is_empty() || self.sidecar.is_none()) {
+            return err("this request cannot be allowed for the whole project: allow it once");
+        }
+        let Some(l) = &self.live else { return err("the agent has ended") };
+        l.control(&stream_json::permission_response(p, answer, DENIED))?;
+        let p = self.permissions.remove(index);
+        let answer = match answer {
+            Answer::Once => "allowed",
+            Answer::Always => "always",
+            Answer::Deny => "denied",
+        };
+        self.conversation.transcript.push(Item::Permission { tool: p.tool, detail: p.detail, answer: answer.into() });
+        Ok(())
+    }
+
+    /// Deny every waiting permission request with `message` (Stop): the agent stops waiting.
+    fn deny_permissions(&mut self, message: &str) {
+        for p in std::mem::take(&mut self.permissions) {
+            if let Some(l) = &self.live {
+                let _ = l.control(&stream_json::permission_response(&p, Answer::Deny, message));
+            }
+            self.conversation.transcript.push(Item::Permission { tool: p.tool, detail: p.detail, answer: "denied".into() });
+        }
+    }
+
+    /// Requests nobody can answer any more (the turn or the process ended) leave the panel.
+    fn drop_permissions(&mut self) {
+        for p in std::mem::take(&mut self.permissions) {
+            self.conversation.transcript.push(Item::Permission { tool: p.tool, detail: p.detail, answer: "withdrawn".into() });
+        }
     }
 
     /// Claude Code is too old for a live session (it refused one of our flags).
@@ -529,6 +598,10 @@ impl Agent {
         if !self.busy() {
             return;
         }
+        if self.live.is_none() {
+            return;
+        }
+        self.deny_permissions(STOPPED);
         let Some(l) = &self.live else { return };
         if self.status == Status::Stopping {
             // stopping already: the user insists
@@ -683,6 +756,24 @@ impl Agent {
                 self.plugins = Some(plugins.clone());
             }
             Event::Auth { .. } => self.auth_failed = true,
+            Event::Permission(p) => {
+                if p.oversized || p.request.is_empty() || self.permissions.len() >= MAX_PERMISSIONS {
+                    if let Some(l) = &self.live {
+                        let _ = l.control(&stream_json::permission_response(p, Answer::Deny, "BashCutPro could not show this request."));
+                    }
+                    self.conversation.transcript.push(Item::Permission { tool: p.tool.clone(), detail: p.detail.clone(), answer: "denied".into() });
+                } else {
+                    self.permissions.push(p.clone());
+                }
+                return;
+            }
+            Event::PermissionWithdrawn { request } => {
+                if let Some(at) = self.permissions.iter().position(|p| p.request == *request) {
+                    let p = self.permissions.remove(at);
+                    self.conversation.transcript.push(Item::Permission { tool: p.tool, detail: p.detail, answer: "withdrawn".into() });
+                }
+                return;
+            }
             Event::Control { request, ok, cancelled } => {
                 if let Some(at) = self.pending.iter().position(|p| p.cancelling.as_deref() == Some(request.as_str())) {
                     if *ok && *cancelled {
@@ -721,6 +812,8 @@ impl Agent {
                 }
                 self.in_turn = false;
                 self.restarts = 0;
+                // the turn is over: nothing waits on an answer any more
+                self.drop_permissions();
                 if self.interrupting.is_some() {
                     // the interrupted turn's end (its error result is not news); a turn that
                     // finished first keeps its answer
@@ -782,6 +875,7 @@ impl Agent {
 
     fn live_ended(&mut self, end: TurnEnd) {
         self.live = None;
+        self.drop_permissions();
         self.interrupting = None;
         self.in_turn = false;
         self.idle_since = None;
@@ -826,6 +920,7 @@ impl Agent {
         }
         self.live = None;
         self.in_turn = false;
+        self.drop_permissions();
         self.unsent.extend(self.pending.drain(..).filter_map(|p| p.queued));
         self.busy_since = None;
         // after a sign-in problem the transcript's sign-in line says it already
@@ -868,6 +963,7 @@ impl Agent {
             c.close_and_wait(EXIT_WAIT);
         }
         self.pending.clear();
+        self.permissions.clear();
         self.in_turn = false;
         self.save();
         if let Some(p) = self.mcp_config.take() {
@@ -885,6 +981,7 @@ impl Agent {
             "queuedItems": self.queued_items(),
             "capabilities": self.capabilities,
             "plugins": self.plugins,
+            "permissions": self.permissions(),
             "conversation": {"id": self.conversation.id, "title": self.conversation.title(), "items": self.conversation.transcript.items.len(), "session": self.conversation.session},
             "gate": self.gate().map(|g| json!({"stage": g.stage, "summary": g.summary, "evidence": g.evidence_lines()})),
             "project": self.sidecar.is_some(),
@@ -908,6 +1005,17 @@ impl Agent {
             "cancel" => {
                 let index = params.get("index").and_then(Value::as_u64).ok_or_else(|| Error("which queued message? (index)".into()))?;
                 self.cancel(usize::try_from(index).unwrap_or(usize::MAX))?;
+                Ok(self.state_json())
+            }
+            "permission" => {
+                let answer = match s("answer").as_str() {
+                    "once" | "allow" => Answer::Once,
+                    "always" => Answer::Always,
+                    "deny" => Answer::Deny,
+                    _ => return err("answer: once, always or deny"),
+                };
+                let index = params.get("index").and_then(Value::as_u64).map_or(0, |n| usize::try_from(n).unwrap_or(usize::MAX));
+                self.answer_permission(index, answer)?;
                 Ok(self.state_json())
             }
             "transcript" => {

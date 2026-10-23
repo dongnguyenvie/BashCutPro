@@ -24,6 +24,10 @@
 //! AG9: when the live session's `system/init` lists no `bcp` plugin, a readiness line says the
 //! BashCutPro skills are not installed, with the kit's install commands and Install kit (a terminal
 //! the user starts; never automatic), and Open in Terminal passes the app's MCP server instead.
+//!
+//! AG8: a tool call Claude Code needs approval for shows as a card at the end of the transcript (tool,
+//! the command or file): Allow once / Always for this project / Deny (`bashcut.agent.permission.<n>.*`,
+//! `bashcut.agent.permission`); the answer stays in the transcript as one line.
 
 use bashcut_agent::{Gate, Item, Status};
 use serde_json::{Value, json};
@@ -92,6 +96,8 @@ struct Snapshot {
     auth: Option<(String, String)>,
     /// [`agent::kit_missing`].
     kit_missing: bool,
+    /// [`bashcut_agent::Agent::permissions`].
+    permissions: Vec<bashcut_agent::session::PermissionView>,
 }
 
 impl Snapshot {
@@ -143,6 +149,7 @@ pub fn draw(app: &mut FilmcraftApp, ui: &mut egui::Ui) {
             outdated: a.outdated(),
             auth: a.conversation.transcript.auth_problem().map(|(c, m)| (c.to_string(), m.to_string())),
             kit_missing: agent::kit_missing(a),
+            permissions: a.permissions(),
         };
         let gate = if check_gate && !a.is_running() { Some(a.gate()) } else { None };
         (snap, gate, a.take_unsent())
@@ -189,6 +196,9 @@ pub fn draw(app: &mut FilmcraftApp, ui: &mut egui::Ui) {
                 note(ui, s("The agent stops at each stage for your approval."), NOTE, t.text_dim);
             }
             transcript(app, ui, &snap.items);
+            for (i, p) in snap.permissions.iter().enumerate() {
+                permission_card(app, ui, &ctx, &mut v, i, p, &snap.agent.1);
+            }
             for (i, q) in snap.queued.iter().enumerate() {
                 ui.add_space(6.0);
                 let id = format!("bashcut.agent.queued.{i}");
@@ -215,7 +225,8 @@ pub fn draw(app: &mut FilmcraftApp, ui: &mut egui::Ui) {
                     let label = if snap.status == Status::Stopping { s("Stopping…") } else { s("Working…") };
                     note(ui, label, NOTE, t.text_dim);
                 });
-                if quiet && snap.status == Status::Running {
+                // a waiting permission card is the reason for the silence
+                if quiet && snap.status == Status::Running && snap.permissions.is_empty() {
                     let line = s(quiet_line());
                     let r = note(ui, line, NOTE, t.text);
                     app.auto.add_response("bashcut.agent.quiet", &r, line);
@@ -506,6 +517,62 @@ fn gate_card(app: &mut FilmcraftApp, ui: &mut egui::Ui, ctx: &egui::Context, v: 
     app.auto.add("bashcut.gate", frame.response.rect, &g.stage);
 }
 
+/// A permission request waiting for the user (AG8): what the agent wants to run, and the answers.
+fn permission_card(
+    app: &mut FilmcraftApp,
+    ui: &mut egui::Ui,
+    ctx: &egui::Context,
+    v: &mut View,
+    i: usize,
+    p: &bashcut_agent::session::PermissionView,
+    agent_name: &str,
+) {
+    let t = app.tokens;
+    let id = format!("bashcut.agent.permission.{i}");
+    ui.add_space(6.0);
+    let frame = egui::Frame::group(ui.style()).stroke(egui::Stroke::new(1.0, t.accent)).show(ui, |ui| {
+        let title = f("{agent} wants to use {tool}", &[("agent", agent_name), ("tool", &p.tool)]);
+        ui.label(egui::RichText::new(title).strong().color(t.text));
+        let r = ui.add(egui::Label::new(code_text(bashcut_agent::clip(&p.detail, 2000), CODE, t.text)).selectable(true).wrap());
+        app.auto.add_response(&format!("{id}.detail"), &r, &p.detail);
+        ui.horizontal_wrapped(|ui| {
+            let mut answer = None;
+            if hover_button(app, ui, &format!("{id}.once"), s("Allow once"), s("Run this call; ask again next time.")) {
+                answer = Some("once");
+            }
+            if p.always
+                && hover_button(
+                    app,
+                    ui,
+                    &format!("{id}.always"),
+                    s("Always for this project"),
+                    s("Run it, and allow calls like it in this project's folder from now on (.claude/settings.local.json)."),
+                )
+            {
+                answer = Some("always");
+            }
+            if hover_button(app, ui, &format!("{id}.deny"), s("Deny"), s("Do not run it; the agent is told you said no.")) {
+                answer = Some("deny");
+            }
+            if let Some(answer) = answer {
+                call(app, ctx, v, "permission", json!({"index": i, "answer": answer}));
+            }
+        });
+    });
+    app.auto.add(&id, frame.response.rect, &p.tool);
+}
+
+/// The transcript line of an answered permission request.
+fn permission_line(tool: &str, answer: &str) -> String {
+    let key = match answer {
+        "allowed" => "{tool}: allowed once",
+        "always" => "{tool}: allowed for this project",
+        "denied" => "{tool}: denied",
+        _ => "{tool}: not answered (the agent stopped waiting)",
+    };
+    f(key, &[("tool", tool)])
+}
+
 /// The transcript; consecutive tool calls with the same key fold into one row.
 /// Kit recipes ([`super::palette::RECIPES`]) offered as example prompts on an empty transcript.
 const EXAMPLES: &[&str] = &["vlog-plan", "vlog-hook-script", "vlog-publish"];
@@ -564,6 +631,11 @@ fn transcript(app: &mut FilmcraftApp, ui: &mut egui::Ui, items: &[Item]) {
             }
             Item::Notice { message } => {
                 note(ui, super::strings::agent(message), META, t.text_dim);
+            }
+            Item::Permission { tool, detail, answer } => {
+                let color = if answer == "denied" { t.danger } else { t.text_dim };
+                note(ui, permission_line(tool, answer), META, color);
+                code_note(ui, bashcut_agent::clip(detail, 300), CODE, t.text_dim);
             }
             Item::Auth { category, message } => {
                 // the readiness line says what to do; here the agent's own words, selectable
@@ -679,6 +751,10 @@ mod tests {
             "You · queued {n}",
             "Remove this message from the queue",
             "Removing…",
+            "{agent} wants to use {tool}",
+            "Allow once",
+            "Always for this project",
+            "Deny",
         ] {
             assert_ne!(s(k), k);
         }

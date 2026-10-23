@@ -407,3 +407,18 @@ Install Claude Code	Cài Claude Code
 Open in Terminal works with Claude Code or Codex once it is installed.	Mở trong Terminal chỉ dùng được khi đã cài Claude Code hoặc Codex.
 Sign in works with Claude Code once it is installed.	Đăng nhập chỉ dùng được khi đã cài Claude Code.
 Claude Code is already installed.	Claude Code đã được cài.
+# Agent permission requests (AG8)
+Answer Agent Permission Request	Trả lời yêu cầu cấp quyền của trợ lý
+{agent} wants to use {tool}	{agent} muốn dùng {tool}
+Allow once	Cho phép lần này
+Always for this project	Luôn cho phép trong dự án này
+Deny	Từ chối
+Run this call; ask again next time.	Chạy lệnh này; lần sau vẫn hỏi lại.
+Run it, and allow calls like it in this project's folder from now on (.claude/settings.local.json).	Chạy lệnh này và từ nay cho phép các lệnh tương tự trong thư mục dự án (.claude/settings.local.json).
+Do not run it; the agent is told you said no.	Không chạy; trợ lý sẽ được báo là bạn từ chối.
+{tool}: allowed once	{tool}: đã cho phép lần này
+{tool}: allowed for this project	{tool}: đã cho phép trong dự án này
+{tool}: denied	{tool}: đã từ chối
+{tool}: not answered (the agent stopped waiting)	{tool}: chưa trả lời (trợ lý đã thôi chờ)
+that permission request is not waiting any more	Yêu cầu cấp quyền đó không còn chờ nữa
+this request cannot be allowed for the whole project: allow it once	Không thể cho phép yêu cầu này cho cả dự án: hãy cho phép lần này

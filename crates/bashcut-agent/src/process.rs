@@ -101,10 +101,23 @@ impl AgentSpec {
     /// echoes each message when Claude takes it, which ends its "queued" mark), the app's MCP server ([`SERVER`]) as the
     /// only one (`--strict-mcp-config`: the agent kit's plugin brings its own copy of the same tools,
     /// and a checkout's `.mcp.json` another; skills and plugins still load) and [`allowed_tools`]
-    /// allowed without a prompt. `program` overrides `claude` (from `BASHCUT_CLAUDE` in the app).
+    /// allowed without a prompt; anything else that needs approval is asked on stdout
+    /// (`--permission-prompt-tool stdio`, AG8) and answered in the panel. `program` overrides `claude` (from `BASHCUT_CLAUDE` in the app).
     pub fn claude_code(program: Option<String>) -> Self {
         let program = program.filter(|p| !p.trim().is_empty()).unwrap_or_else(|| "claude".into());
-        let argv = [&program, "-p", "--output-format", "stream-json", "--input-format", "stream-json", "--verbose", "--replay-user-messages", "--allowedTools"];
+        let argv = [
+            &program,
+            "-p",
+            "--output-format",
+            "stream-json",
+            "--input-format",
+            "stream-json",
+            "--verbose",
+            "--replay-user-messages",
+            "--permission-prompt-tool",
+            "stdio",
+            "--allowedTools",
+        ];
         AgentSpec {
             id: "claude-code".into(),
             name: "Claude Code".into(),
