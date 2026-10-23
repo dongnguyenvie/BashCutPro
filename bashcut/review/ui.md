@@ -145,6 +145,11 @@ Behaviour-neutral, merged to `main`:
 - S1 (RU6): `Section::badge` / `Section::shortcut` replace the rail's id `match` and Agent special case;
   `params()` builds its section hints from `SECTIONS`; one `MODULES` table routes and lists the modules'
   commands. Panels still open other sections by literal id (`st.show("plugins")`), outside RU6's scope.
+- D5 (RU4): `prefs::{read, write, save_if_changed}` (new `prefs.rs`) for `ui.json`, `looks-ui.json`,
+  `library-ui.json`, `palette.json` and `batch.json`: capped read and atomic write through
+  `bashcut_dirs::fs`; only a failed write behaves differently (the old file stays whole). Runs' error
+  clip calls `bashcut_dirs::fs::clip` and still counts characters (the byte cut is computed from
+  `MAX_ERROR` chars), so non-Latin errors are not shortened.
 
 Everything else is below.
 
