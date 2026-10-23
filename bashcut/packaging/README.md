@@ -96,17 +96,24 @@ and `bashcut-doctor --json`.
   `smoke.ps1` on mac 01 and geekomT ([smoke.md](../smoke.md)); install the package, launch with the rail, run a
   2-item batch.
 - Windows (PK1, first real run 2026-10-23): needs WiX v5 (`dotnet tool install --global wix --version 5.0.2`; a
-  user-level .NET from `dotnet-install.ps1` works with `DOTNET_ROOT` set). Run it with `pwsh` (PowerShell 7): Windows
-  PowerShell 5.1's `Compress-Archive` writes the portable zip's paths with backslashes (`unzip` warns). Without
+  user-level .NET from `dotnet-install.ps1` works with `DOTNET_ROOT` set). Windows PowerShell 5.1 and `pwsh` both
+  work: the copy writes the portable zip's entries itself with `/` (PK4; 5.1's `Compress-Archive` and
+  `ZipFile.CreateFromDirectory` write backslashes, which `unzip` warns about). Without
   signing secrets every binary and the MSI stay unsigned (a warning, not an error). Output in `dist/release/`:
   `bashcutpro-<v>-windows-x64.msi` (product BashCutPro, Birch Apps, its own UpgradeCode, `Program Files\BashCutPro`,
   Start menu shortcut BashCutPro) and `bashcutpro-<v>-windows-x64-portable.zip`. Both carry the app as
   `filmcraft.exe` (VERSIONINFO and icon BashCutPro) next to `bashcutpro.exe`, `bcpro.exe`, `bashcut-doctor.exe`,
-  `bashcut-batch.exe`, `bashcut-mcp.exe`, `bashcut-setup.ps1`; no `filmcraft-cli.exe`.
+  `bashcut-batch.exe`, `bashcut-mcp.exe`, `bashcut-setup.ps1`; no `filmcraft-cli.exe`. Every command-line exe has
+  the BashCutPro icon and VERSIONINFO too (ProductName BashCutPro, its own FileDescription, the package version;
+  `crates/bashcut-winres`, PK4; `bcpro.exe` shares `bashcutpro.exe`'s resource). PK4 run (0.10.0, unsigned, Windows
+  PowerShell 5.1): MSI 51.9 MB, portable zip 66.4 MB. Not renamed yet (the owner's binary-name decision): the app exe,
+  the `App Paths\filmcraft.exe` key, the other WiX ids, and the log file `Logs/filmcraft.log` (upstream's
+  `apps/filmcraft/src/logging.rs`).
 - Codec patents: for a paid build prefer the OS encoders (VideoToolbox, Media Foundation) and get legal advice before
   selling.
 
 Tests: `python3 bashcut/packaging/test_generate.py` (every substitution matches upstream's current files once, the
 copies parse, the WiX source is valid XML, no generated Linux file names or mentions `ai.storyteller.filmcraft`
-(`StartupWMClass` included) or ships `filmcraft-cli`, the Flatpak manifests parse and find their sources; on Linux,
+(`StartupWMClass` included) or ships `filmcraft-cli`, the Flatpak manifests parse and find their sources, the Windows
+copy names BashCutPro and zips with `/` (and parses, when PowerShell is there); on Linux,
 upstream's installer test runs on the copy).
