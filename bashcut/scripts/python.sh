@@ -5,6 +5,9 @@
 #
 # $BASHCUT_PYTHON if set (as in the agent kit, #223), else the first of `python3`, `py -3`, `python` whose --version
 # says Python 3 (on Windows `python3` is often only the Store alias). Prints the command; returns 1 when none is found.
+# Python on Windows writes the console code page (cp1252) and crashes on non-ASCII; force UTF-8 for every caller.
+export PYTHONUTF8=1
+export PYTHONIOENCODING=utf-8
 bashcut_python() {
     if [ -n "${BASHCUT_PYTHON:-}" ]; then
         printf '%s\n' "$BASHCUT_PYTHON"
