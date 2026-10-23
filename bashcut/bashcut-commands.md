@@ -20,7 +20,7 @@ Namespaces: `template` 3, `profiles` 4, `audio` 3, `review` 2, `batch` 1, `hooks
 | `bashcut.profiles.list` | List Output Profiles | <code>{"seconds":f64? (estimate; default the active sequence),"dir":str?}</code> |
 | `bashcut.profiles.get` | Get Output Profile | <code>{"profile":str,"seconds":f64?,"dir":str?}</code> |
 | `bashcut.profiles.compile` | Compile Output Profiles to Export Presets | <code>{"profile":str? (default every profile),"dir":str?} (units: none)</code> |
-| `bashcut.profiles.apply` | Export with Output Profile | <code>{"profile":str,"path":str?,"queue":bool=false,"wait":bool=false,"sequence":id?,"range":str?,"hooks":bool=true,"dir":str?}  (no path: compile only, for filmcraft-cli export --preset) (units: none here; the profile sets pixels, kbit/s and LUFS)</code> |
+| `bashcut.profiles.apply` | Export with Output Profile | <code>{"profile":str,"path":str?,"queue":bool=false,"wait":bool=false,"sequence":id?,"range":str?,"hooks":bool=true,"dir":str?}  (no path: compile only, for bashcutpro-cli export --preset) (units: none here; the profile sets pixels, kbit/s and LUFS)</code> |
 | `bashcut.audio.polish` | Polish Voice | <code>{"clips":[id]? (default the selection),"amount":0..1=0.5,"target":lufs?,"profile":str? (its loudness when no target),"loudness":bool=true,"savePreset":bool=false,"dir":str?}</code> |
 | `bashcut.audio.loudness` | Measure Loudness | <code>{"clip":id?,"track":id\|"A1"?,"range":{"start":seconds?,"end":seconds?}?,"series":bool?} (no clip / track = the sequence mix; result in LUFS, LU, dBTP, seconds)</code> |
 | `bashcut.audio.beats` | Detect Beats | <code>{"clip":id?,"writeMarkers":bool?} (default: the selected audio clip; result in sequence seconds and BPM)</code> |

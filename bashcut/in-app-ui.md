@@ -302,6 +302,15 @@ labels or subclips (§1 rule 1). A project opened in upstream FilmCraft still wo
   spelling. No upstream edit: `build.rs` swaps the `serve_stdio()` call by anchor and fails the build when
   `crates/automation/src/server.rs` grows a FilmCraft string outside that list or loses one in it (tests and comments
   aside). `filmcraft-cli mcp` (the last engine fallback) still says FilmCraft.
+- **Command labels without FilmCraft (BR5)**: the engine's command catalog has user text naming upstream (the label
+  "Selection as FilmCraft Project…"; our own `bashcut.profiles.apply` params help now says `bashcutpro-cli export
+  --preset` at the source). `mcp_brand::brand_commands` rewrites any `command.list` result: "FilmCraft" → "BashCutPro"
+  in each command's `label`, `menu` and `params`, `filmcraft-cli` → `bashcutpro-cli` in `params`; ids stay. The MCP
+  server applies it to `command_list`, `command_run command.list` and the `filmcraft://commands` resource (a text item
+  that parses as a list of commands); `bashcutpro-cli commands`, `describe` and `exec command.list` apply it through two
+  `build.rs` anchors, and `build.rs` fails when upstream's server stops sending the catalog the way `MCP_CATALOG`
+  expects. The command palette shows engine and UI command labels through `bashcut_brand::text` (the BR2/BR3
+  overrides, with their Vietnamese rows), so it says "Selection as BashCutPro Project…" and "BashCutPro Help…" too.
 - **MCP server and permissions (AG7, checked with `claude` 2.1.309 on macOS)**: the config names the server
   `bashcutpro` (`bashcut_agent::process::SERVER`), the name the agent kit's `bcp` plugin and `/bcp:setup` use, so
   Claude Code's tools are `mcp__bashcutpro__*` (Codex: `-c mcp_servers.bashcutpro.*`). Claude Code also gets
