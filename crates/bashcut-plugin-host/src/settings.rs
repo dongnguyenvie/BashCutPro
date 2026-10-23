@@ -6,6 +6,7 @@ use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::sync::{Mutex, PoisonError};
+use std::time::{Duration, Instant};
 
 use serde_json::Value;
 
@@ -15,6 +16,10 @@ use crate::{Error, Result, err};
 pub const FILE: &str = "settings.json";
 const MAX_BYTES: u64 = 256 * 1024;
 const MAX_SECRET: usize = 16 * 1024;
+/// How long one key-store call may take before it is killed and fails. The store is called on
+/// the UI thread, so a tool waiting on an unlock prompt (`secret-tool` with a locked keyring)
+/// must not freeze the app for good; 20 s still leaves time to answer a quick prompt.
+const TOOL_TIMEOUT: Duration = Duration::from_secs(20);
 
 pub type Values = BTreeMap<String, Value>;
 
@@ -136,16 +141,46 @@ fn service(plugin: &str) -> String {
 }
 
 fn tool(program: &str, args: &[&str], stdin: Option<&str>) -> Result<(bool, String)> {
-    use std::io::Write;
+    tool_with(program, args, stdin, TOOL_TIMEOUT)
+}
+
+/// [`tool`] with its timeout: stdout is read on a side thread so a full pipe never blocks the
+/// wait, and a tool still running at `timeout` is killed and reported as an error.
+fn tool_with(program: &str, args: &[&str], stdin: Option<&str>, timeout: Duration) -> Result<(bool, String)> {
+    use std::io::{Read, Write};
     let mut cmd = Command::new(program);
     cmd.args(args).stdin(if stdin.is_some() { Stdio::piped() } else { Stdio::null() }).stdout(Stdio::piped()).stderr(Stdio::null());
     let mut child = cmd.spawn().map_err(|e| Error(format!("key store ({program}): {e}")))?;
     if let (Some(text), Some(mut pipe)) = (stdin, child.stdin.take()) {
         let _ = pipe.write_all(text.as_bytes());
     }
-    let out = child.wait_with_output()?;
-    let text = String::from_utf8_lossy(out.stdout.get(..out.stdout.len().min(MAX_SECRET)).unwrap_or_default()).trim_end_matches(['\n', '\r']).to_string();
-    Ok((out.status.success(), text))
+    let out = child.stdout.take();
+    let reader = std::thread::spawn(move || {
+        let mut buf = Vec::new();
+        if let Some(out) = out {
+            let mut out = out.take(MAX_SECRET as u64);
+            let _ = out.read_to_end(&mut buf);
+            // drain the rest so the tool never blocks on a full pipe
+            let _ = std::io::copy(&mut out.into_inner(), &mut std::io::sink());
+        }
+        buf
+    });
+    let start = Instant::now();
+    let status = loop {
+        match child.try_wait() {
+            Ok(Some(s)) => break s,
+            Ok(None) if start.elapsed() > timeout => {
+                let _ = child.kill();
+                let _ = child.wait();
+                return Err(Error(format!("key store ({program}): no answer after {} s", timeout.as_secs())));
+            }
+            Ok(None) => std::thread::sleep(Duration::from_millis(10)),
+            Err(e) => return Err(e.into()),
+        }
+    };
+    let stdout = reader.join().unwrap_or_default();
+    let text = String::from_utf8_lossy(&stdout).trim_end_matches(['\n', '\r']).to_string();
+    Ok((status.success(), text))
 }
 
 impl SecretStore for OsKeyStore {
@@ -225,4 +260,8 @@ mod tests {
         assert_eq!(env, [("S_SERVICE".to_string(), "b".to_string()), ("S_KEY".to_string(), "sk-1".to_string())]);
         let _ = std::fs::remove_dir_all(&dir);
     }
+
+    #[test]
+    #[ignore = "test ticket: tool_with kills a key-store tool that outlives its timeout (unix `sleep 5`, 100 ms) and returns an error"]
+    fn key_store_tool_times_out() {}
 }

@@ -14,6 +14,10 @@ use std::path::{Path, PathBuf};
 pub const STATE_SCHEMA: &str = "bashcut-batch-state/1";
 /// Folder (inside the projects folder) that holds the job books.
 pub const JOBS_DIR: &str = ".bashcut-batch";
+/// Largest `state.json` read or written. Far above [`pipeline::read_capped`]'s 4 MB (a job of
+/// thousands of items with agent reviews outgrows that), and enforced on write too: a save that
+/// would pass it fails and leaves the previous book in place, so every book on disk resumes.
+const MAX_BOOK_BYTES: u64 = 256 << 20;
 
 /// State of a job, an item or a step (not every value applies to each).
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -488,7 +492,12 @@ impl Job {
     }
 
     pub fn book(&self) -> Result<Book, String> {
-        let text = pipeline::read_capped(&self.state_path())?;
+        let path = self.state_path();
+        let meta = std::fs::metadata(&path).map_err(|e| format!("{}: {e}", path.display()))?;
+        if meta.len() > MAX_BOOK_BYTES {
+            return Err(format!("{}: larger than {MAX_BOOK_BYTES} bytes", path.display()));
+        }
+        let text = std::fs::read_to_string(&path).map_err(|e| format!("{}: {e}", path.display()))?;
         let b: Book = serde_json::from_str(&text).map_err(|e| format!("{}: {e}", self.state_path().display()))?;
         if b.schema != STATE_SCHEMA {
             return Err(format!("{}: unknown schema {}", self.state_path().display(), b.schema));
@@ -497,7 +506,11 @@ impl Job {
     }
 
     pub fn save(&self, book: &Book) -> Result<(), String> {
-        let bytes = serde_json::to_vec_pretty(book).map_err(|e| e.to_string())?;
+        // compact: the book is rewritten on every step event, and pretty printing doubles it
+        let bytes = serde_json::to_vec(book).map_err(|e| e.to_string())?;
+        if u64::try_from(bytes.len()).unwrap_or(u64::MAX) > MAX_BOOK_BYTES {
+            return Err(format!("{}: job book would be larger than {MAX_BOOK_BYTES} bytes", self.state_path().display()));
+        }
         write_atomic(&self.state_path(), &bytes)
     }
 
@@ -664,4 +677,8 @@ mod tests {
         assert_eq!(s(&[Status::Done, Status::Pending]), Status::Running);
         assert_eq!(book(vec![item("i", Status::Pending, vec![])]).derive_status(true), Status::Cancelled);
     }
+
+    #[test]
+    #[ignore = "test ticket: a book past pipeline's 4 MB cap saves and loads again; a save over MAX_BOOK_BYTES fails and keeps the old state.json"]
+    fn large_book_round_trips() {}
 }
