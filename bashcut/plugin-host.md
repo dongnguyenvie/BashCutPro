@@ -84,7 +84,10 @@ layout files and `ALL` array on every merge. Docking can come later if upstream 
 - A plugin is a local program the user installed; the host shows its manifest (`app.commands`, `edits`, network use)
   before the first run and on update.
 - Secrets live in the OS key store (Keychain / Credential Manager / Secret Service) and reach the process only as the
-  env vars its manifest declares. Settings files hold non-secrets only. A key-store call that gets no answer in 20 s
+  env vars its manifest declares. Settings files hold non-secrets only. A non-secret setting with an `env` name that
+  the user never saved reaches the run as its manifest `default` (FX6, `settings::env_for`), unless the default is
+  empty or one of its `env` names is already set in the app's own environment (the run inherits that one); a saved value always
+  wins. Secrets have no default: only a stored key is exported. A key-store call that gets no answer in 20 s
   (e.g. a locked keyring's unlock prompt) is killed and fails, so it cannot freeze the app.
 - Runs are cancellable; a hung plugin is killed after a timeout: 30 min by default (`runner::DEFAULT_TIMEOUT`), or
   the `timeoutSeconds` param of `bashcut.plugins.run` (capped at 24 h). Manifests declare no timeout.

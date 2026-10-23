@@ -198,6 +198,8 @@ fn decide(a: &Args, cwd: &Path) -> Result<Decision, String> {
             return Err(format!("{} is already open in another engine (pid {pid}); stop it or connect to it", p.display()));
         }
         argv.extend(["--project".to_string(), p.to_string_lossy().into_owned()]);
+    } else if headless {
+        notes.push("--headless given: headless engine without a project (an open window is left alone), writes are not limited (pass --project or set BASHCUTPRO_ROOTS)".into());
     } else {
         notes.push(
             "no project given and no window found: headless engine without a project, writes are not limited (pass --project or set BASHCUTPRO_ROOTS)".into(),
@@ -333,6 +335,28 @@ mod tests {
         let dec = decide(&args(&["--data-dir", &data, "--cli", "fc"]), &d).unwrap();
         assert!(dec.roots.is_empty() || std::env::var_os("BASHCUTPRO_ROOTS").is_some());
         assert!(!dec.notes.is_empty() || std::env::var_os("BASHCUTPRO_PROJECT").is_some());
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn headless_by_choice_says_so_even_with_a_live_window() {
+        // FX6: with --headless and a live window, the note must not claim no window was found
+        let d = scratch("headless-choice");
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        window(&d, &listener.local_addr().unwrap().to_string(), None);
+        let data = d.join("data").to_string_lossy().into_owned();
+        let dec = decide(&args(&["--data-dir", &data, "--cli", "fc", "--headless"]), &d).unwrap();
+        assert_eq!(dec.mode, "headless");
+        if std::env::var_os("BASHCUTPRO_PROJECT").is_none() {
+            assert!(dec.notes.iter().any(|n| n.starts_with("--headless given")), "{:?}", dec.notes);
+        }
+        assert!(dec.notes.iter().all(|n| !n.contains("no window found")), "{:?}", dec.notes);
+        // without --headless and with no window, the old note stays
+        drop(listener);
+        let dec = decide(&args(&["--data-dir", &data, "--cli", "fc"]), &d).unwrap();
+        if std::env::var_os("BASHCUTPRO_PROJECT").is_none() && std::env::var_os("BASHCUTPRO_BRIDGE").is_none() {
+            assert!(dec.notes.iter().any(|n| n.contains("no window found")), "{:?}", dec.notes);
+        }
         let _ = std::fs::remove_dir_all(&d);
     }
 }
