@@ -19,9 +19,9 @@ decides something; don't change an old one, add a new one that supersedes it.
 - **Rules out:** a CLI binary named `bashcutpro`, and plain `bashcutpro` in the engine lookup (it would find the GUI).
   Supersedes the names in SB2 and #154 below.
 
-## 2026-10-23: `bashcutpro --bridge` defaults to the open BashCutPro (CC2)
+## 2026-10-23: `bashcutpro-cli --bridge` defaults to the open BashCutPro (CC2)
 
-- **Decided:** `bashcutpro`/`bcpro` add `--bridge <address>` from `<data dir>/bashcut/automation.json` (CC1; read with
+- **Decided:** `bashcutpro-cli`/`bcpro` (NM1 names) add `--bridge <address>` from `<data dir>/bashcut/automation.json` (CC1; read with
   `bashcut_dirs::data_dir` + `bashcut_connect::automation::live`: live pid, loopback, port answers within 300 ms) when the subcommand talks to
   the bridge (`commands`, `describe`, `exec`, `run`, `inspect`, `import`, `export`, `mcp`), no `--bridge` is given,
   none of `--project`/`--demo`/`--save`/`--save-as`/`--data-dir` is (they mean the headless engine) and

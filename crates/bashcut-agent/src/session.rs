@@ -53,6 +53,9 @@ pub struct Agent {
     sidecar: Option<PathBuf>,
     turn: Option<Turn>,
     mcp_config: Option<PathBuf>,
+    /// Events received from the agent so far (all turns): the panel notes when it last changed
+    /// and hints at a blocked agent after a long silence (AG1).
+    events: u64,
 }
 
 impl Agent {
@@ -60,11 +63,16 @@ impl Agent {
         let agents = if agents.is_empty() { vec![AgentSpec::claude_code(None)] } else { agents };
         let agent = agents.first().cloned().unwrap_or_else(|| AgentSpec::claude_code(None));
         let conversation = Conversation::new(&agent.id);
-        Agent { agents, agent, conversation, status: Status::Idle, sidecar: None, turn: None, mcp_config: None }
+        Agent { agents, agent, conversation, status: Status::Idle, sidecar: None, turn: None, mcp_config: None, events: 0 }
     }
 
     pub fn is_running(&self) -> bool {
         self.turn.is_some()
+    }
+
+    /// How many events the agent has sent so far; unchanged while it is silent.
+    pub fn events_seen(&self) -> u64 {
+        self.events
     }
 
     pub fn sidecar(&self) -> Option<&Path> {
@@ -207,6 +215,7 @@ impl Agent {
         let events = turn.poll();
         let mut ended = None;
         for e in events {
+            self.events = self.events.wrapping_add(1);
             match e {
                 TurnEvent::Agent(ev) => {
                     match &ev {

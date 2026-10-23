@@ -304,3 +304,6 @@ agent: {skill}	trợ lý: {skill}
 invalid step	bước không hợp lệ
 Saving…	Đang lưu…
 Clearing…	Đang xóa…
+# Agent quiet hint (AG1)
+No output for 30 s: check for a macOS permission prompt (it can be behind this window).	Không có phản hồi sau 30 giây: hãy xem macOS có đang hỏi quyền không (hộp thoại có thể nằm sau cửa sổ này).
+No output for 30 s: the agent may be waiting for a sign-in or a prompt outside BashCutPro.	Không có phản hồi sau 30 giây: trợ lý có thể đang chờ đăng nhập hoặc một xác nhận bên ngoài BashCutPro.

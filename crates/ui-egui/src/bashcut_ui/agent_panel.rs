@@ -18,6 +18,9 @@ use crate::FilmcraftApp;
 
 /// The pending gate is re-read from `plan.json` this often (seconds), not every frame.
 const GATE_EVERY: f64 = 1.0;
+/// After this long (seconds) with no event from a running agent, a hint says where it may be
+/// stuck (AG1: a macOS permission prompt holds `claude` before its first line). Not a stop.
+const QUIET_HINT: f64 = 30.0;
 /// Height kept for the message box and its buttons under the transcript.
 const INPUT_HEIGHT: f32 = 96.0;
 
@@ -31,6 +34,8 @@ struct View {
     gate_checked: Option<f64>,
     /// The project the gate was read for (another project re-reads it at once).
     project: Option<std::path::PathBuf>,
+    /// While a turn runs: the agent's event count and when it last changed (egui time).
+    heard: Option<(u64, f64)>,
 }
 
 fn key() -> egui::Id {
@@ -52,6 +57,8 @@ struct Snapshot {
     missing: Option<String>,
     title: String,
     has_project: bool,
+    /// [`bashcut_agent::Agent::events_seen`].
+    events: u64,
 }
 
 fn call(app: &mut FilmcraftApp, ctx: &egui::Context, v: &mut View, name: &str, params: Value) -> bool {
@@ -88,6 +95,7 @@ pub fn draw(app: &mut FilmcraftApp, ui: &mut egui::Ui) {
             missing: (!hints::agent_found(&a.agent)).then(|| missing_line(&a.agent)),
             title: a.conversation.title(),
             has_project: a.sidecar().is_some(),
+            events: a.events_seen(),
         };
         let gate = if check_gate && !a.is_running() { Some(a.gate()) } else { None };
         (snap, gate)
@@ -97,6 +105,12 @@ pub fn draw(app: &mut FilmcraftApp, ui: &mut egui::Ui) {
         v.gate_checked = Some(now);
     }
     let running = matches!(snap.status, Status::Running | Status::Stopping);
+    v.heard = match v.heard {
+        _ if !running => None,
+        Some((n, at)) if n == snap.events => Some((n, at)),
+        _ => Some((snap.events, now)),
+    };
+    let quiet = v.heard.is_some_and(|(_, at)| now - at >= QUIET_HINT);
 
     header(app, ui, &ctx, &mut v, &snap, running);
     readiness(app, ui, &ctx, &snap);
@@ -123,6 +137,11 @@ pub fn draw(app: &mut FilmcraftApp, ui: &mut egui::Ui) {
                     let label = if snap.status == Status::Stopping { s("Stopping…") } else { s("Working…") };
                     note(ui, label, NOTE, t.text_dim);
                 });
+                if quiet && snap.status == Status::Running {
+                    let line = s(quiet_line());
+                    let r = note(ui, line, NOTE, t.text);
+                    app.auto.add_response("bashcut.agent.quiet", &r, line);
+                }
             }
         });
     app.auto.add("bashcut.agent.transcript", out.inner_rect, &snap.title);
@@ -133,6 +152,15 @@ pub fn draw(app: &mut FilmcraftApp, ui: &mut egui::Ui) {
         ctx.request_repaint_after(std::time::Duration::from_millis(100));
     }
     super::shared::put_temp(&ctx, key(), v);
+}
+
+/// The hint after [`QUIET_HINT`] with no output: where a blocked agent usually waits.
+fn quiet_line() -> &'static str {
+    if cfg!(target_os = "macos") {
+        "No output for 30 s: check for a macOS permission prompt (it can be behind this window)."
+    } else {
+        "No output for 30 s: the agent may be waiting for a sign-in or a prompt outside BashCutPro."
+    }
 }
 
 /// "Claude Code not found: install it, or set BASHCUT_CLAUDE" (an agent plugin: install its program).
