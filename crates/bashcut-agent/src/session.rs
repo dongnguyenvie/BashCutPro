@@ -120,6 +120,9 @@ pub struct Context {
     pub cli: Option<String>,
     /// `127.0.0.1:<control port>` when the app serves one.
     pub bridge: Option<String>,
+    /// The control channel's session token, only when `bridge` is the app's own; the agent gets it as
+    /// `FILMCRAFT_CONTROL_TOKEN` (SY7). Never written to the MCP config.
+    pub control_token: Option<String>,
 }
 
 pub struct Agent {
@@ -485,6 +488,9 @@ impl Agent {
         env.push(("BASHCUT_AGENT_HOST".into(), "1".into()));
         // the kit's MCP launcher steps aside when it sees this: the app passes its own server (AK3)
         env.push(("BASHCUT_IN_APP_AGENT".into(), "1".into()));
+        if let Some(t) = ctx.control_token.as_deref().filter(|_| ctx.bridge.is_some()) {
+            env.push(("FILMCRAFT_CONTROL_TOKEN".into(), t.to_string()));
+        }
         if let Some(side) = ctx.project.as_deref().map(crate::sidecar) {
             env.push(("BASHCUT_PROJECT_SIDECAR".into(), side.to_string_lossy().into_owned()));
         }

@@ -222,14 +222,38 @@ fn find_cli(a: &Args) -> String {
     a.opt("--cli").map(str::to_string).unwrap_or_else(|| bashcut_dirs::engine::default_cli().to_string_lossy().into_owned())
 }
 
-/// Run the MCP server; with `roots`, every agent line passes [`guard::check`] first. Returns the
-/// server's exit status.
-fn serve(argv: &[String], roots: Option<&Roots>, cwd: &Path) -> Result<u8, String> {
-    let (program, args) = argv.split_first().ok_or("empty command line")?;
+/// The window's session token for the `--bridge` address in `args`, unless the environment already
+/// has one (the engine then uses that).
+fn control_token(args: &[String]) -> Option<String> {
+    control_token_in(args, std::env::var_os("FILMCRAFT_CONTROL_TOKEN").is_some(), bashcut_dirs::data_dir)
+}
+
+/// [`control_token`] with "the environment has a token" and the data dir (read only when needed) passed in.
+fn control_token_in(args: &[String], env_set: bool, data_dir: impl FnOnce() -> Option<PathBuf>) -> Option<String> {
+    if env_set {
+        return None;
+    }
+    let addr = args.iter().position(|a| a == "--bridge").and_then(|i| args.get(i + 1))?;
+    data_dir().and_then(|d| automation::token_for(&d, addr))
+}
+
+/// The engine's command: `args` with no default bridge of its own, and the window's token when there is one.
+fn child_command(program: &str, args: &[String], token: Option<String>) -> Command {
     let mut cmd = Command::new(program);
     // `decide` already chose bridge or headless: the engine must not add its own default bridge
     // (CC2) to a headless `mcp` with no project (CC3)
     cmd.args(args).env("BASHCUT_BRIDGE", "off").stderr(Stdio::inherit());
+    if let Some(t) = token {
+        cmd.env("FILMCRAFT_CONTROL_TOKEN", t);
+    }
+    cmd
+}
+
+/// Run the MCP server; with `roots`, every agent line passes [`guard::check`] first. Returns the
+/// server's exit status.
+fn serve(argv: &[String], roots: Option<&Roots>, cwd: &Path) -> Result<u8, String> {
+    let (program, args) = argv.split_first().ok_or("empty command line")?;
+    let mut cmd = child_command(program, args, control_token(args));
     let Some(roots) = roots else {
         let status = cmd.stdin(Stdio::inherit()).stdout(Stdio::inherit()).status().map_err(|e| format!("{program}: {e}"))?;
         return Ok(exit_code(status.code()));
@@ -298,6 +322,31 @@ mod tests {
     fn window(d: &Path, addr: &str, project: Option<&Path>) {
         let v = json!({"schema": automation::SCHEMA, "address": addr, "token": null, "pid": std::process::id(), "project": project.map(|p| p.to_string_lossy().into_owned())});
         std::fs::write(automation::file(&d.join("data")), v.to_string()).unwrap();
+    }
+
+    #[test]
+    fn the_child_gets_the_window_token() {
+        let d = scratch("token");
+        let token = "ef".repeat(32);
+        let addr = "127.0.0.1:9876";
+        let v = json!({"schema": automation::SCHEMA, "address": addr, "token": token, "pid": std::process::id(), "project": null});
+        std::fs::write(automation::file(&d.join("data")), v.to_string()).unwrap();
+        let data = || Some(d.join("data"));
+        let argv = |a: &str| vec!["mcp".to_string(), "--bridge".into(), a.to_string()];
+        let env_of = |cmd: &Command, key: &str| cmd.get_envs().find(|(k, _)| *k == key).map(|(_, v)| v.map(|v| v.to_string_lossy().into_owned()));
+
+        let got = control_token_in(&argv(addr), false, data);
+        assert_eq!(got.as_deref(), Some(token.as_str()), "from automation.json for the --bridge address");
+        let cmd = child_command("fc", &argv(addr), got);
+        assert_eq!(env_of(&cmd, "FILMCRAFT_CONTROL_TOKEN"), Some(Some(token.clone())));
+        assert_eq!(env_of(&cmd, "BASHCUT_BRIDGE"), Some(Some("off".to_string())));
+
+        assert_eq!(control_token_in(&argv(addr), true, || panic!("the environment's token wins: no lookup")), None, "env already set");
+        assert_eq!(control_token_in(&argv("127.0.0.1:9877"), false, data), None, "another window's address");
+        assert_eq!(control_token_in(&["mcp".to_string()], false, data), None, "headless: no bridge");
+        let cmd = child_command("fc", &argv(addr), None);
+        assert_eq!(env_of(&cmd, "FILMCRAFT_CONTROL_TOKEN"), None, "the variable is left alone (inherited)");
+        let _ = std::fs::remove_dir_all(&d);
     }
 
     #[test]

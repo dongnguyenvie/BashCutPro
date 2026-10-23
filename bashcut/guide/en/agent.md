@@ -96,6 +96,8 @@ Claude Code or Codex in a terminal can drive the open window too:
 2. Open BashCutPro as usual. Its control channel starts by itself (on this computer only, 127.0.0.1) and the window
    tells agents where to find it. To keep agents out, untick **Allow AI agents to control BashCutPro** in the Agent
    section (applies at the next start), or set `BASHCUT_CONTROL=0`. `--control <port>` still picks a fixed port.
+   The control channel is protected by a session code that BashCutPro makes each time it opens; agents started from
+   BashCutPro get it automatically.
 3. Ask the agent in the terminal; it connects to the open window by itself. With no window open, it works on the
    project file directly, and it refuses to open a project the window already has open.
 

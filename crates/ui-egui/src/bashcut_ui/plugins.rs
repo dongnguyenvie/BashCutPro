@@ -227,9 +227,16 @@ pub fn cli_path() -> Option<String> {
     bashcut_batch::cli::beside_self().map(|p| p.to_string_lossy().into_owned())
 }
 
+/// The window's session token when `bridge` is this window's own control address; a `bridge` pointing elsewhere gets none (SY7).
+pub fn control_token_for(bridge: Option<&str>) -> Option<String> {
+    let port = super::control::launched()??;
+    (bridge? == format!("127.0.0.1:{port}")).then(super::control::launch_token).flatten()
+}
+
 pub fn run_context() -> RunContext {
     let known = filmcraft_engine::commands::command_specs().iter().map(|c| c.id.to_string()).collect();
-    RunContext { bridge: bridge_address(), cli: cli_path(), known_commands: known }
+    let bridge = bridge_address();
+    RunContext { control_token: control_token_for(bridge.as_deref()), bridge, cli: cli_path(), known_commands: known }
 }
 
 /// `bashcut.plugins.<name>`.
@@ -240,6 +247,7 @@ pub fn invoke(app: &mut FilmcraftApp, ctx: &egui::Context, name: &str, params: &
     let mut rc = run_context();
     if let Some(b) = params.get("bridge").and_then(Value::as_str).filter(|b| !b.is_empty()) {
         rc.bridge = Some(b.to_string());
+        rc.control_token = control_token_for(rc.bridge.as_deref());
     }
     let r = with(app, ctx, |h| h.command(name, params, &rc)).map_err(|e| e.0);
     if name == "run" && r.is_ok() {

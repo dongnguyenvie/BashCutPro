@@ -89,6 +89,8 @@ pub const RESTART: &str = "Restart BashCutPro to apply.";
 
 /// The port this window was given at launch; unset in tests and other entry points.
 static PORT: OnceLock<Option<u16>> = OnceLock::new();
+/// The session token of this window, decided once by [`launch_token`].
+static TOKEN: OnceLock<Option<String>> = OnceLock::new();
 /// Why the channel is off at launch, when it is.
 static OFF: OnceLock<Off> = OnceLock::new();
 
@@ -177,6 +179,20 @@ pub fn launch_port(explicit: Option<u16>, data_dir: Option<&Path>) -> Option<u16
     let _ = PORT.set(port);
     let _ = OFF.set(off);
     port
+}
+
+/// The launch hook: the control channel's session token (`FILMCRAFT_CONTROL_TOKEN` when valid, else
+/// a random one per window; `None` when no randomness is available).
+pub fn launch_token() -> Option<String> {
+    TOKEN
+        .get_or_init(|| {
+            let token = bashcut_dirs::token::choose(std::env::var(bashcut_dirs::token::ENV).ok().as_deref(), bashcut_dirs::token::generate);
+            if token.is_none() {
+                log::warn!("BashCutPro: could not make a control token; the control channel stays off");
+            }
+            token
+        })
+        .clone()
 }
 
 /// The port this window serves: from [`launch_port`], else `None` when it never ran.

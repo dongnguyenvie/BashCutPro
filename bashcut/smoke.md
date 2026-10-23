@@ -21,6 +21,8 @@ was launched and answered:
    Without `--cli` / `-Cli` the CLI is `bashcutpro-cli`, `bcpro` or `filmcraft-cli` next to the app (in that order), else on
    PATH; `cargo build --release -p filmcraft -p bashcutpro-cli` gives `bashcutpro-cli`. Both run with `BASHCUT_BRIDGE=off`, so
    they test the headless engine even when another BashCutPro is open.
+   The window needs a control token: the script uses `FILMCRAFT_CONTROL_TOKEN` when set, else makes 32 random bytes (64 hex),
+   exports it before the app starts and puts it into every control request; it is never printed.
 5. `app.quit` (control method: no save prompt); the process must exit within 15 s.
 6. Instruction-set scan of the app and CLI when they are x86-64: no `ymm` (AVX / AVX2) or `zmm` / opmask (AVX-512)
    registers outside the functions matched by `bashcut/scripts/isa-allow.txt` (runtime-dispatched code only). Needs

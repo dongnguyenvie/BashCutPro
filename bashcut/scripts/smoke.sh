@@ -104,17 +104,24 @@ fi
 mkdir -p "$out"
 out="$(cd "$out" && pwd)"
 
+# The window's control channel needs a session token (FILMCRAFT_CONTROL_TOKEN, 64 hex). Use the caller's, else make
+# one before the launch: the app reads it from the environment and every request below carries it. Never echoed.
+tok="${FILMCRAFT_CONTROL_TOKEN:-$(python3 -c 'import secrets;print(secrets.token_hex(32))' 2>/dev/null || od -An -N32 -tx1 /dev/urandom | tr -d ' \n')}"
+export FILMCRAFT_CONTROL_TOKEN="$tok"
+
 echo "smoke: $exe on port $port (cli: ${cli:-none}, out: $out)"
 "$exe" --control "$port" --control-input-only >"$out/app.log" 2>&1 &
 pid=$!
 cleanup() { kill "$pid" 2>/dev/null; }
 trap cleanup EXIT
 
-# One request on a fresh connection; prints the reply line (empty on failure).
+# One request on a fresh connection; prints the reply line (empty on failure). The session token goes into the JSON
+# line of every request (ui.inspect, ui.elements, ui.screenshot, app.quit).
 request() {
-  local reply=""
+  local reply="" line="$1"
+  line="{\"token\":\"$tok\",${line#\{}"
   exec 3<>"/dev/tcp/127.0.0.1/$port" 2>/dev/null || return 1
-  printf '%s\n' "$1" >&3
+  printf '%s\n' "$line" >&3
   IFS= read -r -t "${2:-30}" reply <&3
   exec 3<&- 3>&-
   printf '%s' "$reply"

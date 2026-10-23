@@ -53,7 +53,7 @@ fn setup(name: &str) -> Option<(PathBuf, AgentSpec, Context)> {
         timeout_secs: 30,
         ..AgentSpec::default()
     };
-    let ctx = Context { project: Some(dir.join("film.fcproj")), line: "Project film, playhead 00:00:01".into(), cli: None, bridge: None };
+    let ctx = Context { project: Some(dir.join("film.fcproj")), line: "Project film, playhead 00:00:01".into(), cli: None, bridge: None, control_token: None };
     Some((dir, spec, ctx))
 }
 
@@ -181,7 +181,7 @@ def on_int(*_):
     os._exit(130)
 signal.signal(signal.SIGINT, on_int)
 note("start", args=args, cwd=os.getcwd(), inApp=os.environ.get("BASHCUT_IN_APP_AGENT", ""),
-     sidecar=os.environ.get("BASHCUT_PROJECT_SIDECAR", ""))
+     sidecar=os.environ.get("BASHCUT_PROJECT_SIDECAR", ""), token=os.environ.get("FILMCRAFT_CONTROL_TOKEN", ""))
 early = os.environ.get("FAKE_EARLY", "")
 if early and os.path.exists(early):
     os.remove(early)
@@ -731,6 +731,45 @@ fn unsaved_project_runs_in_the_data_dir_agent_folder() {
     assert_eq!(start["inApp"], "1", "the kit's MCP launcher steps aside");
     assert_eq!(start["sidecar"], "", "an unsaved project has no sidecar");
     agent.shutdown();
+}
+
+#[test]
+fn control_token_reaches_the_agent_env_and_not_the_mcp_config() {
+    if std::env::var_os("FILMCRAFT_CONTROL_TOKEN").is_some() {
+        return;
+    }
+    let token = "ab".repeat(32);
+    let (cli, bridge) = ("/apps/bashcutpro-cli", "127.0.0.1:9876");
+    // (bridge, token) as the app passes them: the token only travels with the bridge it belongs to
+    let cases = [(Some(bridge), Some(token.as_str()), token.as_str()), (Some(bridge), None, ""), (None, Some(token.as_str()), "")];
+    for (i, (bridge, tok, want)) in cases.into_iter().enumerate() {
+        let Some(mut f) = LiveFake::new(&format!("token{i}"), "") else { return };
+        f.spec.mcp_args = vec!["--mcp-config".into(), "{config}".into()];
+        let ctx = Context { cli: Some(cli.into()), bridge: bridge.map(str::to_string), control_token: tok.map(str::to_string), ..f.ctx.clone() };
+        let mut agent = f.agent();
+        if bridge.is_none() {
+            // an agent that needs the control channel refuses to start without it
+            assert!(agent.send("hello", &ctx).is_err());
+            let ctx = Context { cli: Some(cli.into()), bridge: None, control_token: tok.map(str::to_string), ..f.ctx.clone() };
+            f.spec.mcp_args.clear();
+            let mut agent = f.agent();
+            agent.send("hello", &ctx).unwrap();
+            run(&mut agent);
+            assert_eq!(f.notes("start")[0]["token"], want, "case {i}");
+            agent.shutdown();
+            continue;
+        }
+        agent.send("hello", &ctx).unwrap();
+        run(&mut agent);
+        let start = &f.notes("start")[0];
+        assert_eq!(start["token"], want, "case {i}");
+        let args: Vec<&str> = start["args"].as_array().unwrap().iter().filter_map(|a| a.as_str()).collect();
+        let config = args.windows(2).find(|w| w[0] == "--mcp-config").map(|w| w[1]).expect("the MCP config is passed");
+        let text = std::fs::read_to_string(config).unwrap();
+        assert!(!text.contains(&token) && !text.to_ascii_lowercase().contains("token"), "the MCP config holds no token: {text}");
+        assert!(text.contains(bridge.unwrap_or_default()) && text.contains(cli), "{text}");
+        agent.shutdown();
+    }
 }
 
 /// The text of each `kind` note in the fake's log (`read`, `take`), oldest first.

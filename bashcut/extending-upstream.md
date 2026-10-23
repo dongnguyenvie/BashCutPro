@@ -58,32 +58,32 @@ These modify upstream lines (all listed in `UPSTREAM.md` "Carried edits", with t
 
 ## 3. What upstream changes most
 
-Upstream commits touching each file in the 30 days to 2026-10-22 (`git log --since=2026-09-22 --no-merges upstream/main`).
-Re-counted at the 2026-10-22 sync (upstream `dd525c93`, v0.10.0 + 20 commits): within ±5 of the 2026-10-20 count.
+Upstream commits touching each file in the 30 days to 2026-10-23 (`git log --since=2026-09-23 --no-merges upstream/main`).
+Re-counted at the 2026-10-23 sync (upstream `c5c16939`, 88 commits past `dd525c93`): `git log --since=2026-09-23 --no-merges upstream/main -- <file>`.
 Treat anything above ~20 as "will conflict with any edit".
 
 | Changes | File | What it means for us |
 |---|---|---|
-| 161 | `crates/engine/src/commands.rs` | the command table; only the one inserted `extend` line (§2) |
+| 162 | `crates/engine/src/commands.rs` | the command table; only the one inserted `extend` line (§2) |
 | 133 | `crates/ui-egui/src/lib.rs` | app shell and frame loop; only the mod line and the layout line |
-| 130 | `Cargo.lock` | on merge take upstream's, run `cargo check` |
-| 103 | `crates/ui-egui/src/panels/timeline.rs` | never touch; show our data as markers / labels |
+| 137 | `Cargo.lock` | on merge take upstream's, run `cargo check` |
+| 104 | `crates/ui-egui/src/panels/timeline.rs` | never touch; show our data as markers / labels |
 | 97 | `crates/engine/src/lib.rs` | `Session`, `History`; only the `pub mod bashcut;` line |
-| 75 | `crates/ui-egui/src/menus.rs` | three inserted lines (invoke routing, commands, menu items) |
+| 76 | `crates/ui-egui/src/menus.rs` | three inserted lines (invoke routing, commands, menu items) |
 | 60 | `Cargo.toml` (root) | never touch (globs and path deps) |
-| 56 | `crates/ui-egui/src/panels/mod.rs` | never touch |
+| 57 | `crates/ui-egui/src/panels/mod.rs` | never touch |
 | 55 | `crates/ui-egui/src/state.rs` | `UiState` (63 struct changes since 09-01); never add fields |
 | 53 / 39 / 36 | `crates/ui-egui/src/i18n/{es,ja,zh-cn}.tsv` (all catalogs) | never touch; our strings in our own catalog |
-| 51 | `crates/export/src/lib.rs` | use export presets and `filmcraft-cli export`, not its types |
+| 52 | `crates/export/src/lib.rs` | use export presets and `filmcraft-cli export`, not its types |
 | 47 | `apps/filmcraft/src/main.rs` | one hook (app icon); nothing new |
-| 43 | `crates/project/src/lib.rs` | project schema; never add fields; build projects with commands |
+| 44 | `crates/project/src/lib.rs` | project schema; never add fields; build projects with commands |
 | 41 | `crates/ui-egui/src/panels/effect_controls.rs` | never touch |
 | 40 | `xtask/src/main.rs` | one inserted line in `layer_of`, one in `main` (`cargo xtask dev`) |
 | 40 | `crates/render/src/lib.rs` | never touch; word-caption styles (#49) try the no-hook route first |
 | 37 / 37 | `panels/monitor.rs`, `panels/dialogs.rs` | never touch (dialogs: one hook, our About tab) |
 | 36 | `crates/edit/src/lib.rs` | call through commands, not edit functions, where possible |
 | 31 | `crates/engine/src/settings.rs` | our settings in `<data dir>/bashcut/` |
-| 29 / 32 | `crates/ui-egui/src/control.rs`, `apps/filmcraft-cli/src/main.rs` | use the control protocol and CLI as documented; the CLI help changed 12× since 09-01, so re-check flags after a sync |
+| 30 / 33 | `crates/ui-egui/src/control.rs`, `apps/filmcraft-cli/src/main.rs` | use the control protocol and CLI as documented; the CLI help changed 12× since 09-01, so re-check flags after a sync |
 | 74 / 62 / 75 | `docs/architecture.md`, `README.md`, `ROADMAP.md` | never touch |
 
 Struct and API churn since 2026-09-01 (changes to the definition):

@@ -7,8 +7,9 @@
 //! alive. With two windows the first started keeps it; the other claims it once it is free (FX7).
 //! SIGINT / SIGTERM remove it too (AG1, [`bashcut_dirs::signal`]).
 //!
-//! The channel binds 127.0.0.1 only and has no token (`token` stays `null`): any local process
-//! that can reach the port can drive the window. It runs by default (CC1, [`super::control`]);
+//! The channel binds 127.0.0.1 only and requires a session token (SY2, [`super::control::launch_token`]):
+//! `token` is the 64-hex one this window serves, and the file is owner-only (0600), so only the
+//! user's own processes can read it and drive the window. It runs by default (CC1, [`super::control`]);
 //! the Agent section's setting and `BASHCUT_CONTROL=0` turn it off.
 
 use std::io::Write;
@@ -154,7 +155,7 @@ pub fn write(path: &Path, port: u16, project: Option<&str>) -> std::io::Result<(
     let body = json!({
         "schema": SCHEMA,
         "address": format!("127.0.0.1:{port}"),
-        "token": null,
+        "token": super::control::launch_token(),
         "pid": std::process::id(),
         "project": project,
         "app": "BashCutPro",
@@ -203,6 +204,10 @@ mod tests {
         assert_eq!(v["address"], "127.0.0.1:9876");
         assert_eq!(v["pid"], std::process::id());
         assert!(v["project"].is_null());
+        // SY2: the file carries the window's session token, the one the control channel requires
+        let token = super::super::control::launch_token().expect("this machine has randomness");
+        assert!(bashcut_dirs::token::valid(&token));
+        assert_eq!(v["token"], json!(token));
         #[cfg(unix)]
         {
             use std::os::unix::fs::PermissionsExt;

@@ -42,7 +42,7 @@ def progress(m):
 if mode == "ok":
     progress("10% starting")
     progress("90% almost")
-    print(json.dumps({"ok": True, "message": "done", "data": {"args": args, "key": os.environ.get("FAKE_KEY"), "service": os.environ.get("FAKE_SERVICE"), "cli": os.environ.get("BASHCUTPRO_CLI"), "dataDir": os.environ.get("BASHCUTPRO_DATA_DIR")}}))
+    print(json.dumps({"ok": True, "message": "done", "data": {"args": args, "key": os.environ.get("FAKE_KEY"), "service": os.environ.get("FAKE_SERVICE"), "cli": os.environ.get("BASHCUTPRO_CLI"), "dataDir": os.environ.get("BASHCUTPRO_DATA_DIR"), "token": os.environ.get("FILMCRAFT_CONTROL_TOKEN")}}))
 elif mode == "error":
     print(json.dumps({"ok": False, "error": {"code": "bad_input", "message": "no captions"}}))
     sys.exit(1)
@@ -200,6 +200,38 @@ fn registry_repo(version: &str) -> PathBuf {
     repo
 }
 
+/// The `ok` action's reported `token` (the run's `FILMCRAFT_CONTROL_TOKEN`) for a run with `ctx`.
+fn run_token(data: &Path, ctx: &RunContext) -> Value {
+    let mut host = Host::new(Some(data.to_path_buf()), Arc::new(MemoryStore::default()));
+    let job = host.command("run", &json!({"plugin": "test.fake", "action": "ok"}), ctx).unwrap()["job"].as_u64().unwrap();
+    assert_eq!(wait_job(&mut host, job), JobState::Succeeded, "{:?}", host.job(job));
+    host.job(job).unwrap().outcome.as_ref().unwrap().result.as_ref().unwrap().data["token"].clone()
+}
+
+#[test]
+fn control_token_reaches_the_run_env() {
+    if python().is_none() {
+        eprintln!("skipped: no python3 or python");
+        return;
+    }
+    let data = scratch("token");
+    write_plugin(&data.join("bashcut-plugins/test.fake"), "test.fake");
+    let token = "ab".repeat(32);
+    let with = |bridge: Option<&str>, token: Option<&str>| RunContext {
+        bridge: bridge.map(str::to_string),
+        control_token: token.map(str::to_string),
+        ..RunContext::default()
+    };
+    if std::env::var_os("FILMCRAFT_CONTROL_TOKEN").is_some() {
+        eprintln!("skipped: FILMCRAFT_CONTROL_TOKEN is set in the test environment");
+        return;
+    }
+    assert_eq!(run_token(&data, &with(Some("127.0.0.1:9"), Some(&token))), json!(token), "token and bridge: the run gets it");
+    assert_eq!(run_token(&data, &with(Some("127.0.0.1:9"), None)), Value::Null, "a bridge without a token");
+    assert_eq!(run_token(&data, &with(None, Some(&token))), Value::Null, "a token without a bridge is never passed");
+    assert_eq!(run_token(&data, &RunContext::default()), Value::Null);
+}
+
 #[test]
 fn install_settings_run_update_remove() {
     if python().is_none() || !has("git") {
@@ -210,7 +242,7 @@ fn install_settings_run_update_remove() {
     let repo = registry_repo("0.1.0");
     let secrets = Arc::new(MemoryStore::default());
     let mut host = Host::new(Some(data.clone()), secrets);
-    let ctx = RunContext { bridge: Some("127.0.0.1:9".into()), cli: Some("/apps/bashcutpro".into()), known_commands: Vec::new() };
+    let ctx = RunContext { bridge: Some("127.0.0.1:9".into()), cli: Some("/apps/bashcutpro".into()), known_commands: Vec::new(), control_token: None };
 
     host.command("registry", &json!({"location": format!("{}@main", repo.display())}), &ctx).unwrap();
     let job = host.jobs().last().unwrap().id;
