@@ -260,14 +260,14 @@ fn focus_agent_command_and_menu() {
 }
 
 #[test]
-fn rail_hides_in_export_mode_and_on_toggle() {
+fn rail_shows_in_export_mode_and_hides_on_toggle() {
     let mut d = Driver::demo();
     d.exec("bashcut.ui.toggleRail", json!({}));
     assert!(!d.has("bashcut.rail.agent"));
     d.exec("bashcut.ui.toggleRail", json!({}));
     assert!(d.has("bashcut.rail.agent"));
     d.exec("mode.export", json!({}));
-    assert!(!d.has("bashcut.rail.agent"), "no rail in Export mode");
+    assert!(d.has("bashcut.rail.agent"), "the rail shows in Export mode too (AG13)");
 }
 
 #[test]
@@ -2863,3 +2863,9 @@ fn a_missing_claude_code_hides_the_old_not_signed_in_line() {
     assert!(d.element("bashcut.agent.ready.auth.message").is_null());
     d.no_ui_error();
 }
+
+/// AG13: the rail and an open section show on the Import and Export pages, and Looks / Library
+/// offer Open the editor there (en + vi).
+#[test]
+#[ignore = "test ticket: rail ids and bashcut.looks.editor / bashcut.library.editor present in Import and Export modes, en+vi; Open the editor switches to Edit"]
+fn rail_and_panel_show_in_import_and_export_modes() {}

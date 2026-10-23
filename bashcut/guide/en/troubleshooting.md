@@ -20,7 +20,7 @@ never installs anything by itself). Batches run it before they start.
 | A batch item **needs attention** | See [Fixing an item that needs a fix](batch.md#fixing-an-item-that-needs-a-fix). An item stopped in the middle of a step (the computer slept or crashed) also lands here: open it, check it, **Retry**. |
 | A batch waits and does not start new items | It is short of memory or disk space; it goes on by itself when there is room. Free some disk space, or lower **At once**. |
 | Library ▸ Online shows *Licence unknown* | The source gave no licence. Do not publish it until you know. |
-| The rail is gone | **Window ▸ BashCutPro ▸ Show Rail**. It also hides in Import and Export mode. |
+| The rail is gone | **Window ▸ BashCutPro ▸ Show Rail**. |
 | A shortcut does nothing | Check **Edit ▸ Keyboard Shortcuts**; the palette is **Cmd+Shift+P** (Cmd+K is FilmCraft's Add Edit). |
 
 ## Where BashCutPro keeps things

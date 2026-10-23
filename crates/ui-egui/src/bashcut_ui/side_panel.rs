@@ -43,16 +43,19 @@ pub fn window_id(section: &str) -> egui::Id {
     egui::Id::new(("bashcut.window", section))
 }
 
+/// Where the panel goes at the right of `area`; `None` when the window is too narrow for it.
+pub fn rect(area: Rect, st: &State) -> Option<Rect> {
+    let room = (area.width() - MIN_DOCK).min(MAX_WIDTH);
+    // too narrow a window: keep the panel closed rather than squeeze the dock
+    (room >= MIN_WIDTH).then(|| Rect::from_min_max(pos2(area.max.x - st.width.clamp(MIN_WIDTH, room), area.min.y), area.max))
+}
+
 /// Draw `sec` in a panel at the right of `area`; returns what is left of `area` for the dock.
 pub fn show(app: &mut FilmcraftApp, ui: &mut egui::Ui, area: Rect, sec: &Section, st: &mut State) -> Rect {
     let t = app.tokens;
+    let Some(rect) = rect(area, st) else { return area };
     let room = (area.width() - MIN_DOCK).min(MAX_WIDTH);
-    if room < MIN_WIDTH {
-        // too narrow a window: keep the panel closed rather than squeeze the dock
-        return area;
-    }
-    let width = st.width.clamp(MIN_WIDTH, room);
-    let rect = Rect::from_min_max(pos2(area.max.x - width, area.min.y), area.max);
+    let width = rect.width();
     let painter = ui.painter().clone();
     painter.rect_filled(rect, t.radius, t.panel_bg);
 

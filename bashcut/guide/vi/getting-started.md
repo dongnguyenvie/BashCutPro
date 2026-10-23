@@ -72,7 +72,7 @@ thì chọn trong **Cài đặt ▸ Media Analysis & Transcription ▸ Speech mo
 Bạn thấy trình dựng của FilmCraft với một phần thêm: **thanh bên** hẹp ở mép phải. Mỗi biểu tượng mở một mục trong
 bảng bên: **Trợ lý** (Agent), **Hàng loạt** (Batch), **Màu phim** (Looks), **Thư viện** (Library), **Plugin**
 (Plugins), **Tác vụ** (Runs) ([Thanh bên](rail.md)). Bấm lại biểu tượng đó để đóng. Kéo mép trái của bảng để nới rộng
-(240–720 px). Thanh bên ẩn trong chế độ Nhập và Xuất; **Window ▸ BashCutPro ▸ Hiện thanh bên** (Show Rail) để tắt / bật.
+(240–720 px). Thanh bên có ở mọi trang (Nhập, Chỉnh sửa, Xuất); Màu phim và Thư viện áp dụng lên timeline nên ngoài trang Chỉnh sửa sẽ có nút **Mở trình chỉnh sửa**. **Window ▸ BashCutPro ▸ Hiện thanh bên** (Show Rail) để tắt / bật.
 
 ![Cửa sổ BashCutPro: thanh bên ở mép phải, mục Hàng loạt đang mở bên cạnh](../img/window.png)
 

@@ -20,7 +20,7 @@ cài). Hàng loạt chạy nó trước khi bắt đầu.
 | Một mục hàng loạt **cần xem lại** | Xem [Sửa một mục cần sửa](batch.md#sửa-một-mục-cần-sửa). Mục bị dừng giữa chừng một bước (máy ngủ hoặc treo) cũng nằm ở đây: mở, kiểm tra, **Chạy lại**. |
 | Hàng loạt đứng chờ, không chạy mục mới | Máy thiếu bộ nhớ hoặc ổ đĩa; nó tự chạy tiếp khi đủ chỗ. Dọn bớt ổ đĩa, hoặc giảm số **Cùng lúc**. |
 | Thư viện ▸ Trực tuyến ghi *Chưa rõ giấy phép* | Nguồn không ghi giấy phép. Đừng đăng tệp đó khi chưa biết rõ. |
-| Mất thanh bên | **Window ▸ BashCutPro ▸ Hiện thanh bên**. Thanh bên cũng ẩn trong chế độ Nhập và Xuất. |
+| Mất thanh bên | **Window ▸ BashCutPro ▸ Hiện thanh bên**. |
 | Phím tắt không có tác dụng | Xem **Edit ▸ Keyboard Shortcuts**; bảng lệnh là **Cmd+Shift+P** (Cmd+K là Add Edit của FilmCraft). |
 
 ## BashCutPro lưu mọi thứ ở đâu

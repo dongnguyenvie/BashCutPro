@@ -21,7 +21,7 @@ use serde_json::{Value, json};
 
 use super::plugins;
 use super::strings::{f, s};
-use super::widgets::{META, NOTE, note, small_button};
+use super::widgets::{META, NOTE, editor_open, note, small_button};
 use crate::FilmcraftApp;
 
 pub const RESOURCES: &str = "bashcut.resources";
@@ -423,7 +423,8 @@ pub fn draw(app: &mut FilmcraftApp, ui: &mut egui::Ui) {
     if shown.is_some() && items.is_empty() && p.searches.is_empty() {
         note(ui, s("Nothing found."), NOTE, t.text_dim);
     }
-    let has_seq = app.session.active_sequence().is_some();
+    // Add to bin works on every page; placing and applying need the timeline
+    let has_seq = !items.is_empty() && editor_open(app, ui, "bashcut.library.editor") && app.session.active_sequence().is_some();
     for (i, item) in items.iter().enumerate() {
         if p.online {
             online_row(app, ui, &ctx, &mut p, i, item, has_seq);

@@ -128,10 +128,14 @@ Every hook is an **inserted** line; no upstream line is edited (rules: [extendin
 About **16 lines in 8 upstream files**, all marked `// BashCutPro`, all listed in `UPSTREAM.md`.
 `Cargo.lock` conflicts are resolved by taking upstream's file and running `cargo check` (it re-adds our crates).
 
-What `bashcut_ui::layout` does in H6, in order: read our state; if the rail is hidden (setting or Import/Export
-mode) return `body` unchanged; draw the rail at the right edge of `body`; if a section is open, draw the side panel
-left of it; draw floating (popped-out) sections as `egui::Window`s and toasts as foreground `egui::Area`s; return
-the shrunk rect for the dock. One call per frame covers docked, floating and overlay UI.
+What `bashcut_ui::layout` does in H6, in order: read our state; if the rail is hidden (setting) return `body`
+unchanged; draw the rail at the right edge of `body`; if a section is open, draw the side panel left of it; draw
+floating (popped-out) sections as `egui::Window`s and toasts as foreground `egui::Area`s; return the shrunk rect for
+the dock, or for the Import / Export page: the rail shows in every mode (AG13, owner choice). Sections whose actions
+need the timeline (Looks' Apply / Remove look, Library's Place at playhead / Apply) call `widgets::editor_open`
+outside Edit: an "Open the editor to use this." line with **Open the editor** (`bashcut.looks.editor`,
+`bashcut.library.editor`, switches to Edit) and those buttons disabled; browsing, Add to bin and the other sections
+work on every page (the Agent with no project open uses the unsaved cwd, as in Edit).
 
 ## 4. State, settings, automation, strings
 
@@ -208,7 +212,7 @@ or "Could not check …", with the registry location as its tooltip. Headless te
 bounded `Driver::wait*` helpers (TS1).
 
 Finished-run toasts and dismissable status lines (RN1, `bashcut_ui/toast.rs`, audit X3): a plugin run
-(`JobKind::Run`) that ends while Runs is not on screen (not docked or popped out, rail hidden, or not Edit mode)
+(`JobKind::Run`) that ends while Runs is not on screen (not docked or popped out, or rail hidden)
 gets one toast, "✓ <run title> finished" or "✕ <run title> failed" (`bashcut.toast.<job>`), with **Show**
 (`….show`: opens Runs, which outlines that run in the accent colour and scrolls to it) and ✕ (`….dismiss`). Toasts
 are a foreground `egui::Area` at the bottom right, left of the rail, at most 3, each for 8 s; opening Runs clears

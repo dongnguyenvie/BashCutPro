@@ -1,6 +1,7 @@
 //! Small widgets every section shares, so a button looks and registers the same everywhere
 //! (`bashcut/review/ui.md` D2).
 
+use super::strings::s;
 use crate::FilmcraftApp;
 
 /// A button with an automation id; `true` when clicked.
@@ -112,4 +113,21 @@ pub fn scroll_clear_of_bar<R>(
     let taller = out.content_size.y > out.inner_rect.height() + 0.5;
     ui.ctx().data_mut(|d| d.insert_temp(key, taller));
     out
+}
+
+/// Whether the editor is open (Edit mode). Outside it (Home / Import, Export) a section whose
+/// actions need the timeline draws "Open the editor to use this." with a button that switches to
+/// Edit (`<id>`), and returns `false` so the section disables those actions (AG13).
+pub fn editor_open(app: &mut FilmcraftApp, ui: &mut egui::Ui, id: &str) -> bool {
+    if app.ui.mode == crate::state::Mode::Edit {
+        return true;
+    }
+    let dim = app.tokens.text_dim;
+    ui.horizontal_wrapped(|ui| {
+        note(ui, s("Open the editor to use this."), NOTE, dim);
+        if small_button(app, ui, id, s("Open the editor"), true) {
+            app.ui.mode = crate::state::Mode::Edit;
+        }
+    });
+    false
 }
