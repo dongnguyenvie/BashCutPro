@@ -283,3 +283,7 @@ fn kit_installed_as_claude_plugin_or_by_setup_is_found() {
     g.file("home/.bashcutpro/bashcutpro-agent-kit/skills/setup/SKILL.md", b"---\n");
     assert_eq!(level(&run_checks(&g, &Options::default()), "kit"), Level::Ok);
 }
+
+#[test]
+#[ignore = "test ticket: BASHCUT_FILMCRAFT_CLI names the engine; with no variable only `bcpro --version` starts and the cli finding says (bcpro)"]
+fn shared_engine_lookup_honours_bcpro_and_bashcut_filmcraft_cli() {}

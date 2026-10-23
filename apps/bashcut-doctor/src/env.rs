@@ -36,6 +36,12 @@ pub trait Env {
     fn total_ram(&self) -> Option<u64>;
     /// `macos` | `windows` | `linux` | other.
     fn os(&self) -> &str;
+    /// The engine when no `--cli` or variable names it (RC2). The real machine asks
+    /// `bashcut_dirs::engine` (next to this program, else on `PATH`); the default, for fakes, is the
+    /// first of `bashcut_dirs::engine::NAMES` whose `--version` starts.
+    fn find_engine(&self) -> Option<String> {
+        bashcut_dirs::engine::NAMES.iter().find(|n| self.run(n, &["--version"]).is_some_and(|o| o.ok())).map(|n| n.to_string())
+    }
 }
 
 /// The real machine.
@@ -116,6 +122,11 @@ impl Env for RealEnv {
 
     fn os(&self) -> &str {
         std::env::consts::OS
+    }
+
+    fn find_engine(&self) -> Option<String> {
+        let found = bashcut_dirs::engine::beside_self().or_else(|| bashcut_dirs::engine::on_path(std::env::var_os("PATH").as_deref()));
+        found.map(|p| p.to_string_lossy().into_owned())
     }
 }
 

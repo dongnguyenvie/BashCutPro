@@ -3,6 +3,20 @@
 Newest first. Each entry: what was decided, why, and what it rules out. Add an entry when the owner
 decides something; don't change an old one, add a new one that supersedes it.
 
+## 2026-10-23: Doctor uses the shared engine lookup; its model check stays on the plugins' cache (RCB)
+
+- **Decided (RC2):** `bashcut-doctor` picks the engine like batch and the UI: `--cli`, else `bashcut_dirs::engine`
+  (`BASHCUTPRO_CLI`, `BASHCUT_FILMCRAFT_CLI`, `FILMCRAFT_CLI`, then `bashcutpro` / `bcpro` / `filmcraft-cli` next to
+  the doctor, then on `PATH`). The `--version` probe stays a separate step in the `cli` check.
+- **Behaviour change:** `bcpro` (the name inside the macOS bundle, #187) and `BASHCUT_FILMCRAFT_CLI` are now honoured,
+  and an engine next to the doctor wins over one on `PATH`; the `cli` finding shows the found path. Fakes keep
+  the old probe (first of the names whose `--version` starts) through the `Env::find_engine` default.
+- **Not changed:** the `model.<id>` check keeps `<data dir>/bashcut-models` (`BASHCUT_MODELS_DIR`). RV2 listed it as
+  a bug against `bashcut_dirs::models_dir` (`<data dir>/models`), but they are two stores: `bashcut-models` is where
+  the plugins' downloader (`bashcut_models.py`) caches what `models.json` lists, `models` holds the engine's
+  speech/voice models. Pointing the check at `models` would report every plugin model missing. Named
+  `bashcut_doctor::PLUGIN_MODELS_DIR` so the difference is visible.
+
 ## 2026-10-23: Control channel on by default (CC1)
 
 - **Decided (owner):** make agents "just work". The app starts its control channel at launch with no flag: port 9876
