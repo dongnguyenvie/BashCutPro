@@ -2867,5 +2867,118 @@ fn a_missing_claude_code_hides_the_old_not_signed_in_line() {
 /// AG13: the rail and an open section show on the Import and Export pages, and Looks / Library
 /// offer Open the editor there (en + vi).
 #[test]
-#[ignore = "test ticket: rail ids and bashcut.looks.editor / bashcut.library.editor present in Import and Export modes, en+vi; Open the editor switches to Edit"]
-fn rail_and_panel_show_in_import_and_export_modes() {}
+fn rail_and_panel_show_in_import_and_export_modes() {
+    if !has_python() {
+        eprintln!("python not found: skipped");
+        return;
+    }
+    let data = std::env::temp_dir().join(format!("bashcut-ui-rail-pages-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&data);
+    let plugin = data.join("bashcut-plugins").join("bashcut.resources");
+    std::fs::create_dir_all(&plugin).unwrap();
+    std::fs::write(plugin.join("plugin.py"), RESOURCES_PLUGIN).unwrap();
+    std::fs::write(plugin.join("tone.wav"), silent_wav()).unwrap();
+    let string = |id: &str, flag: &str| json!({"id": id, "flag": flag, "type": "string", "optional": true});
+    let manifest = json!({
+        "schema": "bashcut-plugin/1", "id": "bashcut.resources", "name": "Online Resources", "version": "0.1.0", "summary": "test plugin",
+        "entry": {"command": ["python3", "plugin.py"], "windows": ["py", "-3", "plugin.py"]}, "output": "bashcut-result/1",
+        "actions": [{"id": "search", "title": "Search", "args": ["search"], "needs": "none", "params": [string("kind", "--kind"), string("query", "--query"),
+            {"id": "count", "flag": "--count", "type": "integer", "optional": true}]}]
+    });
+    std::fs::write(plugin.join("bashcut-plugin.json"), manifest.to_string()).unwrap();
+    let mut d = Driver::with_data(&data, |_| {});
+    d.exec("bashcut.ui.library.search", json!({"tab": "online", "kind": "music", "query": "calm"}));
+    d.wait(|d| d.exec("bashcut.ui.library.results", json!({})), |r| r["items"].as_array().is_some_and(|a| !a.is_empty()));
+    // a clip selected in Edit, so a disabled Apply is down to the page, not to the selection
+    d.exec("timeline.selectNextClip", json!({}));
+    assert!(!d.ok("ui.inspect", json!({}))["selection"].as_array().unwrap().is_empty(), "a clip is selected");
+
+    for mode in ["mode.import", "mode.export"] {
+        for lang in ["en", "vi"] {
+            d.exec("mode.edit", json!({}));
+            d.exec("bashcut.ui.setLanguage", json!({"language": lang}));
+            d.exec(mode, json!({}));
+            for id in ["agent", "plugins", "runs", "looks", "library"] {
+                assert!(d.has(&format!("bashcut.rail.{id}")), "{mode} {lang}: rail button {id}");
+            }
+            for (open, editor) in [("looks", "bashcut.looks.editor"), ("library", "bashcut.library.editor")] {
+                d.click(&format!("bashcut.rail.{open}"));
+                assert!(d.has(&format!("bashcut.panel.{open}")), "{mode} {lang}: panel {open}");
+                assert!(d.has(editor), "{mode} {lang}: {editor} offered");
+            }
+            d.exec("bashcut.ui.closePanel", json!({}));
+        }
+    }
+
+    // with a clip selected, Apply still waits for Edit: enabled in Edit, disabled on the other pages
+    d.exec("mode.edit", json!({}));
+    d.click("bashcut.rail.looks");
+    let apply = d
+        .ok("ui.elements", json!({"prefix": "bashcut.looks."}))
+        .as_array()
+        .and_then(|a| a.iter().filter_map(|e| e["id"].as_str()).find(|id| id.ends_with(".apply")).map(str::to_string))
+        .expect("a look card with Apply");
+    for (mode, enabled) in [("mode.edit", true), ("mode.import", false), ("mode.export", false)] {
+        d.exec(mode, json!({}));
+        assert!(!d.ok("ui.inspect", json!({}))["selection"].as_array().unwrap().is_empty(), "{mode}: the selection stays");
+        assert_eq!(d.element(&apply)["enabled"], json!(enabled), "{mode}: Apply enabled={enabled}");
+    }
+
+    // Open the editor switches to Edit, from Looks and from Library
+    for (open, editor) in [("looks", "bashcut.looks.editor"), ("library", "bashcut.library.editor")] {
+        d.exec("bashcut.ui.closePanel", json!({}));
+        d.exec("mode.import", json!({}));
+        d.click(&format!("bashcut.rail.{open}"));
+        d.click(editor);
+        assert_eq!(d.ok("ui.inspect", json!({}))["ui"]["mode"], json!("Edit"), "{editor} switches to Edit");
+        assert!(!d.has(editor), "{editor} is gone in Edit");
+    }
+    d.no_ui_error();
+}
+
+/// AG13: on Import with the Agent panel open over the page's cards, a click on the panel where a
+/// card (Bars and Tone) sits behind it never reaches the card, and the mode stays Import.
+#[test]
+fn a_click_on_the_panel_over_an_import_card_does_not_switch_mode() {
+    let mut d = Driver::demo();
+    d.exec("mode.import", json!({}));
+    d.click("bashcut.rail.agent");
+    d.exec("bashcut.ui.setWidth", json!({"width": 720.0}));
+    d.frames(3);
+    let card = d.rect("import.file.newBarsAndTone").expect("the Bars and Tone card");
+    let panel = d.rect("bashcut.panel.agent").expect("the Agent panel");
+    let (cx, cy) = (card[0] + card[2] / 2.0, card[1] + card[3] / 2.0);
+    assert!(cx > panel[0] && cx < panel[0] + panel[2], "the card's centre {cx} is under the panel {panel:?}");
+    let r = d.call("ui.click", json!({"x": cx, "y": cy}));
+    assert_eq!(r["ok"], json!(true), "{r}");
+    d.frames(3);
+    assert_eq!(d.ok("ui.inspect", json!({}))["ui"]["mode"], json!("Import"), "the click stopped at the panel");
+    d.no_ui_error();
+}
+
+/// AG13: in Edit the dock is the body minus the rail and the open panel, as before the rail went
+/// to every page: panel and rail sit side by side at the right edge, the panel's left edge is
+/// where the dock ends.
+#[test]
+fn edit_mode_layout_is_the_body_minus_rail_and_panel() {
+    let mut d = Driver::demo();
+    d.exec("mode.edit", json!({}));
+    let rail = d.rect("bashcut.rail.agent").expect("rail");
+    d.click("bashcut.rail.agent");
+    let panel = d.rect("bashcut.panel.agent").expect("panel");
+    let rail_left = rail[0];
+    let end = panel[0] + panel[2];
+    assert!(end <= rail_left && end > rail_left - 12.0, "panel {panel:?} ends at the rail {rail:?}");
+    let els = d.ok("ui.elements", json!({}));
+    let right_of_dock: Vec<String> = els
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|e| !e["id"].as_str().unwrap_or_default().starts_with("bashcut."))
+        .filter(|e| e["rect"][0].as_f64().unwrap_or(0.0) as f32 + e["rect"][2].as_f64().unwrap_or(0.0) as f32 > panel[0] + 2.0)
+        .filter(|e| e["rect"][1].as_f64().unwrap_or(0.0) as f32 > panel[1])
+        .map(|e| format!("{} {}", e["id"], e["rect"]))
+        .collect();
+    assert!(right_of_dock.is_empty(), "nothing of the dock runs under the panel {panel:?}: {right_of_dock:?}");
+    d.no_ui_error();
+}
