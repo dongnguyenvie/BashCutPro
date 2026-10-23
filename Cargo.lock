@@ -539,6 +539,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "bashcut-brand"
+version = "0.10.0"
+dependencies = [
+ "serde_json",
+]
+
+[[package]]
 name = "bashcut-connect"
 version = "0.10.0"
 dependencies = [
@@ -607,6 +614,7 @@ dependencies = [
 name = "bashcutpro-cli"
 version = "0.10.0"
 dependencies = [
+ "bashcut-brand",
  "bashcut-connect",
  "bashcut-dirs",
  "bashcut-winres",
@@ -2469,6 +2477,7 @@ version = "0.10.0"
 dependencies = [
  "bashcut-agent",
  "bashcut-batch",
+ "bashcut-brand",
  "bashcut-dirs",
  "bashcut-plugin-host",
  "cpu-time",

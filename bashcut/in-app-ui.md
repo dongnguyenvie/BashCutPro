@@ -324,7 +324,8 @@ labels or subclips (§1 rule 1). A project opened in upstream FilmCraft still wo
   aside). `filmcraft-cli mcp` (the last engine fallback) still says FilmCraft.
 - **Command labels without FilmCraft (BR5)**: the engine's command catalog has user text naming upstream (the label
   "Selection as FilmCraft Project…"; our own `bashcut.profiles.apply` params help now says `bashcutpro-cli export
-  --preset` at the source). `mcp_brand::brand_commands` rewrites any `command.list` result: "FilmCraft" → "BashCutPro"
+  --preset` at the source). `bashcut_brand::brand_commands` (crate `bashcut-brand`, RC14: the one rule, also behind the
+  control channel's `engine.commands`, BR6; re-exported as `mcp_brand::brand_commands`) rewrites any `command.list` result: "FilmCraft" → "BashCutPro"
   in each command's `label`, `menu` and `params`, `filmcraft-cli` → `bashcutpro-cli` in `params`; ids stay. The MCP
   server applies it to `command_list`, `command_run command.list` and the `filmcraft://commands` resource (a text item
   that parses as a list of commands); `bashcutpro-cli commands`, `describe` and `exec command.list` apply it through two

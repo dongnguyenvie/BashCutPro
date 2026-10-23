@@ -16,6 +16,8 @@ use serde_json::Value;
 const LAYERS: &[(&str, u8)] = &[
     // the data folder; no deps at all, so the engine and every app may use it
     ("bashcut-dirs", 0),
+    // the command-catalog branding rule (RC14); deps only serde_json, so the CLI and ui-egui share it
+    ("bashcut-brand", 0),
     // the plugin manifest reader; deps only on bashcut-dirs, so the engine (L4) may use it (RC5)
     ("bashcut-manifest", 1),
     // read-only measurements; deps only on L0–L1 crates, so the engine (L4) may use it

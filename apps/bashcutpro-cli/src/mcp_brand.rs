@@ -15,9 +15,14 @@
 //! tokio's `io-std`/`io-util` come from `filmcraft-automation`'s features (our `[dependencies]`
 //! must mirror upstream's list, so the tokio line can't name them).
 
+use bashcut_brand::rename_str;
 use filmcraft_automation::{AutomationError, FilmcraftMcp};
 use serde_json::Value;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
+
+/// The catalog rule (BR5), shared with the app's control channel (RC14): the CLI's `commands` / `describe`
+/// list (anchor in `build.rs`) goes through [`branded_commands`].
+pub use bashcut_brand::{brand_commands, branded_commands};
 
 /// The name the agent sees for this server.
 pub const SERVER_NAME: &str = "bashcutpro";
@@ -107,57 +112,9 @@ fn brand_catalog_text(text: &mut Value) -> bool {
     }
 }
 
-/// BR5: the user text of a `command.list` result names BashCutPro: "FilmCraft" → "BashCutPro" in
-/// each command's `label`, `menu` and `params`, and the program name `filmcraft-cli` →
-/// `bashcutpro-cli` in `params`. Ids, shortcuts and the rest stay as they are. Only touches an array
-/// whose items all look like commands (`id`, `label`, `params`). Whether anything changed.
-pub fn brand_commands(list: &mut Value) -> bool {
-    let Some(items) = list.as_array_mut() else { return false };
-    let is_command = |c: &Value| ["id", "label", "params"].iter().all(|k| c.get(k).is_some_and(Value::is_string));
-    if items.is_empty() || !items.iter().all(is_command) {
-        return false;
-    }
-    let mut changed = false;
-    for c in items.iter_mut().filter_map(Value::as_object_mut) {
-        if let Some(label) = c.get_mut("label") {
-            changed |= rename_str(label);
-        }
-        if let Some(menu) = c.get_mut("menu").and_then(Value::as_array_mut) {
-            for m in menu.iter_mut() {
-                changed |= rename_str(m);
-            }
-        }
-        if let Some(params) = c.get_mut("params") {
-            changed |= rename_str(params);
-            if let Some(p) = params.as_str().filter(|p| p.contains("filmcraft-cli ")) {
-                *params = Value::from(p.replace("filmcraft-cli ", "bashcutpro-cli "));
-                changed = true;
-            }
-        }
-    }
-    changed
-}
-
-/// The CLI's `commands` / `describe` list (anchor in `build.rs`), branded by [`brand_commands`].
-pub fn branded_commands(mut list: Value) -> Value {
-    brand_commands(&mut list);
-    list
-}
-
 /// The CLI's `exec <id>` result: a `command.list` result is branded (anchor in `build.rs`).
 pub fn branded_exec(id: &str, v: Value) -> Value {
     if id == "command.list" { branded_commands(v) } else { v }
-}
-
-/// "FilmCraft" → "BashCutPro" in a string value; whether it changed.
-fn rename_str(v: &mut Value) -> bool {
-    match v.as_str() {
-        Some(s) if s.contains("FilmCraft") => {
-            *v = Value::from(s.replace("FilmCraft", "BashCutPro"));
-            true
-        }
-        _ => false,
-    }
 }
 
 #[cfg(test)]
