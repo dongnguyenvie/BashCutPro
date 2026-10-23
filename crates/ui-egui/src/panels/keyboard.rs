@@ -133,7 +133,7 @@ pub const COMMANDS: &[UiCommand] = &[
 ];
 
 /// FilmCraft's documentation (Help ▸ FilmCraft Help…, F1).
-pub const HELP_URL: &str = "https://github.com/storytold/filmcraft/tree/main/docs";
+pub const HELP_URL: &str = crate::bashcut_brand::GUIDE_URL; // BashCutPro: our user guide (UPSTREAM.md "Carried edits")
 
 const HEIGHT_STEP: f32 = 12.0;
 const MIN_TRACK_H: f32 = 24.0;
@@ -210,8 +210,9 @@ pub fn route(app: &mut FilmcraftApp, ctx: &egui::Context, id: &str, params: &Val
         }
         "graphics.beginTextEditing" => begin_text_editing(app),
         "help.filmcraftHelp" => {
-            crate::links::open(app, ctx, HELP_URL);
-            Ok(json!({"url": HELP_URL}))
+            let url = crate::bashcut_brand::help_url(); // BashCutPro: the guide in the UI language (UPSTREAM.md "Carried edits")
+            crate::links::open(app, ctx, url);
+            Ok(json!({"url": url}))
         }
         "app.quit" => {
             ctx.send_viewport_cmd(egui::ViewportCommand::Close);

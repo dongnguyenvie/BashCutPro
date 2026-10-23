@@ -18,6 +18,38 @@ pub const APP_ID: &str = "com.birchapps.bashcutpro";
 /// The licence and third-party notices, linked from About.
 pub const NOTICE_URL: &str = "https://github.com/dongnguyenvie/BashCutPro/blob/main/NOTICE";
 
+/// Help ▸ BashCutPro Help… (F1) opens our user guide (upstream: FilmCraft's `docs/`), English and Vietnamese.
+pub const GUIDE_URL: &str = "https://github.com/dongnguyenvie/BashCutPro/tree/main/bashcut/guide/en";
+pub const GUIDE_URL_VI: &str = "https://github.com/dongnguyenvie/BashCutPro/tree/main/bashcut/guide/vi";
+
+/// The user guide in the language our strings are drawn in ([`GUIDE_URL_VI`] for Vietnamese). Called by the
+/// carried edits in `panels/keyboard.rs` (`help.filmcraftHelp`) and `links.rs` (its menu hint).
+pub fn help_url() -> &'static str {
+    if crate::bashcut_ui::strings::current() == "vi" { GUIDE_URL_VI } else { GUIDE_URL }
+}
+
+/// Help ▸ Reveal Log Files without a data directory: `<temp>/BashCutPro Logs` (upstream: `FilmCraft Logs`;
+/// carried edit in `panels/menu_dialogs.rs`).
+pub fn logs_temp_dir() -> std::path::PathBuf {
+    filmcraft_engine::temp_dir().join("BashCutPro Logs")
+}
+
+/// The message box shown when the main window can't be created (no usable GPU or display), in Vietnamese when
+/// `<data dir>/bashcut/ui.json` picks it (the window and its per-frame language don't exist yet). Upstream's
+/// says "FilmCraft could not start its window"; `apps/filmcraft/src/bashcut_cli.rs` shows this one instead.
+pub fn window_failed_text(error: &str, data_dir: Option<&std::path::Path>) -> String {
+    let mut state = crate::bashcut_ui::state::State::default();
+    state.load_once(data_dir, &[]);
+    crate::bashcut_ui::strings::set_language(state.language.as_deref());
+    let text = format!(
+        "{}\n\n{}",
+        crate::bashcut_ui::strings::f("BashCutPro could not start its window: {error}", &[("error", error)]),
+        crate::bashcut_ui::strings::s("Updating the graphics driver usually fixes this.")
+    );
+    crate::bashcut_ui::strings::set_language(None);
+    text
+}
+
 /// The label of the header's community button (upstream: "Discord").
 pub const COMMUNITY_BUTTON: &str = "Community";
 
@@ -114,6 +146,8 @@ const OVERRIDES: &[(&str, &str)] = &[
     ("About FilmCraft", "About BashCutPro"),
     ("Hide FilmCraft", "Hide BashCutPro"),
     ("Quit FilmCraft", "Quit BashCutPro"),
+    // Help menu (BR3; opens our guide, `help_url`)
+    ("FilmCraft Help…", "BashCutPro Help…"),
     // file dialogs and File ▸ Export (BR2; the .fcproj / .fcgt extensions stay)
     ("FilmCraft Project", "BashCutPro Project"),
     ("Selection as FilmCraft Project…", "Selection as BashCutPro Project…"),
@@ -191,6 +225,32 @@ mod tests {
         for &(_, to) in OVERRIDES {
             assert!(!to.contains("FilmCraft") || to.contains("based on FilmCraft"), "{to}");
         }
+    }
+
+    #[test]
+    fn help_opens_our_guide_in_both_languages() {
+        assert_eq!(text("FilmCraft Help…"), Some("BashCutPro Help…"));
+        assert_eq!(help_url(), GUIDE_URL);
+        crate::bashcut_ui::strings::set_language(Some("vi"));
+        let (vi_label, vi_url) = (text("FilmCraft Help…"), help_url());
+        crate::bashcut_ui::strings::set_language(None);
+        assert_eq!((vi_label, vi_url), (Some("Trợ giúp BashCutPro…"), GUIDE_URL_VI));
+        assert!(crate::links::menu_hint("help.filmcraftHelp").is_some_and(|h| h.contains(GUIDE_URL)));
+    }
+
+    #[test]
+    fn window_failure_names_bashcutpro_in_the_saved_language() {
+        let en = window_failed_text("no adapter", None);
+        assert!(en.starts_with("BashCutPro could not start its window: no adapter\n\n"), "{en}");
+        let dir = std::env::temp_dir().join(format!("bc-br3-window-{}", std::process::id()));
+        std::fs::create_dir_all(dir.join("bashcut")).unwrap();
+        std::fs::write(dir.join("bashcut").join("ui.json"), r#"{"language":"vi"}"#).unwrap();
+        let vi = window_failed_text("no adapter", Some(&dir));
+        let _ = std::fs::remove_dir_all(&dir);
+        assert!(vi.starts_with("BashCutPro không mở được cửa sổ: no adapter\n\n"), "{vi}");
+        assert!(!vi.contains("FilmCraft"));
+        // the language is not left switched for the rest of the thread
+        assert_eq!(crate::bashcut_ui::strings::chosen(), None);
     }
 
     #[test]

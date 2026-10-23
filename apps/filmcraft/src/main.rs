@@ -158,6 +158,7 @@ fn main() -> eframe::Result {
     // The window could not be created (no usable GPU / graphics driver, no display): say so
     // instead of exiting silently, and keep the reason in the crash log.
     if let Err(e) = &started {
+        bashcut_cli::window_failed_first!(e, data_root.as_deref(), started); // BashCutPro: BashCutPro could not start its window (bashcut/extending-upstream.md)
         let msg = format!("FilmCraft could not start its window: {e}\n\nUpdating the graphics driver usually fixes this.");
         log::error!("{msg}");
         filmcraft_ui_egui::crash::record(&msg);

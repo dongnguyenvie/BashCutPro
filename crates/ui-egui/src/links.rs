@@ -41,7 +41,7 @@ pub fn url_for(command: &str) -> Option<&'static str> {
 /// What a Help menu item does, shown when the pointer rests on it: the address a link opens in
 /// the web browser, or that the item stays inside FilmCraft.
 pub fn menu_hint(command: &str) -> Option<String> {
-    let url = if command == "help.filmcraftHelp" { Some(crate::panels::keyboard::HELP_URL) } else { url_for(command) };
+    let url = if command == "help.filmcraftHelp" { Some(crate::bashcut_brand::help_url()) } else { url_for(command) }; // BashCutPro: our guide
     if let Some(url) = url {
         return Some(tlf!("Opens in your web browser: {url}", url));
     }

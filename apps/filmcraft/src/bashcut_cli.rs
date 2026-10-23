@@ -54,6 +54,29 @@ macro_rules! tell_first {
 }
 pub(crate) use tell_first;
 
+/// Upstream's "could not start its window" report with our name (BR3): logs the reason, keeps it in the crash log and
+/// shows a message box titled BashCutPro, in Vietnamese when our saved setting picks it. Always `true` (handled).
+pub fn window_failed(error: &dyn std::fmt::Display, data_dir: Option<&std::path::Path>) -> bool {
+    let error = error.to_string();
+    let english = filmcraft_ui_egui::bashcut_brand::window_failed_text(&error, None);
+    log::error!("{english}");
+    filmcraft_ui_egui::crash::record(&english);
+    let shown = filmcraft_ui_egui::bashcut_brand::window_failed_text(&error, data_dir);
+    let _ = rfd::MessageDialog::new().set_title(filmcraft_ui_egui::bashcut_brand::NAME).set_description(&shown).set_level(rfd::MessageLevel::Error).show();
+    true
+}
+
+/// The hook at the top of upstream's window-failure block in `run`: [`window_failed`] reports it and `run` returns
+/// `started` before upstream's FilmCraft dialog. A macro so the hook stays one line.
+macro_rules! window_failed_first {
+    ($error:expr, $data_dir:expr, $started:ident) => {
+        if crate::bashcut_cli::window_failed($error, $data_dir) {
+            return $started;
+        }
+    };
+}
+pub(crate) use window_failed_first;
+
 #[cfg(test)]
 mod tests {
     use super::{branded, log_message};
