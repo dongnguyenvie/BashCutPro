@@ -268,6 +268,11 @@ preview need an HTTP image loader / player (later, or through plugin views #37).
 - **Automation ids**: every widget registers in `app.auto` with ids under `bashcut.` (`bashcut.rail.agent`,
   `bashcut.agent.input`, `bashcut.gate.approve`, `bashcut.plugins.<id>.run`), so `ui.inspect` / `ui.click` drive
   them like upstream widgets.
+- **Scroll areas** (FX16, FX18): egui's scroll bar floats over the content's right edge, so every scroll area of
+  ours goes through `widgets::scroll_clear_of_bar`: while its content is taller than the area, the content ends
+  `widgets::scroll_bar_overlap` (the hovered bar's width) short of the right edge, and right-aligned states, ✕
+  buttons and full-width cards stay visible and clickable. A section's area registers `bashcut.panel.<id>.scroll`.
+  Painted rows (the palette) subtract `scroll_bar_overlap` themselves.
 - **Open modal dialogs** (FX14, `bashcut_ui/modal.rs`, hook H14): an egui `Modal` (upstream's Recover Unsaved
   Changes, Revert, Preferences) takes every click outside its own widgets. `ui.click` on an element behind it (by
   `id`, or at `x,y` over such an element) answers `ok: false` with `“Recover Unsaved Changes” is open and takes

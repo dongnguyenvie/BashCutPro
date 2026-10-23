@@ -2051,3 +2051,136 @@ fn queued_x_stays_clear_of_the_transcript_scroll_bar() {
     assert!(d.harness.state().ui_error.is_none(), "{:?}", d.harness.state().ui_error);
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+/// A live Claude Code stand-in for [`permission_card_stays_clear_of_the_transcript_scroll_bar`]: it
+/// answers the first message with a long text (the transcript scrolls), asks to run a long Bash
+/// command (a permission card) and works until stdin closes.
+const PERMISSION_FAKE: &str = r#"
+import json, sys
+def out(v):
+    sys.stdout.write(json.dumps(v) + "\n")
+    sys.stdout.flush()
+m = json.loads(sys.stdin.readline())
+out({"type": "system", "subtype": "init", "session_id": "live-p", "model": "fake", "capabilities": []})
+out({"type": "user", "isReplay": True, "uuid": m.get("uuid", ""), "message": m["message"]})
+text = "\n\n".join("line %d of a long answer" % i for i in range(60))
+out({"type": "assistant", "message": {"content": [{"type": "text", "text": text}]}})
+command = " && ".join("echo step %d of a long command" % i for i in range(20))
+out({"type": "control_request", "request_id": "perm-1", "request": {"subtype": "can_use_tool", "tool_name": "Bash", "input": {"command": command}}})
+for line in sys.stdin:
+    pass
+"#;
+
+/// The rect of automation entry `id` as left, top, right, bottom.
+fn edges(d: &mut Driver, id: &str) -> Option<[f32; 4]> {
+    d.rect(id).map(|r| [r[0], r[1], r[0] + r[2], r[1] + r[3]])
+}
+
+/// FX18: while the transcript scrolls, a permission card and its answer buttons end clear of the
+/// transcript's floating scroll bar, at the narrowest panel too, in English and Vietnamese; a real
+/// pointer click on Deny answers it.
+#[test]
+fn permission_card_stays_clear_of_the_transcript_scroll_bar() {
+    let py = ["python3", "python"].into_iter().find(|p| std::process::Command::new(p).arg("--version").output().is_ok_and(|o| o.status.success()));
+    let Some(py) = py else {
+        eprintln!("python not found: skipped");
+        return;
+    };
+    let dir = std::env::temp_dir().join(format!("bashcut-ui-fx18-perm-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    let script = dir.join("live.py");
+    std::fs::write(&script, PERMISSION_FAKE).unwrap();
+    let spec = bashcut_agent::AgentSpec {
+        id: "fake-live".into(),
+        name: "Fake".into(),
+        argv: vec![py.into(), script.to_string_lossy().into_owned()],
+        timeout_secs: 120,
+        ..bashcut_agent::AgentSpec::default()
+    };
+    let mut d = Driver::build(&dir.join("data"), |_| {}, |ctx| assert!(filmcraft_ui_egui::bashcut_ui::agent::use_agents(ctx, vec![spec]), "no agent yet"));
+    Driver::point_registry(&mut d, &dir.join("data"));
+    d.click("bashcut.rail.agent");
+    d.exec("bashcut.agent.send", json!({"text": "first"}));
+    d.wait(|d| d.exec("bashcut.agent.state", json!({})), |s| s["permissions"].as_array().is_some_and(|p| p.len() == 1));
+    let shots = std::env::var_os("BASHCUT_UI_SHOTS").map(std::path::PathBuf::from);
+    let bar = 10.0;
+    for (lang, width) in [("en", 340.0), ("vi", 340.0), ("en", 240.0), ("vi", 240.0)] {
+        d.exec("bashcut.ui.setLanguage", json!({"language": lang}));
+        d.exec("bashcut.ui.setWidth", json!({"width": width}));
+        d.frames(3);
+        d.wait(|d| json!(d.rect("bashcut.agent.permission.0.deny")), |r| !r.is_null());
+        if let Some(dir) = &shots {
+            std::fs::create_dir_all(dir).unwrap();
+            d.harness.render().unwrap().save(dir.join(format!("fx18-permission-{lang}-{width}.png"))).unwrap();
+        }
+        let t = edges(&mut d, "bashcut.agent.transcript").expect("transcript");
+        for id in ["bashcut.agent.permission.0", "bashcut.agent.permission.0.once", "bashcut.agent.permission.0.deny"] {
+            let r = edges(&mut d, id).unwrap_or_else(|| panic!("{lang} {width}: {id} shown"));
+            assert!(r[0] >= t[0] && r[2] <= t[2] - bar, "{lang} {width}: {id} {r:?} clear of the scroll bar of {t:?}");
+        }
+    }
+    d.exec("bashcut.ui.setLanguage", json!({"language": null}));
+    d.click("bashcut.agent.permission.0.deny");
+    let st = d.wait(|d| d.exec("bashcut.agent.state", json!({})), |s| s["permissions"].as_array().is_some_and(Vec::is_empty));
+    assert_eq!(st["permissions"], json!([]), "{st}");
+    d.call("engine.execute", json!({"command": "bashcut.agent.stop", "params": {}}));
+    assert!(d.harness.state().ui_error.is_none(), "{:?}", d.harness.state().ui_error);
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// FX18: with enough runs that Runs scrolls, every run's card (its state label right-aligned in it)
+/// ends clear of the section's floating scroll bar, at the narrowest panel too, in English and
+/// Vietnamese, and so does each card's Reveal.
+#[test]
+fn runs_rows_stay_clear_of_the_section_scroll_bar() {
+    if !has_python() {
+        eprintln!("python not found: skipped");
+        return;
+    }
+    let data = std::env::temp_dir().join(format!("bashcut-ui-fx18-runs-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&data);
+    let plugin = data.join("bashcut-plugins").join("test.runs");
+    std::fs::create_dir_all(&plugin).unwrap();
+    std::fs::write(plugin.join("plugin.py"), RUNS_PLUGIN).unwrap();
+    let manifest = json!({
+        "schema": "bashcut-plugin/1", "id": "test.runs", "name": "Runs", "version": "0.1.0", "summary": "test plugin",
+        "entry": {"command": ["python3", "plugin.py"], "windows": ["py", "-3", "plugin.py"]}, "output": "bashcut-result/1",
+        "actions": [{"id": "make", "title": "Make", "args": ["make"], "needs": "none", "params": []}]
+    });
+    std::fs::write(plugin.join("bashcut-plugin.json"), manifest.to_string()).unwrap();
+
+    let mut d = Driver::with_data(&data, |_| {});
+    let mut jobs = Vec::new();
+    for _ in 0..16 {
+        let job = d.exec("bashcut.plugins.run", json!({"plugin": "test.runs", "action": "make"}))["job"].as_u64().unwrap();
+        assert_eq!(d.wait_job(job)["state"], json!("succeeded"));
+        jobs.push(job);
+    }
+    d.click("bashcut.rail.runs");
+    let shots = std::env::var_os("BASHCUT_UI_SHOTS").map(std::path::PathBuf::from);
+    let bar = 10.0;
+    for (lang, width) in [("en", 340.0), ("vi", 340.0), ("en", 240.0), ("vi", 240.0)] {
+        d.exec("bashcut.ui.setLanguage", json!({"language": lang}));
+        d.exec("bashcut.ui.setWidth", json!({"width": width}));
+        d.frames(3);
+        if let Some(dir) = &shots {
+            std::fs::create_dir_all(dir).unwrap();
+            d.harness.render().unwrap().save(dir.join(format!("fx18-runs-{lang}-{width}.png"))).unwrap();
+        }
+        let area = edges(&mut d, "bashcut.panel.runs.scroll").expect("Runs scroll area");
+        let mut seen = 0;
+        for job in &jobs {
+            let Some(r) = edges(&mut d, &format!("bashcut.runs.{job}")) else { continue };
+            seen += 1;
+            assert!(r[2] <= area[2] - bar, "{lang} {width}: run {job} {r:?} clear of the scroll bar of {area:?}");
+            if let Some(b) = edges(&mut d, &format!("bashcut.runs.{job}.reveal.0")) {
+                assert!(b[2] <= area[2] - bar, "{lang} {width}: run {job}'s Reveal {b:?} clear of the scroll bar of {area:?}");
+            }
+        }
+        assert!(seen >= 3, "{lang} {width}: {seen} runs on screen");
+    }
+    d.exec("bashcut.ui.setLanguage", json!({"language": null}));
+    assert!(d.harness.state().ui_error.is_none(), "{:?}", d.harness.state().ui_error);
+    let _ = std::fs::remove_dir_all(&data);
+}

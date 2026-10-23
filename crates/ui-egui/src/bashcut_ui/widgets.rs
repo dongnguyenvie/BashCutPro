@@ -53,3 +53,36 @@ pub fn strong_note(ui: &mut egui::Ui, text: impl Into<String>, size: f32, color:
 pub fn wrapped_note(ui: &mut egui::Ui, text: impl Into<String>, size: f32, color: egui::Color32) -> egui::Response {
     ui.add(egui::Label::new(note_text(text, size, color)).wrap().selectable(true))
 }
+
+/// The width a floating vertical scroll bar covers at the right of a scroll area's content when
+/// hovered (none for a solid one: the area already keeps it out of the content).
+pub fn scroll_bar_overlap(ui: &egui::Ui) -> f32 {
+    let s = &ui.spacing().scroll;
+    if s.floating { (s.bar_inner_margin + s.bar_width + s.bar_outer_margin - s.allocated_width()).max(0.0) } else { 0.0 }
+}
+
+/// Show `area` with its content clear of its floating vertical scroll bar: while the content is
+/// taller than the area (last frame), it ends [`scroll_bar_overlap`] short of the right edge, so a
+/// right-aligned button or a full-width card is not drawn under the bar (FX16, FX18). `key` holds
+/// that flag; growing content only narrows, so the width never flips back and forth.
+pub fn scroll_clear_of_bar<R>(
+    ui: &mut egui::Ui,
+    area: egui::ScrollArea,
+    key: egui::Id,
+    add: impl FnOnce(&mut egui::Ui) -> R,
+) -> egui::scroll_area::ScrollAreaOutput<R> {
+    let scrolls = ui.ctx().data(|d| d.get_temp::<bool>(key)).unwrap_or(false);
+    let out = area.show(ui, |ui| {
+        let gap = if scrolls { scroll_bar_overlap(ui) } else { 0.0 };
+        if gap <= 0.0 {
+            return add(ui);
+        }
+        let mut rect = ui.available_rect_before_wrap();
+        rect.max.x = (rect.max.x - gap).max(rect.min.x);
+        let layout = *ui.layout();
+        ui.scope_builder(egui::UiBuilder::new().max_rect(rect).layout(layout), add).inner
+    });
+    let taller = out.content_size.y > out.inner_rect.height() + 0.5;
+    ui.ctx().data_mut(|d| d.insert_temp(key, taller));
+    out
+}

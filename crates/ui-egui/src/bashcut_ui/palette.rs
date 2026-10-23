@@ -20,7 +20,7 @@ use serde::Serialize;
 use serde_json::{Map, Value, json};
 
 use super::strings::{f, s};
-use super::widgets::{META, code_note, note};
+use super::widgets::{META, code_note, note, scroll_bar_overlap};
 use crate::FilmcraftApp;
 use crate::theme::Tokens;
 
@@ -761,8 +761,7 @@ fn paint_row(ui: &egui::Ui, r: Rect, it: &Item, t: &Tokens) {
     let right = match &it.shortcut {
         Some(k) => {
             // clear of the scroll bar, which floats over the rows
-            let bar = ui.spacing().scroll.bar_width + ui.spacing().scroll.bar_outer_margin;
-            painter.text(pos2(r.max.x - 6.0 - bar, y), Align2::RIGHT_CENTER, k, egui::FontId::proportional(11.0), t.text_dim).min.x
+            painter.text(pos2(r.max.x - 6.0 - scroll_bar_overlap(ui), y), Align2::RIGHT_CENTER, k, egui::FontId::proportional(11.0), t.text_dim).min.x
         }
         None => r.max.x,
     };
