@@ -351,7 +351,7 @@ labels or subclips (§1 rule 1). A project opened in upstream FilmCraft still wo
   `bashcutpro` in Codex's own config and our `-c mcp_servers.bashcutpro.*` overrides that same key, so Codex also
   sees one copy.
 - **Working directory**: the project's folder, or `<data dir>/agent` (`~/Library/Application Support/BashCutPro/agent`
-  on macOS) for an unsaved project, never the app's folder or a checkout (a BashCutPro checkout's `.mcp.json` adds
+  on macOS) for an unsaved project (and for a bare project file name without a folder), never the app's folder or a checkout (a BashCutPro checkout's `.mcp.json` adds
   `filmcraft` servers for development). Claude Code keeps its sessions per folder, so `--resume` finds them there.
 - **Batch agent steps** (`crates/bashcut-batch/src/agent.rs`) use the same server name and add
   `--strict-mcp-config --permission-prompts none`: unattended, a call that would prompt is denied at once (checked:
