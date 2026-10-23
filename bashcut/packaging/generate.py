@@ -183,7 +183,8 @@ SUBS = [
         "  - src: ${STAGE}/usr/bin/filmcraft-cli\n    dst: /usr/bin/filmcraft-cli\n    file_info: { mode: 0755 }\n",
         "  - src: ${STAGE}/usr/bin/filmcraft-cli\n    dst: /usr/bin/filmcraft-cli\n    file_info: { mode: 0755 }\n"
         + "".join("  - src: ${STAGE}/usr/bin/%s\n    dst: /usr/bin/%s\n    file_info: { mode: 0755 }\n" % (b, b) for b in TOOLS)
-        + "  - src: filmcraft-cli\n    dst: /usr/bin/%s\n    type: symlink\n" % ALIAS,
+        # the staged link itself: nfpm keeps it a symlink with the build's mtime (type: symlink wrote mtime 2042)
+        + "  - src: ${STAGE}/usr/bin/%s\n    dst: /usr/bin/%s\n" % (ALIAS, ALIAS),
         1,
     ),
     (
