@@ -273,3 +273,16 @@ decides something; don't change an old one, add a new one that supersedes it.
   `Child::kill`; Windows still has no soft stop.
 - **Why:** an unlock prompt froze the app on a click; job objects need `unsafe` FFI, which only `crates/platform`
   may use (`AGENTS.md` §0.3), and `taskkill /T` gets the tree without it.
+
+## 2026-10-23: Two windows: the first started keeps automation.json (FX7)
+
+- **Decided:** a window writes `<data dir>/bashcut/automation.json` only when the file is missing, malformed, already
+  its own, or names a process that is gone (dead pid, or its loopback address no longer accepts a connection). It
+  removes the file on close only when the file names its own pid. Every window checks every 3 s
+  (`bashcut_ui::connect::CHECK`, with a repaint request so an idle window checks too), so a second window takes the
+  file over within a few seconds after the first one quits or crashes. While both run, agents, plugins and `bcpro`
+  bridge to the first window. A window started with an explicit `--control` gets no priority.
+- **Why:** before, a second instance (such as `smoke.sh --control 19000`) overwrote the file, deleted it on quit, and
+  the first window never wrote it again, so agents lost the running app. First-started is simpler than last-focused:
+  there is no focus tracking, and the file does not move between windows while an agent is bridged. CC2 bridge
+  discovery (`automation::live`) is unchanged.
