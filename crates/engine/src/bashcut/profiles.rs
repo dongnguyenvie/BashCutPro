@@ -396,7 +396,7 @@ pub fn commands() -> Vec<CommandSpec> {
         spec! {
             id: "bashcut.profiles.apply",
             label: "Export with Output Profile",
-            params: r#"{"profile":str,"path":str?,"queue":bool=false,"wait":bool=false,"sequence":id?,"range":str?,"hooks":bool=true,"dir":str?}  (no path: compile only, for filmcraft-cli export --preset)"#,
+            params: r#"{"profile":str,"path":str?,"queue":bool=false,"wait":bool=false,"sequence":id?,"range":str?,"hooks":bool=true,"dir":str?}  (no path: compile only, for bashcutpro-cli export --preset)"#,
             enabled: always,
             run: apply,
             journal: true,

@@ -6,9 +6,11 @@
 //! resource URIs (`filmcraft://…`) and command ids are a protocol and keep upstream's spelling.
 //!
 //! What gets rewritten: the initialize result (`serverInfo.name`/`title`, `instructions`), the
-//! `title`/`description` of every tool in `tools/list`, and the text items in [`TEXTS`] (the
-//! upstream messages that name the app). `build.rs` fails if upstream's server grows another
-//! FilmCraft string. Every other line is passed through byte for byte.
+//! `title`/`description` of every tool in `tools/list`, the text items in [`TEXTS`] (the
+//! upstream messages that name the app), and a command catalog in a tool result or resource
+//! (`command_list`, `command_run command.list`, `filmcraft://commands`; BR5, [`brand_commands`]).
+//! `build.rs` fails if upstream's server grows another FilmCraft string. Every other line is
+//! passed through byte for byte.
 //!
 //! tokio's `io-std`/`io-util` come from `filmcraft-automation`'s features (our `[dependencies]`
 //! must mirror upstream's list, so the tokio line can't name them).
@@ -73,10 +75,78 @@ pub fn brand_line(line: &str) -> Option<String> {
             if let Some((_, to)) = TEXTS.iter().find(|(from, _)| text.as_str() == Some(from)) {
                 *text = Value::from(*to);
                 changed = true;
+            } else {
+                changed |= brand_catalog_text(text);
+            }
+        }
+    }
+    // `resources/read` of the command catalog
+    if let Some(contents) = result.get_mut("contents").and_then(Value::as_array_mut) {
+        for item in contents.iter_mut().filter_map(Value::as_object_mut) {
+            if let Some(text) = item.get_mut("text") {
+                changed |= brand_catalog_text(text);
             }
         }
     }
     changed.then(|| serde_json::to_string(&v).ok()).flatten()
+}
+
+/// BR5: a text item holding a command catalog (upstream sends it as pretty JSON) gets
+/// [`brand_commands`]; any other text is left alone. Whether it changed.
+fn brand_catalog_text(text: &mut Value) -> bool {
+    let Some(mut list) = text.as_str().and_then(|t| serde_json::from_str::<Value>(t).ok()) else { return false };
+    if !brand_commands(&mut list) {
+        return false;
+    }
+    match serde_json::to_string_pretty(&list) {
+        Ok(t) => {
+            *text = Value::from(t);
+            true
+        }
+        Err(_) => false,
+    }
+}
+
+/// BR5: the user text of a `command.list` result names BashCutPro: "FilmCraft" → "BashCutPro" in
+/// each command's `label`, `menu` and `params`, and the program name `filmcraft-cli` →
+/// `bashcutpro-cli` in `params`. Ids, shortcuts and the rest stay as they are. Only touches an array
+/// whose items all look like commands (`id`, `label`, `params`). Whether anything changed.
+pub fn brand_commands(list: &mut Value) -> bool {
+    let Some(items) = list.as_array_mut() else { return false };
+    let is_command = |c: &Value| ["id", "label", "params"].iter().all(|k| c.get(k).is_some_and(Value::is_string));
+    if items.is_empty() || !items.iter().all(is_command) {
+        return false;
+    }
+    let mut changed = false;
+    for c in items.iter_mut().filter_map(Value::as_object_mut) {
+        if let Some(label) = c.get_mut("label") {
+            changed |= rename_str(label);
+        }
+        if let Some(menu) = c.get_mut("menu").and_then(Value::as_array_mut) {
+            for m in menu.iter_mut() {
+                changed |= rename_str(m);
+            }
+        }
+        if let Some(params) = c.get_mut("params") {
+            changed |= rename_str(params);
+            if let Some(p) = params.as_str().filter(|p| p.contains("filmcraft-cli ")) {
+                *params = Value::from(p.replace("filmcraft-cli ", "bashcutpro-cli "));
+                changed = true;
+            }
+        }
+    }
+    changed
+}
+
+/// The CLI's `commands` / `describe` list (anchor in `build.rs`), branded by [`brand_commands`].
+pub fn branded_commands(mut list: Value) -> Value {
+    brand_commands(&mut list);
+    list
+}
+
+/// The CLI's `exec <id>` result: a `command.list` result is branded (anchor in `build.rs`).
+pub fn branded_exec(id: &str, v: Value) -> Value {
+    if id == "command.list" { branded_commands(v) } else { v }
 }
 
 /// "FilmCraft" → "BashCutPro" in a string value; whether it changed.
@@ -99,4 +169,8 @@ mod tests {
     #[test]
     #[ignore = "test ticket: tools/list descriptions and the TEXTS tool results lose FilmCraft; other lines pass through unchanged"]
     fn other_lines_pass_through() {}
+
+    #[test]
+    #[ignore = "test ticket: command_list / command_run command.list / filmcraft://commands results lose FilmCraft and filmcraft-cli in label, menu and params; ids unchanged; a non-catalog JSON text is untouched"]
+    fn command_catalog_is_branded() {}
 }

@@ -249,7 +249,8 @@ fn command_item(id: &str, label: &str, menu: &[String], signature: &str, shortcu
     Item {
         key: format!("command:{id}"),
         kind: if id.starts_with("bashcut.") { Kind::Pro } else { Kind::Command },
-        label: label.to_string(),
+        // BR5: upstream labels that name FilmCraft ("Selection as FilmCraft Project…", "FilmCraft Help…") as ours
+        label: crate::bashcut_brand::text(label).unwrap_or(label).to_string(),
         detail: if menu.is_empty() { id.to_string() } else { format!("{} · {id}", menu.join(" › ")) },
         shortcut,
         enabled,
@@ -962,4 +963,8 @@ mod tests {
         assert!(load_recent(None).is_empty());
         let _ = std::fs::remove_dir_all(&dir);
     }
+
+    #[test]
+    #[ignore = "test ticket: palette command items show 'Selection as BashCutPro Project…' / 'BashCutPro Help…' (vi: their vi.tsv rows), never FilmCraft"]
+    fn command_labels_name_bashcutpro() {}
 }

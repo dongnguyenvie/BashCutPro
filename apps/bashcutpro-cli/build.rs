@@ -40,12 +40,33 @@ const ANCHORS: &[(&str, &str, &str)] = &[
     ),
     // BR4: the MCP server answers as BashCutPro (`src/mcp_brand.rs`).
     ("main.rs", "if let Err(e) = server.serve_stdio().await {", "if let Err(e) = mcp_brand::serve_stdio(server).await {"),
+    // BR5: `commands`, `describe` and `exec command.list` list the commands with BashCutPro in their
+    // labels and params help (`mcp_brand::brand_commands`).
+    (
+        "main.rs",
+        "let list = b.exec(\"command.list\", json!({})).await.unwrap_or_else(|e| fail(e));",
+        "let list = mcp_brand::branded_commands(b.exec(\"command.list\", json!({})).await.unwrap_or_else(|e| fail(e)));",
+    ),
+    (
+        "main.rs",
+        "match b.exec(id, params).await {
+                Ok(v) => print(&a, &v),",
+        "match b.exec(id, params).await {
+                Ok(v) => print(&a, &mcp_brand::branded_exec(id, v)),",
+    ),
 ];
 
 /// BR4: upstream's MCP server, and the lines of it that may name the app: the server info and
 /// `INSTRUCTIONS` (rewritten as a whole by `src/mcp_brand.rs`) and the `TEXTS` it swaps exactly.
 const MCP_SERVER: &str = "../../crates/automation/src/server.rs";
 const MCP_NAMED: &[&str] = &["Implementation::new(\"filmcraft\"", "const INSTRUCTIONS: &str = \""];
+/// BR5: where upstream's MCP server sends the command catalog, as JSON text that `src/mcp_brand.rs`
+/// rebrands (`brand_commands`); the build fails when one of them changes.
+const MCP_CATALOG: &[&str] = &[
+    "let r = self.run(\"command.list\", json!({})).await.map(|v| {",
+    "COMMANDS_URI => self.run(\"command.list\", json!({})).await,",
+    "CallToolResult::success(vec![Content::text(serde_json::to_string_pretty(v).unwrap_or_default())])",
+];
 include!("src/mcp_texts.rs");
 
 /// CC2: the subcommands that get a default `--bridge`, and the ones whose arm mentions the bridge
@@ -107,6 +128,11 @@ fn mcp_names(server_rs: &str) -> Result<(), String> {
         if names && !known(line) {
             return Err(format!("bashcutpro-cli: {MCP_SERVER} names FilmCraft in a line src/mcp_brand.rs doesn't rewrite: {line:?}; update src/mcp_texts.rs"));
         }
+    }
+    if let Some(k) = MCP_CATALOG.iter().find(|k| !code.contains(*k)) {
+        return Err(format!(
+            "bashcutpro-cli: {k:?} not found in {MCP_SERVER} (upstream changed how it sends the command catalog; update src/mcp_brand.rs / MCP_CATALOG in build.rs)"
+        ));
     }
     let missing = MCP_NAMED.iter().copied().chain(TEXTS.iter().map(|(from, _)| *from)).find(|k| !code.contains(k));
     match missing {
