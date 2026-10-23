@@ -22,6 +22,7 @@ pub mod markdown;
 pub mod palette;
 pub mod plugins;
 pub mod plugins_panel;
+pub mod prefs;
 pub mod rail;
 pub mod runs_panel;
 pub mod shared;

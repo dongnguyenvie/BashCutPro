@@ -205,8 +205,7 @@ impl Batch {
         }
         self.loaded = true;
         let Some(path) = dir.map(memory_file) else { return };
-        let small = std::fs::metadata(&path).is_ok_and(|m| m.len() <= MAX_FILE);
-        if let Some(m) = small.then(|| std::fs::read_to_string(&path).ok()).flatten().and_then(|t| serde_json::from_str::<Memory>(&t).ok()) {
+        if let Some(m) = super::prefs::read(&path, MAX_FILE).and_then(|t| serde_json::from_str::<Memory>(&t).ok()) {
             self.memory = m;
         }
     }
@@ -220,11 +219,7 @@ impl Batch {
                 return;
             }
         };
-        if let Some(parent) = path.parent()
-            && let Err(e) = std::fs::create_dir_all(parent).and_then(|()| std::fs::write(&path, text))
-        {
-            log::warn!("{}: {e}", path.display());
-        }
+        super::prefs::write(&path, &text, "batch memory");
     }
 
     /// Add inputs (files, folders, projects), skipping ones already listed.

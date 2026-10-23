@@ -205,11 +205,7 @@ impl State {
         self.loaded = true;
         let Some(dir) = data_dir else { return };
         let path = file(dir);
-        let small = std::fs::metadata(&path).is_ok_and(|m| m.len() <= MAX_FILE);
-        if !small {
-            return;
-        }
-        let Ok(text) = std::fs::read_to_string(&path) else { return };
+        let Some(text) = super::prefs::read(&path, MAX_FILE) else { return };
         match serde_json::from_str::<State>(&text) {
             Ok(mut st) => {
                 st.sanitize(known);
@@ -225,16 +221,7 @@ impl State {
     pub fn save_if_changed(&mut self, data_dir: Option<&Path>) {
         let Some(dir) = data_dir else { return };
         let Ok(text) = serde_json::to_string_pretty(self) else { return };
-        if self.saved.as_deref() == Some(text.as_str()) {
-            return;
-        }
-        let path = file(dir);
-        let written = path.parent().map_or(Ok(()), std::fs::create_dir_all).and_then(|()| std::fs::write(&path, &text));
-        if let Err(e) = written {
-            log::warn!("bashcut ui state {}: {e}", path.display());
-        }
-        // remember it either way: a read-only data dir must not be retried every frame
-        self.saved = Some(text);
+        super::prefs::save_if_changed(&file(dir), text, &mut self.saved, "bashcut ui state");
     }
 }
 
