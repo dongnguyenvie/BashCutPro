@@ -117,7 +117,7 @@ impl Transcript {
                 self.push(Item::Error { message });
             }
             Event::Notice(m) => self.push(Item::Notice { message: m.clone() }),
-            Event::Init { .. } | Event::Result { .. } | Event::Picked => {}
+            Event::Init { .. } | Event::Result { .. } | Event::Picked | Event::Control { .. } => {}
         }
     }
 

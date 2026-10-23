@@ -364,7 +364,16 @@ impl Live {
         }
     }
 
-    /// Stop the running turn (SIGINT; the process then exits).
+    /// Write `line` (a control request of the agent's format, AG3) as one stdin line, as is.
+    pub fn control(&self, line: &str) -> Result<()> {
+        match &self.input {
+            Some(i) if !self.finished => i.send(format!("{line}\n")).map_err(|_| Error("the agent has ended".into())),
+            _ => err("the agent has ended"),
+        }
+    }
+
+    /// Stop the running turn (SIGINT; the process then exits). The fallback of the interrupt
+    /// control request ([`Live::control`]).
     pub fn interrupt(&self) {
         self.ctl.interrupt.store(true, Ordering::Relaxed);
     }

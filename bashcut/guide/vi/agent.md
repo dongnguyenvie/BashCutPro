@@ -23,7 +23,9 @@ liệu, Tải về) khi dự án nằm ở đó: bấm **Cho phép**. Khi chưa 
    bình thường.
 4. Ở mỗi chặng (yêu cầu, kế hoạch, cắt thô, bản nháp) trợ lý hiện một **thẻ duyệt** với việc đã làm và số đo đi kèm:
    **Duyệt** (Approve) để đi tiếp, hoặc viết ghi chú rồi **Yêu cầu sửa** (Ask for changes).
-5. **Dừng** (Stop) kết thúc lượt của trợ lý ngay; dự án giữ nguyên như lúc đó.
+5. **Dừng** (Stop) kết thúc lượt của trợ lý trong vài giây, kể cả khi đang chạy một công cụ lâu; bản ghi hiện
+   "Đã dừng.", dự án giữ nguyên như lúc đó, và tin nhắn tiếp theo tiếp tục trong cùng cuộc trò chuyện. Những tin
+   bạn xếp hàng mà trợ lý chưa bắt đầu sẽ quay lại ô nhập tin.
 
 **Mới** (New) bắt đầu cuộc trò chuyện mới; các cuộc trước được liệt kê và mở lại được.
 
@@ -33,7 +35,8 @@ Dưới tiêu đề, **Mở trong Terminal** mở một cửa sổ terminal ở 
 Trợ lý đang dùng và tiếp tục cuộc trò chuyện của nó (`claude --resume <id>`, hoặc `codex resume <id>`): bạn có đầy đủ
 màn hình Claude Code (hỏi quyền, lệnh `/`, lịch sử) trên cùng cuộc trò chuyện. Quay lại mục Trợ lý và bấm **Gửi** để
 tiếp tục ở đây. Phiên trong terminal điều khiển cửa sổ đang mở qua công cụ của bộ agent kit; kết nối công cụ riêng của
-mục Trợ lý không được chuyển sang.
+mục Trợ lý không được chuyển sang. Để chỉ một bên ghi vào cuộc trò chuyện, mục Trợ lý đóng phiên của mình trước (dừng
+lượt đang chạy); bản ghi sau đó hiện "Đã chuyển sang tiếp tục trong Terminal."
 Lần đầu ở một thư mục, Claude Code hỏi bạn có tin thư mục đó không: chọn **Yes, I trust this folder**.
 
 - **Đăng nhập…** mở `claude` trong terminal: gõ `/login` rồi làm theo các bước trong trình duyệt. Bạn đăng nhập bằng

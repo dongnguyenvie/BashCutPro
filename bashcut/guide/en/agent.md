@@ -24,7 +24,9 @@ nothing.
    undo step.
 4. At each stage (brief, plan, rough cut, draft) it shows a **gate** card with what it did and the measurements behind
    it: **Approve** to go on, or write a note and **Ask for changes**.
-5. **Stop** ends its turn at once; your project stays as it is.
+5. **Stop** ends its turn within a few seconds, also in the middle of a long tool call; the transcript says
+   "Stopped.", your project stays as it is, and your next message goes on in the same conversation. Messages you
+   queued and it had not started go back into the message box.
 
 **New** starts a new conversation; earlier ones are listed and can be opened again.
 
@@ -34,7 +36,8 @@ Under the header, **Open in Terminal** opens a terminal window in the project's 
 program the panel uses, resuming the panel's conversation (`claude --resume <id>`, or `codex resume <id>`): you get
 the full Claude Code screen (its own permission prompts, `/` commands, history) on the same conversation. Come back
 to the panel and press **Send** to keep going here. The terminal session talks to the open window through the agent
-kit's tools; the panel's own tool connection is not passed along.
+kit's tools; the panel's own tool connection is not passed along. So that only one of them writes the conversation,
+the panel first ends its own session (stopping a running turn); the transcript then says "Continued in Terminal."
 The first time in a folder, Claude Code asks whether you trust it: choose **Yes, I trust this folder**.
 
 - **Sign in…** opens `claude` in a terminal: type `/login` and follow the steps in your browser. You sign in with

@@ -7,6 +7,11 @@
 //! `result`. The process is closed when the conversation, agent or project changes, after
 //! [`IDLE_CLOSE`] idle, when the panel is hidden while idle, and at app exit; the next message starts
 //! it again with `--resume`. Codex keeps one process per message.
+//!
+//! Stop (AG3) asks a live agent that announces `interrupt_receipt_v1` to end its turn with the
+//! stream-json interrupt request and keeps the process for the next message; without the
+//! capability, or when the agent does not answer in time, it gets SIGINT (the process ends, the next
+//! message resumes).
 
 use std::collections::VecDeque;
 use std::path::{Path, PathBuf};
@@ -18,7 +23,7 @@ use serde_json::{Value, json};
 use crate::plan::{self, Gate};
 use crate::process::{AgentSpec, Live, Turn, TurnEnd, TurnEvent, mcp_config_path, write_mcp_config};
 use crate::store::{self, Conversation};
-use crate::stream_json::Event;
+use crate::stream_json::{self, Event};
 use crate::transcript::Item;
 use crate::{Error, Result, err};
 
@@ -28,6 +33,21 @@ pub const MAX_MESSAGE: usize = 64 * 1024;
 pub const IDLE_CLOSE: Duration = Duration::from_secs(30 * 60);
 /// At app exit, how long to wait for a live agent to end after its stdin closed.
 const EXIT_WAIT: Duration = Duration::from_secs(3);
+/// After the interrupt request, how long the agent has to acknowledge it, then SIGINT.
+const ACK_WAIT: Duration = Duration::from_secs(3);
+/// After the acknowledgement, how long it has to end the turn with its `result`, then SIGINT.
+const RESULT_WAIT: Duration = Duration::from_secs(5);
+/// `system/init` capabilities: the interrupt control request is answered (AG3), and it can also
+/// drop messages written but not taken yet (`cancel_queued`).
+pub const INTERRUPT_RECEIPT: &str = "interrupt_receipt_v1";
+pub const INTERRUPT_CANCEL_QUEUED: &str = "interrupt_cancel_queued_v1";
+
+/// An interrupt request written to the live agent and not finished yet.
+struct Interrupt {
+    id: String,
+    sent: Instant,
+    acked: bool,
+}
 
 /// A message written to the live agent and not taken yet.
 struct Pending {
@@ -106,6 +126,18 @@ pub struct Agent {
     pub capabilities: Vec<String>,
     /// Claude Code refused one of our flags (`unknown option`): too old for a live session.
     outdated: bool,
+    /// The Stop in flight as an interrupt request (AG3).
+    interrupting: Option<Interrupt>,
+    /// Interrupt requests written so far (their ids).
+    requests: u64,
+    /// A live agent that was closed and has not exited yet (Open in Terminal waits for it).
+    closing: Option<Live>,
+    /// A client other than the panel (control channel, MCP, a plugin) drives the agent while the
+    /// Agent section is hidden: the hidden panel does not close it after each turn (idle close still does).
+    pub driven: bool,
+    /// The agent reported a sign-in or account problem this turn (AG6): its process is not kept for
+    /// the next message (the user may sign in meanwhile), and its exit adds no generic error.
+    auth_failed: bool,
 }
 
 impl Agent {
@@ -133,6 +165,11 @@ impl Agent {
             unsent: Vec::new(),
             capabilities: Vec::new(),
             outdated: false,
+            interrupting: None,
+            requests: 0,
+            closing: None,
+            driven: false,
+            auth_failed: false,
         }
     }
 
@@ -173,8 +210,34 @@ impl Agent {
         }
         if let Some(mut l) = self.live.take() {
             l.close();
+            self.closing = Some(l);
         }
         self.idle_since = None;
+    }
+
+    /// Open in Terminal (AG3): the terminal resumes this conversation's session, which must not have
+    /// two writers. Stops a running turn and closes the agent; `true` once no agent process of it
+    /// runs (call again each frame until then).
+    pub fn release(&mut self) -> bool {
+        self.poll();
+        if self.is_running() {
+            if self.status != Status::Stopping {
+                self.stop();
+            }
+            return false;
+        }
+        self.end_session();
+        self.live.is_none() && self.closing.is_none()
+    }
+
+    /// The conversation went on in a terminal (after [`Agent::release`]).
+    pub fn continued_in_terminal(&mut self) {
+        if self.conversation.session.is_empty() {
+            // nothing to continue: the terminal starts a new session
+            return;
+        }
+        self.conversation.transcript.push(Item::Notice { message: "Continued in Terminal.".into() });
+        self.save();
     }
 
     /// How many events the agent has sent so far; unchanged while it is silent.
@@ -354,6 +417,7 @@ impl Agent {
         let live = Live::start(argv, &launch.cwd, &launch.env, &self.agent.events)?;
         self.live = Some(live);
         self.in_turn = false;
+        self.auth_failed = false;
         Ok(())
     }
 
@@ -370,20 +434,85 @@ impl Agent {
         Ok(())
     }
 
+    /// Stop the running turn: a per-message turn ends its process; a live agent gets the interrupt
+    /// request when it can take it (else, or on a second Stop, SIGINT).
     pub fn stop(&mut self) {
         if let Some(t) = &self.turn {
             t.stop();
             self.status = Status::Stopping;
-        } else if self.busy()
-            && let Some(l) = &self.live
-        {
+            return;
+        }
+        if !self.busy() {
+            return;
+        }
+        let Some(l) = &self.live else { return };
+        if self.status == Status::Stopping {
+            // stopping already: the user insists
+            self.interrupting = None;
             l.interrupt();
-            self.status = Status::Stopping;
+            return;
+        }
+        self.status = Status::Stopping;
+        if let Err(e) = self.send_interrupt() {
+            log::info!("bashcut agent: stop with SIGINT ({})", e.0);
+            if let Some(l) = &self.live {
+                l.interrupt();
+            }
+        }
+    }
+
+    /// Write the interrupt request: only to an agent that announced it, and (without `cancel_queued`)
+    /// only when no message waits behind the turn (it would still run).
+    fn send_interrupt(&mut self) -> Result<()> {
+        let has = |c: &str| self.capabilities.iter().any(|x| x == c);
+        if !has(INTERRUPT_RECEIPT) {
+            return err("no interrupt request");
+        }
+        let cancel = has(INTERRUPT_CANCEL_QUEUED);
+        if !cancel && self.pending.len() > usize::from(!self.in_turn) {
+            return err("queued messages it cannot drop");
+        }
+        let Some(l) = &self.live else { return err("no agent") };
+        self.requests = self.requests.wrapping_add(1);
+        let id = format!("bashcut-stop-{}", self.requests);
+        l.control(&stream_json::interrupt_request(&id, cancel))?;
+        self.interrupting = Some(Interrupt { id, sent: Instant::now(), acked: false });
+        Ok(())
+    }
+
+    /// The interrupt request ended the turn and the agent keeps running: what it never took goes
+    /// back to the message box.
+    fn stopped_in_place(&mut self) {
+        self.interrupting = None;
+        self.in_turn = false;
+        self.unsent.extend(self.pending.drain(..).filter_map(|p| p.queued));
+        self.busy_since = None;
+        self.idle_since = Some(Instant::now());
+        self.timed_out = false;
+        self.status = Status::Idle;
+        self.conversation.transcript.push(Item::Notice { message: "Stopped.".into() });
+        self.save();
+    }
+
+    /// SIGINT when the interrupt request was refused or not answered in time.
+    fn interrupt_fallback(&mut self, why: &str) {
+        if self.interrupting.take().is_some() {
+            log::info!("bashcut agent: interrupt request {why}: SIGINT");
+            if let Some(l) = &self.live {
+                l.interrupt();
+            }
         }
     }
 
     /// Take the agent's events; `true` while a turn runs (or a live agent has unanswered messages).
     pub fn poll(&mut self) -> bool {
+        if let Some(c) = &mut self.closing {
+            // its late events belong to no turn
+            c.poll();
+            if c.is_finished() {
+                self.closing = None;
+            }
+        }
         if self.live.is_some() || self.busy() {
             return self.poll_live();
         }
@@ -443,6 +572,10 @@ impl Agent {
             // nothing will answer (cannot happen; never leave the panel busy)
             self.live_ended(TurnEnd::Failed("the agent ended unexpectedly".into()));
         }
+        let late = self.interrupting.as_ref().map(|i| (i.acked, i.sent.elapsed())).filter(|(acked, t)| *t > if *acked { RESULT_WAIT } else { ACK_WAIT });
+        if let Some((acked, _)) = late {
+            self.interrupt_fallback(if acked { "got no result" } else { "got no answer" });
+        }
         let timeout = Duration::from_secs(self.agent.timeout_secs.max(1));
         if self.busy() && !self.timed_out && self.busy_since.is_some_and(|t| t.elapsed() > timeout) {
             self.timed_out = true;
@@ -464,6 +597,17 @@ impl Agent {
                 }
                 self.capabilities = capabilities.clone();
             }
+            Event::Auth { .. } => self.auth_failed = true,
+            Event::Control { request, ok } => {
+                let Some(i) = self.interrupting.as_mut().filter(|i| i.id == *request) else { return };
+                if !*ok {
+                    return self.interrupt_fallback("refused");
+                }
+                // the turn's `result` ends the stop (the `isReplay` echo can come later than this
+                // receipt, so a turn may run although none was seen taking the message)
+                i.acked = true;
+                return;
+            }
             Event::Picked => {
                 self.take_next();
                 self.in_turn = true;
@@ -479,6 +623,14 @@ impl Agent {
                 }
                 self.in_turn = false;
                 self.restarts = 0;
+                if self.interrupting.is_some() {
+                    // the interrupted turn's end (its error result is not news); a turn that
+                    // finished first keeps its answer
+                    if *ok {
+                        self.conversation.transcript.apply(&ev);
+                    }
+                    return self.stopped_in_place();
+                }
                 // the interrupt's own error result is not news: "Stopped." follows
                 if !*ok && self.status == Status::Stopping {
                     return;
@@ -493,6 +645,10 @@ impl Agent {
                     self.busy_since = None;
                     self.idle_since = Some(Instant::now());
                     self.save();
+                    if std::mem::take(&mut self.auth_failed) {
+                        // the next message starts a fresh process, with the login as it is then
+                        self.end_session();
+                    }
                 }
                 return;
             }
@@ -510,6 +666,7 @@ impl Agent {
 
     fn live_ended(&mut self, end: TurnEnd) {
         self.live = None;
+        self.interrupting = None;
         self.in_turn = false;
         self.idle_since = None;
         let busy = !self.pending.is_empty();
@@ -555,7 +712,10 @@ impl Agent {
         self.in_turn = false;
         self.unsent.extend(self.pending.drain(..).filter_map(|p| p.queued));
         self.busy_since = None;
-        self.conversation.transcript.push(Item::Error { message: message.clone() });
+        // after a sign-in problem the transcript's sign-in line says it already
+        if !std::mem::take(&mut self.auth_failed) {
+            self.conversation.transcript.push(Item::Error { message: message.clone() });
+        }
         self.status = Status::Failed { message };
         self.save();
     }
@@ -587,6 +747,9 @@ impl Agent {
         self.stop();
         if let Some(mut l) = self.live.take() {
             l.close_and_wait(EXIT_WAIT);
+        }
+        if let Some(mut c) = self.closing.take() {
+            c.close_and_wait(EXIT_WAIT);
         }
         self.pending.clear();
         self.in_turn = false;

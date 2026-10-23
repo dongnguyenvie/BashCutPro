@@ -58,6 +58,12 @@ pub enum Event {
         cost_usd: Option<f64>,
         turns: Option<u64>,
     },
+    /// The agent answered one of our control requests (`control_response`): `ok` is subtype
+    /// `success` (AG3: the interrupt's receipt).
+    Control {
+        request: String,
+        ok: bool,
+    },
     /// Something we show but do not model (an unparsable line, an agent error message).
     Notice(String),
     /// Claude Code is not signed in, or its account cannot be used: `category` is one of
@@ -159,6 +165,11 @@ pub fn parse_line(line: &str) -> Vec<Event> {
                 None => vec![result],
             }
         }
+        "control_response" => {
+            let r = v.get("response");
+            let field = |k: &str| r.and_then(|r| r.get(k)).and_then(Value::as_str).unwrap_or_default();
+            vec![Event::Control { request: clip(field("request_id"), 128), ok: field("subtype") == "success" }]
+        }
         "error" => vec![Event::Notice(clip(&v.get("error").map(|e| content_text(Some(e))).unwrap_or_else(|| text(&v, "message")), 2048))],
         _ => Vec::new(),
     }
@@ -198,6 +209,17 @@ pub(crate) fn capped_input(v: Option<&Value>) -> Value {
 /// One user message as a stream-json input line (no trailing newline).
 pub fn user_message(text: &str) -> String {
     json!({"type": "user", "message": {"role": "user", "content": [{"type": "text", "text": text}]}}).to_string()
+}
+
+/// The stream-json interrupt control request (AG3, checked with Claude Code 2.1.309): the running
+/// turn ends with an `error_during_execution` result, the process stays. `cancel_queued` (capability
+/// `interrupt_cancel_queued_v1`) also drops messages written but not taken yet. No trailing newline.
+pub fn interrupt_request(id: &str, cancel_queued: bool) -> String {
+    let mut request = json!({"subtype": "interrupt"});
+    if cancel_queued {
+        request["cancel_queued"] = json!(true);
+    }
+    json!({"type": "control_request", "request_id": id, "request": request}).to_string()
 }
 
 #[cfg(test)]
@@ -245,6 +267,10 @@ mod tests {
     #[test]
     #[ignore = "test ticket: authentication_failed / oauth_org_not_allowed / billing_error from assistant, system/api_retry and a failed 'Not logged in' result decode to Event::Auth; other api_retry errors and successful results do not"]
     fn auth_problems_decode_to_auth_events() {}
+
+    #[test]
+    #[ignore = "test ticket: control_response success/error parsed to Event::Control with its request_id; interrupt_request shape with and without cancel_queued"]
+    fn control_response_and_interrupt_request() {}
 
     #[test]
     fn user_message_round_trips() {
