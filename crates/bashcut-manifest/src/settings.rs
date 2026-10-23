@@ -297,8 +297,9 @@ mod tests {
         let store = MemoryStore::default();
         store.set(&m.id, "apiKey", "sk-1").unwrap();
         let env = env_for(&m, &loaded, &store);
-        // FX9: the data folder comes first (when the process has one), then the settings
-        let settings = env.iter().filter(|(k, _)| k != DATA_DIR_ENV).cloned().collect::<Vec<_>>();
+        // FX9: the data folder comes first (when the process has one), then the settings; FX34: the engine
+        // (`BASHCUTPRO_CLI`) is there only when a bashcutpro-cli sits beside the test exe, so it is not asserted
+        let settings = env.iter().filter(|(k, _)| k != DATA_DIR_ENV && k != CLI_ENV).cloned().collect::<Vec<_>>();
         assert_eq!(settings, [("S_SERVICE".to_string(), "b".to_string()), ("S_KEY".to_string(), "sk-1".to_string())]);
         let _ = std::fs::remove_dir_all(&dir);
     }
