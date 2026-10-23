@@ -222,6 +222,16 @@ fn find_cli(a: &Args) -> String {
     a.opt("--cli").map(str::to_string).unwrap_or_else(|| bashcut_dirs::engine::default_cli().to_string_lossy().into_owned())
 }
 
+/// The window's session token for the `--bridge` address in `args`, unless the environment already
+/// has one (the engine then uses that).
+fn control_token(args: &[String]) -> Option<String> {
+    if std::env::var_os("FILMCRAFT_CONTROL_TOKEN").is_some() {
+        return None;
+    }
+    let addr = args.iter().position(|a| a == "--bridge").and_then(|i| args.get(i + 1))?;
+    bashcut_dirs::data_dir().and_then(|d| automation::token_for(&d, addr))
+}
+
 /// Run the MCP server; with `roots`, every agent line passes [`guard::check`] first. Returns the
 /// server's exit status.
 fn serve(argv: &[String], roots: Option<&Roots>, cwd: &Path) -> Result<u8, String> {
@@ -230,6 +240,9 @@ fn serve(argv: &[String], roots: Option<&Roots>, cwd: &Path) -> Result<u8, Strin
     // `decide` already chose bridge or headless: the engine must not add its own default bridge
     // (CC2) to a headless `mcp` with no project (CC3)
     cmd.args(args).env("BASHCUT_BRIDGE", "off").stderr(Stdio::inherit());
+    if let Some(t) = control_token(args) {
+        cmd.env("FILMCRAFT_CONTROL_TOKEN", t);
+    }
     let Some(roots) = roots else {
         let status = cmd.stdin(Stdio::inherit()).stdout(Stdio::inherit()).status().map_err(|e| format!("{program}: {e}"))?;
         return Ok(exit_code(status.code()));
@@ -280,6 +293,10 @@ fn exit_code(code: Option<i32>) -> u8 {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    #[ignore = "test ticket: the child bashcutpro-cli gets FILMCRAFT_CONTROL_TOKEN from automation.json for its --bridge address, and not when the env is set"]
+    fn the_child_gets_the_window_token() {}
+
     use super::*;
     use std::net::TcpListener;
 

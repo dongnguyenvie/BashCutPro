@@ -14,7 +14,7 @@ pub struct Automation {
     pub schema: String,
     /// `127.0.0.1:<port>`.
     pub address: String,
-    /// The channel's token, when it has one (FilmCraft's has none today: `null`).
+    /// The window's control session token (64 hex; `null` in files from older builds).
     #[serde(default)]
     pub token: Option<String>,
     pub pid: u32,
@@ -35,6 +35,14 @@ pub fn read(data_dir: &Path) -> Option<Automation> {
     }
     let a: Automation = serde_json::from_str(&std::fs::read_to_string(&path).ok()?).ok()?;
     (a.schema == SCHEMA).then_some(a)
+}
+
+/// The session token of the window at `address`: the file is for that same address, its process
+/// is alive and the token is well-formed.
+pub fn token_for(data_dir: &Path, address: &str) -> Option<String> {
+    let a = read(data_dir)?;
+    (a.address == address && crate::pid_alive(a.pid)).then_some(())?;
+    a.token.filter(|t| bashcut_dirs::token::valid(t))
 }
 
 /// The window to bridge to: the file is well-formed, its process is alive, the address is a
@@ -67,6 +75,10 @@ mod tests {
     fn put(d: &Path, v: serde_json::Value) {
         std::fs::write(file(d), v.to_string()).unwrap();
     }
+
+    #[test]
+    #[ignore = "test ticket: token_for gives the token for a matching live address; None for another address, a dead pid or an invalid token"]
+    fn token_for_needs_address_pid_and_valid_token() {}
 
     #[test]
     fn a_live_window_is_found() {
