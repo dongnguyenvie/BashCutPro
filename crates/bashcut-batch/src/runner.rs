@@ -770,7 +770,7 @@ fn run_engine(sh: &Shared, idx: usize, s: usize, ctx: &Ctx, key: &str, args: Vec
     argv.push(cli(sh));
     argv.extend(args);
     argv.extend(data_dir_args(sh));
-    let spec = Spec { argv, cwd: Some(ctx.dir.clone()), env: sh.opts.env.clone(), timeout, log: ctx.dir.join(key) };
+    let spec = Spec { argv, cwd: Some(ctx.dir.clone()), env: engine_env(sh.opts), timeout, log: ctx.dir.join(key) };
     let ended = spawn(sh, idx, s, &spec)?;
     outcome(ended, &spec.log, key)?;
     Ok(spec.log)
@@ -873,8 +873,16 @@ fn reported_error(out: &str) -> Option<String> {
     })
 }
 
+/// The options' env plus `BASHCUT_BRIDGE=off`: the engine a batch starts (directly, or from a plugin
+/// or agent through `BASHCUTPRO_CLI`) stays headless even when a BashCutPro window is open (CC2).
+fn engine_env(opts: &Options) -> Vec<(String, String)> {
+    let mut env = opts.env.clone();
+    env.push(("BASHCUT_BRIDGE".into(), "off".into()));
+    env
+}
+
 fn item_env(sh: &Shared, ctx: &Ctx) -> Vec<(String, String)> {
-    let mut env = sh.opts.env.clone();
+    let mut env = engine_env(sh.opts);
     env.extend([
         ("BASHCUT_PROJECT".into(), ctx.project.to_string_lossy().into_owned()),
         ("BASHCUT_FILMCRAFT_CLI".into(), cli(sh)),
@@ -929,7 +937,7 @@ fn speech_model(pipeline: &Pipeline, opts: &Options) -> Option<String> {
         return None;
     }
     let settings = data_dir(opts).and_then(|d| crate::speech::settings_model(&d));
-    let models = crate::speech::engine_models(&opts.cli, &dir_args(opts), &opts.env);
+    let models = crate::speech::engine_models(&opts.cli, &dir_args(opts), &engine_env(opts));
     crate::speech::choose(settings.as_deref(), models.as_ref())
 }
 

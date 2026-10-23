@@ -78,11 +78,13 @@ Each item has the steps `create`, `step-1`…, `export-1`…:
 |---|---|
 | create | copy (template / input project), or `<cli> run create.jsonl --save-as <tmp>`; renamed to `<name>.fcproj` when done, so a half-made project never takes the name |
 | engine step | `<cli> run step-N.jsonl --project <name>.fcproj --save --compact` (the CLI stops at the first failing line, before saving) |
-| plugin / agent | its argv in the item folder (agent: in the project's folder), env `BASHCUT_PROJECT`, `BASHCUTPRO_CLI` and `BASHCUT_FILMCRAFT_CLI` (the engine), `BASHCUT_BATCH_ITEM`, `BASHCUT_BATCH_JOB` |
+| plugin / agent | its argv in the item folder (agent: in the project's folder), env `BASHCUT_PROJECT`, `BASHCUTPRO_CLI` and `BASHCUT_FILMCRAFT_CLI` (the engine), `BASHCUT_BATCH_ITEM`, `BASHCUT_BATCH_JOB`, `BASHCUT_BRIDGE=off` |
 | export | `<cli> export <out> --project … --preset … --compact`; with a profile, `<cli> run` on one `bashcut.profiles.apply {profile, path, wait: true}` line |
 
 `<cli>` is the engine (`bashcutpro` first, `bashcut_dirs::engine`); every engine row goes through one helper,
-`runner::run_engine` (adds `--data-dir`, logs to `<itemDir>/<key>`).
+`runner::run_engine` (adds `--data-dir`, logs to `<itemDir>/<key>`). Every engine process, and every plugin /
+agent step, gets `BASHCUT_BRIDGE=off`, so the engine stays headless on the item's project even while a BashCutPro
+window is open (since CC2 a bare `bashcutpro exec` would otherwise talk to that window).
 
 Exit statuses map to error categories: 0 ok, 1 `command` (`offlineMedia` for an export that drew placeholders), 2
 `usage`, 3 `handoff` (item `needsAttention`; once a person or agent has done that step, `retry --items <name>
