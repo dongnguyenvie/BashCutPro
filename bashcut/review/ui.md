@@ -150,6 +150,16 @@ Behaviour-neutral, merged to `main`:
   `bashcut_dirs::fs`; only a failed write behaves differently (the old file stays whole). Runs' error
   clip calls `bashcut_dirs::fs::clip` and still counts characters (the byte cut is computed from
   `MAX_ERROR` chars), so non-Latin errors are not shortened.
+- D1 rest (RU1): `widgets::note_text` / `code_text` (`RichText` for headers and truncated labels),
+  `code_note` (monospace), `strong_note`, `wrapped_note` (wraps, selectable) and `CODE` = 10 cover
+  the multi-line, monospace and bold small labels (Agent transcript and tool calls, Batch, Runs,
+  Palette, Plugins, toasts) plus the remaining accent / faint single-line notes. Left as is: the
+  rail tooltip blurb and Agent's "No saved conversations." (size only, default colour), Agent's gate
+  summary (11.5), Looks tags (10.0, not code) and Markdown code blocks (body text); RU2 decides them.
+- I2 (RU7): `rail.rs` (`TOP`, `ICON_INSET`, `BAR_X`, `BAR_INSET`, `TIP_WIDTH`) and `side_panel.rs`
+  (header buttons, body padding, blurb gap, seam, first window placement) name their layout
+  numbers; values unchanged. Stroke widths and font sizes stay inline.
+- `state.rs` unit tests use the section id consts (`AGENT`, `PLUGINS`, `RUNS`) from RU8.
 
 Everything else is below.
 

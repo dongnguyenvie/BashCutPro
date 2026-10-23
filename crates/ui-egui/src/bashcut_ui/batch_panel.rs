@@ -12,7 +12,7 @@ use super::batch;
 use super::palette::{self, Item};
 use super::plugins_panel::{Spec, field, gated_button, param_title, param_value, required, value_text};
 use super::strings::{f, s};
-use super::widgets::{META, NOTE, button, note};
+use super::widgets::{META, NOTE, button, code_note, note, note_text};
 use crate::FilmcraftApp;
 use crate::native_dialogs::FileDialog;
 use bashcut_batch::book::now_ms;
@@ -319,7 +319,7 @@ fn steps(app: &mut FilmcraftApp, ui: &mut egui::Ui, ctx: &egui::Context, v: &mut
         }
         // an engine command shows what it takes, as the palette does
         if let Some(sig) = step.command.as_deref().and_then(filmcraft_engine::commands::find).map(|c| c.params).filter(|p| !p.is_empty()) {
-            let r = ui.label(egui::RichText::new(sig).monospace().size(10.5).color(t.text_dim));
+            let r = code_note(ui, sig, META, t.text_dim);
             app.auto.add_response(&format!("bashcut.batch.step.{i}.signature"), &r, sig);
         }
         let mut text = text;
@@ -587,7 +587,7 @@ fn settings(app: &mut FilmcraftApp, ui: &mut egui::Ui, ctx: &egui::Context, v: &
                 });
             }
             let shown = if draft.projects_folder.is_empty() { s("next to the first input, in batch/").to_string() } else { draft.projects_folder.clone() };
-            let text = egui::RichText::new(f("Projects: {folder}", &[("folder", &shown)])).size(10.5).color(t.text_dim);
+            let text = note_text(f("Projects: {folder}", &[("folder", &shown)]), META, t.text_dim);
             let r =
                 ui.with_layout(egui::Layout::left_to_right(egui::Align::Center), |ui| ui.add(egui::Label::new(text).truncate()).on_hover_text(&shown)).inner;
             app.auto.add_response("bashcut.batch.projects", &r, &shown);
@@ -648,7 +648,7 @@ fn item_row(app: &mut FilmcraftApp, ui: &mut egui::Ui, ctx: &egui::Context, v: &
                     Status::Failed | Status::NeedsAttention | Status::NeedsFix => t.danger,
                     _ => t.text_dim,
                 };
-                ui.label(egui::RichText::new(s(status_label(item.status))).size(11.0).color(color));
+                note(ui, s(status_label(item.status)), NOTE, color);
             });
         });
         if item.status == Status::Running {

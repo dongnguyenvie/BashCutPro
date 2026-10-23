@@ -470,7 +470,7 @@ fn online_row(app: &mut FilmcraftApp, ui: &mut egui::Ui, ctx: &egui::Context, p:
         } else {
             (f("Licence: {licence}", &[("licence", licence.as_str())]), t.accent)
         };
-        let lr = ui.label(egui::RichText::new(lic).size(10.5).color(color));
+        let lr = note(ui, lic, META, color);
         app.auto.add_response(&format!("{id}.licence"), &lr, &licence);
         ui.horizontal_wrapped(|ui| {
             let preview = text(item, "preview");
@@ -507,7 +507,7 @@ fn mine_row(app: &mut FilmcraftApp, ui: &mut egui::Ui, ctx: &egui::Context, p: &
     let r = egui::Frame::new().inner_margin(egui::Margin::same(4)).corner_radius(t.radius_sm).fill(t.panel_bg).show(ui, |ui| {
         ui.horizontal(|ui| {
             ui.label(egui::RichText::new(text(item, "title")).strong().color(t.text));
-            ui.label(egui::RichText::new(mine_kind_label(&text(item, "kind"))).size(10.5).color(t.text_faint));
+            note(ui, mine_kind_label(&text(item, "kind")), META, t.text_faint);
             let fav = item.get("favourite").and_then(Value::as_bool).unwrap_or(false);
             if small_button(app, ui, &format!("{id}.favourite"), if fav { "★" } else { "☆" }, true) {
                 let mut params = BTreeMap::new();
@@ -524,7 +524,7 @@ fn mine_row(app: &mut FilmcraftApp, ui: &mut egui::Ui, ctx: &egui::Context, p: &
         }
         let licence = text(item, "license");
         if !licence.is_empty() {
-            ui.label(egui::RichText::new(f("Licence: {licence}", &[("licence", licence.as_str())])).size(10.5).color(t.text_faint));
+            note(ui, f("Licence: {licence}", &[("licence", licence.as_str())]), META, t.text_faint);
         }
         let kind = text(item, "kind");
         let file = item.get("paths").and_then(Value::as_array).and_then(|a| a.first()).and_then(Value::as_str).map(str::to_string);

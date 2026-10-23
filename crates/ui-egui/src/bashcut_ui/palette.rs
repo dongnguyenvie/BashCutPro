@@ -20,7 +20,7 @@ use serde::Serialize;
 use serde_json::{Map, Value, json};
 
 use super::strings::{f, s};
-use super::widgets::{META, note};
+use super::widgets::{META, code_note, note};
 use crate::FilmcraftApp;
 use crate::theme::Tokens;
 
@@ -745,7 +745,7 @@ fn list(app: &mut FilmcraftApp, ui: &mut egui::Ui, p: &mut Palette, shown: &[usi
         }
     });
     ui.add_space(2.0);
-    ui.label(egui::RichText::new(s("↑↓ choose · Enter run · Tab parameters · Esc close")).size(10.5).color(t.text_faint));
+    note(ui, s("↑↓ choose · Enter run · Tab parameters · Esc close"), META, t.text_faint);
     act
 }
 
@@ -782,7 +782,7 @@ fn params_editor(app: &mut FilmcraftApp, ui: &mut egui::Ui, p: &mut Palette, it:
     ui.label(egui::RichText::new(&it.label).font(Tokens::semibold(13.0)).color(t.text));
     note(ui, &it.command, META, t.text_dim);
     if !it.signature.is_empty() {
-        ui.label(egui::RichText::new(&it.signature).monospace().size(10.5).color(t.text_dim));
+        code_note(ui, &it.signature, META, t.text_dim);
     }
     ui.add_space(4.0);
     let field = ui.add(egui::TextEdit::multiline(&mut p.params).code_editor().desired_rows(6).desired_width(f32::INFINITY));
@@ -803,7 +803,7 @@ fn params_editor(app: &mut FilmcraftApp, ui: &mut egui::Ui, p: &mut Palette, it:
             p.error = None;
             p.focus = true;
         }
-        ui.label(egui::RichText::new(s("Cmd/Ctrl+Enter run · Esc back")).size(10.5).color(t.text_faint));
+        note(ui, s("Cmd/Ctrl+Enter run · Esc back"), META, t.text_faint);
     });
     if !go {
         return None;

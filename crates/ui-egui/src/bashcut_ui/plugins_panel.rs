@@ -13,7 +13,7 @@ use serde_json::{Map, Value, json};
 use super::hints::{self, CONTROL_OFF, HOW_TO_TURN_ON};
 use super::plugins;
 use super::strings::{self, f, s};
-use super::widgets::{META, NOTE, button, note};
+use super::widgets::{META, NOTE, button, note, note_text};
 use crate::FilmcraftApp;
 use crate::native_dialogs::FileDialog;
 
@@ -261,9 +261,8 @@ pub fn draw(app: &mut FilmcraftApp, ui: &mut egui::Ui) {
         _ => registry.as_ref().map(|r| (available_text(listed.len(), r.plugins.len()), false)),
     };
     if let Some((text, failed)) = line {
-        let r = ui
-            .label(egui::RichText::new(&text).size(11.0).color(if failed { t.danger } else { t.text_dim }))
-            .on_hover_text(f("Registry: {location}", &[("location", &location)]));
+        let r =
+            ui.label(note_text(&text, NOTE, if failed { t.danger } else { t.text_dim })).on_hover_text(f("Registry: {location}", &[("location", &location)]));
         app.auto.add_response("bashcut.plugins.registry.status", &r, &text);
     }
     for e in listed {
@@ -316,7 +315,7 @@ fn last_run(app: &mut FilmcraftApp, ui: &mut egui::Ui, ctx: &egui::Context, d: &
     };
     let t = app.tokens;
     let id = format!("bashcut.plugins.{plugin}.last");
-    let text = egui::RichText::new(&line.text).size(11.0).color(if line.failed { t.danger } else { t.text_dim });
+    let text = note_text(&line.text, NOTE, if line.failed { t.danger } else { t.text_dim });
     // a failure can be a long sentence: it wraps on its own line, the links go below it
     if line.failed {
         let r = ui.add(egui::Label::new(text.clone()).wrap());

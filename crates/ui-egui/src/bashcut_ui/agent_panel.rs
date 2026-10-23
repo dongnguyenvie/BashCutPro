@@ -13,7 +13,7 @@ use serde_json::{Value, json};
 use super::agent;
 use super::hints::{self, HOW_TO_TURN_ON};
 use super::strings::{f, s};
-use super::widgets::{META, NOTE, button, note};
+use super::widgets::{CODE, META, NOTE, button, code_note, code_text, note, strong_note};
 use crate::FilmcraftApp;
 
 /// The pending gate is re-read from `plan.json` this often (seconds), not every frame.
@@ -282,12 +282,12 @@ fn transcript(app: &mut FilmcraftApp, ui: &mut egui::Ui, items: &[Item]) {
         match item {
             Item::User { text } => {
                 ui.add_space(6.0);
-                ui.label(egui::RichText::new(s("You")).size(10.5).strong().color(t.text_dim));
+                strong_note(ui, s("You"), META, t.text_dim);
                 ui.add(egui::Label::new(egui::RichText::new(text).color(t.text)).selectable(true).wrap());
             }
             Item::Assistant { text } => {
                 ui.add_space(6.0);
-                ui.label(egui::RichText::new(s("Agent")).size(10.5).strong().color(t.text_dim));
+                strong_note(ui, s("Agent"), META, t.text_dim);
                 super::markdown::show(ui, text, t.text, t.text_dim);
             }
             Item::Tool { .. } => {
@@ -307,7 +307,7 @@ fn transcript(app: &mut FilmcraftApp, ui: &mut egui::Ui, items: &[Item]) {
                 if !note.is_empty() {
                     line.push_str(&format!(" — {note}"));
                 }
-                ui.label(egui::RichText::new(line).size(11.0).color(t.accent));
+                super::widgets::note(ui, line, NOTE, t.accent);
             }
             Item::Error { message } => {
                 note(ui, message, NOTE, t.danger);
@@ -332,29 +332,28 @@ fn tool_group(app: &mut FilmcraftApp, ui: &mut egui::Ui, at: usize, key: &str, g
         "✓"
     };
     let title = if group.len() > 1 { format!("{mark} {key} ×{}", group.len()) } else { format!("{mark} {key}") };
-    let head =
-        egui::CollapsingHeader::new(egui::RichText::new(&title).monospace().size(10.5).color(t.text_dim)).id_salt(("bashcut.agent.tool", at)).show(ui, |ui| {
-            for g in group {
-                let Item::Tool { input, output, .. } = g else { continue };
-                ui.label(egui::RichText::new(bashcut_agent::clip(&input.to_string(), 2000)).monospace().size(10.0).color(t.text_dim));
-                if let Some(o) = output {
-                    ui.label(egui::RichText::new(bashcut_agent::clip(o, 4000)).monospace().size(10.0).color(t.text));
-                }
+    let head = egui::CollapsingHeader::new(code_text(&title, META, t.text_dim)).id_salt(("bashcut.agent.tool", at)).show(ui, |ui| {
+        for g in group {
+            let Item::Tool { input, output, .. } = g else { continue };
+            code_note(ui, bashcut_agent::clip(&input.to_string(), 2000), CODE, t.text_dim);
+            if let Some(o) = output {
+                code_note(ui, bashcut_agent::clip(o, 4000), CODE, t.text);
             }
-            // an engine command or plugin action the agent ran once can run on many files (#46)
-            let first = group.iter().find_map(|g| match g {
-                Item::Tool { input, .. } => Some(input.get("params").cloned().unwrap_or(json!({}))),
-                _ => None,
-            });
-            if let Some(prefill) = first.and_then(|p| super::batch::prefill_params(key, &p))
-                && button(app, ui, &format!("bashcut.agent.tool.{at}.batch"), s("Run on many files…"), true)
-            {
-                let ctx = ui.ctx().clone();
-                if let Err(e) = super::batch::invoke(app, &ctx, "prefill", &prefill) {
-                    app.ui.status = e;
-                }
-            }
+        }
+        // an engine command or plugin action the agent ran once can run on many files (#46)
+        let first = group.iter().find_map(|g| match g {
+            Item::Tool { input, .. } => Some(input.get("params").cloned().unwrap_or(json!({}))),
+            _ => None,
         });
+        if let Some(prefill) = first.and_then(|p| super::batch::prefill_params(key, &p))
+            && button(app, ui, &format!("bashcut.agent.tool.{at}.batch"), s("Run on many files…"), true)
+        {
+            let ctx = ui.ctx().clone();
+            if let Err(e) = super::batch::invoke(app, &ctx, "prefill", &prefill) {
+                app.ui.status = e;
+            }
+        }
+    });
     app.auto.add_response(&format!("bashcut.agent.tool.{at}"), &head.header_response, &title);
 }
 
