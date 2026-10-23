@@ -152,7 +152,7 @@ fn claude_code_needs_the_bridge() {
     assert_eq!(agent.agent.id, "claude-code");
     let ctx = Context::default();
     let e = agent.send("hi", &ctx).unwrap_err();
-    assert!(e.0.contains("filmcraft-cli") || e.0.contains("--control"), "{e}");
+    assert!(e.0.contains("bashcutpro-cli") || e.0.contains("--control"), "{e}");
     assert!(agent.conversation.transcript.items.is_empty(), "nothing is shown for a turn that never started");
 }
 
