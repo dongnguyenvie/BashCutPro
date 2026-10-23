@@ -61,7 +61,7 @@ pub fn f(text: &str, args: &[(&str, &str)]) -> String {
 /// The bashcut-agent crate's messages that carry a value (VI4): the crate builds them in English
 /// with `format!`, so the panel matches them back to these templates. Longer forms first; the
 /// fixed ones are plain catalog rows. `{error}` is translated again when it is one of ours.
-pub const AGENT_MESSAGES: [&str; 12] = [
+pub const AGENT_MESSAGES: [&str; 17] = [
     "the agent exited with status {code}: {output}",
     "the agent exited with status {code}",
     "the agent was killed: {output}",
@@ -72,8 +72,13 @@ pub const AGENT_MESSAGES: [&str; 12] = [
     "no agent `{id}`",
     "event format `{name}` is not supported (use {formats})",
     "event format `{name}` has no live session",
+    "unknown command bashcut.agent.{name}",
+    "bad conversation id `{id}`",
+    "conversation {id}: not a {schema} file",
     "conversation {id}: {error}",
     "plan.json: {error}",
+    "{path}: no {server} server",
+    "{path}: no command",
 ];
 
 /// A bashcut-agent error or notice in our language: a catalog row, else an [`AGENT_MESSAGES`]
@@ -331,6 +336,13 @@ mod tests {
         assert_eq!(agent("agent `x`: no agent `y`"), "Trợ lý `x`: Không có trợ lý `y`");
         assert_eq!(agent("cannot start the agent thread: the agent has ended"), "Không khởi động được luồng trợ lý: Trợ lý đã thoát");
         assert_eq!(agent("agent `a`: agent `b`: agent `c`: no agent `d`"), "Trợ lý `a`: Trợ lý `b`: Trợ lý `c`: no agent `d`");
+        // VI5: the session, store and mcp-config messages
+        assert_eq!(agent("unknown command bashcut.agent.dance"), "Không có lệnh bashcut.agent.dance");
+        assert_eq!(agent("bad conversation id `../x`"), "Mã cuộc trò chuyện `../x` không hợp lệ");
+        assert_eq!(agent("conversation c1-2: not a bashcut-conversation/1 file"), "Cuộc trò chuyện c1-2: không phải tệp bashcut-conversation/1");
+        assert_eq!(agent("conversation c1-2: expected value at line 1"), "Cuộc trò chuyện c1-2: expected value at line 1");
+        assert_eq!(agent("C:\\Dự án\\mcp.json: no bashcutpro server"), "C:\\Dự án\\mcp.json: không có máy chủ bashcutpro");
+        assert_eq!(agent("/tmp/mcp.json: no command"), "/tmp/mcp.json: chưa có lệnh chạy");
         // the agent's own words, and a template with an empty value, stay as they are
         assert_eq!(agent("Here is your rough cut."), "Here is your rough cut.");
         assert_eq!(agent("no agent ``"), "no agent ``");
@@ -375,6 +387,71 @@ mod tests {
         // and every template is a row
         let gaps = untranslated(AGENT_MESSAGES.iter().map(|t| ("strings.rs".to_string(), t.to_string())).collect());
         assert!(gaps.is_empty(), "templates with no row in strings/vi.tsv:\n{gaps}");
+    }
+
+    /// `text` with every `{…}` placeholder written `{}` (an escaped `{{` stays), so a `format!`
+    /// literal and its template compare whatever their names.
+    fn shape(text: &str) -> String {
+        let mut out = String::new();
+        let mut chars = text.chars().peekable();
+        while let Some(c) = chars.next() {
+            if c == '{' && chars.peek() == Some(&'{') {
+                chars.next();
+                out.push_str("{{");
+            } else if c == '{' {
+                for c in chars.by_ref() {
+                    if c == '}' {
+                        break;
+                    }
+                }
+                out.push_str("{}");
+            } else {
+                out.push(c);
+            }
+        }
+        out
+    }
+
+    /// The `format!` literals the bashcut-agent crate shows as an error (`err(format!("…"` and
+    /// `Error(format!("…"`), outside its test modules.
+    fn agent_crate_formats() -> Vec<(String, String)> {
+        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../bashcut-agent/src");
+        let mut v = Vec::new();
+        for path in std::fs::read_dir(&dir).unwrap().map(|e| e.unwrap().path()).filter(|p| p.extension().is_some_and(|x| x == "rs")) {
+            let text = std::fs::read_to_string(&path).unwrap();
+            let code = text.split("#[cfg(test)]").next().unwrap_or_default();
+            let file = path.file_name().unwrap().to_string_lossy().into_owned();
+            for call in ["err(format!(", "Error(format!("] {
+                for (i, _) in code.match_indices(call) {
+                    if code[..i].chars().next_back().is_some_and(|c| c.is_alphanumeric() || c == '_') {
+                        continue;
+                    }
+                    v.extend(literal(&code[i + call.len()..]).map(|m| (file.clone(), m)));
+                }
+            }
+        }
+        v
+    }
+
+    #[test]
+    fn every_agent_crate_format_has_a_template() {
+        // VI5: a format!() message with no template stays English in Vietnamese
+        let formats = agent_crate_formats();
+        for known in ["unknown command bashcut.agent.{name}", "bad conversation id `{id}`", "{}: no {SERVER} server", "cannot start `{program}`: {e}"] {
+            assert!(formats.iter().any(|(_, m)| m == known), "the scan missed {known:?}: {formats:?}");
+        }
+        // only a value with nothing of ours in it: a serde error after a file name
+        let passthrough = ["{}: {e}"];
+        let shapes: Vec<String> = AGENT_MESSAGES.iter().map(|t| shape(t)).collect();
+        let mut gaps: Vec<String> = formats
+            .into_iter()
+            .filter(|(_, m)| !passthrough.contains(&m.as_str()) && !shapes.contains(&shape(m)))
+            .map(|(file, m)| format!("{file}: {m:?}"))
+            .collect();
+        gaps.sort();
+        gaps.dedup();
+        assert!(gaps.is_empty(), "bashcut-agent format!() messages with no strings::AGENT_MESSAGES template:\n{}", gaps.join("\n"));
+        assert_eq!(shape("a {x} {{b}} {}"), "a {} {{b}} {}");
     }
 
     #[test]

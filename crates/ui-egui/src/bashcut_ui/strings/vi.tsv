@@ -399,7 +399,12 @@ no agent `{id}`	Không có trợ lý `{id}`
 event format `{name}` is not supported (use {formats})	Không hỗ trợ định dạng sự kiện `{name}` (hãy dùng {formats})
 event format `{name}` has no live session	Định dạng sự kiện `{name}` không hỗ trợ phiên chạy liên tục
 conversation {id}: {error}	Cuộc trò chuyện {id}: {error}
+unknown command bashcut.agent.{name}	Không có lệnh bashcut.agent.{name}
+bad conversation id `{id}`	Mã cuộc trò chuyện `{id}` không hợp lệ
+conversation {id}: not a {schema} file	Cuộc trò chuyện {id}: không phải tệp {schema}
 plan.json: {error}	plan.json: {error}
+{path}: no {server} server	{path}: không có máy chủ {server}
+{path}: no command	{path}: chưa có lệnh chạy
 # Agent terminal commands (AG10)
 Open Agent in Terminal	Mở trợ lý trong Terminal
 Sign In to Claude Code	Đăng nhập Claude Code
