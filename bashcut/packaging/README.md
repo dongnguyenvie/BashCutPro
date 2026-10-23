@@ -187,7 +187,11 @@ no "cannot be opened" / "downloaded from the internet" warning that blocks it.
   `bashcut-mcp --print` and `bashcut-doctor` find `Contents/MacOS/bashcutpro-cli`. Launched from the Finder the Agent
   section finds `claude` in `~/.local/bin` and the like ([guide](../guide/en/agent.md)); macOS then asks once for the
   project's folder (Desktop, Documents) and a new ad-hoc build asks again.
-- macOS release signing (SG1, see "Signed + notarized macOS build" below).
+- macOS release signing (SG1, see "Signed + notarized macOS build" above). First run 2026-10-23 on 01 (0.10.0,
+  aarch64 only: no x86_64 target installed and not enough disk for a universal build; no craft-fonts): DMG 42.4 MB,
+  CLI zip 18.0 MB; the app, DMG and CLI zip notarized Accepted with no issues, app and DMG stapled, `spctl` accepted
+  both (source=Notarized Developer ID). Opened from a quarantined DMG copy, macOS showed only the usual "downloaded
+  from the Internet … Apple checked it for malicious software and none was detected" Open prompt, then the app ran.
 - Codec patents: for a paid build prefer the OS encoders (VideoToolbox, Media Foundation) and get legal advice before
   selling.
 
