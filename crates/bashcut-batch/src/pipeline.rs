@@ -264,11 +264,18 @@ pub const STEP_KINDS: &[StepKindRow] = &[
 impl StepKind<'_> {
     /// A short label for the job book.
     pub fn describe(&self) -> String {
+        let (template, args) = self.label();
+        args.iter().fold(template.to_string(), |text, (k, v)| text.replace(&format!("{{{k}}}"), v))
+    }
+
+    /// [`Self::describe`] as an English template and its `{placeholder}` values, so a UI can show it
+    /// in its own language (the Batch section translates the template).
+    pub fn label(&self) -> (&'static str, Vec<(&'static str, String)>) {
         match self {
-            StepKind::Command(id, _) => id.to_string(),
-            StepKind::Commands(c) => format!("{} commands", c.len()),
-            StepKind::Plugin(p) => format!("plugin {}", p.argv.first().map(String::as_str).unwrap_or("?")),
-            StepKind::Agent(a) => format!("agent: {}", a.skill),
+            StepKind::Command(id, _) => ("{id}", vec![("id", id.to_string())]),
+            StepKind::Commands(c) => ("{n} commands", vec![("n", c.len().to_string())]),
+            StepKind::Plugin(p) => ("plugin {program}", vec![("program", p.argv.first().map_or("?", String::as_str).to_string())]),
+            StepKind::Agent(a) => ("agent: {skill}", vec![("skill", a.skill.clone())]),
         }
     }
 
@@ -705,4 +712,8 @@ mod tests {
     #[test]
     #[ignore = "test ticket: each STEP_KINDS row reads its own field; none / two kinds give the errors naming every kind; engine_commands of command and commands steps"]
     fn every_step_kind_row_reads_its_field() {}
+
+    #[test]
+    #[ignore = "test ticket: StepKind::describe is its label template filled for every kind (\"captions.auto\", \"3 commands\", \"plugin x\", \"agent: s\")"]
+    fn every_step_kind_describes_as_its_label() {}
 }
