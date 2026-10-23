@@ -2,7 +2,7 @@
 //! upstream's engine built under our name, SB2), then upstream's `filmcraft-cli` (dev builds).
 //! The one lookup for every consumer (`bashcut-batch`, the UI; RV2), so a new name or variable is one edit here.
 
-use std::ffi::OsStr;
+use std::ffi::{OsStr, OsString};
 use std::path::{Path, PathBuf};
 
 /// The engine's names, preferred first. `bcpro` (the alias) is the one inside a macOS app bundle, where
@@ -32,10 +32,29 @@ pub fn on_path(path: Option<&OsStr>) -> Option<PathBuf> {
     NAMES.iter().find_map(|n| dirs.iter().map(|d| d.join(exe(n))).find(|p| p.is_file()))
 }
 
+/// The installed engine without the variables: in `exe_dir` (this program's folder), else on `path`.
+/// The seam for callers with fakes (the doctor's `Env`, RCB); [`installed`] asks the real process.
+pub fn installed_in(exe_dir: Option<&Path>, path: Option<&OsStr>) -> Option<PathBuf> {
+    exe_dir.and_then(in_dir).or_else(|| on_path(path))
+}
+
+/// [`installed_in`] for this process: next to this program, else on `PATH`.
+pub fn installed() -> Option<PathBuf> {
+    let exe_dir = std::env::current_exe().ok().and_then(|e| e.parent().map(Path::to_path_buf));
+    installed_in(exe_dir.as_deref(), std::env::var_os("PATH").as_deref())
+}
+
+/// The whole lookup with injected `var` (environment), `exe_dir` and `path`: [`ENV`], else
+/// [`installed_in`]. `None` when nothing names or holds an engine.
+pub fn lookup(var: &dyn Fn(&str) -> Option<OsString>, exe_dir: Option<&Path>, path: Option<&OsStr>) -> Option<PathBuf> {
+    let env = ENV.iter().find_map(|k| var(k).filter(|v| !v.is_empty())).map(PathBuf::from);
+    env.or_else(|| installed_in(exe_dir, path))
+}
+
 /// The default `--cli`: [`ENV`], else next to this program, else on `PATH`, else `filmcraft-cli`.
 pub fn default_cli() -> PathBuf {
-    let env = ENV.iter().find_map(|k| std::env::var_os(k).filter(|v| !v.is_empty())).map(PathBuf::from);
-    env.or_else(beside_self).or_else(|| on_path(std::env::var_os("PATH").as_deref())).unwrap_or_else(|| PathBuf::from(exe("filmcraft-cli")))
+    let exe_dir = std::env::current_exe().ok().and_then(|e| e.parent().map(Path::to_path_buf));
+    lookup(&|k| std::env::var_os(k), exe_dir.as_deref(), std::env::var_os("PATH").as_deref()).unwrap_or_else(|| PathBuf::from(exe("filmcraft-cli")))
 }
 
 #[cfg(test)]
@@ -66,4 +85,8 @@ mod tests {
         assert_eq!(on_path(Some(&path)), Some(old.join(exe("filmcraft-cli"))));
         assert_eq!(on_path(None), None);
     }
+
+    #[test]
+    #[ignore = "test ticket: lookup prefers ENV (in order, empty = unset) over exe_dir over PATH; installed_in(None, None) is None"]
+    fn lookup_with_injected_env_dir_and_path() {}
 }

@@ -126,8 +126,7 @@ impl Env for RealEnv {
     }
 
     fn find_engine(&self) -> Option<String> {
-        let found = bashcut_dirs::engine::beside_self().or_else(|| bashcut_dirs::engine::on_path(std::env::var_os("PATH").as_deref()));
-        found.map(|p| p.to_string_lossy().into_owned())
+        bashcut_dirs::engine::installed().map(|p| p.to_string_lossy().into_owned())
     }
 }
 

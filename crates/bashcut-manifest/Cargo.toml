@@ -1,0 +1,15 @@
+[package]
+name = "bashcut-manifest"
+description = "BashCutPro: the one bashcut-plugin/1 manifest reader (plugin host, engine hooks, doctor; RC5)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+bashcut-dirs = { path = "../bashcut-dirs" }
+serde = { workspace = true }
+serde_json = { workspace = true }

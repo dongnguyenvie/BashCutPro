@@ -8,14 +8,16 @@
 //! `bashcut-batch`, `bashcut-connect`, `bashcut-doctor` and the UI all ask [`data_dir`]. [`engine`] is
 //! the one engine-binary lookup (`bashcutpro` → `bcpro` → `filmcraft-cli`); [`pid_alive`] the one
 //! "does this process run" check (`bashcut-connect`, `bashcut-batch`); [`fs`] the one `read_capped` /
-//! `write_atomic` / `clip` and message error of every BashCutPro crate (RC4).
+//! `write_atomic` / `clip` and message error of every BashCutPro crate (RC4); [`Os`] the one OS mapping (RC5).
 
 use std::path::{Path, PathBuf};
 
 pub mod engine;
 pub mod fs;
+pub mod os;
 pub mod process;
 
+pub use os::Os;
 pub use process::pid_alive;
 
 /// The marker upstream's portable installs put next to the executable (`autosave::PORTABLE_MARKER`).
@@ -48,10 +50,10 @@ impl Host<'_> {
 
     /// `(macOS / Windows name, XDG name)` under the per-user folder.
     fn per_user(&self, names: (&str, &str)) -> Option<PathBuf> {
-        match self.os {
-            "macos" => self.env("HOME").map(|h| h.join("Library/Application Support").join(names.0)),
-            "windows" => self.env("APPDATA").map(|a| a.join(names.0)),
-            _ => self.env("XDG_DATA_HOME").map(|d| d.join(names.1)).or_else(|| self.env("HOME").map(|h| h.join(".local/share").join(names.1))),
+        match Os::from_name(self.os) {
+            Os::Macos => self.env("HOME").map(|h| h.join("Library/Application Support").join(names.0)),
+            Os::Windows => self.env("APPDATA").map(|a| a.join(names.0)),
+            Os::Linux => self.env("XDG_DATA_HOME").map(|d| d.join(names.1)).or_else(|| self.env("HOME").map(|h| h.join(".local/share").join(names.1))),
         }
     }
 

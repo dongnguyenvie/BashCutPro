@@ -21,6 +21,7 @@ neural-voices = ["filmcraft-tts/kokoro", "speech-download"]
 [dependencies]
 bashcut-analysis = { path = "../bashcut-analysis" } # BashCutPro: bashcut.* measurements (bashcut/extending-upstream.md)
 bashcut-dirs = { path = "../bashcut-dirs" } # BashCutPro: our own data folder (bashcut/extending-upstream.md)
+bashcut-manifest = { path = "../bashcut-manifest" } # BashCutPro: plugin manifests for hooks (bashcut/extending-upstream.md)
 filmcraft-time = { workspace = true }
 filmcraft-geom = { workspace = true }
 filmcraft-color = { workspace = true }

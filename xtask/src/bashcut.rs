@@ -7,6 +7,8 @@
 const LAYERS: &[(&str, u8)] = &[
     // the data folder; no deps at all, so the engine and every app may use it
     ("bashcut-dirs", 0),
+    // the plugin manifest reader; deps only on bashcut-dirs, so the engine (L4) may use it (RC5)
+    ("bashcut-manifest", 1),
     // read-only measurements; deps only on L0–L1 crates, so the engine (L4) may use it
     ("bashcut-analysis", 3),
     // no workspace deps; only ui-egui (L5) and our apps use them

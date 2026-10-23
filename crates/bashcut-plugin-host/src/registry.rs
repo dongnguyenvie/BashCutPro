@@ -93,8 +93,8 @@ impl Registry {
 }
 
 impl Entry {
-    pub fn supports(&self, os: &str) -> bool {
-        self.platforms.is_empty() || self.platforms.iter().any(|p| p == os)
+    pub fn supports(&self, os: manifest::Os) -> bool {
+        manifest::supports(&self.platforms, os)
     }
 }
 
@@ -155,7 +155,7 @@ mod tests {
     fn parses_and_finds() {
         let r = Registry::parse(&sample().to_string()).unwrap();
         let e = r.find("test.echo").unwrap();
-        assert!(e.supports("linux") && !e.supports("windows"));
+        assert!(e.supports(manifest::Os::Linux) && !e.supports(manifest::Os::Windows));
         assert_eq!(clone_url("o/r").unwrap(), "https://github.com/o/r.git");
         assert_eq!(clone_url("/tmp/repo").unwrap(), "/tmp/repo");
         assert!(clone_url("--upload-pack=x").is_err());

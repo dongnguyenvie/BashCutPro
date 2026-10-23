@@ -1,4 +1,9 @@
-//! `bashcut-plugin.json` (`bashcut-plugin/1`, format: `bashcutpro-plugins/README.md`).
+//! `bashcut-plugin.json` (`bashcut-plugin/1`, format: `bashcutpro-plugins/README.md`): the one reader
+//! (RC5, D6) of the plugin host, the engine's hooks (`engine/src/bashcut/hooks.rs`) and `bashcut-doctor`,
+//! so a schema change is one edit and every reader validates. OS names come from [`Os`].
+//!
+//! Everything a manifest says is hostile input: sizes are capped, values are checked, and nothing here
+//! panics (AGENTS.md §0). Deps: `bashcut-dirs` and serde only, so the engine (L4) may use it.
 
 use std::collections::BTreeMap;
 use std::path::Path;
@@ -6,7 +11,8 @@ use std::path::Path;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-use crate::{Error, Result, err, valid_id};
+pub use bashcut_dirs::Os;
+use bashcut_dirs::fs::{Error, Result, err, read_capped};
 
 pub const SCHEMA: &str = "bashcut-plugin/1";
 pub const RESULT_SCHEMA: &str = "bashcut-result/1";
@@ -16,6 +22,22 @@ pub const MAX_BYTES: u64 = 256 * 1024;
 const MAX_ITEMS: usize = 256;
 const MAX_ARGS: usize = 64;
 const MAX_TEXT: usize = 4096;
+const MAX_HOOKS: usize = 32;
+
+/// A plugin or setting id: lower-case ASCII letters, digits, `.`, `-`, `_`; no leading dot; 1–64 chars.
+/// Ids name folders and environment entries, so nothing else gets through.
+pub fn valid_id(id: &str) -> bool {
+    !id.is_empty()
+        && id.len() <= 64
+        && !id.starts_with('.')
+        && !id.contains("..")
+        && id.bytes().all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'.' || b == b'-' || b == b'_')
+}
+
+/// Runs on `os` by a `platforms` list (an empty list means everywhere); manifests and registry entries alike.
+pub fn supports(platforms: &[String], os: Os) -> bool {
+    platforms.is_empty() || platforms.iter().any(|p| p == os.as_str())
+}
 
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 #[serde(default, rename_all = "camelCase")]
@@ -44,6 +66,19 @@ pub struct Manifest {
     pub agent: Option<AgentSection>,
     /// `name` / `summary` in other languages (see [`I18n`]).
     pub i18n: I18n,
+    /// Actions the app runs on its own events (`engine/src/bashcut/hooks.rs`).
+    pub hooks: Vec<Hook>,
+}
+
+/// `{"event": "export.before", "action": "check-key", "required": false, "timeoutSeconds": 120}`.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[serde(default, rename_all = "camelCase")]
+pub struct Hook {
+    pub event: String,
+    pub action: String,
+    pub required: bool,
+    /// Left out: the engine's default; the engine clamps it.
+    pub timeout_seconds: Option<u64>,
 }
 
 /// Translations of the text a person sees, by language code (`{"vi": {"title": …, "help": …}}`;
@@ -68,7 +103,7 @@ pub struct Text {
 }
 
 /// `english` in `lang` when the manifest has a non-empty translation, else `english`.
-pub(crate) fn local<'a>(i18n: &'a I18n, lang: &str, english: &'a str, pick: fn(&Text) -> &str) -> &'a str {
+pub fn local<'a>(i18n: &'a I18n, lang: &str, english: &'a str, pick: fn(&Text) -> &str) -> &'a str {
     match i18n.get(lang).map(pick) {
         Some(x) if !x.trim().is_empty() => x,
         _ => english,
@@ -257,7 +292,7 @@ impl Manifest {
 
     /// `<dir>/bashcut-plugin.json`.
     pub fn load(dir: &Path) -> Result<Manifest> {
-        Self::parse(&crate::read_capped(&dir.join(FILE), MAX_BYTES)?)
+        Self::parse(&read_capped(&dir.join(FILE), MAX_BYTES)?)
     }
 
     fn check(&self) -> Result<()> {
@@ -329,6 +364,9 @@ impl Manifest {
             ("agent", None) => return err(format!("{}: kind `agent` needs an `agent` section", self.id)),
             (k, _) => return err(format!("{}: bad kind `{k}` (tool or agent; `agent` needs kind `agent`)", self.id)),
         }
+        if self.hooks.len() > MAX_HOOKS {
+            return err(format!("{}: too many hooks", self.id));
+        }
         if [&self.name, &self.summary, &self.homepage].iter().any(|t| t.len() > MAX_TEXT) {
             return err(format!("{}: text field too long", self.id));
         }
@@ -356,17 +394,16 @@ impl Manifest {
     }
 
     /// Runs on this OS (an empty list means everywhere).
-    pub fn supports(&self, os: &str) -> bool {
-        self.platforms.is_empty() || self.platforms.iter().any(|p| p == os)
+    pub fn supports(&self, os: Os) -> bool {
+        supports(&self.platforms, os)
     }
 
     /// The entry argv for `os` (its override, else `command`).
-    pub fn entry_for(&self, os: &str) -> &[String] {
+    pub fn entry_for(&self, os: Os) -> &[String] {
         let over = match os {
-            "macos" => self.entry.macos.as_ref(),
-            "windows" => self.entry.windows.as_ref(),
-            "linux" => self.entry.linux.as_ref(),
-            _ => None,
+            Os::Macos => self.entry.macos.as_ref(),
+            Os::Windows => self.entry.windows.as_ref(),
+            Os::Linux => self.entry.linux.as_ref(),
         };
         over.filter(|v| !v.is_empty()).unwrap_or(&self.entry.command)
     }
@@ -379,7 +416,7 @@ impl Manifest {
     /// The full argument list for one action: entry, the action's args, connection args, an
     /// optional `--cli` and the params as flags (checked against the manifest). Params left out
     /// keep the plugin's own default.
-    pub fn command_line(&self, os: &str, action: &str, conn: &Connection, cli: Option<&str>, params: &BTreeMap<String, Value>) -> Result<Vec<String>> {
+    pub fn command_line(&self, os: Os, action: &str, conn: &Connection, cli: Option<&str>, params: &BTreeMap<String, Value>) -> Result<Vec<String>> {
         let Some(a) = self.action(action) else { return err(format!("{} has no action `{action}`", self.id)) };
         let mut argv: Vec<String> = self.entry_for(os).to_vec();
         argv.extend(a.args.iter().cloned());
@@ -526,12 +563,12 @@ mod tests {
     #[test]
     fn parses_and_builds_the_command_line() {
         let m = Manifest::parse(&sample()).unwrap();
-        assert_eq!(m.entry_for("windows")[0], "py");
-        assert_eq!(m.entry_for("linux")[0], "python3");
+        assert_eq!(m.entry_for(Os::Windows)[0], "py");
+        assert_eq!(m.entry_for(Os::Linux)[0], "python3");
         let params: BTreeMap<String, Value> =
             [("target".to_string(), json!("en")), ("n".to_string(), json!(2)), ("dry".to_string(), json!(true)), ("answer".to_string(), json!("/a b.json"))]
                 .into();
-        let argv = m.command_line("macos", "go", &Connection::Bridge("127.0.0.1:9876".into()), Some("/bin/filmcraft-cli"), &params).unwrap();
+        let argv = m.command_line(Os::Macos, "go", &Connection::Bridge("127.0.0.1:9876".into()), Some("/bin/filmcraft-cli"), &params).unwrap();
         assert_eq!(
             argv,
             [
@@ -563,7 +600,7 @@ mod tests {
         let flags = |extra: &[(&str, Value)]| {
             let mut params: BTreeMap<String, Value> = [("answer".to_string(), json!("a.json"))].into();
             params.extend(extra.iter().map(|(k, v)| (k.to_string(), v.clone())));
-            let argv = m.command_line("linux", "go", &Connection::Project("p".into()), None, &params).unwrap();
+            let argv = m.command_line(Os::Linux, "go", &Connection::Project("p".into()), None, &params).unwrap();
             argv.into_iter().filter(|a| a.contains("keep") || a.contains("dry")).collect::<Vec<_>>()
         };
         assert_eq!(flags(&[("keep", json!(true))]), ["--keep"]);
@@ -623,17 +660,17 @@ mod tests {
         let m = Manifest::parse(&sample()).unwrap();
         let bridge = Connection::Bridge("127.0.0.1:1".into());
         let p = |k: &str, v: Value| -> BTreeMap<String, Value> { [(k.to_string(), v), ("answer".to_string(), json!("x"))].into() };
-        assert!(m.command_line("linux", "go", &bridge, None, &p("target", json!("fr"))).is_err());
-        assert!(m.command_line("linux", "go", &bridge, None, &p("n", json!(9))).is_err());
-        assert!(m.command_line("linux", "go", &bridge, None, &p("n", json!("x"))).is_err());
-        assert!(m.command_line("linux", "go", &bridge, None, &p("nope", json!(1))).is_err());
-        assert!(m.command_line("linux", "go", &bridge, None, &BTreeMap::new()).is_err(), "answer is required");
-        assert!(m.command_line("linux", "go", &Connection::None, None, &p("n", json!(1))).is_err(), "needs a project");
-        assert!(m.command_line("linux", "ping", &Connection::None, None, &BTreeMap::new()).is_ok());
+        assert!(m.command_line(Os::Linux, "go", &bridge, None, &p("target", json!("fr"))).is_err());
+        assert!(m.command_line(Os::Linux, "go", &bridge, None, &p("n", json!(9))).is_err());
+        assert!(m.command_line(Os::Linux, "go", &bridge, None, &p("n", json!("x"))).is_err());
+        assert!(m.command_line(Os::Linux, "go", &bridge, None, &p("nope", json!(1))).is_err());
+        assert!(m.command_line(Os::Linux, "go", &bridge, None, &BTreeMap::new()).is_err(), "answer is required");
+        assert!(m.command_line(Os::Linux, "go", &Connection::None, None, &p("n", json!(1))).is_err(), "needs a project");
+        assert!(m.command_line(Os::Linux, "ping", &Connection::None, None, &BTreeMap::new()).is_ok());
         // an action that needs nothing gets no connection arguments, even with the app open
-        let ping = m.command_line("linux", "ping", &Connection::Bridge("127.0.0.1:9876".into()), Some("/bin/filmcraft-cli"), &BTreeMap::new()).unwrap();
+        let ping = m.command_line(Os::Linux, "ping", &Connection::Bridge("127.0.0.1:9876".into()), Some("/bin/filmcraft-cli"), &BTreeMap::new()).unwrap();
         assert_eq!(ping, ["python3", "plugin.py", "ping"]);
-        assert!(m.command_line("linux", "nope", &bridge, None, &BTreeMap::new()).is_err());
+        assert!(m.command_line(Os::Linux, "nope", &bridge, None, &BTreeMap::new()).is_err());
     }
 
     #[test]
