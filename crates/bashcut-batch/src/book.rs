@@ -666,6 +666,31 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "test ticket: a book past pipeline's 4 MB cap saves and loads again; a save over MAX_BOOK_BYTES fails and keeps the old state.json"]
-    fn large_book_round_trips() {}
+    fn large_book_round_trips() {
+        let dir = std::env::temp_dir().join(format!("bashcut-batch-book-large-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let job = Job { dir: dir.clone() };
+        // 6 MB of items: past pipeline::read_capped's 4 MB, far below MAX_BOOK_BYTES
+        let items: Vec<ItemState> = (0..3000)
+            .map(|i| {
+                let mut it = item(&format!("item-{i}"), Status::Done, vec![step("create", Status::Done)]);
+                it.input = format!("/in/{}-{i}.mp4", "x".repeat(2000));
+                it
+            })
+            .collect();
+        let large = book(items);
+        job.save(&large).unwrap();
+        let on_disk = std::fs::metadata(job.state_path()).unwrap().len();
+        assert!(on_disk > 4 << 20, "{on_disk} bytes");
+        assert_eq!(job.book().unwrap(), large);
+
+        let mut huge = book(vec![item("a", Status::Done, vec![])]);
+        huge.items[0].input = "x".repeat(usize::try_from(MAX_BOOK_BYTES).unwrap() + 1);
+        let e = job.save(&huge).unwrap_err();
+        assert!(e.contains("larger than"), "{e}");
+        assert_eq!(std::fs::metadata(job.state_path()).unwrap().len(), on_disk, "the old state.json is kept");
+        assert_eq!(job.book().unwrap(), large);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 }

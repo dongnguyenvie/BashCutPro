@@ -690,6 +690,55 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "test ticket: every ADAPTERS row: names() lists it, adapter(name) finds it, its argv starts with its program, read_round of a mixed claude+codex log sums both"]
-    fn every_adapter_row_is_named_found_and_read() {}
+    fn every_adapter_row_is_named_found_and_read() {
+        assert_eq!(names(), vec!["claude", "codex"]);
+        assert_eq!(DEFAULT_AGENT, "claude");
+        assert!(adapter("gpt").is_none() && adapter("").is_none() && adapter("Claude").is_none());
+        let v = vars();
+        let cfg = PathBuf::from("/missing/step-1.mcp.json");
+        for row in ADAPTERS {
+            assert!(names().contains(&row.name));
+            assert_eq!(adapter(row.name).map(|a| a.name), Some(row.name));
+            let s = step(json!({"skill": "rough-cut", "agent": row.name}));
+            assert_eq!(s.agent_name(), row.name);
+            let a = argv(&Launch { step: &s, vars: &v, prompt: "go", session: None, mcp_config: &cfg });
+            assert_eq!(a.first().map(String::as_str), Some(row.name), "{a:?}");
+            assert!(a.contains(&"go".to_string()), "{a:?}");
+        }
+
+        let dir = std::env::temp_dir().join(format!("bashcut-batch-agent-mixed-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let log = dir.join("mixed.out");
+        std::fs::write(
+            &log,
+            [
+                json!({"type": "system", "subtype": "init", "session_id": "s1"}).to_string(),
+                json!({"type": "thread.started", "thread_id": "t9"}).to_string(),
+                json!({"type": "turn.completed", "usage": {"input_tokens": 100, "output_tokens": 20}}).to_string(),
+                json!({"type": "something.else", "usage": {"input_tokens": 1000}}).to_string(),
+                json!({"type": "result", "subtype": "success", "num_turns": 3, "session_id": "s1", "total_cost_usd": 0.5, "usage": {"input_tokens": 10, "output_tokens": 2}, "result": "done"}).to_string(),
+            ]
+            .join("\n"),
+        )
+        .unwrap();
+        let r = read_round(&log);
+        assert_eq!((r.session.as_deref(), r.turns, r.input_tokens, r.output_tokens), (Some("s1"), 4, 110, 22));
+        assert!(!r.failed && !r.hit_turn_limit);
+        assert_eq!(r.message, "done");
+        assert!((r.cost_usd - 0.5).abs() < 1e-9);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn kit_tools_list_the_kit_files_pythons_and_ffmpeg() {
+        let tools = kit_tools();
+        assert_eq!(
+            tools,
+            ["Skill", "Read", "Glob", "Grep", "Write", "Edit", "Bash(python3:*)", "Bash(python:*)", "Bash(py:*)", "Bash(ffmpeg:*)", "Bash(ffprobe:*)"]
+                .map(str::to_string)
+        );
+        for p in python::AGENT_PYTHONS {
+            assert!(tools.contains(&format!("Bash({p}:*)")), "{p}");
+        }
+    }
 }

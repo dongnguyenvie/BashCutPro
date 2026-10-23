@@ -538,5 +538,74 @@ fn transcribe_steps_use_the_settings_speech_model_when_downloaded() {
 }
 
 #[test]
-#[ignore = "test ticket: resources.agentConcurrency 2 with the top-level default lets two agent steps run at once"]
-fn resources_agent_concurrency_raises_the_agent_cap() {}
+fn resources_agent_concurrency_raises_the_agent_cap() {
+    let b = bench("agent-res-cap", &["a", "b", "c"]);
+    let mut p = agent_pipeline(&b, "fixfirst", json!({"review": false}));
+    if let Some(a) = p.steps[0].agent.as_mut() {
+        a.argv.extend(["--sleep-ms".to_string(), "800".to_string()]);
+    }
+    p.concurrency = 3;
+    assert_eq!(p.agent_concurrency, 1, "the top-level default");
+    p.resources.agent_concurrency = 2;
+    let job = Job::create(&p, Some("rescap")).unwrap();
+    let summary = run(&job, &b.opts()).unwrap();
+    assert_eq!(summary.status, Status::Done, "{summary:?}");
+    assert_eq!(max_overlap(&b.log(), "agent-start", "agent-end"), 2, "two agents at a time");
+}
+
+/// Every process the fake CLI ran, from `FAKE_CLI_ARGS`: (argv without the program, BASHCUT_BRIDGE).
+fn children(log: &std::path::Path) -> Vec<(Vec<String>, Option<String>)> {
+    let text = std::fs::read_to_string(log).unwrap_or_default();
+    text.lines()
+        .filter_map(|l| serde_json::from_str::<Value>(l).ok())
+        .map(|v| {
+            let argv = v["argv"].as_array().map(|a| a.iter().filter_map(Value::as_str).map(str::to_string).collect()).unwrap_or_default();
+            (argv, v["bridge"].as_str().map(str::to_string))
+        })
+        .collect()
+}
+
+#[test]
+fn engine_children_get_the_data_dir_and_every_child_the_bridge_off() {
+    let b = bench("data-dir", &["a"]);
+    let data = b.dir.join("data");
+    std::fs::create_dir_all(&data).unwrap();
+    let args = b.dir.join("fake-cli-args.log");
+    let mut agent = json!({"skill": "captions-text", "argv": [FAKE, "fake-agent", "--mode", "fixfirst", "--prompt", "{prompt}", "--session", "{session}", "--project", "{project}"]});
+    agent["fixRounds"] = json!(0);
+    let p = b.pipeline(json!({
+        "steps": [
+            {"command": "sequence.transcribe"},
+            {"commands": [{"id": "captions.auto"}, {"id": "captions.style"}]},
+            {"plugin": {"argv": [FAKE, "plugin-ok", "--project", "{project}"]}},
+            {"agent": agent}
+        ],
+        "outputs": [{"name": "{name}.mp4", "preset": "TikTok"}, {"name": "{name}-reels.mp4", "profile": "reels"}]
+    }));
+    let job = Job::create(&p, Some("dd")).unwrap();
+    let mut o = b.opts();
+    o.data_dir = Some(data.clone());
+    o.env.push(("FAKE_CLI_ARGS".into(), args.to_string_lossy().into_owned()));
+    o.env.push((
+        "FAKE_CLI_MODELS".into(),
+        json!({"available": true, "default": "whisper-base", "models": [{"id": "whisper-base", "installed": true}]}).to_string(),
+    ));
+    let summary = run(&job, &o).unwrap();
+    assert_eq!(summary.status, Status::Done, "{summary:?}");
+
+    let all = children(&args);
+    let data_arg = data.to_string_lossy().into_owned();
+    let (engine, others): (Vec<_>, Vec<_>) = all.iter().partition(|(argv, _)| !matches!(argv.first().map(String::as_str), Some("plugin-ok" | "fake-agent")));
+    let first = |c: &&(Vec<String>, Option<String>)| c.0.first().cloned().unwrap_or_default();
+    // the speech-model probe, create, two engine steps, the agent's inspect and review, two exports
+    assert_eq!(engine.iter().filter(|c| first(c) == "exec").count(), 1, "{engine:?}");
+    assert_eq!(engine.iter().filter(|c| first(c) == "export").count(), 1, "{engine:?}");
+    assert!(engine.iter().filter(|c| first(c) == "run").count() >= 6, "{engine:?}");
+    for (argv, _) in &engine {
+        assert_eq!(argv[argv.len().saturating_sub(2)..], ["--data-dir".to_string(), data_arg.clone()], "{argv:?}");
+    }
+    assert_eq!(others.iter().map(first).collect::<Vec<_>>(), vec!["plugin-ok", "fake-agent"]);
+    for (argv, bridge) in &all {
+        assert_eq!(bridge.as_deref(), Some("off"), "{argv:?}");
+    }
+}
