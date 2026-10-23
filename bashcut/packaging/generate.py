@@ -54,6 +54,14 @@ SUBS = [
         'ROOT="${BASHCUT_ROOT:?set by bashcut/brand/packaging.env}"',
         1,
     ),
+    # BR1: every archive that ships a README (Linux tarball and doc folder, FreeBSD, the macOS CLI zip, web) gets
+    # BashCutPro's user README instead of upstream's (FilmCraft's); the MSI and the DMG ship none
+    (
+        "env.sh",
+        "  for f in README.md LICENSE LICENSE-MIT LICENSE-APACHE COPYRIGHT NOTICE; do\n",
+        '  cp "$ROOT/bashcut/packaging/share/README.md" "$dest/README.md"\n' "  for f in LICENSE LICENSE-MIT LICENSE-APACHE COPYRIGHT NOTICE; do\n",
+        1,
+    ),
     # ---- macOS
     (
         "macos/package.sh",
@@ -271,6 +279,21 @@ SUBS = [
         "  'next to filmcraft.exe. Delete this file to use %APPDATA%\\FilmCraft instead.'\n",
         "  'BashCutPro portable: preferences, presets, logs and crash recovery are kept in the data folder',\n"
         "  'next to bashcutpro.exe. Delete this file to use %APPDATA%\\BashCutPro instead.'\n",
+        1,
+    ),
+    # BR1: the portable zip's README is BashCutPro's (bashcut/packaging/share/README.md), not upstream's
+    (
+        "windows/package.ps1",
+        "foreach ($f in 'README.md', 'LICENSE', 'LICENSE-MIT', 'LICENSE-APACHE', 'NOTICE') {\n",
+        "Copy-Item (Join-Path $Root 'bashcut\\packaging\\share\\README.md') $Portable\n"
+        "foreach ($f in 'LICENSE', 'LICENSE-MIT', 'LICENSE-APACHE', 'NOTICE') {\n",
+        1,
+    ),
+    # BR1: the PE check reads cargo's filmcraft.exe; its line names the exe as installed
+    (
+        "windows/package.ps1",
+        '  Write-Output "ok $($check[0]): $Arch, PE subsystem $($h.Subsystem)"\n',
+        "  Write-Output \"ok $($check[0] -replace '^filmcraft\\.exe$', 'bashcutpro.exe'): $Arch, PE subsystem $($h.Subsystem)\"\n",
         1,
     ),
     # PK4: Windows PowerShell 5.1's Compress-Archive (and ZipFile.CreateFromDirectory on .NET Framework) writes the

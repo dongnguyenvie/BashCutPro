@@ -31,6 +31,9 @@ pub mod analysis;
 pub mod batch;
 #[cfg(test)]
 mod batch_tests;
+pub mod brand;
+#[cfg(test)]
+mod brand_tests;
 pub mod captions_fit;
 #[cfg(test)]
 mod captions_fit_tests;

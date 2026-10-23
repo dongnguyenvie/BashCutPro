@@ -576,6 +576,7 @@ fn default_temp_dir() -> Option<PathBuf> {
     if cfg!(target_arch = "wasm32") {
         return None;
     }
+    crate::bashcut::brand::previews_temp_first!(untitled_dir); // BashCutPro: "BashCutPro Previews" (bashcut/extending-upstream.md)
     Some(untitled_dir(&crate::temp_dir().join("FilmCraft Previews")))
 }
 
@@ -587,6 +588,7 @@ fn untitled_dir(root: &Path) -> PathBuf {
 
 /// The preview folder of a project saved at `project_path`.
 pub fn dir_for_project(project_path: &str) -> PathBuf {
+    crate::bashcut::brand::previews_dir_first!(project_path); // BashCutPro: "BashCutPro Previews", an old project's kept (bashcut/extending-upstream.md)
     let p = Path::new(project_path);
     let stem = p.file_stem().map(|s| s.to_string_lossy().to_string()).unwrap_or_else(|| "Untitled".into());
     p.parent().unwrap_or(Path::new(".")).join("FilmCraft Previews").join(stem)
