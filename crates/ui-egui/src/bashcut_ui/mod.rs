@@ -225,6 +225,41 @@ macro_rules! route {
 }
 pub(crate) use route;
 
+/// `Language::has` in tests: upstream's catalog tests (`i18n::tests`) ask it for every menu label
+/// and command name, and ours are translated by our own catalog (`strings/vi.tsv`), never in
+/// upstream's `.tsv` files (bashcut/extending-upstream.md §3), so they count as covered there.
+/// Without it those tests fail and their panic text lands in the crash hook's last-panic slot,
+/// which `crash::tests` reads (FX15).
+macro_rules! catalog_has_ours {
+    ($text:expr) => {
+        #[cfg(test)]
+        if $crate::bashcut_ui::own_label($text) {
+            return true;
+        }
+    };
+}
+pub(crate) use catalog_has_ours;
+
+/// A label, category or menu-path name only our `bashcut.*` commands use (engine and UI); one an
+/// upstream command also uses stays upstream's to translate.
+#[cfg(test)]
+pub(crate) fn own_label(text: &str) -> bool {
+    static OURS: OnceLock<std::collections::BTreeSet<String>> = OnceLock::new();
+    let ours = OURS.get_or_init(|| {
+        let (mut ours, mut theirs) = (std::collections::BTreeSet::new(), std::collections::BTreeSet::new());
+        let engine = filmcraft_engine::command_specs().iter().map(|c| CommandInfo::new(c.id, c.label, c.menu, c.shortcut));
+        for c in engine.chain(crate::menus::external_commands()) {
+            let set = if c.id.starts_with("bashcut.") { &mut ours } else { &mut theirs };
+            set.insert(c.label);
+            set.insert(c.category);
+            set.extend(c.menu);
+        }
+        ours.retain(|t| !theirs.contains(t));
+        ours
+    });
+    ours.contains(text)
+}
+
 /// Run one of our UI commands; `None` for any other id (upstream handles it).
 pub fn invoke(app: &mut FilmcraftApp, ctx: &egui::Context, id: &str, params: &Value) -> Option<Result<Value, String>> {
     if !id.starts_with("bashcut.") {
