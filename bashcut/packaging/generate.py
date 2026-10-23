@@ -103,6 +103,15 @@ SUBS = [
         'for b in %s; do sign --options runtime "$CLI_DIR/$b"; done\n' % TOOLS_SH,
         1,
     ),
+    # PV3: no AppleDouble `._*` entry per file (extended attributes such as com.apple.provenance);
+    # `unzip` writes them out as stray files next to the tools
+    (
+        "macos/package.sh",
+        'ditto -c -k --keepParent "$CLI_DIR" "$CLI_ZIP"\n',
+        'ditto -c -k --norsrc --noextattr --keepParent "$CLI_DIR" "$CLI_ZIP"\n',
+        1,
+    ),
+    ("macos/package.sh", 'echo "==> FilmCraft $VERSION for macOS', 'echo "==> BashCutPro $VERSION for macOS', 1),
     # ---- Linux
     ("linux/package.sh", "-p filmcraft -p filmcraft-cli", BUILD, 2),
     (

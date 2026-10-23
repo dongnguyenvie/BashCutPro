@@ -2,6 +2,7 @@
 //! context data (no field in `FilmcraftApp`), polled each frame, and the `bashcut.agent.*` commands
 //! that the Agent section, shortcuts, the control channel and MCP share.
 
+use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, PoisonError};
 use std::time::Duration;
 
@@ -21,11 +22,57 @@ fn key() -> egui::Id {
 /// Claude Code and Codex (`BASHCUT_CLAUDE` / `BASHCUT_CODEX` override the programs) and the
 /// installed agent plugins.
 fn agents(app: &FilmcraftApp, ctx: &egui::Context) -> Vec<AgentSpec> {
-    let mut v = vec![AgentSpec::claude_code(std::env::var("BASHCUT_CLAUDE").ok()), AgentSpec::codex(std::env::var("BASHCUT_CODEX").ok())];
+    let mut v = vec![installed(AgentSpec::claude_code, "BASHCUT_CLAUDE", "claude"), installed(AgentSpec::codex, "BASHCUT_CODEX", "codex")];
     let launches = plugins::with(app, ctx, |h| h.agents());
     // same fields (RC6); `AgentSpec::check` turns an unknown event format into the turn's error
     v.extend(launches.into_iter().map(AgentSpec::from));
     v
+}
+
+/// Folders the installers put `claude` / `codex` in. An app opened from the Finder, the Dock or a
+/// desktop menu gets the login `PATH` (`/usr/bin:/bin:/usr/sbin:/sbin` on macOS), which has none of
+/// them (PV3), so the bare name alone is "not found" although the user's terminal finds it.
+fn install_dirs(home: Option<&Path>) -> Vec<PathBuf> {
+    if cfg!(windows) {
+        return Vec::new();
+    }
+    let mut v = Vec::new();
+    if let Some(h) = home {
+        v.extend([".local/bin", ".claude/local", ".npm-global/bin", ".bun/bin", ".volta/bin"].iter().map(|d| h.join(d)));
+    }
+    v.extend(["/opt/homebrew/bin", "/usr/local/bin"].iter().map(PathBuf::from));
+    v
+}
+
+/// The spec for an agent program: `env` when set, the bare `name` when `PATH` finds it, else the
+/// first install folder holding it, run with that folder first on its `PATH` (an npm install is a
+/// `#!/usr/bin/env node` script whose `node` sits next to it).
+fn installed(spec: fn(Option<String>) -> AgentSpec, env: &str, name: &str) -> AgentSpec {
+    let set = std::env::var(env).ok().filter(|p| !p.trim().is_empty());
+    let path = std::env::var_os("PATH");
+    let home = std::env::var_os("HOME").map(PathBuf::from);
+    match set.or_else(|| locate(name, path.as_deref(), &install_dirs(home.as_deref())).map(|p| p.to_string_lossy().into_owned())) {
+        Some(program) => {
+            let dir = Path::new(&program).parent().map(Path::to_path_buf);
+            let mut s = spec(Some(program));
+            if let Some(dir) = dir.filter(|d| !d.as_os_str().is_empty()) {
+                let rest = path.as_deref().map(std::env::split_paths).into_iter().flatten();
+                if let Ok(joined) = std::env::join_paths(std::iter::once(dir).chain(rest)) {
+                    s.env.push(("PATH".into(), joined.to_string_lossy().into_owned()));
+                }
+            }
+            s
+        }
+        None => spec(None),
+    }
+}
+
+/// `name` in one of `dirs` when `path` does not find it (`None`: use the bare name).
+fn locate(name: &str, path: Option<&std::ffi::OsStr>, dirs: &[PathBuf]) -> Option<PathBuf> {
+    if super::hints::program_found(name, path) {
+        return None;
+    }
+    dirs.iter().map(|d| d.join(name)).find(|p| p.is_file())
 }
 
 /// This app's agent, created on first use.
@@ -126,4 +173,11 @@ pub fn commands() -> Vec<CommandInfo> {
     .into_iter()
     .map(|(id, label)| CommandInfo::new(&format!("bashcut.agent.{id}"), label, &[], None))
     .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    #[ignore = "test ticket: claude in ~/.local/bin with a login PATH resolves to that path and puts its folder first on the child PATH; on PATH or BASHCUT_CLAUDE set keeps the given program"]
+    fn agent_program_found_outside_the_login_path() {}
 }

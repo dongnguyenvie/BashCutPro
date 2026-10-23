@@ -8,8 +8,13 @@ xuất…) và dừng ở mỗi chặng để bạn duyệt.
 
 ## Trong ứng dụng: mục Trợ lý
 
-Bạn cần **Claude Code** đã cài và đăng nhập trên máy (lệnh `claude`). Nếu cài ở chỗ lạ, đặt biến môi trường
-`BASHCUT_CLAUDE` là đường dẫn tới nó.
+Bạn cần **Claude Code** đã cài và đăng nhập trên máy (lệnh `claude`). Ứng dụng mở từ Finder hoặc Dock không thấy `PATH`
+của cửa sổ dòng lệnh, nên BashCutPro tìm thêm trong các thư mục cài thường gặp (`~/.local/bin`, `~/.claude/local`,
+`~/.npm-global/bin`, `~/.bun/bin`, `~/.volta/bin`, `/opt/homebrew/bin`, `/usr/local/bin`; `codex` cũng vậy). Nếu cài ở
+chỗ khác, đặt biến môi trường `BASHCUT_CLAUDE` là đường dẫn tới nó.
+
+Trên macOS, lượt trợ lý đầu tiên có thể hỏi *"BashCutPro" muốn truy cập các tệp trong thư mục Màn hình nền* (hoặc Tài
+liệu, Tải về) khi dự án nằm ở đó: bấm **Cho phép**. Khi chưa trả lời, trợ lý cứ ở trạng thái *đang chạy* mà không làm gì.
 
 1. **Lưu dự án** trước: cuộc trò chuyện và kế hoạch dựng được giữ cạnh dự án (trong `<dự án>.fcproj.bashcut/`).
 2. Mở **Trợ lý** (Agent) trên thanh bên (**Cmd+Alt+Shift+A**). Gõ điều bạn muốn ("cắt hết ừm à, dưới một phút, thêm

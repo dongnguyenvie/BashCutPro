@@ -8,8 +8,14 @@ stops at each stage for your approval.
 
 ## In the app: the Agent section
 
-You need **Claude Code** installed and signed in on this computer (the `claude` command). If it is installed somewhere
-unusual, set the environment variable `BASHCUT_CLAUDE` to its path.
+You need **Claude Code** installed and signed in on this computer (the `claude` command). An app opened from the Finder
+or the Dock does not see your terminal's `PATH`, so BashCutPro also looks in the usual install folders (`~/.local/bin`,
+`~/.claude/local`, `~/.npm-global/bin`, `~/.bun/bin`, `~/.volta/bin`, `/opt/homebrew/bin`, `/usr/local/bin`; the same
+for `codex`). If it is installed somewhere else, set the environment variable `BASHCUT_CLAUDE` to its path.
+
+On macOS the first agent turn may ask *"BashCutPro" would like to access files in your Desktop folder* (or Documents,
+Downloads) when the project lives there: click **Allow**. Until you answer, the agent stays on *running* and does
+nothing.
 
 1. **Save the project** first: conversations and the edit plan are kept next to it (in `<project>.fcproj.bashcut/`).
 2. Open **Agent** on the rail (**Cmd+Alt+Shift+A**). Type what you want ("cut the ums, keep it under a minute, add

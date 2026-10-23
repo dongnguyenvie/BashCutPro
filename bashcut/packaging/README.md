@@ -140,6 +140,14 @@ and `bashcut-doctor --json`.
   `<developer>`). The flatpak bundle needs flatpak-builder 1.4+ (Ubuntu 22.04's 1.2 calls `appstream-compose`, which
   the 25.08 SDK no longer has). Still upstream's: the app's own `--version` / usage text says `filmcraft`
   (`apps/filmcraft/src/main.rs`).
+- macOS (PV3 run 2026-10-23, 0.10.0 aarch64, ad-hoc): `packaging/macos/package.sh --arch aarch64` gives
+  `BashCutPro.app` (`Contents/MacOS/`: `BashCutPro`, `bashcutpro-cli`, `bcpro -> bashcutpro-cli`, `bashcut-doctor`,
+  `bashcut-batch`, `bashcut-mcp`), a 40 MB DMG and a 17 MB CLI zip; `codesign --verify --deep --strict` passes with the
+  link. The CLI zip is made with `ditto --norsrc --noextattr` (PV3) so it carries no AppleDouble `._*` entries
+  (`com.apple.provenance` and other extended attributes), which `unzip` writes out as stray files. From inside the app
+  `bashcut-mcp --print` and `bashcut-doctor` find `Contents/MacOS/bashcutpro-cli`. Launched from the Finder the Agent
+  section finds `claude` in `~/.local/bin` and the like ([guide](../guide/en/agent.md)); macOS then asks once for the
+  project's folder (Desktop, Documents) and a new ad-hoc build asks again.
 - Codec patents: for a paid build prefer the OS encoders (VideoToolbox, Media Foundation) and get legal advice before
   selling.
 

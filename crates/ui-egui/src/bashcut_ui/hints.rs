@@ -49,7 +49,7 @@ pub fn agent_found(spec: &bashcut_agent::AgentSpec) -> bool {
 
 /// `program` is a path to a file, or a bare name found in one of `path`'s folders (with
 /// `PATHEXT`'s extensions on Windows).
-fn program_found(program: &str, path: Option<&std::ffi::OsStr>) -> bool {
+pub fn program_found(program: &str, path: Option<&std::ffi::OsStr>) -> bool {
     let program = program.trim();
     if program.is_empty() {
         return false;
