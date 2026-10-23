@@ -142,6 +142,9 @@ Behaviour-neutral, merged to `main`:
 - D1 (single-line sites): `widgets::note(ui, text, NOTE | META, colour)` with `NOTE` = 11 and
   `META` = 10.5 replaces 57 hand-written `RichText::new(..).size(..).color(t.text_dim | t.danger)`
   labels; each site keeps its size and colour, so nothing moves on screen.
+- S1 (RU6): `Section::badge` / `Section::shortcut` replace the rail's id `match` and Agent special case;
+  `params()` builds its section hints from `SECTIONS`; one `MODULES` table routes and lists the modules'
+  commands. Panels still open other sections by literal id (`st.show("plugins")`), outside RU6's scope.
 
 Everything else is below.
 

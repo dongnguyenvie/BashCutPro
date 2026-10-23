@@ -135,7 +135,15 @@ the shrunk rect for the dock. One call per frame covers docked, floating and ove
 ## 4. State, settings, automation, strings
 
 Built in #34: `bashcut_ui/{mod,rail,side_panel,state,strings}.rs`. Sections are rows of `bashcut_ui::SECTIONS`
-(id, title, icon, blurb, `draw` fn); a later ticket adds its row and a `draw` in its own file. Commands so far:
+(id, title, icon, blurb, `draw` fn, optional `badge` and `shortcut`).
+
+**Adding a section** (RU6): one `SECTIONS` row and a `draw` fn in its own file. The rail, `show.<id>`, the
+`params()` hints and `ui.json` validation all read the table. A rail dot is the row's `badge` fn (called every
+frame with "on screen"; the rail hides the dot while shown), a tooltip shortcut other than `show.<id>` its
+`shortcut` command id. Commands of its own: one `MODULES` row (prefix, `invoke`, `commands`) in `mod.rs`.
+New strings (title, blurb) still need their `strings/vi.tsv` rows.
+
+Commands so far:
 `bashcut.ui.state`, `toggleRail`, `focusAgent` (Cmd/Ctrl+Alt+Shift+A), `section {section, open?}`, `closePanel`,
 `setWidth {width}`, `popOut {section?}`, `dockBack {section}`, `setLanguage {language}`, `show.<section>`
 (Window ▸ BashCutPro), and `setLanguage.follow`, `setLanguage.en`, `setLanguage.vi` (no params; Window ▸
