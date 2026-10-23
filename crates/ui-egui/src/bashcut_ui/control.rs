@@ -196,8 +196,21 @@ pub fn setting(app: &mut FilmcraftApp, ui: &mut egui::Ui) {
     let t = app.tokens;
     let was = allowed(Some(&dir));
     let mut on = was;
+    // the box, then its label wrapping in the rest of the row: egui's checkbox kept a wrapped
+    // (Vietnamese) label to one row's height on some setups, over the transcript below (FX25)
+    let width = ui.available_width();
     let r = ui
-        .checkbox(&mut on, egui::RichText::new(s(ALLOW)).size(11.0))
+        .allocate_ui_with_layout(egui::vec2(width, 0.0), egui::Layout::left_to_right(egui::Align::Min), |ui| {
+            ui.set_max_width(width);
+            ui.spacing_mut().item_spacing.x = ui.spacing().icon_spacing;
+            let tick = ui.add(egui::Checkbox::without_text(&mut on));
+            let label = ui.add(egui::Label::new(egui::RichText::new(s(ALLOW)).size(11.0)).wrap().sense(egui::Sense::click()));
+            if label.clicked() {
+                on = !on;
+            }
+            tick | label
+        })
+        .inner
         .on_hover_text(s("Lets agents and plugins on this computer edit the open project (127.0.0.1 only)."));
     app.auto.add_response("bashcut.agent.allowControl", &r, s(ALLOW));
     if on != was

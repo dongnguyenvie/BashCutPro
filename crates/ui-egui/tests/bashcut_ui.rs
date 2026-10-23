@@ -2796,3 +2796,52 @@ fn close_buttons_are_icons_with_a_label() {}
 #[test]
 #[ignore = "test ticket: AG12 / list in the Agent message box (fake init with 3 commands, /se -> bcp:setup first, Enter/Tab/click insert, Esc, hint before init, Codex none; en+vi)"]
 fn agent_slash_list_suggests_skills() {}
+
+/// FX25: at the narrowest panel, at scale 1.0 and 1.5, in English and Vietnamese, each queued
+/// message's ✕ lies inside the transcript clear of its scroll bar (a wider line above it no longer
+/// pushes it out), and the 'Allow AI agents to control…' checkbox, wrapped in Vietnamese, ends above
+/// the transcript; a real pointer click on a ✕ still removes its message.
+#[test]
+fn narrow_agent_panel_keeps_queued_x_and_checkbox_in_place() {
+    let mode = [("FAKE_MODE", "receipt,cancel-queued")];
+    let Some(fake) = fake_claude("narrow_agent_panel_keeps_queued_x_and_checkbox_in_place", "fx25", &mode) else { return };
+    let mut d = fake.driver();
+    d.exec("bashcut.agent.send", json!({"text": "hold first, long"}));
+    d.wait(|d| d.exec("bashcut.agent.transcript", json!({})), |t| t["items"].to_string().contains("line 59 of a long answer"));
+    for text in ["second", "third", "fourth"] {
+        d.exec("bashcut.agent.send", json!({"text": text}));
+    }
+    let shots = std::env::var_os("BASHCUT_UI_SHOTS").map(std::path::PathBuf::from);
+    let bar = 10.0;
+    for scale in [1.0, 1.5] {
+        d.harness.set_pixels_per_point(scale);
+        for lang in ["en", "vi"] {
+            d.exec("bashcut.ui.setLanguage", json!({"language": lang}));
+            d.exec("bashcut.ui.setWidth", json!({"width": 240.0}));
+            d.frames(3);
+            if let Some(dir) = &shots {
+                std::fs::create_dir_all(dir).unwrap();
+                d.harness.render().unwrap().save(dir.join(format!("fx25-agent-{lang}-{scale}.png"))).unwrap();
+            }
+            let t = edges(&mut d, "bashcut.agent.transcript").expect("transcript");
+            for i in 0..3 {
+                let id = format!("bashcut.agent.queued.{i}.cancel");
+                let x = d.wait(|d| json!(edges(d, &id)), |r| !r.is_null());
+                let x: Vec<f32> = x.as_array().expect("✕ shown").iter().map(|v| v.as_f64().unwrap_or(0.0) as f32).collect();
+                assert!(x[0] >= t[0] && x[1] >= t[1] && x[3] <= t[3], "{lang} {scale}: ✕ {i} {x:?} inside the transcript {t:?}");
+                assert!(x[2] <= t[2] - bar, "{lang} {scale}: ✕ {i} {x:?} clear of the scroll bar of {t:?}");
+            }
+            let c = edges(&mut d, "bashcut.agent.allowControl").expect("allow control checkbox");
+            assert!(c[3] <= t[1], "{lang} {scale}: checkbox {c:?} ends above the transcript {t:?}");
+            assert!(c[2] <= t[2] + 1.0, "{lang} {scale}: checkbox {c:?} within the panel {t:?}");
+        }
+    }
+    d.harness.set_pixels_per_point(1.0);
+    d.exec("bashcut.ui.setLanguage", json!({"language": null}));
+    d.frames(3);
+    d.click("bashcut.agent.queued.1.cancel");
+    let st = d.wait(|d| d.exec("bashcut.agent.state", json!({})), |s| s["queued"].as_array().is_some_and(|q| q.len() == 2));
+    assert_eq!(st["queued"], json!(["second", "fourth"]), "{st}");
+    d.call("engine.execute", json!({"command": "bashcut.agent.stop", "params": {}}));
+    d.no_ui_error();
+}
