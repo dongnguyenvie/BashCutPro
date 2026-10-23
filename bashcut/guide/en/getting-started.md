@@ -69,8 +69,9 @@ choose it in **Settings ▸ Media Analysis & Transcription ▸ Speech model**.
 
 You see FilmCraft's editor with one addition: a narrow **rail** on the right edge. Each icon opens a section in a
 side panel: **Agent**, **Batch**, **Looks**, **Library**, **Plugins**, **Runs** ([The rail](rail.md)). Click the same icon
-again to close it. Drag the panel's left edge to make it wider (240–720 px). The rail hides in Import and Export
-mode, and **Window ▸ BashCutPro ▸ Show Rail** turns it off and on.
+again to close it. Drag the panel's left edge to make it wider (240–720 px). The rail stays on every page (Import,
+Edit, Export); Looks and Library apply to the timeline, so outside Edit they offer **Open the editor**.
+**Window ▸ BashCutPro ▸ Show Rail** turns it off and on.
 
 ![The BashCutPro window: the rail on the right edge, the Batch section open beside it](../img/window.png)
 

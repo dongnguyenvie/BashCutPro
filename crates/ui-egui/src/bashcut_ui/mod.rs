@@ -173,8 +173,8 @@ pub fn logic(app: &FilmcraftApp, ctx: &egui::Context) {
 }
 
 /// The layout hook (`lib.rs`, `frame()`): draws the rail, the side panel, floating sections and
-/// overlays, and returns what is left of `body` for FilmCraft's dock. In Import / Export mode, or
-/// with the rail hidden, `body` comes back unchanged.
+/// overlays, and returns what is left of `body` for FilmCraft's dock (or for the Import / Export
+/// page: the rail shows in every mode, AG13). With the rail hidden, `body` comes back unchanged.
 pub fn layout(app: &mut FilmcraftApp, ui: &mut egui::Ui, body: egui::Rect) -> egui::Rect {
     let ctx = ui.ctx().clone();
     let known = section_ids();
@@ -187,31 +187,60 @@ pub fn layout(app: &mut FilmcraftApp, ui: &mut egui::Ui, body: egui::Rect) -> eg
     batch::poll(&ctx, dir.as_deref());
     let mut dock = body;
     if st.rail && app.ui.mode == crate::state::Mode::Edit {
-        let rail_rect = egui::Rect::from_min_max(egui::pos2(body.max.x - rail::WIDTH, body.min.y), body.max);
-        rail::show(app, ui, rail_rect, &mut st);
-        dock.max.x = rail_rect.min.x - 1.0;
-        // Panels switch sections through `State::update` ("Open Plugins", "Send to agent");
-        // store our copy first and keep their switch, or the `put` below would undo it.
-        st.clone().put(&ctx);
-        let before = st.open.clone();
-        if let Some(open) = st.open.clone()
-            && let Some(sec) = section(&open)
+        dock = rail_and_panel(app, ui, body, &mut st);
+    } else if st.rail {
+        // Import / Export paint their page after this hook at fixed offsets, so a narrow page runs
+        // under the right edge: there rail and panel go on a layer above the page, with a blocker
+        // so a click on the panel never reaches a card behind it
+        let mut column = egui::Rect::from_min_max(egui::pos2(body.max.x - rail::WIDTH, body.min.y), body.max);
+        let rest = egui::Rect::from_min_max(body.min, egui::pos2(column.min.x - 1.0, body.max.y));
+        if st.open.as_deref().and_then(section).is_some()
+            && let Some(panel) = side_panel::rect(rest, &st)
         {
-            dock = side_panel::show(app, ui, dock, sec, &mut st);
+            column.min.x = panel.min.x;
         }
-        side_panel::floating(app, &ctx, &mut st);
-        if let Some(sec) = State::get(&ctx).open.filter(|s| before.as_deref() != Some(s.as_str())) {
-            st.show(&sec);
-        }
+        let area = egui::Area::new(egui::Id::new("bashcut.rail.layer")).order(egui::Order::Middle).fixed_pos(column.min).constrain(false);
+        dock = area
+            .show(&ctx, |ui| {
+                ui.interact(column, egui::Id::new("bashcut.rail.layer.block"), egui::Sense::click_and_drag());
+                let dock = rail_and_panel(app, ui, body, &mut st);
+                ui.expand_to_include_rect(column);
+                dock
+            })
+            .inner;
     }
     if !ctx.input(|i| i.pointer.any_down()) {
         st.save_if_changed(dir.as_deref());
     }
-    // Runs counts as on screen only where it draws: the rail shown, Edit mode, docked or popped out
-    let runs_visible = st.rail && app.ui.mode == crate::state::Mode::Edit && st.on_screen(RUNS);
+    // Runs counts as on screen only where it draws: the rail shown, docked or popped out
+    let runs_visible = st.rail && st.on_screen(RUNS);
     st.put(&ctx);
     toast::show(app, &ctx, runs_visible);
     palette::show(app, &ctx);
+    dock
+}
+
+/// The rail at the right edge of `body` and the open section's panel left of it, plus popped-out
+/// sections; returns what is left of `body`.
+fn rail_and_panel(app: &mut FilmcraftApp, ui: &mut egui::Ui, body: egui::Rect, st: &mut State) -> egui::Rect {
+    let ctx = ui.ctx().clone();
+    let rail_rect = egui::Rect::from_min_max(egui::pos2(body.max.x - rail::WIDTH, body.min.y), body.max);
+    rail::show(app, ui, rail_rect, st);
+    let mut dock = body;
+    dock.max.x = rail_rect.min.x - 1.0;
+    // Panels switch sections through `State::update` ("Open Plugins", "Send to agent");
+    // store our copy first and keep their switch, or the `put` below would undo it.
+    st.clone().put(&ctx);
+    let before = st.open.clone();
+    if let Some(open) = st.open.clone()
+        && let Some(sec) = section(&open)
+    {
+        dock = side_panel::show(app, ui, dock, sec, st);
+    }
+    side_panel::floating(app, &ctx, st);
+    if let Some(sec) = State::get(&ctx).open.filter(|s| before.as_deref() != Some(s.as_str())) {
+        st.show(&sec);
+    }
     dock
 }
 

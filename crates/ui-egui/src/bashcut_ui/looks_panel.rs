@@ -17,7 +17,7 @@ use filmcraft_render::Image;
 use serde_json::{Value, json};
 
 use super::strings::{f, s};
-use super::widgets::{META, NOTE, note};
+use super::widgets::{META, NOTE, editor_open, note};
 use crate::FilmcraftApp;
 
 const THUMB_W: usize = 128;
@@ -193,6 +193,8 @@ pub fn draw(app: &mut FilmcraftApp, ui: &mut egui::Ui) {
     load(&mut p, dir.as_deref());
     let pack = looks::pack();
 
+    // browsing works on every page; applying needs the timeline
+    let editing = editor_open(app, ui, "bashcut.looks.editor");
     if let Some((ok, msg)) = &p.status {
         let color = if *ok { t.text_dim } else { t.danger };
         let r = ui.label(egui::RichText::new(msg).size(11.0).color(color));
@@ -264,6 +266,9 @@ pub fn draw(app: &mut FilmcraftApp, ui: &mut egui::Ui) {
     let selected = app.session.state.selection.len();
     let current = applied_to_selection(app);
     ui.horizontal(|ui| {
+        if !editing {
+            return;
+        }
         let n = selected.to_string();
         let msg = match selected {
             0 => s("Select clips on the timeline to apply a look.").to_string(),
@@ -310,7 +315,7 @@ pub fn draw(app: &mut FilmcraftApp, ui: &mut egui::Ui) {
         }
         let tex = p.thumbs.get(&tkey).cloned();
         let is_current = current.as_ref().is_some_and(|(id, _)| id == look.id);
-        card(app, ui, &ctx, &mut p, look, amount, tex, is_current, selected > 0);
+        card(app, ui, &ctx, &mut p, look, amount, tex, is_current, editing && selected > 0);
     }
     if pending {
         ctx.request_repaint();
