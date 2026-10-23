@@ -522,7 +522,8 @@ labels or subclips (§1 rule 1). A project opened in upstream FilmCraft still wo
   found (else "Install kit works with Claude Code once it is installed."); refused with "The BashCutPro kit is
   already installed." once the session's last `system/init` lists `bcp`. Before any init (plugins unknown) the
   explicit command still opens the kit terminal: the user asked for it, and the two `claude plugin` commands are
-  harmless when the kit is there. Only on this command or the click, never automatic. Every `bashcut.agent.*`
+  harmless when the kit is there. `bashcut.agent.agents` lists `installKit` among Claude Code's `actions` (AG14) on the
+  same rule: the agent is found and the session's init does not list `bcp` (so also before any init). Only on this command or the click, never automatic. Every `bashcut.agent.*`
   palette label has a vi row ("Gửi cho trợ lý", "Dừng trợ lý", "Cài bộ công cụ BashCutPro", …); MCP
   `command_list` keeps the English labels.
 - **Kit missing (AG9)**: `stream_json` keeps the `name`s of `system/init`'s `plugins` (`Event::Init.plugins`,
