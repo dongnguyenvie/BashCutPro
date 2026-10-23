@@ -11,7 +11,7 @@ use serde_json::{Value, json};
 use super::batch;
 use super::plugins;
 use super::strings::{f, s};
-use super::widgets::{META, NOTE, button, code_text, note, note_text, wrapped_note};
+use super::widgets::{META, NOTE, button, code_text, note, note_text, scroll_clear_of_bar, wrapped_note};
 use crate::FilmcraftApp;
 
 /// `result.data` keys whose values are files a run wrote (`bashcut/plugin-host.md` §Results): a
@@ -291,7 +291,8 @@ fn job_row(app: &mut FilmcraftApp, ui: &mut egui::Ui, j: &Job, log_open: bool, f
         }
         if log_open {
             let text: String = j.log.iter().map(String::as_str).collect::<Vec<_>>().join("\n");
-            egui::ScrollArea::vertical().id_salt(("bashcut.runs.log", j.id)).max_height(160.0).show(ui, |ui| {
+            let area = egui::ScrollArea::vertical().id_salt(("bashcut.runs.log", j.id)).max_height(160.0);
+            scroll_clear_of_bar(ui, area, egui::Id::new(("bashcut.runs.log.bar", j.id)), |ui| {
                 ui.add(egui::Label::new(code_text(text, META, t.text_dim)).selectable(true));
             });
         }

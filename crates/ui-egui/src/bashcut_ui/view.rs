@@ -15,7 +15,7 @@ use std::time::SystemTime;
 use bashcut_plugin_host::view::{Row, View};
 use serde_json::{Map, Value};
 
-use super::widgets::{NOTE, button, note};
+use super::widgets::{NOTE, button, note, scroll_clear_of_bar};
 use crate::FilmcraftApp;
 
 /// Largest picture file read.
@@ -131,7 +131,8 @@ pub fn draw(app: &mut FilmcraftApp, ui: &mut egui::Ui, plugin: &str, dir: &Path,
                     if !label.is_empty() {
                         ui.label(egui::RichText::new(label).strong().color(t.text));
                     }
-                    egui::ScrollArea::vertical().id_salt(("bashcut.view.list", plugin, id.as_str())).max_height(LIST_HEIGHT).show(ui, |ui| {
+                    let area = egui::ScrollArea::vertical().id_salt(("bashcut.view.list", plugin, id.as_str())).max_height(LIST_HEIGHT);
+                    scroll_clear_of_bar(ui, area, egui::Id::new(("bashcut.view.list.bar", plugin, id.as_str())), |ui| {
                         for it in items {
                             ui.horizontal_wrapped(|ui| {
                                 let r = ui.label(egui::RichText::new(&it.text).color(t.text));

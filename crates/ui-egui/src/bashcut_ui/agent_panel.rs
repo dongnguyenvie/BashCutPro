@@ -36,7 +36,7 @@ use super::agent;
 use super::hints::{self, HOW_TO_TURN_ON};
 use super::strings::{f, s};
 use super::terminal;
-use super::widgets::{CODE, META, NOTE, button, code_note, code_text, note, strong_note};
+use super::widgets::{CODE, META, NOTE, button, code_note, code_text, note, scroll_clear_of_bar, strong_note};
 use crate::FilmcraftApp;
 
 /// The pending gate is re-read from `plan.json` this often (seconds), not every frame.
@@ -185,56 +185,54 @@ pub fn draw(app: &mut FilmcraftApp, ui: &mut egui::Ui) {
     }
 
     let height = (ui.available_height() - INPUT_HEIGHT).max(80.0);
-    let out =
-        egui::ScrollArea::vertical().id_salt("bashcut.agent.transcript").max_height(height).auto_shrink([false, false]).stick_to_bottom(true).show(ui, |ui| {
-            if snap.items.is_empty() {
-                note(ui, f("Ask {agent} to edit this project.", &[("agent", &snap.agent.1)]), NOTE, t.text_dim);
-                if let Some(prompt) = examples(app, ui) {
-                    v.input = prompt;
-                    ctx.memory_mut(|m| m.request_focus(input_id()));
-                }
-                note(ui, s("The agent stops at each stage for your approval."), NOTE, t.text_dim);
+    let area = egui::ScrollArea::vertical().id_salt("bashcut.agent.transcript").max_height(height).auto_shrink([false, false]).stick_to_bottom(true);
+    let out = scroll_clear_of_bar(ui, area, egui::Id::new("bashcut.agent.transcript.bar"), |ui| {
+        if snap.items.is_empty() {
+            note(ui, f("Ask {agent} to edit this project.", &[("agent", &snap.agent.1)]), NOTE, t.text_dim);
+            if let Some(prompt) = examples(app, ui) {
+                v.input = prompt;
+                ctx.memory_mut(|m| m.request_focus(input_id()));
             }
-            transcript(app, ui, &snap.items);
-            for (i, p) in snap.permissions.iter().enumerate() {
-                permission_card(app, ui, &ctx, &mut v, i, p, &snap.agent.1);
-            }
-            for (i, q) in snap.queued.iter().enumerate() {
-                ui.add_space(6.0);
-                let id = format!("bashcut.agent.queued.{i}");
-                ui.horizontal(|ui| {
-                    strong_note(ui, f("You · queued {n}", &[("n", &(i + 1).to_string())]), META, t.text_dim);
-                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        // a floating scroll bar draws over the content's right edge (FX16)
-                        ui.add_space(scroll_bar_overlap(ui));
-                        if q.cancelling {
-                            note(ui, s("Removing…"), META, t.text_dim);
-                            return;
-                        }
-                        let r = ui.add(egui::Button::new("✕").small().frame(false)).on_hover_text(s("Remove this message from the queue"));
-                        app.auto.add_response(&format!("{id}.cancel"), &r, "✕");
-                        if r.clicked() {
-                            call(app, &ctx, &mut v, "cancel", json!({"index": i}));
-                        }
-                    });
+            note(ui, s("The agent stops at each stage for your approval."), NOTE, t.text_dim);
+        }
+        transcript(app, ui, &snap.items);
+        for (i, p) in snap.permissions.iter().enumerate() {
+            permission_card(app, ui, &ctx, &mut v, i, p, &snap.agent.1);
+        }
+        for (i, q) in snap.queued.iter().enumerate() {
+            ui.add_space(6.0);
+            let id = format!("bashcut.agent.queued.{i}");
+            ui.horizontal(|ui| {
+                strong_note(ui, f("You · queued {n}", &[("n", &(i + 1).to_string())]), META, t.text_dim);
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    if q.cancelling {
+                        note(ui, s("Removing…"), META, t.text_dim);
+                        return;
+                    }
+                    let r = ui.add(egui::Button::new("✕").small().frame(false)).on_hover_text(s("Remove this message from the queue"));
+                    app.auto.add_response(&format!("{id}.cancel"), &r, "✕");
+                    if r.clicked() {
+                        call(app, &ctx, &mut v, "cancel", json!({"index": i}));
+                    }
                 });
-                let r = ui.add(egui::Label::new(egui::RichText::new(&q.text).color(t.text_dim)).selectable(true).wrap());
-                app.auto.add_response(&id, &r, &q.text);
+            });
+            let r = ui.add(egui::Label::new(egui::RichText::new(&q.text).color(t.text_dim)).selectable(true).wrap());
+            app.auto.add_response(&id, &r, &q.text);
+        }
+        if running {
+            ui.horizontal(|ui| {
+                ui.spinner();
+                let label = if snap.status == Status::Stopping { s("Stopping…") } else { s("Working…") };
+                note(ui, label, NOTE, t.text_dim);
+            });
+            // a waiting permission card is the reason for the silence
+            if quiet && snap.status == Status::Running && snap.permissions.is_empty() {
+                let line = s(quiet_line());
+                let r = note(ui, line, NOTE, t.text);
+                app.auto.add_response("bashcut.agent.quiet", &r, line);
             }
-            if running {
-                ui.horizontal(|ui| {
-                    ui.spinner();
-                    let label = if snap.status == Status::Stopping { s("Stopping…") } else { s("Working…") };
-                    note(ui, label, NOTE, t.text_dim);
-                });
-                // a waiting permission card is the reason for the silence
-                if quiet && snap.status == Status::Running && snap.permissions.is_empty() {
-                    let line = s(quiet_line());
-                    let r = note(ui, line, NOTE, t.text);
-                    app.auto.add_response("bashcut.agent.quiet", &r, line);
-                }
-            }
-        });
+        }
+    });
     app.auto.add("bashcut.agent.transcript", out.inner_rect, &snap.title);
 
     ui.separator();
@@ -245,13 +243,6 @@ pub fn draw(app: &mut FilmcraftApp, ui: &mut egui::Ui) {
         ctx.request_repaint_after(std::time::Duration::from_millis(100));
     }
     super::shared::put_temp(&ctx, key(), v);
-}
-
-/// The width a floating vertical scroll bar covers at the right of a scroll area's content when
-/// hovered (none for a solid one: the area already keeps it out of the content).
-fn scroll_bar_overlap(ui: &egui::Ui) -> f32 {
-    let s = &ui.spacing().scroll;
-    if s.floating { (s.bar_inner_margin + s.bar_width + s.bar_outer_margin - s.allocated_width()).max(0.0) } else { 0.0 }
 }
 
 /// The hints after [`QUIET_HINT`] with no output, macOS first (the strings test reads both).

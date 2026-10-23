@@ -6,7 +6,7 @@ use egui::{Align2, Rect, Sense, Stroke, pos2, vec2};
 
 use super::state::{MAX_WIDTH, MIN_WIDTH};
 use super::strings::s;
-use super::widgets::{NOTE, note};
+use super::widgets::{NOTE, note, scroll_clear_of_bar};
 use super::{SECTIONS, Section, State};
 use crate::FilmcraftApp;
 use crate::icons::{self, Icon};
@@ -107,7 +107,9 @@ fn header_button(app: &mut FilmcraftApp, ui: &mut egui::Ui, r: Rect, icon: Icon,
 fn body(app: &mut FilmcraftApp, ui: &mut egui::Ui, sec: &Section) {
     note(ui, s(sec.blurb), NOTE, app.tokens.text_dim);
     ui.add_space(BLURB_GAP);
-    egui::ScrollArea::vertical().id_salt(("bashcut.scroll", sec.id)).auto_shrink([false, false]).show(ui, |ui| (sec.draw)(app, ui));
+    let area = egui::ScrollArea::vertical().id_salt(("bashcut.scroll", sec.id)).auto_shrink([false, false]);
+    let out = scroll_clear_of_bar(ui, area, egui::Id::new(("bashcut.scroll.bar", sec.id)), |ui| (sec.draw)(app, ui));
+    app.auto.add(&format!("bashcut.panel.{}.scroll", sec.id), out.inner_rect, s(sec.title));
 }
 
 /// Popped-out sections, each in its own window with a Dock back button.
