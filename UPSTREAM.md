@@ -42,7 +42,7 @@ upstream's `[[ … ]]` instead of `[ … ]` in macOS notarize, Linux install and
 our packaging sets neither `CRAFT_FONTS_DIR` nor `CRAFT_FONTS_REQUIRED`, so builds without craft-fonts are unchanged
 (`release.yml` passes upstream's pin); the FX24 icon buttons test passes. Our top-level `tests/bashcut_*.rs` files in
 `ui-egui` stay separate test targets (upstream's `tests/it/` consolidation only moved its own files). Footprint:
-Rust lines 145 / 150 before and after (upstream took no hook or Rust carried edit).
+Rust lines 145 / 150 before and after (upstream took no hook or Rust carried edit). Merged as PR #399.
 
 **2026-10-23, upstream/main `c5c16939` (88 commits past `dd525c93`).** `upstream.sh merge c5c16939 --no-check
 --branch upstream-sync/2026-10-23`, merged as PR #394 (the default tag v0.12.0 was 46 commits behind). **88 commits, 2 conflicts**:
