@@ -1084,11 +1084,116 @@ mod tests {
         assert!(!is_relative_inside(Path::new("")));
     }
 
-    #[test]
-    #[ignore = "test ticket: Options::resolve makes relative --data-dir / --mcp / --kit / --cli with a folder absolute, keeps a bare --cli name, rejects 0 and >MAX concurrency, a named non-kit folder"]
-    fn resolve_makes_paths_absolute_and_checks_counts() {}
+    fn temp(name: &str) -> PathBuf {
+        let dir = std::env::temp_dir().join(format!("bashcut-batch-runner-{name}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        dir
+    }
 
     #[test]
-    #[ignore = "test ticket: Shared::with saves at once on a status / pid / pause change and coalesces other changes to one write per 500 ms"]
-    fn book_writes_are_coalesced_between_status_changes() {}
+    fn resolve_makes_paths_absolute_and_checks_counts() {
+        let cwd = std::env::current_dir().unwrap();
+        let dir = temp("resolve");
+        let kit = dir.join("kit");
+        std::fs::create_dir_all(kit.join("skills")).unwrap();
+        let choices = || Choices { kit: Some(kit.clone()), ..Choices::default() };
+
+        let o = Options::resolve(Choices {
+            cli: Some(PathBuf::from("bin").join("bashcutpro")),
+            data_dir: Some(PathBuf::from("data")),
+            mcp: Some(PathBuf::from("tools").join("bashcut-mcp")),
+            concurrency: Some(pipeline::MAX_CONCURRENCY),
+            agent_concurrency: Some(1),
+            speech_model: Some("  ".into()),
+            ..choices()
+        })
+        .unwrap();
+        assert_eq!(o.cli, cwd.join("bin").join("bashcutpro"));
+        assert_eq!(o.data_dir, Some(cwd.join("data")));
+        assert_eq!(o.mcp, Some(cwd.join("tools").join("bashcut-mcp")));
+        assert_eq!(o.kit.as_deref(), Some(kit.as_path()));
+        assert_eq!((o.concurrency, o.agent_concurrency), (Some(pipeline::MAX_CONCURRENCY), Some(1)));
+        assert_eq!(o.speech_model, None, "a blank model is no model");
+        assert!(o.keep_awake);
+
+        let o =
+            Options::resolve(Choices { cli: Some(PathBuf::from("bashcutpro")), speech_model: Some("whisper-small".into()), no_keep_awake: true, ..choices() })
+                .unwrap();
+        assert_eq!(o.cli, PathBuf::from("bashcutpro"), "a bare name is looked up on PATH");
+        assert_eq!((o.data_dir, o.speech_model.as_deref(), o.keep_awake), (None, Some("whisper-small"), false));
+
+        // a kit named by a relative path comes back absolute
+        if cfg!(unix) {
+            let up: PathBuf = cwd.components().skip(1).map(|_| "..").collect();
+            let relative = up.join(kit.strip_prefix("/").unwrap());
+            let o = Options::resolve(Choices { kit: Some(relative.clone()), ..Choices::default() }).unwrap();
+            assert!(o.kit.as_ref().is_some_and(|k| k.is_absolute() && k.join("skills").is_dir()), "{relative:?} gave {:?}", o.kit);
+        }
+
+        for (c, a) in [(Some(0), None), (Some(pipeline::MAX_CONCURRENCY + 1), None), (None, Some(0)), (None, Some(pipeline::MAX_CONCURRENCY + 1))] {
+            let e = Options::resolve(Choices { concurrency: c, agent_concurrency: a, ..choices() }).unwrap_err();
+            assert!(e.contains(&format!("must be 1 to {}", pipeline::MAX_CONCURRENCY)), "{e}");
+        }
+        let not_kit = dir.join("not-a-kit");
+        std::fs::create_dir_all(&not_kit).unwrap();
+        let e = Options::resolve(Choices { kit: Some(not_kit), ..Choices::default() }).unwrap_err();
+        assert!(e.contains("is not the agent kit"), "{e}");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn book_writes_are_coalesced_between_status_changes() {
+        let dir = temp("coalesce");
+        std::fs::write(dir.join("a.mp4"), b"x").unwrap();
+        let text =
+            serde_json::json!({"schema": pipeline::SCHEMA, "inputs": ["a.mp4"], "projectsFolder": "out", "steps": [{"command": "captions.auto"}]}).to_string();
+        let p = Pipeline::parse(&text, &dir).unwrap();
+        let job = Job::create(&p, Some("t")).unwrap();
+        let opts = Options::new("bashcutpro");
+        let sh = Shared {
+            job: &job,
+            pipeline: &p,
+            opts: &opts,
+            book: Mutex::new(job.book().unwrap()),
+            stop: AtomicBool::new(false),
+            cancel: AtomicBool::new(false),
+            save_error: Mutex::new(None),
+            saved_at: Mutex::new(Instant::now()),
+            max_items: 1,
+            meter: Meter::default(),
+            agents: Mutex::new(0),
+            agents_free: Condvar::new(),
+            agent_cap: 1,
+            speech_model: None,
+        };
+        let fresh = || *sh.saved_at.lock().unwrap() = Instant::now();
+        let on_disk = || job.book().unwrap();
+
+        fresh();
+        sh.with(|b| b.name = "renamed".into());
+        assert_eq!(on_disk().name, "", "no status change: not written yet");
+        sh.with(|b| b.items[0].status = Status::Running);
+        assert_eq!((on_disk().name.as_str(), on_disk().items[0].status), ("renamed", Status::Running), "an item status is written at once");
+
+        fresh();
+        sh.with(|b| b.items[0].steps[1].status = Status::Running);
+        assert_eq!(on_disk().items[0].steps[1].status, Status::Running, "a step status");
+        fresh();
+        sh.with(|b| b.items[0].steps[1].pid = Some(42));
+        assert_eq!(on_disk().items[0].steps[1].pid, Some(42), "a pid (the tripwire reads it)");
+        fresh();
+        sh.with(|b| b.paused = Some("low RAM".into()));
+        assert_eq!(on_disk().paused.as_deref(), Some("low RAM"), "the paused note");
+
+        fresh();
+        sh.with(|b| b.name = "a".into());
+        sh.with(|b| b.name = "b".into());
+        assert_eq!(on_disk().name, "renamed", "other changes wait");
+        std::thread::sleep(SAVE_EVERY + Duration::from_millis(100));
+        sh.with(|b| b.name = "c".into());
+        assert_eq!(on_disk().name, "c", "written once {SAVE_EVERY:?} passed");
+        assert_eq!(sh.save_error.lock().unwrap().take(), None);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 }

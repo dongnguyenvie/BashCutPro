@@ -6,7 +6,9 @@
 //! `params.fail`), `fake.sleep` (`params.ms`), `fake.crash` (exit 101), `fake.usage` (exit 2);
 //! any other id succeeds. `export --preset offline` reports offline media (exit 1);
 //! `plugin-handoff` acts as a plugin that hands off to the agent (exit 3). With
-//! `FAKE_CLI_LOG=<file>` every process appends `start <ms>` / `end <ms>` lines, for concurrency checks.
+//! `FAKE_CLI_LOG=<file>` every process appends `start <ms>` / `end <ms>` lines, for concurrency checks;
+//! with `FAKE_CLI_ARGS=<file>` it appends `{"argv": [..], "bridge": $BASHCUT_BRIDGE}`, one line a process.
+//! `plugin-ok` acts as a plugin that succeeds.
 //! `exec transcript.models` prints `$FAKE_CLI_MODELS` (exit 1 when unset); `sequence.transcribe`
 //! records `sequence.transcribe model=<params.model>` in the project.
 //!
@@ -38,8 +40,17 @@ fn log(what: &str) {
     }
 }
 
+fn log_args() {
+    let Some(path) = std::env::var_os("FAKE_CLI_ARGS") else { return };
+    let line = json!({"argv": std::env::args().skip(1).collect::<Vec<_>>(), "bridge": std::env::var("BASHCUT_BRIDGE").ok()});
+    if let Ok(mut f) = std::fs::OpenOptions::new().create(true).append(true).open(path) {
+        let _ = f.write_all(format!("{line}\n").as_bytes());
+    }
+}
+
 fn real_main() -> i32 {
     log("start");
+    log_args();
     let mut pos: Vec<String> = Vec::new();
     let mut opts: Vec<(String, Option<String>)> = Vec::new();
     let mut it = std::env::args().skip(1);
@@ -223,6 +234,10 @@ fn real_main() -> i32 {
                 json!({"type": "result", "subtype": subtype, "is_error": false, "num_turns": 3, "session_id": sid, "total_cost_usd": 0.01, "usage": {"input_tokens": 100, "output_tokens": 20}, "result": "done"})
             );
             log("agent-end");
+            0
+        }
+        Some("plugin-ok") => {
+            println!("{}", json!({"ok": true}));
             0
         }
         // a plugin that needs the calling agent (`bashcut-result/1`, exit 3)

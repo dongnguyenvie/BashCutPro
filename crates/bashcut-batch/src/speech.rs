@@ -42,6 +42,10 @@ pub fn settings_model(data_dir: &Path) -> Option<String> {
 /// The engine's `transcript.models` answer, `None` when it gives none or takes longer than [`MODELS_TIMEOUT`]
 /// (I7: a stuck engine must not hold up the run's start). No stdin, so it cannot wait on a prompt.
 pub fn engine_models(cli: &Path, data_dir_args: &[String], env: &[(String, String)]) -> Option<Value> {
+    engine_models_within(cli, data_dir_args, env, MODELS_TIMEOUT)
+}
+
+fn engine_models_within(cli: &Path, data_dir_args: &[String], env: &[(String, String)], timeout: Duration) -> Option<Value> {
     let mut child = Command::new(cli)
         .args(["exec", "transcript.models"])
         .args(data_dir_args)
@@ -62,7 +66,7 @@ pub fn engine_models(cli: &Path, data_dir_args: &[String], env: &[(String, Strin
     let status = loop {
         match child.try_wait() {
             Ok(Some(status)) => break status,
-            Ok(None) if start.elapsed() < MODELS_TIMEOUT => std::thread::sleep(Duration::from_millis(50)),
+            Ok(None) if start.elapsed() < timeout => std::thread::sleep(Duration::from_millis(50)),
             _ => {
                 let _ = child.kill();
                 let _ = child.wait();
@@ -204,7 +208,28 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
+    #[cfg(unix)]
     #[test]
-    #[ignore = "test ticket: engine_models gives None after MODELS_TIMEOUT for an engine that hangs, without stdin"]
-    fn engine_models_times_out_on_a_stuck_engine() {}
+    fn engine_models_times_out_on_a_stuck_engine() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = std::env::temp_dir().join(format!("bashcut-batch-speech-models-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let script = |name: &str, body: &str| {
+            let p = dir.join(name);
+            std::fs::write(&p, format!("#!/bin/sh\n{body}\n")).unwrap();
+            std::fs::set_permissions(&p, std::fs::Permissions::from_mode(0o755)).unwrap();
+            p
+        };
+        let stuck = script("stuck", "exec sleep 30");
+        let start = Instant::now();
+        assert_eq!(engine_models_within(&stuck, &[], &[], Duration::from_millis(300)), None);
+        assert!(start.elapsed() < Duration::from_secs(10), "{:?}", start.elapsed());
+        // no stdin: a read gets end of file at once instead of waiting on a prompt
+        let reads = script("reads", r#"read answer; printf '["%s %s %s"]' "$1" "$2" "$answer""#);
+        assert_eq!(engine_models_within(&reads, &[], &[], Duration::from_secs(10)), Some(json!(["exec transcript.models "])));
+        let fails = script("fails", "echo '[]'; exit 3");
+        assert_eq!(engine_models_within(&fails, &[], &[], Duration::from_secs(10)), None);
+        assert_eq!(engine_models(&dir.join("missing"), &[], &[]), None);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 }

@@ -153,6 +153,27 @@ mod tests {
     }
 
     #[test]
+    fn cap_cuts_by_chars_and_tail_raw_keeps_whitespace() {
+        assert_eq!(cap("abc", 3), "abc");
+        assert_eq!(cap("abcd", 3), "abc…");
+        assert_eq!(cap("", 0), "");
+        assert_eq!(cap("x", 0), "…");
+        // characters, not bytes: never cuts inside a multi-byte one
+        assert_eq!(cap("tiếng việt", 5), "tiếng…");
+        assert_eq!(cap("日本語テキスト", 3), "日本語…");
+        assert_eq!(cap("日本語", 3), "日本語");
+
+        let p = std::env::temp_dir().join(format!("bashcut-batch-tail-raw-{}", std::process::id()));
+        std::fs::write(&p, b"  head\n  body \n\n").unwrap();
+        assert_eq!(tail_raw(&p, 8), " body \n\n");
+        assert_eq!(tail_raw(&p, 100), "  head\n  body \n\n");
+        assert_eq!(tail(&p, 8), "body");
+        assert_eq!(tail_raw(&p, 0), "");
+        assert_eq!(tail_raw(&p.with_extension("missing"), 8), "");
+        let _ = std::fs::remove_file(&p);
+    }
+
+    #[test]
     fn empty_command_line_is_a_spawn_error() {
         let spec = Spec { log: std::env::temp_dir().join("bashcut-batch-empty"), ..Spec::default() };
         let r = run(&spec, Duration::from_millis(5), &mut |_| {}, &|| false);

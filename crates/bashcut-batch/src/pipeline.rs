@@ -710,10 +710,96 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "test ticket: each STEP_KINDS row reads its own field; none / two kinds give the errors naming every kind; engine_commands of command and commands steps"]
-    fn every_step_kind_row_reads_its_field() {}
+    fn every_step_kind_row_reads_its_field() {
+        let agent = AgentStep { skill: "s".into(), ..AgentStep::default() };
+        let plugin = ProcessStep { argv: vec!["x".into()], ..ProcessStep::default() };
+        let lines = vec![CommandLine { id: "a".into(), params: json!({"n": 1}) }, CommandLine { id: "b".into(), params: json!({}) }];
+        let params = json!({"k": true});
+        let steps = [
+            ("command", Step { command: Some("captions.auto".into()), params: Some(params.clone()), ..Step::default() }),
+            ("commands", Step { commands: lines.clone(), ..Step::default() }),
+            ("plugin", Step { plugin: Some(plugin.clone()), ..Step::default() }),
+            ("agent", Step { agent: Some(agent.clone()), ..Step::default() }),
+        ];
+        assert_eq!(STEP_KINDS.iter().map(|k| k.name).collect::<Vec<_>>(), steps.iter().map(|(n, _)| *n).collect::<Vec<_>>());
+        for (name, step) in &steps {
+            for row in STEP_KINDS {
+                assert_eq!((row.of)(step).is_some(), row.name == *name, "row {} on a {name} step", row.name);
+            }
+        }
+        assert_eq!(steps[0].1.kind(), Ok(StepKind::Command("captions.auto", Some(&params))));
+        assert_eq!(steps[1].1.kind(), Ok(StepKind::Commands(&lines)));
+        assert_eq!(steps[2].1.kind(), Ok(StepKind::Plugin(&plugin)));
+        assert_eq!(steps[3].1.kind(), Ok(StepKind::Agent(&agent)));
+
+        assert_eq!(Step::default().kind(), Err("a step needs one of command, commands, plugin, agent".to_string()));
+        let two = Step { command: Some("a".into()), agent: Some(agent.clone()), ..Step::default() };
+        assert_eq!(two.kind(), Err("a step has more than one of command, commands, plugin, agent".to_string()));
+
+        let engine = |s: &Step| s.kind().unwrap().engine_commands().into_iter().map(|(id, p)| (id.to_string(), p.cloned())).collect::<Vec<_>>();
+        assert_eq!(engine(&steps[0].1), vec![("captions.auto".to_string(), Some(params.clone()))]);
+        assert_eq!(engine(&steps[1].1), vec![("a".to_string(), Some(json!({"n": 1}))), ("b".to_string(), Some(json!({})))]);
+        assert_eq!(engine(&Step { command: Some("x".into()), ..Step::default() }), vec![("x".to_string(), None)]);
+        assert!(engine(&steps[2].1).is_empty() && engine(&steps[3].1).is_empty());
+    }
 
     #[test]
-    #[ignore = "test ticket: StepKind::describe is its label template filled for every kind (\"captions.auto\", \"3 commands\", \"plugin x\", \"agent: s\")"]
-    fn every_step_kind_describes_as_its_label() {}
+    fn every_step_kind_describes_as_its_label() {
+        let lines: Vec<CommandLine> = (0..3).map(|i| CommandLine { id: format!("c{i}"), params: json!({}) }).collect();
+        let plugin = ProcessStep { argv: vec!["x".into(), "--y".into()], ..ProcessStep::default() };
+        let no_program = ProcessStep::default();
+        let agent = AgentStep { skill: "s".into(), ..AgentStep::default() };
+        let cases = [
+            (StepKind::Command("captions.auto", None), "{id}", "captions.auto"),
+            (StepKind::Commands(&lines), "{n} commands", "3 commands"),
+            (StepKind::Plugin(&plugin), "plugin {program}", "plugin x"),
+            (StepKind::Plugin(&no_program), "plugin {program}", "plugin ?"),
+            (StepKind::Agent(&agent), "agent: {skill}", "agent: s"),
+        ];
+        for (kind, template, text) in cases {
+            let (t, args) = kind.label();
+            assert_eq!(t, template);
+            let filled = args.iter().fold(t.to_string(), |s, (k, v)| s.replace(&format!("{{{k}}}"), v));
+            assert_eq!(filled, text);
+            assert_eq!(kind.describe(), text);
+        }
+        let labelled = Step { label: Some("Captions".into()), command: Some("captions.auto".into()), ..Step::default() };
+        assert_eq!(labelled.describe(), "Captions");
+        let blank_label = Step { label: Some("  ".into()), command: Some("captions.auto".into()), ..Step::default() };
+        assert_eq!(blank_label.describe(), "captions.auto");
+        assert_eq!(Step::default().describe(), "invalid step");
+    }
+
+    #[test]
+    fn item_names_of_a_thousand_same_stems_count_up_without_case() {
+        let p = Pipeline::parse(&minimal(json!({})), Path::new("/")).unwrap();
+        let inputs: Vec<Input> = (0..1000).map(|i| Input { path: PathBuf::from(format!("/d{i}/clip.mp4")), is_project: false }).collect();
+        let names = p.item_names(&inputs);
+        assert_eq!(names.len(), 1000);
+        assert_eq!(names[0], "clip");
+        for (i, n) in names.iter().enumerate().skip(1) {
+            assert_eq!(n, &format!("clip-{}", i + 1));
+        }
+        let mixed: Vec<Input> =
+            ["/a/CLIP.mp4", "/b/clip.mp4", "/c/Clip-2.mov", "/d/clip.mov"].iter().map(|s| Input { path: PathBuf::from(s), is_project: false }).collect();
+        assert_eq!(p.item_names(&mixed), vec!["CLIP", "clip-2", "Clip-2-2", "clip-3"]);
+    }
+
+    #[test]
+    fn expand_inputs_drops_repeats_and_files_inside_listed_folders() {
+        let dir = std::env::temp_dir().join(format!("bashcut-batch-pipeline-dups-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        for f in ["a.mov", "b.mp4"] {
+            std::fs::write(dir.join(f), b"x").unwrap();
+        }
+        let other = std::env::temp_dir().join(format!("bashcut-batch-pipeline-dups-{}-c.wav", std::process::id()));
+        std::fs::write(&other, b"x").unwrap();
+        let s = |p: &Path| p.to_string_lossy().into_owned();
+        let text = json!({"schema": SCHEMA, "inputs": [s(&other), s(&dir), s(&dir.join("a.mov")), s(&other), s(&dir)], "projectsFolder": "out"}).to_string();
+        let inputs = Pipeline::parse(&text, Path::new("/")).unwrap().expand_inputs().unwrap();
+        assert_eq!(inputs.iter().map(|i| i.path.clone()).collect::<Vec<_>>(), vec![other.clone(), dir.join("a.mov"), dir.join("b.mp4")]);
+        let _ = std::fs::remove_dir_all(&dir);
+        let _ = std::fs::remove_file(&other);
+    }
 }
