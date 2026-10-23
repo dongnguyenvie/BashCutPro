@@ -16,7 +16,7 @@ use super::widgets::{META, NOTE, button, code_note, note, note_text};
 use crate::FilmcraftApp;
 use crate::native_dialogs::FileDialog;
 use bashcut_batch::book::now_ms;
-use bashcut_batch::pipeline::OnFailure;
+use bashcut_batch::pipeline::{OnFailure, Step, StepKind};
 use bashcut_batch::{Book, ItemState, Status};
 
 /// Matches shown under the step search.
@@ -265,13 +265,13 @@ fn step_params(item: &Item) -> Option<Value> {
     Some(step)
 }
 
-fn steps(app: &mut FilmcraftApp, ui: &mut egui::Ui, ctx: &egui::Context, v: &mut View, list: &[bashcut_batch::pipeline::Step]) {
+fn steps(app: &mut FilmcraftApp, ui: &mut egui::Ui, ctx: &egui::Context, v: &mut View, list: &[Step]) {
     let t = app.tokens;
     heading(app, ui, "Steps");
     note(ui, s("Each input gets its own project; then these run on it in order."), META, t.text_dim);
     let n = list.len();
     for (i, step) in list.iter().enumerate() {
-        let label = step.label.clone().unwrap_or_else(|| step.describe());
+        let label = step_label(step);
         let source = step_source(app, ctx, step);
         ui.horizontal(|ui| {
             let open = v.editing.as_ref().is_some_and(|(e, _)| *e == i);
@@ -313,12 +313,15 @@ fn steps(app: &mut FilmcraftApp, ui: &mut egui::Ui, ctx: &egui::Context, v: &mut
         let Some((at, text)) = v.editing.clone().filter(|(e, _)| *e == i) else { continue };
         // a plugin step is edited as its action's form, never as its command line
         if let Source::Plugin(plugin, a) = &source {
-            let argv = step.plugin.as_ref().map(|p| p.argv.clone()).unwrap_or_default();
-            plugin_form(app, ui, ctx, v, i, step, plugin, a, &argv);
+            plugin_form(app, ui, ctx, v, i, step, plugin, a, &plugin_argv(step));
             continue;
         }
         // an engine command shows what it takes, as the palette does
-        if let Some(sig) = step.command.as_deref().and_then(filmcraft_engine::commands::find).map(|c| c.params).filter(|p| !p.is_empty()) {
+        let command = match step.kind() {
+            Ok(StepKind::Command(id, _)) => Some(id),
+            _ => None,
+        };
+        if let Some(sig) = command.and_then(filmcraft_engine::commands::find).map(|c| c.params).filter(|p| !p.is_empty()) {
             let r = code_note(ui, sig, META, t.text_dim);
             app.auto.add_response(&format!("bashcut.batch.step.{i}.signature"), &r, sig);
         }
@@ -359,6 +362,29 @@ fn steps(app: &mut FilmcraftApp, ui: &mut egui::Ui, ctx: &egui::Context, v: &mut
     }
 }
 
+/// A step's name in the list: its own label, else its kind's ([`StepKind::label`]) in the UI language.
+fn step_label(step: &Step) -> String {
+    if let Some(l) = &step.label {
+        return l.clone();
+    }
+    match step.kind() {
+        Ok(kind) => {
+            let (template, args) = kind.label();
+            let args: Vec<(&str, &str)> = args.iter().map(|(k, v)| (*k, v.as_str())).collect();
+            f(template, &args)
+        }
+        Err(_) => s("invalid step").to_string(),
+    }
+}
+
+/// A plugin step's command line (empty for other kinds).
+fn plugin_argv(step: &Step) -> Vec<String> {
+    match step.kind() {
+        Ok(StepKind::Plugin(p)) => p.argv.clone(),
+        _ => Vec::new(),
+    }
+}
+
 /// Where a step comes from, for its row and form.
 enum Source {
     /// An installed plugin's action.
@@ -371,12 +397,12 @@ enum Source {
 
 /// The step's plugin action: the one it names (`pluginAction`), else (steps saved before it) the
 /// installed action its command line starts with.
-fn step_source(app: &mut FilmcraftApp, ctx: &egui::Context, step: &bashcut_batch::pipeline::Step) -> Source {
+fn step_source(app: &mut FilmcraftApp, ctx: &egui::Context, step: &Step) -> Source {
     if let Some(pa) = &step.plugin_action {
         let found = super::plugins::with(app, ctx, |h| h.plugin(&pa.plugin).and_then(|p| p.manifest.as_ref()).and_then(|m| m.action(&pa.action)).cloned());
         return found.map_or(Source::NotInstalled, |a| Source::Plugin(pa.plugin.clone(), Box::new(a)));
     }
-    let argv = step.plugin.as_ref().map(|p| p.argv.clone()).unwrap_or_default();
+    let argv = plugin_argv(step);
     match super::plugins::with(app, ctx, |h| plugin_action(h.installed(), &argv)) {
         Some((plugin, a)) => Source::Plugin(plugin, Box::new(a)),
         None => Source::Other,
@@ -395,7 +421,7 @@ fn missing_titles(source: &Source, missing: &[String]) -> Vec<String> {
 }
 
 /// Why **Run batch** waits: the first step with empty required params; `None` when it can run.
-fn run_blocker(app: &mut FilmcraftApp, ctx: &egui::Context, steps: &[bashcut_batch::pipeline::Step]) -> Option<String> {
+fn run_blocker(app: &mut FilmcraftApp, ctx: &egui::Context, steps: &[Step]) -> Option<String> {
     let (i, step) = steps.iter().enumerate().find(|(_, s)| s.missing().is_some())?;
     let fields = missing_titles(&step_source(app, ctx, step), step.missing().unwrap_or_default()).join(", ");
     Some(f("Step {n}: fill in {fields}", &[("n", &(i + 1).to_string()), ("fields", &fields)]))
@@ -439,17 +465,7 @@ fn flag_texts(a: &Action, argv: &[String]) -> BTreeMap<String, String> {
 /// A plugin step's params as the Plugins section's form ([`field`], labels in the UI language);
 /// **Apply** rebuilds the step through `setStep`, keeping its label.
 #[allow(clippy::too_many_arguments)]
-fn plugin_form(
-    app: &mut FilmcraftApp,
-    ui: &mut egui::Ui,
-    ctx: &egui::Context,
-    v: &mut View,
-    i: usize,
-    step: &bashcut_batch::pipeline::Step,
-    plugin: &str,
-    a: &Action,
-    argv: &[String],
-) {
+fn plugin_form(app: &mut FilmcraftApp, ui: &mut egui::Ui, ctx: &egui::Context, v: &mut View, i: usize, step: &Step, plugin: &str, a: &Action, argv: &[String]) {
     let mut texts = match v.form.take() {
         Some((at, texts)) if at == i => texts,
         _ => match &step.plugin_action {
@@ -792,4 +808,8 @@ mod tests {
         assert_eq!(read(&["t", "go", "--keep"]), "true");
         assert_eq!(read(&["t", "go"]), "false", "neither flag reads as before BF1");
     }
+
+    #[test]
+    #[ignore = "test ticket: step_label keeps a step's own label, else shows its kind's label in en and vi (\"3 commands\" / \"3 lệnh\"), \"invalid step\" for none; plugin_argv is empty for non-plugin steps"]
+    fn step_labels_come_from_the_kind_table() {}
 }

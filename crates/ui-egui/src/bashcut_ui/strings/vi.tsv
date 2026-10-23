@@ -298,3 +298,7 @@ Allow AI agents to control BashCutPro	Cho phép trợ lý AI điều khiển Bas
 Lets agents and plugins on this computer edit the open project (127.0.0.1 only).	Cho phép trợ lý AI và plugin trên máy này sửa dự án đang mở (chỉ 127.0.0.1).
 Restart BashCutPro to apply.	Khởi động lại BashCutPro để áp dụng.
 Turn on	Bật
+{n} commands	{n} lệnh
+plugin {program}	plugin {program}
+agent: {skill}	trợ lý: {skill}
+invalid step	bước không hợp lệ
