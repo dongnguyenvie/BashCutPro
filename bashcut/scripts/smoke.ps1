@@ -9,7 +9,7 @@ Exits non-zero on any failure and never reports success without having launched 
   powershell -ExecutionPolicy Bypass -File bashcut\scripts\smoke.ps1 -App target\release\filmcraft.exe
   powershell -ExecutionPolicy Bypass -File bashcut\scripts\smoke.ps1 -IsaOnly target\release\filmcraft.exe,target\release\filmcraft-cli.exe
 
-Options: -Cli <path> (default: filmcraft-cli.exe next to the app), -Port N (a free port from 19000), -Timeout S (60),
+Options: -Cli <path> (default: filmcraft-cli.exe, bashcutpro.exe or bcpro.exe next to the app, else on PATH), -Port N (a free port from 19000), -Timeout S (60),
          -Out DIR (target\smoke), -ExpectTitle TEXT (BashCutPro), -NoIsa, -IsaAllow FILE (bashcut\scripts\isa-allow.txt)
 Needs for the scan: llvm-objdump (PATH, or `rustup component add llvm-tools`) or dumpbin (Visual Studio).
 Windows PowerShell 5.1 or PowerShell 7.
@@ -97,17 +97,31 @@ function Invoke-IsaScan([string]$bin) {
         $hits.Add(@{ kind = $kind; fn = $fn; addr = $addr })
     }
     # A PE keeps its function names in the PDB, which llvm-objdump does not read: it only prints
-    # section headers (`<.text>`). Name each hit through llvm-symbolizer, which reads the PDB.
+    # section headers (`<.text>`). Name each hit through llvm-symbolizer, which reads the PDB. With line tables the
+    # PDB knows inlined frames, and llvm-symbolizer still reports them under --no-inlines (an intrinsic such as
+    # _mm256_add_ps, never its `*_avx2` caller): take the outermost frame of --inlines instead (JSON, one line per
+    # address). Without debug info the PDB has only public symbols, so a hit is named after the nearest one before it.
     $sections = @($hits | Where-Object { $_.fn -match '^\.' -and $_.addr })
     if ($dis.kind -eq "llvm" -and $sections.Count -gt 0) {
         $sym = Get-Command llvm-symbolizer -ErrorAction SilentlyContinue
         $symPath = if ($sym) { $sym.Source } else { Join-Path (Split-Path $dis.path) "llvm-symbolizer.exe" }
         if (Test-Path $symPath) {
-            $names = ($sections | ForEach-Object { "0x$($_.addr)" }) | & $symPath "--obj=$bin" --functions=linkage --no-inlines --output-style=GNU 2>$null
+            # PowerShell may put a BOM before the first line it pipes to a native program, which spoils that address:
+            # lead with a dummy one and drop its answer
+            $names = @(@("0x0") + @($sections | ForEach-Object { "0x$($_.addr)" }) | & $symPath "--obj=$bin" --functions=linkage --inlines --output-style=JSON 2>$null)
+            $names = @($names | Select-Object -Skip 1)
             $i = 0
+            $lineInfo = $false
             foreach ($n in @($names)) {
-                if ($i % 2 -eq 0 -and ($i / 2) -lt $sections.Count -and $n -and $n -ne "??") { $sections[$i / 2].fn = $n }
+                if (-not $n -or $i -ge $sections.Count) { continue }
+                try { $frames = @(($n | ConvertFrom-Json).Symbol) } catch { $frames = @() }
+                $outer = if ($frames.Count -gt 0) { $frames[$frames.Count - 1] } else { $null }
+                if ($outer -and $outer.FunctionName -and $outer.FunctionName -ne "??") { $sections[$i].fn = $outer.FunctionName }
+                if ($outer -and $outer.FileName) { $lineInfo = $true }
                 $i++
+            }
+            if (-not $lineInfo) {
+                Note "isa: $bin has no line tables in its PDB: hits are named after the nearest public symbol, which may be a neighbour (exact names: build with `$env:CARGO_PROFILE_RELEASE_DEBUG = 'line-tables-only')"
             }
         } else {
             Note "isa: no llvm-symbolizer next to $($dis.path): hits are named by section only"
@@ -144,10 +158,16 @@ if (-not $App) { [Console]::Error.WriteLine("smoke: -App <path to the built app>
 if (-not (Test-Path $App -PathType Leaf)) { Fail "launch: $App is not a file"; Write-Summary ""; exit 1 }
 $App = (Resolve-Path $App).Path
 if (-not $Cli) {
-    $Cli = Join-Path (Split-Path $App) "filmcraft-cli.exe"
-    if (-not (Test-Path $Cli)) {
-        $c = Get-Command filmcraft-cli -ErrorAction SilentlyContinue
-        if ($c) { $Cli = $c.Source } else { $Cli = "" }
+    # filmcraft-cli, or BashCutPro's bashcutpro / bcpro (-p bashcutpro-cli), next to the app, else on PATH
+    $names = @("filmcraft-cli", "bashcutpro", "bcpro")
+    foreach ($n in $names) {
+        $cand = Join-Path (Split-Path $App) "$n.exe"
+        if (Test-Path $cand -PathType Leaf) { $Cli = $cand; break }
+    }
+    foreach ($n in $names) {
+        if ($Cli) { break }
+        $c = Get-Command $n -ErrorAction SilentlyContinue
+        if ($c) { $Cli = $c.Source }
     }
 }
 New-Item -ItemType Directory -Force $Out | Out-Null
@@ -250,7 +270,7 @@ function Invoke-LimitedOnce([string]$exe, [string[]]$argv, [string]$outFile, [st
 }
 
 if (-not $Cli -or -not (Test-Path $Cli)) {
-    Fail "cli: filmcraft-cli not found (pass -Cli)"
+    Fail "cli: filmcraft-cli / bashcutpro not found (pass -Cli)"
 } else {
     try {
         $razor = Join-Path $Out "cli-razor.txt"

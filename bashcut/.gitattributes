@@ -1,0 +1,4 @@
+# Shell scripts stay LF in every checkout: Git for Windows defaults to core.autocrlf=true, and a CRLF
+# script fails shellcheck (SC1017) and bash on Windows (lint-scripts.sh, T6b).
+*.sh text eol=lf
+*.env text eol=lf

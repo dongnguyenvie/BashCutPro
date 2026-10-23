@@ -85,10 +85,16 @@ exe="$app"
 if [ -d "$app" ] && [ -d "$app/Contents/MacOS" ]; then
   exe="$(find "$app/Contents/MacOS" -maxdepth 1 -type f -perm -u+x | head -1)"
 fi
-[ -n "$exe" ] && [ -x "$exe" ] || { fail "launch: $app is not an executable or an .app bundle"; echo "smoke: 0 passed, 1 failed"; exit 1; }
+if [ -z "$exe" ] || [ ! -x "$exe" ]; then fail "launch: $app is not an executable or an .app bundle"; echo "smoke: 0 passed, 1 failed"; exit 1; fi
 if [ -z "$cli" ]; then
-  cli="$(dirname "$exe")/filmcraft-cli"
-  [ -x "$cli" ] || cli="$(command -v filmcraft-cli || true)"
+  # filmcraft-cli, or BashCutPro's bashcutpro / bcpro (-p bashcutpro-cli), next to the app, else on PATH
+  for name in filmcraft-cli bashcutpro bcpro; do
+    if [ -x "$(dirname "$exe")/$name" ] && [ -f "$(dirname "$exe")/$name" ]; then cli="$(dirname "$exe")/$name"; break; fi
+  done
+  for name in filmcraft-cli bashcutpro bcpro; do
+    [ -n "$cli" ] && break
+    cli="$(command -v "$name" || true)"
+  done
 fi
 if [ -z "$port" ]; then
   port=19000
@@ -181,7 +187,7 @@ run_limited() {
 }
 
 if [ -z "$cli" ] || [ ! -x "$cli" ]; then
-  fail "cli: filmcraft-cli not found (pass --cli)"
+  fail "cli: filmcraft-cli / bashcutpro not found (pass --cli)"
 else
   if run_limited 60 "$out/cli-razor.txt" "$cli" commands razor && grep -qi razor "$out/cli-razor.txt"; then
     pass "cli: commands razor ($(wc -l <"$out/cli-razor.txt" | tr -d ' ') line(s))"

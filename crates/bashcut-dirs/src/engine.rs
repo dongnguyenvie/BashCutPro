@@ -102,6 +102,8 @@ mod tests {
         assert_eq!(on_path(None), None);
     }
 
+    // not on Windows: there the two names are the same file by design (the plain check, `file_named`)
+    #[cfg(not(windows))]
     #[test]
     fn a_name_that_differs_only_in_case_is_not_the_engine() {
         // the macOS app bundle: the app's `BashCutPro` executable next to `bcpro` (#187); on a

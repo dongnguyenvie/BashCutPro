@@ -8,3 +8,8 @@ avx2
 avx512
 4avx2
 6avx512
+# zune-jpeg colour conversion: its `avx` module is target_feature(avx2), picked after is_x86_feature_detected
+color_convert(::|3)avx
+# core::arch AVX / FMA intrinsics kept out of line (Windows passes __m256 by pointer): called from code
+# monomorphised for fearless_simd's Avx2 level (vello_cpu), which fearless_simd picks at run time (T6b)
+core_arch(::|3)x86(::|\d)(avx|fma)
