@@ -27,11 +27,12 @@ done
 
 here="$(cd "$(dirname "$0")" && pwd)"
 # the tools sit next to this script (CLI zip), in ../../MacOS (macOS app: Resources/bashcut) or in ../../bin (Linux / FreeBSD share/);
-# find -name matches the exact case: on a Mac volume MacOS/bashcutpro would open the app's own BashCutPro (#187)
+# printed without ../.. (PV2: doctor's fix lines showed share/bashcutpro/../../bin/...);
+# find -name matches the exact case (exact file names, T6a; on a Mac volume a case-insensitive match is the app itself, #187)
 find_tool() {
   local t="$1" d
   for d in "$here" "$here/../../MacOS" "$here/../../bin" "$here/../../../bin"; do
-    if [ -x "$d/$t" ] && [ -n "$(find "$d" -maxdepth 1 -name "$t" -print 2>/dev/null)" ]; then printf '%s\n' "$d/$t"; return 0; fi
+    if [ -x "$d/$t" ] && [ -n "$(find "$d" -maxdepth 1 -name "$t" -print 2>/dev/null)" ]; then printf '%s/%s\n' "$(cd "$d" && pwd)" "$t"; return 0; fi
   done
   command -v "$t" 2>/dev/null
 }
@@ -48,9 +49,9 @@ elif [ -n "${FILMCRAFT_DATA_DIR:-}" ]; then data="$FILMCRAFT_DATA_DIR"
 elif [ "$(uname -s)" = Darwin ]; then data="$HOME/Library/Application Support/BashCutPro"
 else data="${XDG_DATA_HOME:-$HOME/.local/share}/bashcutpro"
 fi
-# bcpro: the engine's name inside the macOS app, where bashcutpro would clash with BashCutPro (#187)
-cli="$(find_tool bashcutpro || find_tool bcpro || find_tool filmcraft-cli || true)"
-echo "BashCutPro setup: data folder $data, command line (bashcutpro) ${cli:-not found}"
+# the engine: bashcutpro-cli, its alias bcpro, upstream's filmcraft-cli (NM2; plain bashcutpro is the app on Linux)
+cli="$(find_tool bashcutpro-cli || find_tool bcpro || find_tool filmcraft-cli || true)"
+echo "BashCutPro setup: data folder $data, command line (bashcutpro-cli) ${cli:-not found}"
 mkdir -p "$data/bashcut/profiles" "$data/bashcut/templates" "$data/bashcut/looks"
 
 # looks and profiles are written by the headless engine, not the open app (BASHCUT_BRIDGE=off, CC3)

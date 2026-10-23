@@ -34,9 +34,11 @@ if ($env:BASHCUTPRO_DATA_DIR) { $data = $env:BASHCUTPRO_DATA_DIR }
 elseif ($env:FILMCRAFT_DATA_DIR) { $data = $env:FILMCRAFT_DATA_DIR }
 elseif (Test-Path (Join-Path $PSScriptRoot 'portable.txt')) { $data = Join-Path $PSScriptRoot 'data' }
 else { $data = Join-Path $env:APPDATA 'BashCutPro' }
-$cli = Find-Tool 'bashcutpro'
+# the engine: bashcutpro-cli, its alias bcpro, upstream's filmcraft-cli (NM2; bashcutpro.exe is the app)
+$cli = Find-Tool 'bashcutpro-cli'
+if (-not $cli) { $cli = Find-Tool 'bcpro' }
 if (-not $cli) { $cli = Find-Tool 'filmcraft-cli' }
-Write-Output "BashCutPro setup: data folder $data, command line (bashcutpro) $(if ($cli) { $cli } else { 'not found' })"
+Write-Output "BashCutPro setup: data folder $data, command line (bashcutpro-cli) $(if ($cli) { $cli } else { 'not found' })"
 foreach ($d in 'profiles', 'templates', 'looks') { New-Item -ItemType Directory -Force -Path (Join-Path $data "bashcut\$d") | Out-Null }
 
 # looks and profiles are written by the headless engine, not the open app (CC3); restored below
