@@ -178,6 +178,53 @@ pub fn text(english: &str) -> Option<&'static str> {
     OVERRIDES.iter().find(|(from, _)| *from == english).map(|(_, to)| crate::bashcut_ui::strings::s(to))
 }
 
+/// BR6: answers the control channel's `engine.commands` with [`commands`] (a hook at the top of `control::handle`;
+/// upstream's own arm below it is no longer reached). A macro so the hook stays one added line.
+macro_rules! engine_commands {
+    ($app:expr, $req:expr) => {
+        if $req.method == "engine.commands" {
+            return $crate::control::Outcome::Done(match $app.session.execute("command.list", serde_json::json!({})) {
+                Ok(v) => serde_json::json!({"ok": true, "result": $crate::bashcut_brand::commands(v)}),
+                Err(e) => serde_json::json!({"ok": false, "error": e.to_string()}),
+            });
+        }
+    };
+}
+pub(crate) use engine_commands;
+
+/// BR6: the `engine.commands` list of the control channel ([`engine_commands`]) names BashCutPro, as
+/// `bashcutpro-cli`'s `mcp_brand::brand_commands` does for MCP and the CLI (BR5): "FilmCraft" → [`NAME`] in each
+/// command's `label`, `menu` and `params`, `filmcraft-cli ` → `bashcutpro-cli ` in `params`. English, like the rest
+/// of the catalog agents read; ids, shortcuts and anything that is not a list of commands stay as they are.
+pub fn commands(mut list: serde_json::Value) -> serde_json::Value {
+    use serde_json::Value;
+    fn rename(v: &mut Value) {
+        if let Some(s) = v.as_str().filter(|s| s.contains("FilmCraft")) {
+            *v = Value::from(s.replace("FilmCraft", NAME));
+        }
+    }
+    let Some(items) = list.as_array_mut() else { return list };
+    let is_command = |c: &Value| ["id", "label", "params"].iter().all(|k| c.get(k).is_some_and(Value::is_string));
+    if !items.iter().all(is_command) {
+        return list;
+    }
+    for c in items.iter_mut().filter_map(Value::as_object_mut) {
+        if let Some(label) = c.get_mut("label") {
+            rename(label);
+        }
+        for m in c.get_mut("menu").and_then(Value::as_array_mut).into_iter().flatten() {
+            rename(m);
+        }
+        if let Some(params) = c.get_mut("params") {
+            rename(params);
+            if let Some(p) = params.as_str().filter(|p| p.contains("filmcraft-cli ")) {
+                *params = Value::from(p.replace("filmcraft-cli ", "bashcutpro-cli "));
+            }
+        }
+    }
+    list
+}
+
 /// What a build shows for `english` in `lang`: the branded text, else the translation (what
 /// `Language::tr` returns outside tests).
 #[cfg(test)]
@@ -270,4 +317,8 @@ mod tests {
         assert_eq!(shown(Language::Es, "File"), Language::Es.tr("File"));
         assert_ne!(shown(Language::Es, "File"), "File");
     }
+
+    #[test]
+    #[ignore = "test ticket: BR6 engine.commands over the control channel says Selection as BashCutPro Project…, ids and shortcuts unchanged, filmcraft-cli in params becomes bashcutpro-cli, a non-command value passes through"]
+    fn control_channel_commands_name_bashcutpro() {}
 }
