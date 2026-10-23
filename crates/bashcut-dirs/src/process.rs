@@ -21,7 +21,7 @@ fn alive(pid: u32) -> bool {
 #[cfg(windows)]
 fn alive(pid: u32) -> bool {
     use std::process::{Command, Stdio};
-    Command::new("tasklist")
+    crate::child::no_window(&mut Command::new("tasklist"))
         .args(["/FI", &format!("PID eq {pid}"), "/NH", "/FO", "CSV"])
         .stdin(Stdio::null())
         .stderr(Stdio::null())

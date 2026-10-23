@@ -46,7 +46,7 @@ pub fn engine_models(cli: &Path, data_dir_args: &[String], env: &[(String, Strin
 }
 
 fn engine_models_within(cli: &Path, data_dir_args: &[String], env: &[(String, String)], timeout: Duration) -> Option<Value> {
-    let mut child = Command::new(cli)
+    let mut child = bashcut_dirs::child::no_window(&mut Command::new(cli))
         .args(["exec", "transcript.models"])
         .args(data_dir_args)
         .envs(env.iter().map(|(k, v)| (k, v)))

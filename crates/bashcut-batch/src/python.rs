@@ -49,7 +49,14 @@ fn windows_python() -> Option<&'static Vec<String>> {
 
 fn runs(cmd: &[String]) -> bool {
     let Some((program, args)) = cmd.split_first() else { return false };
-    Command::new(program).args(args).arg("--version").stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null()).status().is_ok_and(|s| s.success())
+    bashcut_dirs::child::no_window(&mut Command::new(program))
+        .args(args)
+        .arg("--version")
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status()
+        .is_ok_and(|s| s.success())
 }
 
 #[cfg(test)]

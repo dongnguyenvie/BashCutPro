@@ -326,6 +326,7 @@ impl Live {
         let mut cmd = Command::new(program);
         cmd.args(args).current_dir(cwd).envs(env.iter().map(|(k, v)| (k, v)));
         cmd.stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::piped());
+        child::no_window(&mut cmd);
         // its own process group, so the final kill also ends the MCP server it started
         #[cfg(unix)]
         {

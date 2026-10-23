@@ -41,9 +41,29 @@ pub struct Opts {
     pub stderr: bool,
 }
 
-/// Start `cmd` as the caller set it up (args, cwd, env), stdio per `opts`.
+/// Windows' `CREATE_NO_WINDOW` process creation flag.
+#[cfg(windows)]
+pub const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+
+/// No console window for a headless child (FX21): the app is a GUI (windows subsystem) process, so
+/// Windows gives every console program it starts (claude, Python, git, the engine CLI) a visible
+/// console of its own, and closing that window kills the child. Pipes still work, and what the
+/// child starts shares its hidden console. A no-op off Windows. [`spawn`] does this; call it on
+/// any other headless `Command` (not on one meant to open a terminal window).
+pub fn no_window(cmd: &mut Command) -> &mut Command {
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        cmd.creation_flags(CREATE_NO_WINDOW);
+    }
+    cmd
+}
+
+/// Start `cmd` as the caller set it up (args, cwd, env), stdio per `opts`, without a console
+/// window ([`no_window`]).
 pub fn spawn(mut cmd: Command, opts: &Opts) -> std::io::Result<Child> {
     let pipe = |on: bool| if on { Stdio::piped() } else { Stdio::null() };
+    no_window(&mut cmd);
     cmd.stdin(pipe(opts.stdin.is_some())).stdout(Stdio::piped()).stderr(pipe(opts.stderr));
     #[cfg(unix)]
     if opts.group {
@@ -137,13 +157,10 @@ pub fn terminate(child: &mut Child, hard: bool) {
     }
     #[cfg(windows)]
     {
-        use std::os::windows::process::CommandExt;
-        /// No console window flashes up for the helper.
-        const CREATE_NO_WINDOW: u32 = 0x0800_0000;
         let pid = child.id().to_string();
-        let ok = Command::new("taskkill")
+        // no console window flashes up for the helper
+        let ok = no_window(&mut Command::new("taskkill"))
             .args(["/PID", &pid, "/T", "/F"])
-            .creation_flags(CREATE_NO_WINDOW)
             .stdin(Stdio::null())
             .stdout(Stdio::null())
             .stderr(Stdio::null())
@@ -333,6 +350,49 @@ mod tests {
         let query = format!("(Get-CimInstance Win32_Process -Filter 'ParentProcessId={pid}').ProcessId");
         let out = Command::new("powershell").args(["-NoProfile", "-NonInteractive", "-Command", &query]).output().unwrap();
         String::from_utf8_lossy(&out.stdout).split_whitespace().filter_map(|p| p.parse().ok()).collect()
+    }
+
+    /// [`windows_spawn_opens_no_console_window`]'s child: set, the test writes the probe's output there.
+    #[cfg(windows)]
+    const NO_WINDOW_ENV: &str = "BASHCUT_TEST_NO_WINDOW_OUT";
+
+    /// The child half: started without a console (as the GUI app runs), it runs a PowerShell probe
+    /// of `GetConsoleWindow` through [`spawn`] and writes what the probe printed.
+    #[cfg(windows)]
+    #[test]
+    fn windows_no_window_child() {
+        let Some(out_file) = std::env::var_os(NO_WINDOW_ENV) else { return };
+        let probe = "$s='[DllImport(\"kernel32.dll\")] public static extern System.IntPtr GetConsoleWindow();';                      $k=Add-Type -MemberDefinition $s -Name C -Namespace W -PassThru; [string]$k::GetConsoleWindow()";
+        let mut cmd = Command::new("powershell");
+        cmd.args(["-NoProfile", "-NonInteractive", "-Command", probe]);
+        let mut c = spawn(cmd, &Opts::default()).unwrap();
+        let out = collect(&pump("test-stdout", c.stdout.take(), |out| read_lines(out, 1024, 64, |_, _| {}).0), STDOUT_WAIT);
+        assert_eq!(supervise(&mut c, Duration::from_secs(60), None).code(), Some(0));
+        std::fs::write(out_file, &out).unwrap();
+    }
+
+    /// FX21: from a process without a console (the windows-subsystem app), a console program that
+    /// [`spawn`] starts gets no console window of its own (`GetConsoleWindow` is 0, it was a
+    /// window handle before), and its stdout pipe still flows.
+    #[cfg(windows)]
+    #[test]
+    fn windows_spawn_opens_no_console_window() {
+        use std::os::windows::process::CommandExt;
+        const DETACHED_PROCESS: u32 = 0x0000_0008;
+        let out_file = std::env::temp_dir().join(format!("bashcut-no-window-{}.txt", std::process::id()));
+        let _ = std::fs::remove_file(&out_file);
+        let status = Command::new(std::env::current_exe().unwrap())
+            .args(["--exact", "child::tests::windows_no_window_child", "--test-threads=1"])
+            .env(NO_WINDOW_ENV, &out_file)
+            .creation_flags(DETACHED_PROCESS)
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .status()
+            .unwrap();
+        assert!(status.success(), "the child half failed");
+        let out = std::fs::read_to_string(&out_file).unwrap();
+        let _ = std::fs::remove_file(&out_file);
+        assert_eq!(out.trim(), "0", "spawn's child got a console window");
     }
 
     #[cfg(windows)]

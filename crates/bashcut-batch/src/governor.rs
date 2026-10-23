@@ -260,7 +260,7 @@ impl Probe for SystemProbe {
 
 #[cfg_attr(not(any(target_os = "linux", target_os = "macos", windows)), allow(dead_code))]
 fn output(program: &str, args: &[&str]) -> Option<String> {
-    let o = Command::new(program).args(args).stdin(Stdio::null()).stderr(Stdio::null()).output().ok()?;
+    let o = bashcut_dirs::child::no_window(&mut Command::new(program)).args(args).stdin(Stdio::null()).stderr(Stdio::null()).output().ok()?;
     o.status.success().then(|| String::from_utf8_lossy(&o.stdout).into_owned())
 }
 
@@ -441,7 +441,7 @@ impl KeepAwake {
             c.args(["--what=idle:sleep", "--who=bashcut-batch", "--why=batch running", "--mode=block", "tail", &format!("--pid={pid}"), "-f", "/dev/null"]);
             c
         };
-        let child = cmd.stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null()).spawn().ok();
+        let child = bashcut_dirs::child::no_window(&mut cmd).stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null()).spawn().ok();
         KeepAwake { child }
     }
 

@@ -75,7 +75,13 @@ fn with_exts(p: &Path) -> Vec<std::path::PathBuf> {
 }
 
 fn starts(program: &str, args: &[&str]) -> bool {
-    Command::new(program).args(args).stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null()).status().is_ok_and(|st| st.success())
+    bashcut_dirs::child::no_window(&mut Command::new(program))
+        .args(args)
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status()
+        .is_ok_and(|st| st.success())
 }
 
 /// A known setup error as one sentence plus "See Troubleshooting" (in the UI language); any
