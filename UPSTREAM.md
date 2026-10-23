@@ -15,6 +15,7 @@ Newest first. Add a row after every merge from upstream (`upstream.sh merge` pri
 
 | Date (sync) | Upstream commit | Upstream commit date | Note |
 |---|---|---|---|
+| 2026-10-24 | `fbeccbe9` | 2026-10-24 | Merge upstream/main (5 commits past `c5c16939`, 291 files): 3 conflicts (`release.yml`, `windows-arm64.yml`, `packaging/env.sh`), all resolved to upstream's side plus the recorded edits; see Sync records |
 | 2026-10-23 | `c5c16939896277ab332280a6d3f1d7283d0d0c4e` | 2026-10-23 | Merge upstream/main (88 commits past `dd525c93`): 2 conflicts (`Cargo.lock`, `control.rs`); `ci.yml` made manual-only; control-token break handled by SY2–SY4 (see Sync records) |
 | 2026-10-22 | `dd525c93d43b96843aedc50d7fa94a052474f476` | 2026-10-22 | Merge upstream/main (v0.10.0 + 20 commits, 41 commits in all): no conflicts; `sonarcloud.yml` made manual-only (see Sync records) |
 | 2026-10-20 | `105c09bd80e2c86ec7464a2c59a2501eb89ffc5c` | 2026-10-19 | Check with `upstream.sh merge` (#63): already up to date, nothing merged (see Sync records) |
@@ -23,6 +24,25 @@ Newest first. Add a row after every merge from upstream (`upstream.sh merge` pri
 ### Sync records
 
 One entry per sync: what came in, what conflicted, what it cost. Newest first.
+
+**2026-10-24, upstream/main `fbeccbe9` (5 commits past `c5c16939`).** SY9: `upstream.sh merge fbeccbe9 --no-check
+--branch upstream-sync/2026-10-24`. Owner rule: keep upstream's code; only GitHub automation stays ours. **5 commits,
+291 files (+1167 / −449), 3 conflicts**: `4d089668` packaging `[[` (#3003), `20e159dd` tools regex scans (#3007),
+`0a881266` CI: `xtask ci` in the dev profile + nextest, one test binary per crate under `tests/it/` (#2860),
+`4743cfb9` engine resolves stored media paths with `craft-docpath` (#2609), `fbeccbe9` craft-fonts pin
+`bfcbf71`, `CRAFT_FONTS_REQUIRED=1` also fails on an unset `CRAFT_FONTS_DIR` (#2646).
+Conflicts: `.github/workflows/windows-arm64.yml` (upstream's new schedule / push / PR triggers dropped: `on:` is
+`workflow_dispatch` only, carried edit); `.github/workflows/release.yml` (upstream's `craft-fonts-ref` taken, our
+`app-title: BashCutPro` kept, carried edit); `packaging/env.sh` (upstream's `[[ ]]` taken, our `NOTICE` kept in the
+`copy_docs` list, carried edit). `ci.yml`, `freebsd.yml`, `nix.yml` merged cleanly and keep `workflow_dispatch` only;
+`dependabot.yml` stays deleted. Carried edits dropped: none (all still needed). Hooks: none moved; the 3 xtask hooks
+(`mod bashcut`, `our_layer_first!`, `dev_first!`) merged cleanly beside the new `tests()` / `FIXTURE_GENERATORS`, and
+`cargo xtask layers / assets / wasm` pass. Fix on top: `bashcut/packaging/generate.py` SUBS (and its test) match
+upstream's `[[ … ]]` instead of `[ … ]` in macOS notarize, Linux install and flatpak-bundle lines. Fonts (#2646):
+our packaging sets neither `CRAFT_FONTS_DIR` nor `CRAFT_FONTS_REQUIRED`, so builds without craft-fonts are unchanged
+(`release.yml` passes upstream's pin); the FX24 icon buttons test passes. Our top-level `tests/bashcut_*.rs` files in
+`ui-egui` stay separate test targets (upstream's `tests/it/` consolidation only moved its own files). Footprint:
+Rust lines 145 / 150 before and after (upstream took no hook or Rust carried edit).
 
 **2026-10-23, upstream/main `c5c16939` (88 commits past `dd525c93`).** `upstream.sh merge c5c16939 --no-check
 --branch upstream-sync/2026-10-23`, merged as PR #394 (the default tag v0.12.0 was 46 commits behind). **88 commits, 2 conflicts**:

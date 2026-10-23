@@ -4,6 +4,9 @@
 # out for now: PdfCraft saw an intermittent access violation in egui UI tests there.)
 name: Windows ARM64
 
+# The package build takes about 15 minutes, so it runs nightly on main and on pushes to `release`
+# rather than on every push to main: a dependency or runner-image change still shows up within a
+# day. PRs that change the Windows packaging itself still run it.
 on:
   workflow_dispatch:
 
