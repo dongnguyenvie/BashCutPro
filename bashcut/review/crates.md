@@ -13,14 +13,14 @@ Size: **S** < 1 h, **M** half a day, **L** more. **Beh.** = whether the proposed
 
 | # | Where (all copies) | Why it matters | Fix | Size | Beh. |
 |---|---|---|---|---|---|
-| D1 | Engine lookup `bashcutpro → bcpro → filmcraft-cli` + env vars: `bashcut-batch/src/cli.rs`, `apps/bashcut-mcp/src/main.rs` `find_cli`, `apps/bashcut-doctor/src/lib.rs` `cli_program` (no `bcpro`, no `BASHCUT_FILMCRAFT_CLI`, no "next to me", probes `bashcutpro --version`) | Doctor can report a different engine from the one batch/mcp run (inside the macOS bundle it misses `bcpro`, #187); a new name = 3 edits | One lookup in `bashcut_dirs::engine` (**done** RV2: batch/UI use it); mcp → RC1 (after CC1); doctor → RC2 (needs an injectable lookup for its `Env` fakes) | S | no / doctor yes |
+| D1 | Engine lookup `bashcutpro → bcpro → filmcraft-cli` + env vars: `bashcut-batch/src/cli.rs`, `apps/bashcut-mcp/src/main.rs` `find_cli`, `apps/bashcut-doctor/src/lib.rs` `cli_program` (no `bcpro`, no `BASHCUT_FILMCRAFT_CLI`, no "next to me", probes `bashcutpro --version`) | Doctor can report a different engine from the one batch/mcp run (inside the macOS bundle it misses `bcpro`, #187); a new name = 3 edits | One lookup in `bashcut_dirs::engine` (**done** RV2: batch/UI use it); mcp **done** RCA; doctor → RC2 (needs an injectable lookup for its `Env` fakes) | S | no / doctor yes |
 | D2 | Child supervisor (own process group, TERM→grace→KILL, capped line pumps, grandchild-pipe timeouts): `bashcut-plugin-host/src/runner.rs` `start/poll/supervise/terminate/for_each_line` and `bashcut-agent/src/process.rs` same five; `terminate` byte-identical; third partial copy in `engine/src/bashcut/hooks.rs` `run_hook` | A fix (Windows job objects, pipe hang) lands in one copy only; a new runner kind = a 3rd copy | Shared `child` module in a no-deps crate | M | no |
-| D3 | `pid_alive`/`alive`: `bashcut-batch/src/process.rs` and `bashcut-connect/src/lib.rs` (byte-identical) | Same | Move to `bashcut-dirs` (or a small `bashcut-sys`), both call it | S | no |
+| D3 | `pid_alive`/`alive`: `bashcut-batch/src/process.rs` and `bashcut-connect/src/lib.rs` (byte-identical) | Same | `bashcut_dirs::pid_alive`, both call it (**done** RCA) | S | no |
 | D4 | `Error(String)` + impls + `Result` + `err()` + `read_capped`: `bashcut-plugin-host/src/lib.rs`, `bashcut-agent/src/lib.rs`; another `read_capped` in `bashcut-batch/src/pipeline.rs`; `write_atomic` in `bashcut-agent/src/lib.rs`, `bashcut-batch/src/book.rs` | Drift; plugin-host `settings.rs`/`install.rs` write with plain `fs::write`, so a crash mid-save truncates settings.json | One fs helper module (`read_capped`, `write_atomic`); use it in plugin-host settings/install | S | no (crash-safety only) |
 | D5 | `clip` on a char boundary: `bashcut-agent/src/lib.rs` (adds `…`), `bashcut-plugin-host/src/view.rs`, `ui-egui/.../runs_panel.rs`; `stream_json::capped_input` = `codex_json::capped` | Drift | One `clip(text, max, ellipsis)`; one `capped` (**done** RV2: Codex uses `stream_json::capped_input`) | S | no |
 | D6 | Plugin manifest read 3×: `bashcut-plugin-host/src/manifest.rs` (validated), `engine/src/bashcut/hooks.rs` `discover/os_key`, `apps/bashcut-doctor/src/lib.rs` `installed_plugins/entry_program` (raw `consts::OS`, no linux fallback) | A schema change = 3 parsers; hooks/doctor skip validation | Serde manifest + `entry_for(os)` in a no-deps crate the engine (L4) can use | M | edge cases |
-| D7 | Thin `data_dir` wrappers: `bashcut-batch/src/presets.rs` `default_data_dir`, `bashcut-connect/src/lib.rs` `default_data_dir`; `opts.data_dir.or_else(...)` repeated in `bashcut-batch/src/runner.rs` and `apps/bashcut-batch/src/main.rs` | Noise; one place to change the rule | Call `bashcut_dirs::data_dir` directly (**done** RV2 for batch; connect → after CC1) | S | no |
-| D8 | Folder-name literals `"bashcut-plugins"`, `"bashcut-models"`: `engine/src/bashcut/hooks.rs`, `apps/bashcut-doctor/src/lib.rs` (3×), `bashcut-batch/src/runner.rs`, `bashcut-dirs/src/lib.rs`, `bashcut-plugin-host/src/lib.rs` | Renaming a folder misses a copy | `bashcut_dirs::PLUGINS_DIR` (**done** RV2 outside plugin-host; plugin-host after CC1). Note: doctor checks `<data>/bashcut-models` while `bashcut_dirs::models_dir` is `<data>/models` (RC2) | S | no |
+| D7 | Thin `data_dir` wrappers: `bashcut-batch/src/presets.rs` `default_data_dir`, `bashcut-connect/src/lib.rs` `default_data_dir`; `opts.data_dir.or_else(...)` repeated in `bashcut-batch/src/runner.rs` and `apps/bashcut-batch/src/main.rs` | Noise; one place to change the rule | Call `bashcut_dirs::data_dir` directly (**done** RV2 for batch, RCA for connect) | S | no |
+| D8 | Folder-name literals `"bashcut-plugins"`, `"bashcut-models"`: `engine/src/bashcut/hooks.rs`, `apps/bashcut-doctor/src/lib.rs` (3×), `bashcut-batch/src/runner.rs`, `bashcut-dirs/src/lib.rs`, `bashcut-plugin-host/src/lib.rs` | Renaming a folder misses a copy | `bashcut_dirs::PLUGINS_DIR` (**done** RV2 outside plugin-host, RCA in plugin-host). Note: doctor checks `<data>/bashcut-models` while `bashcut_dirs::models_dir` is `<data>/models` (RC2) | S | no |
 | D9 | Hand-written arg parsers: `apps/bashcut-batch/src/main.rs` `Args`, `apps/bashcut-mcp/src/main.rs` (copy), `apps/bashcut-doctor/src/main.rs` (3rd style, ignores a bad `--min-free-gb`) | Every new CLI consumer copies it again | Small shared `args` helper | S–M | doctor yes |
 | D10 | Engine rounding: `summary.rs` `s3` = `analysis.rs` `secs`; `round2` in `analysis.rs` and `review.rs`; inline `(x*1000).round()/1000` in `analysis.rs`, `summary.rs`, `captions_fit.rs` | Drift in report precision | `data::round_to(v, places)` (**done** RV2) | S | no |
 | D11 | Undo fold twice: `engine/src/bashcut/batch.rs` `Before::take/fold` and `undo.rs` `UndoGroup` (already disagree on order of the `pushed == 0` / history-reset checks) | Divergent undo for a step that opens a project | `Before` wraps `UndoGroup` | S | corner case |
@@ -40,7 +40,7 @@ Size: **S** < 1 h, **M** half a day, **L** more. **Beh.** = whether the proposed
 | I5 | Batch UI vs CLI options: `ui-egui/.../batch.rs` `options()` sets only `data_dir`; CLI also resolves kit, MCP, keep-awake (`find_kit`/`find_mcp` live in the app) | The same pipeline behaves differently from the UI | `Options::resolve` in the library | M | yes |
 | I6 | `apps/bashcut-batch` makes `--cli` absolute but not `--data-dir`/`--mcp`, though steps run in the item folder | A relative `--mcp` breaks agent steps | `pipeline::absolute` on both | S | yes |
 | I7 | `speech::engine_models` and doctor's speech probe use `Command::output()` with no timeout / inherited stdin | A stuck engine blocks the run start | `run_watched` with a timeout | S | yes |
-| I8 | Crate manifests: `bashcut-dirs` lacked `[lints] workspace = true`; `apps/bashcut-doctor` lacks `rust-version.workspace`; `publish = false` missing on most of ours; `apps/bashcut-mcp` lacks the crate-level `deny(clippy::unwrap_used, …)` the other apps have | Never-crash lints silently off for a crate | Add the lines (`bashcut-dirs` lints **done** RV2) | S | no |
+| I8 | Crate manifests: `bashcut-dirs` lacked `[lints] workspace = true`; `apps/bashcut-doctor` lacks `rust-version.workspace`; `publish = false` missing on most of ours; `apps/bashcut-mcp` lacks the crate-level `deny(clippy::unwrap_used, …)` the other apps have | Never-crash lints silently off for a crate | Add the lines (`bashcut-dirs` lints **done** RV2, mcp `deny` **done** RCA) | S | no |
 | I9 | Background task panic reported as `Task::Install` even for a registry fetch (`host.rs` `spawn_task`, `Disconnected` branch) | Misleading status | Carry the task kind | S | no |
 | I10 | `KIT_TOOLS` in `bashcut-batch/src/agent.rs` hard-codes `python3/python/py`; `python.rs` probes its own list | New OS/interpreter = 2 edits | Build one from the other | S | no |
 
@@ -75,14 +75,14 @@ Size: **S** < 1 h, **M** half a day, **L** more. **Beh.** = whether the proposed
 | T1 | `bashcut/README.md`: `bashcutpro` "runs upstream's `filmcraft-cli` beside it" (wrapper removed in SB2) | Reword (**done** RV2) | S |
 | T2 | `bashcut-batch/src/lib.rs` and `bashcut/batch.md` say "no workspace deps" (it uses `bashcut-dirs`); `bashcut/agent-connect.md` says the same of connect | Fix (**done** RV2 for batch) | S |
 | T3 | `bashcut/in-app-ui.md`: `bashcut-analysis` deps (only `audio-dsp`), "xtask knows three crates" (ten), `filmcraft-cli mcp --bridge` (engine is `bashcutpro` first) | Fix | S |
-| T4 | Help text: `bashcut-mcp` / `bashcut-batch` `--cli` omit `bcpro`; `--data-dir` says "FilmCraft data dir"; doctor speech message always says "(filmcraft-cli)" | Fix (help-only; mcp after CC1) | S |
+| T4 | Help text: `bashcut-mcp` / `bashcut-batch` `--cli` omit `bcpro`; `--data-dir` says "FilmCraft data dir"; doctor speech message always says "(filmcraft-cli)" | Fix (help-only; mcp **done** RCA) | S |
 | T5 | `bashcut/plugin-host.md` "killed after its declared timeout" (no manifest field; `DEFAULT_TIMEOUT` or `timeoutSeconds` param) | Fix | S |
 | T6 | No list of the 34 `bashcut.*` commands (`commands.md` is upstream's) | Generate from `bashcutpro commands bashcut --json` + drift test | S–M |
 | T7 | `bashcutpro-cli/build.rs` blanket `filmcraft-cli → bashcutpro` replace would also rename a future protocol string; anchors are tripwires, not documented as such | Comment + narrow the replace | S |
 
 ## What adding X costs today
 
-- **An engine name / env var:** one edit in `bashcut_dirs::engine` after RV2, plus mcp (RC1) and doctor (RC2) until those land.
+- **An engine name / env var:** one edit in `bashcut_dirs::engine` after RV2, plus doctor (RC2) until it lands (mcp uses it since RCA).
 - **A plugin kind / agent event format:** manifest constants + agent decoder + UI mirror (S1, S2).
 - **A batch step kind:** 7 places (S3). **A batch agent:** 3 places (S4).
 - **A CLI consumer:** copy an arg parser (D9) and call `bashcut_dirs::engine::default_cli`.
@@ -102,8 +102,8 @@ crates and the upstream footprint (speed mode: no new tests; existing ones uncha
 | #275 | Engine: `data::round_to` / `data::secs` (D10), `data::base` (D12) |
 | #277 | Agent: one `capped_input` (D5, part) |
 
-Waiting for CC1 (it edits the same files): RC1 (mcp lookup), RC11 (`pid_alive`, connect `default_data_dir`), and
-`PLUGINS_DIR` in `bashcut-plugin-host`.
+After CC1, RCA did RC1 (mcp lookup, help, `deny`), RC11 (`bashcut_dirs::pid_alive`, connect's `default_data_dir`
+gone) and `PLUGINS_DIR` in `bashcut-plugin-host`.
 
 ## Proposed tickets (prefix RC)
 

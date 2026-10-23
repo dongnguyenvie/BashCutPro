@@ -6,11 +6,15 @@
 //!
 //! No workspace dependencies: the engine (through a one-line hook in `autosave::default_data_dir`),
 //! `bashcut-batch`, `bashcut-connect`, `bashcut-doctor` and the UI all ask [`data_dir`]. [`engine`] is
-//! the one engine-binary lookup (`bashcutpro` → `bcpro` → `filmcraft-cli`).
+//! the one engine-binary lookup (`bashcutpro` → `bcpro` → `filmcraft-cli`); [`pid_alive`] the one
+//! "does this process run" check (`bashcut-connect`, `bashcut-batch`).
 
 use std::path::{Path, PathBuf};
 
 pub mod engine;
+pub mod process;
+
+pub use process::pid_alive;
 
 /// The marker upstream's portable installs put next to the executable (`autosave::PORTABLE_MARKER`).
 pub const PORTABLE_MARKER: &str = "portable.txt";

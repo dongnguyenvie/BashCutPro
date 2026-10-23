@@ -8,6 +8,8 @@
 //! - Every request passes the write guard: writes only under the project's folder and
 //!   `BASHCUTPRO_ROOTS`.
 
+#![cfg_attr(not(test), deny(clippy::unwrap_used, clippy::expect_used, clippy::panic, clippy::unimplemented, clippy::todo, clippy::unreachable))]
+
 use bashcut_connect::lock::ProjectLock;
 use bashcut_connect::roots::{self, Roots};
 use bashcut_connect::{automation, guard};
@@ -32,8 +34,8 @@ USAGE
   --headless     never bridge; refused when the window has this project open
   --bridge ADDR  bridge to this control address (also BASHCUTPRO_BRIDGE)
   --cli PATH     the engine (default: $BASHCUTPRO_CLI, $BASHCUT_FILMCRAFT_CLI or $FILMCRAFT_CLI,
-                 else bashcutpro or filmcraft-cli next to this program, else the same on PATH)
-  --data-dir DIR FilmCraft data dir (default: FILMCRAFT_DATA_DIR or the platform's)
+                 else bashcutpro, bcpro or filmcraft-cli next to this program, else the same on PATH)
+  --data-dir DIR BashCutPro data dir (default: BASHCUTPRO_DATA_DIR, FILMCRAFT_DATA_DIR or the platform's)
   --roots LIST   more folders the agent may write to (path-list separator: ':' Unix, ';' Windows);
                  BASHCUTPRO_ROOTS adds to them
   --no-guard     pass requests through unchecked
@@ -151,7 +153,7 @@ fn main() -> ExitCode {
 
 fn decide(a: &Args, cwd: &Path) -> Result<Decision, String> {
     let cli = find_cli(a);
-    let data_dir = a.opt("--data-dir").map(PathBuf::from).or_else(bashcut_connect::default_data_dir);
+    let data_dir = a.opt("--data-dir").map(PathBuf::from).or_else(bashcut_dirs::data_dir);
     let project = a.opt("--project").map(str::to_string).or_else(|| env("BASHCUTPRO_PROJECT")).map(|p| roots::absolute(Path::new(&p), cwd));
     let headless = a.flag("--headless");
     let window = data_dir.as_deref().and_then(|d| automation::live(d, Duration::from_millis(500)));
@@ -208,18 +210,9 @@ fn decide(a: &Args, cwd: &Path) -> Result<Decision, String> {
     Ok(Decision { mode: "headless", argv, project, roots, notes })
 }
 
-/// The engine (#154): `--cli`, `$BASHCUTPRO_CLI` (or the older `$BASHCUT_FILMCRAFT_CLI`, then
-/// `$FILMCRAFT_CLI`), else `bashcutpro` or `filmcraft-cli` next to this program, else the same on PATH.
+/// The engine (#154): `--cli`, else [`bashcut_dirs::engine::default_cli`] (the one lookup, RC1).
 fn find_cli(a: &Args) -> String {
-    let named = a.opt("--cli").map(str::to_string).or_else(|| ["BASHCUTPRO_CLI", "BASHCUT_FILMCRAFT_CLI", "FILMCRAFT_CLI"].iter().find_map(|k| env(k)));
-    if let Some(c) = named {
-        return c;
-    }
-    let names: Vec<String> = ["bashcutpro", "bcpro", "filmcraft-cli"].iter().map(|n| format!("{n}{}", std::env::consts::EXE_SUFFIX)).collect();
-    let beside = std::env::current_exe().ok().and_then(|e| e.parent().and_then(|d| names.iter().map(|n| d.join(n)).find(|p| p.is_file())));
-    let path: Vec<PathBuf> = std::env::var_os("PATH").map(|p| std::env::split_paths(&p).collect()).unwrap_or_default();
-    let on_path = || names.iter().find_map(|n| path.iter().map(|d| d.join(n)).find(|p| p.is_file()));
-    beside.or_else(on_path).map(|p| p.to_string_lossy().into_owned()).unwrap_or_else(|| names.last().cloned().unwrap_or_default())
+    a.opt("--cli").map(str::to_string).unwrap_or_else(|| bashcut_dirs::engine::default_cli().to_string_lossy().into_owned())
 }
 
 /// Run the MCP server; with `roots`, every agent line passes [`guard::check`] first. Returns the
