@@ -213,7 +213,7 @@ pub fn draw(app: &mut FilmcraftApp, ui: &mut egui::Ui) {
             p.intensity = (pct / 100.0).clamp(0.0, looks::MAX_AMOUNT);
         }
     });
-    ui.horizontal(|ui| {
+    ui.horizontal_wrapped(|ui| {
         let mut on = p.on_frame;
         let r = ui.checkbox(&mut on, s("Preview on current frame"));
         app.auto.add_response("bashcut.looks.frame", &r, if on { "on" } else { "off" });
@@ -262,10 +262,10 @@ pub fn draw(app: &mut FilmcraftApp, ui: &mut egui::Ui) {
         }
     });
 
-    // selection
+    // selection; rows wrap: a row wider than a narrow panel would widen every card below (FX26)
     let selected = app.session.state.selection.len();
     let current = applied_to_selection(app);
-    ui.horizontal(|ui| {
+    ui.horizontal_wrapped(|ui| {
         if !editing {
             return;
         }
@@ -343,7 +343,9 @@ fn card(
     let frame = egui::Frame::new().inner_margin(egui::Margin::same(4)).corner_radius(t.radius_sm).fill(if is_current { t.pill_active_bg } else { t.panel_bg });
     let r = frame.show(ui, |ui| {
         ui.horizontal(|ui| {
-            let size = egui::vec2(THUMB_W as f32 * 0.75, THUMB_H as f32 * 0.75);
+            // at most 40% of the card, so the text column (name, ☆, Apply) fits a narrow panel (FX26)
+            let w = (THUMB_W as f32 * 0.75).min(ui.available_width() * 0.4).max(1.0);
+            let size = egui::vec2(w, w * THUMB_H as f32 / THUMB_W as f32);
             match &tex {
                 Some(tex) => {
                     ui.add(egui::Image::new((tex.id(), size)));
@@ -354,7 +356,7 @@ fn card(
                 }
             }
             ui.vertical(|ui| {
-                ui.horizontal(|ui| {
+                ui.horizontal_wrapped(|ui| {
                     ui.label(egui::RichText::new(look.name).strong().color(t.text));
                     let fav = p.favourites.iter().any(|f| f == look.id);
                     let star = ui.small_button(if fav { "★" } else { "☆" });
