@@ -494,6 +494,14 @@ labels or subclips (§1 rule 1). A project opened in upstream FilmCraft still wo
   through the string catalog (`strings::s`), so these three show in Vietnamese ("Mở trợ lý trong Terminal",
   "Đăng nhập Claude Code", "Cài Claude Code"); MCP `command_list` keeps the English labels. Switching agents
   (`use`) resets `Agent::plugins` to unknown, so the kit line never shows from the other agent's init.
+- **installKit and Vietnamese palette labels (AG11)**: `bashcut.agent.installKit` "Install BashCutPro Kit" runs
+  `agent::install_kit`, the same function as the kit line's **Install kit…** button (AG9): current agent Claude Code,
+  found (else "Install kit works with Claude Code once it is installed."); refused with "The BashCutPro kit is
+  already installed." once the session's last `system/init` lists `bcp`. Before any init (plugins unknown) the
+  explicit command still opens the kit terminal: the user asked for it, and the two `claude plugin` commands are
+  harmless when the kit is there. Only on this command or the click, never automatic. Every `bashcut.agent.*`
+  palette label has a vi row ("Gửi cho trợ lý", "Dừng trợ lý", "Cài bộ công cụ BashCutPro", …); MCP
+  `command_list` keeps the English labels.
 - **Kit missing (AG9)**: `stream_json` keeps the `name`s of `system/init`'s `plugins` (`Event::Init.plugins`,
   `Agent::plugins`: `None` until a live session sent one; also in `bashcut.agent.state`). Checked on 2026-10-23
   with Claude Code 2.1.309 on Windows: `plugins` is `[{"name", "path", "source", "version"}]`, builtin ones with

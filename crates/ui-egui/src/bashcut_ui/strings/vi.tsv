@@ -422,3 +422,20 @@ Do not run it; the agent is told you said no.	Không chạy; trợ lý sẽ đư
 {tool}: not answered (the agent stopped waiting)	{tool}: chưa trả lời (trợ lý đã thôi chờ)
 that permission request is not waiting any more	Yêu cầu cấp quyền đó không còn chờ nữa
 this request cannot be allowed for the whole project: allow it once	Không thể cho phép yêu cầu này cho cả dự án: hãy cho phép lần này
+# Agent palette labels and installKit (AG11)
+Send to Agent	Gửi cho trợ lý
+Stop Agent	Dừng trợ lý
+Remove Queued Agent Message	Bỏ tin nhắn đang chờ gửi trợ lý
+Agent State	Trạng thái trợ lý
+Agent Transcript	Nội dung trò chuyện với trợ lý
+Agent Conversations	Các cuộc trò chuyện với trợ lý
+Open Agent Conversation	Mở cuộc trò chuyện với trợ lý
+New Agent Conversation	Cuộc trò chuyện mới với trợ lý
+List Agents	Danh sách trợ lý
+Use Agent	Dùng trợ lý
+Pending Gate	Bước duyệt đang chờ
+Approve Gate	Duyệt bước này
+Request Gate Changes	Yêu cầu sửa bước này
+Install BashCutPro Kit	Cài bộ công cụ BashCutPro
+Install kit works with Claude Code once it is installed.	Cài bộ công cụ chỉ dùng được khi đã cài Claude Code.
+The BashCutPro kit is already installed.	Bộ công cụ BashCutPro đã được cài.

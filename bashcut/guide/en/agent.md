@@ -69,6 +69,8 @@ The first time in a folder, Claude Code asks whether you trust it: choose **Yes,
 - The command palette has the same three actions: **Open Agent in Terminal**, **Sign In to Claude Code** and
   **Install Claude Code** (an agent driving BashCutPro can call them as `bashcut.agent.terminal`,
   `bashcut.agent.signIn` and `bashcut.agent.install`). Install still runs only when you choose it.
+  **Install BashCutPro Kit** (`bashcut.agent.installKit`) does what **Install kit…** does; it refuses when the
+  conversation already shows the kit.
 
 The terminal is Terminal on macOS, Windows Terminal (else a PowerShell window) on Windows, and your desktop's
 default terminal (else GNOME Terminal, Konsole or xterm) on Linux.
