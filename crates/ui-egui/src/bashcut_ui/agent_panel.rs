@@ -208,6 +208,9 @@ pub fn draw(app: &mut FilmcraftApp, ui: &mut egui::Ui) {
     let height = (ui.available_height() - INPUT_HEIGHT).max(80.0);
     let area = egui::ScrollArea::vertical().id_salt("bashcut.agent.transcript").max_height(height).auto_shrink([false, false]).stick_to_bottom(true);
     let out = scroll_clear_of_bar(ui, area, egui::Id::new("bashcut.agent.transcript.bar"), |ui| {
+        // before anything can widen the content: a line wider than the area (a long tool title,
+        // an unbreakable word) moves egui's right edge with it, and a ✕ aligned to it (FX25)
+        let width = ui.available_width();
         if snap.items.is_empty() {
             note(ui, f("Ask {agent} to edit this project.", &[("agent", &snap.agent.1)]), NOTE, t.text_dim);
             if let Some(prompt) = examples(app, ui) {
@@ -223,7 +226,7 @@ pub fn draw(app: &mut FilmcraftApp, ui: &mut egui::Ui) {
         for (i, q) in snap.queued.iter().enumerate() {
             ui.add_space(6.0);
             let id = format!("bashcut.agent.queued.{i}");
-            ui.horizontal(|ui| {
+            row_within(ui, width, |ui| {
                 strong_note(ui, f("You · queued {n}", &[("n", &(i + 1).to_string())]), META, t.text_dim);
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     if q.cancelling {
@@ -263,6 +266,14 @@ pub fn draw(app: &mut FilmcraftApp, ui: &mut egui::Ui) {
         ctx.request_repaint_after(std::time::Duration::from_millis(100));
     }
     super::shared::put_temp(&ctx, key(), v);
+}
+
+/// A left-to-right row exactly `width` wide from the left edge, so its right-aligned part (a ✕)
+/// stays inside even when an earlier line widened `ui` past its area (FX25).
+fn row_within(ui: &mut egui::Ui, width: f32, add: impl FnOnce(&mut egui::Ui)) {
+    let at = egui::pos2(ui.max_rect().left(), ui.cursor().top());
+    let rect = egui::Rect::from_min_size(at, egui::vec2(width.max(0.0), ui.spacing().interact_size.y));
+    ui.scope_builder(egui::UiBuilder::new().max_rect(rect).layout(egui::Layout::left_to_right(egui::Align::Center)), add);
 }
 
 /// The hints after [`QUIET_HINT`] with no output, macOS first (the strings test reads both).
