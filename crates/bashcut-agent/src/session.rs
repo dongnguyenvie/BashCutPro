@@ -877,11 +877,11 @@ impl Agent {
         self.live = None;
         self.drop_permissions();
         self.interrupting = None;
-        self.in_turn = false;
         self.idle_since = None;
-        let busy = !self.pending.is_empty();
+        // a turn it took and never ended counts too (else the panel stays Running with no error)
+        let busy = std::mem::take(&mut self.in_turn) || !self.pending.is_empty();
         let stopping = self.status == Status::Stopping;
-        if busy && !stopping && !self.timed_out && end == TurnEnd::Done && self.restarts == 0 {
+        if !self.pending.is_empty() && !stopping && !self.timed_out && end == TurnEnd::Done && self.restarts == 0 {
             // it exited before reading what was written (or between turns): again, resuming
             self.restarts = 1;
             match self.restart_live() {
@@ -1081,4 +1081,41 @@ pub fn turn_dir(project: Option<&Path>) -> PathBuf {
 fn unsaved_cwd() -> PathBuf {
     let dir = bashcut_dirs::data_dir().map(|d| d.join("agent"));
     dir.filter(|d| std::fs::create_dir_all(d).is_ok()).unwrap_or_else(std::env::temp_dir)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_saved_project_runs_in_its_folder() {
+        assert_eq!(turn_dir(Some(Path::new("/films/My Film.fcproj"))), Path::new("/films"));
+    }
+
+    #[test]
+    fn message_uuids_are_random_v4() {
+        let a = new_uuid();
+        let parts: Vec<&str> = a.split('-').collect();
+        assert_eq!(parts.iter().map(|p| p.len()).collect::<Vec<_>>(), [8, 4, 4, 4, 12], "{a}");
+        assert!(a.chars().all(|c| c == '-' || c.is_ascii_hexdigit() && !c.is_ascii_uppercase()), "{a}");
+        assert!(parts[2].starts_with('4'), "version 4: {a}");
+        assert!(parts[3].starts_with(['8', '9', 'a', 'b']), "RFC 4122 variant: {a}");
+        let many: std::collections::HashSet<String> = (0..100).map(|_| new_uuid()).collect();
+        assert_eq!(many.len(), 100);
+    }
+
+    #[test]
+    fn a_new_agent_is_idle_with_nothing_queued() {
+        let mut agent = Agent::new(Vec::new());
+        assert!(agent.is_live(), "Claude Code keeps one process per conversation");
+        assert!(!agent.poll() && !agent.is_running());
+        assert!(agent.queued().is_empty() && agent.take_unsent().is_empty());
+        assert!(agent.cancel(0).is_err());
+        assert!(agent.answer_permission(0, Answer::Once).is_err());
+        agent.stop();
+        assert_eq!(agent.status, Status::Idle, "Stop with nothing running does nothing");
+        assert!(agent.release());
+        let state = agent.state_json();
+        assert_eq!((state["live"].as_bool(), state["project"].as_bool()), (Some(false), Some(false)));
+    }
 }
