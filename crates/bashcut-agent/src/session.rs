@@ -33,7 +33,7 @@ use serde_json::{Value, json};
 use crate::plan::{self, Gate};
 use crate::process::{AgentSpec, Live, Turn, TurnEnd, TurnEvent, mcp_config_path, write_mcp_config};
 use crate::store::{self, Conversation};
-use crate::stream_json::{self, Answer, Event, Permission};
+use crate::stream_json::{self, Answer, Event, Permission, SlashCommand};
 use crate::transcript::Item;
 use crate::{Error, Result, err};
 
@@ -156,6 +156,9 @@ pub struct Agent {
     pub capabilities: Vec<String>,
     /// Plugin names of the live agent's last `system/init` (`None` before one arrived; AG9 reads `bcp`).
     pub plugins: Option<Vec<String>>,
+    /// Slash commands of the agent's last `system/init` (AG12, the message box's `/` list; `None`
+    /// before one arrived).
+    pub commands: Option<Vec<SlashCommand>>,
     /// Claude Code refused one of our flags (`unknown option`): too old for a live session.
     outdated: bool,
     /// The Stop in flight as an interrupt request (AG3).
@@ -209,6 +212,7 @@ impl Agent {
             unsent: Vec::new(),
             capabilities: Vec::new(),
             plugins: None,
+            commands: None,
             outdated: false,
             interrupting: None,
             requests: 0,
@@ -406,6 +410,7 @@ impl Agent {
             self.agent = a;
             // the plugins were the other agent's (AG9's kit line); unknown until this one's init
             self.plugins = None;
+            self.commands = None;
             self.new_conversation()?;
         }
         Ok(())
@@ -686,6 +691,11 @@ impl Agent {
                         }
                         _ => {}
                     }
+                    if let Event::Init { commands, .. } = &ev
+                        && !commands.is_empty()
+                    {
+                        self.commands = Some(commands.clone());
+                    }
                     self.conversation.transcript.apply(&ev);
                 }
                 TurnEvent::Ended(end) => ended = Some(end),
@@ -748,12 +758,13 @@ impl Agent {
 
     fn live_event(&mut self, ev: Event) {
         match &ev {
-            Event::Init { session, capabilities, plugins, .. } => {
+            Event::Init { session, capabilities, plugins, commands, .. } => {
                 if !session.is_empty() {
                     self.conversation.session = session.clone();
                 }
                 self.capabilities = capabilities.clone();
                 self.plugins = Some(plugins.clone());
+                self.commands = Some(commands.clone());
             }
             Event::Auth { .. } => self.auth_failed = true,
             Event::Permission(p) => {
@@ -981,6 +992,7 @@ impl Agent {
             "queuedItems": self.queued_items(),
             "capabilities": self.capabilities,
             "plugins": self.plugins,
+            "slashCommands": self.commands,
             "permissions": self.permissions(),
             "conversation": {"id": self.conversation.id, "title": self.conversation.title(), "items": self.conversation.transcript.items.len(), "session": self.conversation.session},
             "gate": self.gate().map(|g| json!({"stage": g.stage, "summary": g.summary, "evidence": g.evidence_lines()})),

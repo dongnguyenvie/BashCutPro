@@ -36,6 +36,12 @@ liệu, Tải về) khi dự án nằm ở đó: bấm **Cho phép**. Khi chưa 
    từ chối, trợ lý sẽ làm tiếp theo cách khác. Trợ lý chờ câu trả lời của bạn; **Dừng** cũng từ chối thẻ đang chờ.
    Các bước trợ lý trong Batch không hỏi: thứ cần cho phép sẽ bị từ chối ngay.
 
+8. Gõ **/** để chọn một kỹ năng hoặc lệnh: danh sách phía trên ô nhập tin hiện những gì Claude Code của bạn có (của
+   bộ công cụ BashCutPro là `/bcp:setup`, `/bcp:vlog-plan`, …), khớp nhất lên đầu khi bạn gõ tiếp (`/se` ra
+   `/bcp:setup`). **↑/↓** để chọn, **Enter** hoặc **Tab** để chèn vào ô nhập tin, **Esc** để đóng danh sách, hoặc bấm
+   thẳng vào một dòng. Danh sách được tải khi bạn gửi tin nhắn đầu tiên trong cuộc trò chuyện; trước đó nó hiện
+   *Gửi một tin nhắn để tải danh sách kỹ năng*. Codex không có danh sách này.
+
 **Mới** (New) bắt đầu cuộc trò chuyện mới; các cuộc trước được liệt kê và mở lại được.
 
 ### Dùng Claude Code trong terminal

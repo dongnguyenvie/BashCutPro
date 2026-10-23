@@ -37,6 +37,12 @@ nothing.
    the agent you said no, so it carries on another way. The agent waits for your answer; **Stop** denies a waiting
    card too. Batch agent steps never ask: anything that needs approval there is denied at once.
 
+8. Type **/** to pick a skill or command: a list above the message box shows the ones your Claude Code has (the
+   BashCutPro kit's as `/bcp:setup`, `/bcp:vlog-plan`, …), the closest matches first as you type (`/se` finds
+   `/bcp:setup`). **↑/↓** pick, **Enter** or **Tab** puts it in the message box, **Esc** closes the list, or click
+   one. The list loads with your first message in a conversation; before that it says *Start a message to load
+   skills*. Codex has no such list.
+
 **New** starts a new conversation; earlier ones are listed and can be opened again.
 
 ### Use Claude Code in a terminal

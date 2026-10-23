@@ -2787,3 +2787,12 @@ fn control_channel_commands_name_no_filmcraft() {
 #[test]
 #[ignore = "test ticket: queued/dismiss/remove close buttons register a non-empty label and no ✕ text"]
 fn close_buttons_are_icons_with_a_label() {}
+
+/// AG12: with a fake Claude Code whose `system/init` lists `bcp:setup`, `bcp:review` and `compact`
+/// (skills: the two `bcp:` ones), typing `/se` in the message box shows `/bcp:setup` first
+/// (`bashcut.agent.slash.0`); Enter inserts `/bcp:setup ` without sending, ↑/↓ move the pick, Esc
+/// closes, a click on a row inserts it; before the first init the list says "Start a message to
+/// load skills" (`bashcut.agent.slash.hint`); Codex shows no list; English and Vietnamese.
+#[test]
+#[ignore = "test ticket: AG12 / list in the Agent message box (fake init with 3 commands, /se -> bcp:setup first, Enter/Tab/click insert, Esc, hint before init, Codex none; en+vi)"]
+fn agent_slash_list_suggests_skills() {}
