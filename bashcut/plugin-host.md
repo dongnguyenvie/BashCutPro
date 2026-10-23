@@ -77,6 +77,19 @@ would have its plugins write to `%APPDATA%\BashCutPro`. A value the user exporte
 already prefers it, so the child gets the same value. A manifest setting whose `env` is `BASHCUTPRO_DATA_DIR`, or a
 batch step's own `env` entry, still wins (it comes later / the item value is dropped).
 
+### Engine in the child's environment (NM4)
+
+Every plugin child also gets `BASHCUTPRO_CLI=<the engine the app found>` (`settings::CLI_ENV`, from
+`bashcut_dirs::engine::found`: an exported `BASHCUTPRO_CLI` / `BASHCUT_FILMCRAFT_CLI` / `FILMCRAFT_CLI`, else
+`bashcutpro-cli` / `bcpro` / `filmcraft-cli` next to the app, else on `PATH`). A packaged app's engine sits next to it
+(`BashCutPro.app/Contents/MacOS/bashcutpro-cli`, `<install>ashcutpro-cli.exe`, `/usr/bin/bashcutpro-cli`), which is
+not always on `PATH`; the plugins' `find_cli` reads `--cli`, then `BASHCUTPRO_CLI` (plugins #72), so they find it
+without `PATH`. `settings::env_for` puts it right after the data folder, so agent plugins and engine hooks get it too;
+an action run with an engine in its `RunContext` also passes it as `--cli` and sets `BASHCUTPRO_CLI` to the same path
+(later, so it wins); batch steps get theirs from `item_env` (`--cli`). A manifest setting named `BASHCUTPRO_CLI`
+still wins. No engine found: nothing is set and the plugin reports `no_cli`, which the panel shows as the friendly
+"engine not found" hint (it matches the code, so older plugins' wording is recognised too).
+
 ## Touch points in upstream files (the whole core change)
 
 | File | Change |

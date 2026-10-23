@@ -90,9 +90,10 @@ pub fn check(s: &Setting, v: &Value) -> Result<Value> {
 /// empty or one of the setting's `env` names is already set in the host's own environment (the
 /// child inherits it, and a user's export must not be overridden by a default). Secrets have no default (the manifest
 /// refuses one): only a stored value is ever exported.
-/// First comes [`DATA_DIR_ENV`] (FX9), so a manifest setting of that name still wins.
+/// First come [`DATA_DIR_ENV`] (FX9) and [`CLI_ENV`] (NM4), so a manifest setting of either name still wins.
 pub fn env_for(m: &Manifest, values: &Values, secrets: &dyn SecretStore) -> Vec<(String, String)> {
     let mut env: Vec<(String, String)> = data_dir_env(bashcut_dirs::data_dir().as_deref()).into_iter().collect();
+    env.extend(cli_env(bashcut_dirs::engine::found().as_deref()));
     env.extend(env_with(m, values, secrets, &|name| std::env::var_os(name).is_some()));
     env
 }
@@ -107,6 +108,19 @@ pub const DATA_DIR_ENV: &str = "BASHCUTPRO_DATA_DIR";
 /// this never changes an export, only spells out what the app resolved. Nothing without a folder.
 pub fn data_dir_env(dir: Option<&Path>) -> Option<(String, String)> {
     dir.filter(|d| !d.as_os_str().is_empty()).map(|d| (DATA_DIR_ENV.to_string(), d.to_string_lossy().into_owned()))
+}
+
+/// The variable plugins read the engine from (`bashcutpro-cli`; plugins `find_cli`: `--cli`, then
+/// `BASHCUTPRO_CLI`, then `FILMCRAFT_CLI`, then `PATH`, then the install folders; NM3a).
+pub const CLI_ENV: &str = "BASHCUTPRO_CLI";
+
+/// `BASHCUTPRO_CLI=<the engine the app found>` for a plugin child (NM4): a packaged app's engine sits
+/// next to it (`Contents/MacOS/bashcutpro-cli`, `<install>ashcutpro-cli.exe`, `/usr/bin/bashcutpro-cli`),
+/// which is often not on `PATH`, and a plugin cannot see the app's folder. [`bashcut_dirs::engine::found`]
+/// already prefers a value the user exported, so this only spells out what the app resolved. Nothing
+/// without an engine (the plugin then reports `no_cli`).
+pub fn cli_env(engine: Option<&Path>) -> Option<(String, String)> {
+    engine.filter(|e| !e.as_os_str().is_empty()).map(|e| (CLI_ENV.to_string(), e.to_string_lossy().into_owned()))
 }
 
 /// [`env_for`] with the host environment lookup given (tests).
@@ -333,14 +347,40 @@ mod tests {
         let saved: Values = [("data".to_string(), json!("/mine"))].into();
         let env = env_for(&m, &saved, &store);
         let app = data_dir_env(bashcut_dirs::data_dir().as_deref());
+        let cli = cli_env(bashcut_dirs::engine::found().as_deref());
         if let Some(app) = &app {
             assert_eq!(env.first(), Some(app), "the app's folder leads: {env:?}");
         }
         let last = env.iter().rev().find(|(k, _)| k == DATA_DIR_ENV);
         assert_eq!(last, Some(&(DATA_DIR_ENV.to_string(), "/mine".to_string())), "the setting is the last value, so it wins: {env:?}");
-        assert_eq!(env.len(), app.iter().count() + 1, "{env:?}");
-        // without a saved value the plain export is only the app's folder
+        assert_eq!(env.len(), app.iter().count() + cli.iter().count() + 1, "{env:?}");
+        // without a saved value the plain export is only the app's folder and engine
         let none = env_for(&m, &Values::new(), &store);
-        assert_eq!(none, app.into_iter().collect::<Vec<_>>());
+        assert_eq!(none, app.into_iter().chain(cli).collect::<Vec<_>>());
+    }
+
+    #[test]
+    fn plugin_env_carries_the_engine() {
+        // NM4: BASHCUTPRO_CLI=<engine>, nothing for no engine or an empty path
+        let engine = Path::new("/Applications/BashCutPro.app/Contents/MacOS/bashcutpro-cli");
+        assert_eq!(cli_env(Some(engine)), Some((CLI_ENV.to_string(), engine.to_string_lossy().into_owned())));
+        assert_eq!(CLI_ENV, "BASHCUTPRO_CLI");
+        assert_eq!(cli_env(None), None);
+        assert_eq!(cli_env(Some(Path::new(""))), None);
+        // env_for: the engine this process finds (the export, next to the app, else on PATH), before the settings
+        let m = Manifest::parse(
+            &json!({"schema": "bashcut-plugin/1", "id": "test.cli", "version": "0.1.0", "entry": {"command": ["x"]},
+            "settings": [{"id": "engine", "type": "string", "env": ["BASHCUTPRO_CLI"]}]})
+            .to_string(),
+        )
+        .unwrap();
+        let store = MemoryStore::default();
+        let found = cli_env(bashcut_dirs::engine::found().as_deref());
+        let none = env_for(&m, &Values::new(), &store);
+        assert_eq!(none.iter().find(|(k, _)| k == CLI_ENV), found.as_ref(), "{none:?}");
+        let saved: Values = [("engine".to_string(), json!("/my/bashcutpro-cli"))].into();
+        let env = env_for(&m, &saved, &store);
+        let last = env.iter().rev().find(|(k, _)| k == CLI_ENV);
+        assert_eq!(last, Some(&(CLI_ENV.to_string(), "/my/bashcutpro-cli".to_string())), "the setting wins: {env:?}");
     }
 }
