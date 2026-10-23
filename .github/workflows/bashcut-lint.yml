@@ -1,0 +1,73 @@
+# BashCutPro lint (CI1): the speed-mode gate on every push to main and every PR. Fork-only file (is_ours by its
+# `bashcut-` name), so it is not one of upstream's manual-only workflows (bashcut/README.md "Rules").
+# Steps: fmt of the whole workspace, clippy -D warnings of our crates + the UI crate, upstream footprint, script lint.
+name: BashCutPro lint
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: bashcut-lint-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: "0"
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # footprint diffs against the last upstream merge and origin/main: full history
+          fetch-depth: 0
+
+      - name: Rust toolchain (stable, what the gate runs locally; MSRV is rust-version in Cargo.toml)
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - name: rustfmt
+        run: cargo fmt --all -- --check
+
+      - name: System packages (ALSA, GTK 3, X11 / Wayland for cpal, rfd, winit; shellcheck for lint-scripts)
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends \
+            pkg-config libasound2-dev libgtk-3-dev libudev-dev \
+            libxkbcommon-dev libwayland-dev libx11-dev libxcursor-dev libxrandr-dev libxi-dev \
+            shellcheck
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          # one cache from main, read by PRs
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+
+      - name: clippy (bashcut-* crates, bashcutpro-cli, filmcraft-ui-egui)
+        run: |
+          pkgs=()
+          for m in crates/bashcut-*/Cargo.toml apps/bashcut*/Cargo.toml; do
+            pkgs+=(-p "$(sed -n 's/^name = "\(.*\)"/\1/p' "$m" | head -n1)")
+          done
+          echo "clippy ${pkgs[*]} -p filmcraft-ui-egui"
+          cargo clippy "${pkgs[@]}" -p filmcraft-ui-egui --all-targets -- -D warnings
+
+      - name: Upstream remote (footprint base; falls back to UPSTREAM.md's sync log without it)
+        run: |
+          git remote add upstream https://github.com/storytold/filmcraft.git
+          git fetch --no-tags upstream main:refs/remotes/upstream/main || echo "upstream fetch failed: footprint uses the sync log"
+          git fetch --no-tags origin main:refs/remotes/origin/main
+
+      - name: upstream footprint
+        run: bashcut/scripts/upstream.sh footprint
+
+      - name: lint-scripts
+        run: bashcut/scripts/lint-scripts.sh

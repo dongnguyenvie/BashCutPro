@@ -101,7 +101,10 @@ engine next to it. `CARGO_TARGET_DIR` is respected. There is no `cargo dev` alia
 - Follow upstream's rules (`AGENTS.md`: never crash, clean-room, pure Rust, layering, quality gates).
 - Our crates and ids carry a `bashcut` prefix so they never collide with upstream names.
 - Docs, UI text and samples in English.
-- GitHub Actions run manually only (`workflow_dispatch`); keep it that way when merging upstream.
+- Upstream's GitHub Actions run manually only (`workflow_dispatch`); keep it that way when merging upstream. Our own
+  `.github/workflows/bashcut-lint.yml` (CI1) runs on every push to `main` and every PR: `cargo fmt --check`, clippy
+  `-D warnings` of the `bashcut-*` crates, `bashcutpro-cli` and `filmcraft-ui-egui`, `upstream.sh footprint` and
+  `lint-scripts.sh`. A red run blocks the merge; it does not run tests.
 - Commit identity `dongnguyenvie@gmail.com`; no AI attribution lines in commits or PRs.
 
 ## License
