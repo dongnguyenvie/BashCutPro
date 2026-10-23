@@ -378,6 +378,16 @@ key `<section>@<w>x<h>`, at most 64 entries), so a window comes back where it wa
 Each phase: `cargo test -p` for our crates and `crates/ui-egui/tests/bashcut_ui.rs`, `cargo xtask layers`,
 one manual look at the app through `ui.screenshot`. No release build per phase.
 
+**Pixel diff of a refactor (T8).** `panels_render_for_a_pixel_diff` in `bashcut_ui.rs` is `#[ignore]` and only
+renders: with `BASHCUT_UI_SHOTS=<dir>` it saves Agent (a tool group open), a failed run's toast, Runs (error + log,
+docked and popped out), Batch's steps, the palette's parameters and the rail tooltip, each in en and vi. The data dir
+has a fixed name, so two runs at the same commit match to the pixel. To check that a refactor draws the same: add a
+temporary worktree at the old commit, append this test to its `bashcut_ui.rs` (it uses only the `Driver` of that
+era), run it there and on the new commit with the same `CARGO_TARGET_DIR`, and compare the PNGs (no image goes in
+the repo). Run 2026-10-23: RU17's parent (`03222fbb^1`), RU17 (`03222fbb`) and main (`0a77bf93`, again at `828dcd98`) gave 0 differing
+pixels in all 16 shots; a 0.5 px change to `CODE` showed up as ~15 000 px in the Agent tool group, so the pass does
+see a change.
+
 ## 9. Upstream sync checklist (for these hooks)
 
 1. `bashcut/scripts/upstream.sh merge` (see `UPSTREAM.md` "How to sync") on `upstream-sync/<date>` with `git rerere` on.

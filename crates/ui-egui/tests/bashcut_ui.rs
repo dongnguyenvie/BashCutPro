@@ -1698,3 +1698,127 @@ fn a_secret_save_shows_busy_then_stored() {
     assert!(d.harness.state().ui_error.is_none(), "{:?}", d.harness.state().ui_error);
     let _ = std::fs::remove_dir_all(&data);
 }
+
+/// T8: the bashcut panels as PNGs in en and vi, for a pixel diff of two commits (`bashcut/in-app-ui.md`
+/// §8): Agent with a tool group open, Runs with an error and its log, a toast, Batch's step list,
+/// the palette's parameters, the rail tooltip, and a section docked and popped out. Ignored and
+/// needs `BASHCUT_UI_SHOTS=<dir>`; it only renders, so it runs as-is on an older commit too. The
+/// data dir has a fixed name so paths drawn are the same in every run.
+#[test]
+#[ignore = "pixel-diff pass: BASHCUT_UI_SHOTS=<dir> cargo test -p filmcraft-ui-egui --test bashcut_ui -- --ignored panels_render_for_a_pixel_diff"]
+fn panels_render_for_a_pixel_diff() {
+    let Some(dir) = std::env::var_os("BASHCUT_UI_SHOTS").map(std::path::PathBuf::from) else {
+        eprintln!("BASHCUT_UI_SHOTS is not set: skipped");
+        return;
+    };
+    std::fs::create_dir_all(&dir).unwrap();
+    let data = std::env::temp_dir().join("bashcut-ui-pixel-diff");
+    let _ = std::fs::remove_dir_all(&data);
+    // a plugin that logs a line and fails
+    let plugin = data.join("bashcut-plugins").join("test.pixels");
+    std::fs::create_dir_all(&plugin).unwrap();
+    let manifest = json!({
+        "schema": "bashcut-plugin/1", "id": "test.pixels", "name": "Pixels", "version": "0.1.0", "summary": "test plugin",
+        "entry": {"command": ["sh", "-c", "echo 'reading captions' >&2; echo 'no captions in the sequence' >&2; exit 4"],
+                  "windows": ["cmd", "/C", "echo reading captions 1>&2 & echo no captions in the sequence 1>&2 & exit 4"]},
+        "output": "bashcut-result/1",
+        "actions": [{"id": "go", "title": "Translate captions…", "args": [], "needs": "none", "params": [
+            {"id": "target", "title": "Target language", "flag": "--target", "type": "enum", "default": "vi", "choices": ["vi", "en"]}]}]
+    });
+    std::fs::write(plugin.join("bashcut-plugin.json"), manifest.to_string()).unwrap();
+    // a saved project whose sidecar holds a conversation with tool calls
+    let project = data.join("film.fcproj");
+    let conv = data.join("film.fcproj.bashcut").join("conversations");
+    std::fs::create_dir_all(&conv).unwrap();
+    let add = json!({"command": "markers.add", "params": {"name": "Hook"}});
+    let items = json!([
+        {"type": "user", "text": "Mark the hook and cut the intro"},
+        {"type": "assistant", "text": "Adding a **marker** at the hook, then:\n\n- trim the intro\n- `markers.add` twice"},
+        {"type": "tool", "id": "t1", "name": "mcp__filmcraft__execute", "input": add, "output": "{\"ok\":true}", "isError": false},
+        {"type": "tool", "id": "t2", "name": "mcp__filmcraft__execute", "input": add, "output": "{\"ok\":true}", "isError": false},
+        {"type": "tool", "id": "t3", "name": "mcp__filmcraft__execute", "input": {"command": "edit.trim"}, "output": "no clip selected", "isError": true},
+        {"type": "gate", "stage": "rough cut", "state": "approved", "note": "keep the intro short"},
+        {"type": "error", "message": "The agent stopped: exit code 1."},
+        {"type": "notice", "message": "Resumed the earlier session."}
+    ]);
+    let c = json!({"schema": "bashcut-conversation/1", "id": "c1-0", "title": "Hook", "agent": "claude-code", "created": 1, "updated": 1, "transcript": {"items": items}});
+    std::fs::write(conv.join("c1-0.json"), c.to_string()).unwrap();
+    std::fs::write(data.join("a.mp4"), b"media").unwrap();
+
+    let mut d = Driver::with_data(&data, |_| {});
+    let shot = |d: &mut Driver, name: &str| {
+        for lang in ["en", "vi"] {
+            d.exec("bashcut.ui.setLanguage", json!({"language": lang}));
+            d.frames(4);
+            d.harness.render().unwrap().save(dir.join(format!("{name}-{lang}.png"))).unwrap();
+        }
+        d.exec("bashcut.ui.setLanguage", json!({"language": "en"}));
+    };
+    // the first-open registry check of Plugins ends first, so no job runs under the shots
+    d.click("bashcut.rail.plugins");
+    d.wait(|d| d.exec("bashcut.plugins.runs", json!({})), |r| !r.as_array().is_some_and(|r| r.iter().any(|j| j["state"] == json!("running"))));
+    d.exec("bashcut.ui.closePanel", json!({}));
+
+    // Agent: the conversation with its first tool group open
+    d.harness.state_mut().session.path = Some(project.to_string_lossy().into_owned());
+    d.exec("bashcut.ui.show.agent", json!({}));
+    d.exec("bashcut.agent.open", json!({"id": "c1-0"}));
+    d.frames(3);
+    let tools = d.ok("ui.elements", json!({"prefix": "bashcut.agent.tool."}));
+    let first = tools.as_array().and_then(|a| a.iter().filter_map(|e| e["id"].as_str()).find(|id| id.matches('.').count() == 3).map(str::to_string));
+    if let Some(id) = first {
+        d.click(&id);
+    }
+    shot(&mut d, "agent-tools");
+    d.exec("bashcut.ui.closePanel", json!({}));
+
+    // a failed run while Runs is closed: its toast, then Runs with the error and the log open
+    let job = d.exec("bashcut.plugins.run", json!({"plugin": "test.pixels", "action": "go"}))["job"].as_u64().expect("a job");
+    d.wait_job(job);
+    d.wait(|d| d.ok("ui.elements", json!({"prefix": format!("bashcut.toast.{job}")})), |v| v.as_array().is_some_and(|a| !a.is_empty()));
+    shot(&mut d, "toast");
+    d.exec("bashcut.ui.show.runs", json!({}));
+    d.wait_element(&format!("bashcut.runs.{job}.error"), |e| !e.is_null());
+    d.click(&format!("bashcut.runs.{job}.log"));
+    shot(&mut d, "runs-error-log");
+
+    // the same section popped out, then docked back
+    d.exec("bashcut.ui.popOut", json!({"section": "runs"}));
+    d.frames(3);
+    shot(&mut d, "runs-popped");
+    d.exec("bashcut.ui.dockBack", json!({"section": "runs"}));
+    d.frames(3);
+    shot(&mut d, "runs-docked");
+    d.exec("bashcut.ui.closePanel", json!({}));
+
+    // Batch: an input, a plugin step and an engine step (open, with its signature)
+    d.exec("bashcut.ui.show.batch", json!({}));
+    d.exec("bashcut.batch.addInput", json!({"paths": [data.join("a.mp4")]}));
+    d.exec("bashcut.batch.addStep", json!({"plugin": "test.pixels", "action": "go", "params": {"target": "en"}}));
+    d.exec("bashcut.batch.addStep", json!({"command": "markers.add", "params": {"name": "Hook"}}));
+    d.click("bashcut.batch.step.1");
+    shot(&mut d, "batch-steps");
+    d.exec("bashcut.ui.closePanel", json!({}));
+
+    // the palette's parameters for an engine command
+    d.exec("bashcut.palette.open", json!({"query": "markers.add"}));
+    d.frames(2);
+    d.harness.input_mut().events.push(egui::Event::Key {
+        key: egui::Key::Tab,
+        physical_key: None,
+        pressed: true,
+        repeat: false,
+        modifiers: egui::Modifiers::NONE,
+    });
+    d.frames(3);
+    shot(&mut d, "palette-params");
+    d.exec("bashcut.palette.close", json!({}));
+
+    // the rail tooltip: the pointer rests on Agent's button
+    let r = d.rect("bashcut.rail.agent").expect("rail button");
+    d.harness.input_mut().events.push(egui::Event::PointerMoved(egui::pos2(r[0] + r[2] / 2.0, r[1] + r[3] / 2.0)));
+    d.frames(40);
+    shot(&mut d, "rail-tooltip");
+    d.exec("bashcut.ui.setLanguage", json!({"language": null}));
+    let _ = std::fs::remove_dir_all(&data);
+}
