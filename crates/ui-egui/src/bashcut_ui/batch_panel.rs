@@ -363,9 +363,10 @@ fn steps(app: &mut FilmcraftApp, ui: &mut egui::Ui, ctx: &egui::Context, v: &mut
 }
 
 /// A step's name in the list: its own label, else its kind's ([`StepKind::label`]) in the UI language.
+/// A recipe step's label is its English title, so the label is looked up too (other text stays as written).
 fn step_label(step: &Step) -> String {
     if let Some(l) = &step.label {
-        return l.clone();
+        return s(l).to_string();
     }
     match step.kind() {
         Ok(kind) => {

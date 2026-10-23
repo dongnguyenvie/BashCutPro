@@ -29,9 +29,11 @@ function Find-Tool([string]$name) {
 }
 
 # Portable installs keep their data in .\data next to the exe (portable.txt), like the app.
-if ($env:FILMCRAFT_DATA_DIR) { $data = $env:FILMCRAFT_DATA_DIR }
+# BashCutPro's own data folder, the app's rules (bashcut_dirs::data_dir, SB1); not FilmCraft's
+if ($env:BASHCUTPRO_DATA_DIR) { $data = $env:BASHCUTPRO_DATA_DIR }
+elseif ($env:FILMCRAFT_DATA_DIR) { $data = $env:FILMCRAFT_DATA_DIR }
 elseif (Test-Path (Join-Path $PSScriptRoot 'portable.txt')) { $data = Join-Path $PSScriptRoot 'data' }
-else { $data = Join-Path $env:APPDATA 'FilmCraft' }
+else { $data = Join-Path $env:APPDATA 'BashCutPro' }
 $cli = Find-Tool 'bashcutpro'
 if (-not $cli) { $cli = Find-Tool 'filmcraft-cli' }
 Write-Output "BashCutPro setup: data folder $data, command line (bashcutpro) $(if ($cli) { $cli } else { 'not found' })"
