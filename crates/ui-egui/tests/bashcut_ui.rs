@@ -1957,49 +1957,15 @@ fn help_menu_names_bashcutpro_and_opens_the_guide_in_both_languages() {
     assert!(d.harness.state().ui_error.is_none(), "{:?}", d.harness.state().ui_error);
 }
 
-/// A live Claude Code stand-in for [`queued_x_stays_clear_of_the_transcript_scroll_bar`]: it takes
-/// the first message, answers with a long text (the transcript scrolls) and works until stdin closes,
-/// so every later message stays queued.
-const QUEUE_FAKE: &str = r#"
-import json, sys
-def out(v):
-    sys.stdout.write(json.dumps(v) + "\n")
-    sys.stdout.flush()
-m = json.loads(sys.stdin.readline())
-out({"type": "system", "subtype": "init", "session_id": "live-q", "model": "fake", "capabilities": []})
-out({"type": "user", "isReplay": True, "uuid": m.get("uuid", ""), "message": m["message"]})
-text = "\n\n".join("line %d of a long answer" % i for i in range(60))
-out({"type": "assistant", "message": {"content": [{"type": "text", "text": text}]}})
-for line in sys.stdin:
-    pass
-"#;
-
 /// FX16: during a long turn each queued message's ✕ lies inside the transcript, clear of its
 /// (floating) vertical scroll bar, and a real pointer click on it removes the message; at the
 /// narrowest panel too, in English and Vietnamese.
 #[test]
 fn queued_x_stays_clear_of_the_transcript_scroll_bar() {
-    let py = ["python3", "python"].into_iter().find(|p| std::process::Command::new(p).arg("--version").output().is_ok_and(|o| o.status.success()));
-    let Some(py) = py else {
-        eprintln!("python not found: skipped");
-        return;
-    };
-    let dir = std::env::temp_dir().join(format!("bashcut-ui-fx16-{}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&dir);
-    std::fs::create_dir_all(&dir).unwrap();
-    let script = dir.join("live.py");
-    std::fs::write(&script, QUEUE_FAKE).unwrap();
-    let spec = bashcut_agent::AgentSpec {
-        id: "fake-live".into(),
-        name: "Fake".into(),
-        argv: vec![py.into(), script.to_string_lossy().into_owned()],
-        timeout_secs: 120,
-        ..bashcut_agent::AgentSpec::default()
-    };
-    let mut d = Driver::build(&dir.join("data"), |_| {}, |ctx| assert!(filmcraft_ui_egui::bashcut_ui::agent::use_agents(ctx, vec![spec]), "no agent yet"));
-    Driver::point_registry(&mut d, &dir.join("data"));
-    d.click("bashcut.rail.agent");
-    d.exec("bashcut.agent.send", json!({"text": "first"}));
+    let mode = [("FAKE_MODE", "receipt,cancel-queued")];
+    let Some(fake) = fake_claude("queued_x_stays_clear_of_the_transcript_scroll_bar", "fx16", &mode) else { return };
+    let mut d = fake.driver();
+    d.exec("bashcut.agent.send", json!({"text": "hold first, long"}));
     d.wait(|d| d.exec("bashcut.agent.transcript", json!({})), |t| t["items"].to_string().contains("line 59 of a long answer"));
     for text in ["second", "third", "fourth"] {
         d.exec("bashcut.agent.send", json!({"text": text}));
@@ -2024,28 +1990,8 @@ fn queued_x_stays_clear_of_the_transcript_scroll_bar() {
     let st = d.wait(|d| d.exec("bashcut.agent.state", json!({})), |s| s["queued"].as_array().is_some_and(|q| q.len() == 2));
     assert_eq!(st["queued"], json!(["second", "fourth"]), "{st}");
     d.call("engine.execute", json!({"command": "bashcut.agent.stop", "params": {}}));
-    assert!(d.harness.state().ui_error.is_none(), "{:?}", d.harness.state().ui_error);
-    let _ = std::fs::remove_dir_all(&dir);
+    d.no_ui_error();
 }
-
-/// A live Claude Code stand-in for [`permission_card_stays_clear_of_the_transcript_scroll_bar`]: it
-/// answers the first message with a long text (the transcript scrolls), asks to run a long Bash
-/// command (a permission card) and works until stdin closes.
-const PERMISSION_FAKE: &str = r#"
-import json, sys
-def out(v):
-    sys.stdout.write(json.dumps(v) + "\n")
-    sys.stdout.flush()
-m = json.loads(sys.stdin.readline())
-out({"type": "system", "subtype": "init", "session_id": "live-p", "model": "fake", "capabilities": []})
-out({"type": "user", "isReplay": True, "uuid": m.get("uuid", ""), "message": m["message"]})
-text = "\n\n".join("line %d of a long answer" % i for i in range(60))
-out({"type": "assistant", "message": {"content": [{"type": "text", "text": text}]}})
-command = " && ".join("echo step %d of a long command" % i for i in range(20))
-out({"type": "control_request", "request_id": "perm-1", "request": {"subtype": "can_use_tool", "tool_name": "Bash", "input": {"command": command}}})
-for line in sys.stdin:
-    pass
-"#;
 
 /// The rect of automation entry `id` as left, top, right, bottom.
 fn edges(d: &mut Driver, id: &str) -> Option<[f32; 4]> {
@@ -2057,27 +2003,9 @@ fn edges(d: &mut Driver, id: &str) -> Option<[f32; 4]> {
 /// pointer click on Deny answers it.
 #[test]
 fn permission_card_stays_clear_of_the_transcript_scroll_bar() {
-    let py = ["python3", "python"].into_iter().find(|p| std::process::Command::new(p).arg("--version").output().is_ok_and(|o| o.status.success()));
-    let Some(py) = py else {
-        eprintln!("python not found: skipped");
-        return;
-    };
-    let dir = std::env::temp_dir().join(format!("bashcut-ui-fx18-perm-{}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&dir);
-    std::fs::create_dir_all(&dir).unwrap();
-    let script = dir.join("live.py");
-    std::fs::write(&script, PERMISSION_FAKE).unwrap();
-    let spec = bashcut_agent::AgentSpec {
-        id: "fake-live".into(),
-        name: "Fake".into(),
-        argv: vec![py.into(), script.to_string_lossy().into_owned()],
-        timeout_secs: 120,
-        ..bashcut_agent::AgentSpec::default()
-    };
-    let mut d = Driver::build(&dir.join("data"), |_| {}, |ctx| assert!(filmcraft_ui_egui::bashcut_ui::agent::use_agents(ctx, vec![spec]), "no agent yet"));
-    Driver::point_registry(&mut d, &dir.join("data"));
-    d.click("bashcut.rail.agent");
-    d.exec("bashcut.agent.send", json!({"text": "first"}));
+    let Some(fake) = fake_claude("permission_card_stays_clear_of_the_transcript_scroll_bar", "fx18", &[]) else { return };
+    let mut d = fake.driver();
+    d.exec("bashcut.agent.send", json!({"text": "please ask, long"}));
     d.wait(|d| d.exec("bashcut.agent.state", json!({})), |s| s["permissions"].as_array().is_some_and(|p| p.len() == 1));
     let shots = std::env::var_os("BASHCUT_UI_SHOTS").map(std::path::PathBuf::from);
     let bar = 10.0;
@@ -2100,9 +2028,10 @@ fn permission_card_stays_clear_of_the_transcript_scroll_bar() {
     d.click("bashcut.agent.permission.0.deny");
     let st = d.wait(|d| d.exec("bashcut.agent.state", json!({})), |s| s["permissions"].as_array().is_some_and(Vec::is_empty));
     assert_eq!(st["permissions"], json!([]), "{st}");
-    d.call("engine.execute", json!({"command": "bashcut.agent.stop", "params": {}}));
-    assert!(d.harness.state().ui_error.is_none(), "{:?}", d.harness.state().ui_error);
-    let _ = std::fs::remove_dir_all(&dir);
+    let answer = d.wait(|_| json!(fake.notes("answer")), |a| a.as_array().is_some_and(|a| a.len() == 1));
+    assert_eq!(answer[0]["response"]["response"]["behavior"], json!("deny"), "{answer}");
+    d.agent_idle();
+    d.no_ui_error();
 }
 
 /// FX18: with enough runs that Runs scrolls, every run's card (its state label right-aligned in it)
@@ -2167,7 +2096,9 @@ fn runs_rows_stay_clear_of_the_section_scroll_bar() {
 /// uuid, the answer, a `result`), answering control requests while it works. A message containing
 /// `hold` works (an assistant line `working on …` first) until the `FAKE_GO` file exists; `please
 /// sign in` answers like a signed-out Claude Code; `please ask` asks to run `rm -rf build` (a
-/// `can_use_tool` request) and waits for the answer; `no kit` leaves `bcp` out of the init's plugins.
+/// `can_use_tool` request) and waits for the answer; `long` first answers with 60 lines (the
+/// transcript scrolls) and makes `please ask`'s command a long one; `no kit` leaves `bcp` out of the
+/// init's plugins.
 /// `FAKE_MODE` (comma separated): `receipt` / `cancel-queued` announce `interrupt_receipt_v1` /
 /// `interrupt_cancel_queued_v1`; `slow-stop` / `slow-cancel` answer the interrupt / a cancel after a
 /// pause; `outdated` refuses a flag like an old Claude Code. Every start, control request, answer,
@@ -2253,10 +2184,13 @@ def turn(m):
         out({"type": "assistant", "error": "authentication_failed", "message": {"content": [{"type": "text", "text": line}]}})
         out({"type": "result", "subtype": "success", "is_error": True, "result": line, "session_id": session})
         return
+    if "long" in text:
+        out({"type": "assistant", "message": {"content": [{"type": "text", "text": "\n\n".join("line %d of a long answer" % i for i in range(60))}]}})
     if "please ask" in text:
+        command = " && ".join("echo step %d of a long command" % i for i in range(20)) if "long" in text else "rm -rf build"
         out({"type": "control_request", "request_id": "perm-1", "request": {"subtype": "can_use_tool", "tool_name": "Bash",
-             "input": {"command": "rm -rf build"}, "tool_use_id": "t9", "permission_suggestions": [
-                 {"type": "addRules", "rules": [{"toolName": "Bash", "ruleContent": "rm -rf build"}], "behavior": "allow", "destination": "localSettings"}]}})
+             "input": {"command": command}, "tool_use_id": "t9", "permission_suggestions": [
+                 {"type": "addRules", "rules": [{"toolName": "Bash", "ruleContent": command}], "behavior": "allow", "destination": "localSettings"}]}})
         while "perm-1" not in answers and not eof:
             pump(0.05)
     if "hold" in text:
@@ -2828,4 +2762,22 @@ fn a_click_behind_the_recovery_modal_names_it() {
     d.no_ui_error();
     drop(d);
     let _ = std::fs::remove_dir_all(&data);
+}
+
+/// BR6: `engine.commands` over the control channel names BashCutPro in every label and menu (File ▸
+/// Export ▸ Selection as BashCutPro Project… among them), ids as `command.list` has them.
+#[test]
+fn control_channel_commands_name_no_filmcraft() {
+    let mut d = Driver::demo();
+    let list = d.ok("engine.commands", json!({}));
+    let list = list.as_array().expect("a list of commands");
+    let ids = d.exec("command.list", json!({}));
+    let ids: Vec<&Value> = ids.as_array().expect("command.list").iter().map(|c| &c["id"]).collect();
+    assert_eq!(list.iter().map(|c| &c["id"]).collect::<Vec<_>>(), ids, "same commands, same ids");
+    for c in list {
+        assert!(!c["label"].to_string().contains("FilmCraft") && !c["menu"].to_string().contains("FilmCraft"), "{c}");
+    }
+    let export = list.iter().find(|c| c["id"] == json!("file.exportSelectionProject")).expect("file.exportSelectionProject");
+    assert_eq!(export["label"], json!("Selection as BashCutPro Project…"));
+    d.no_ui_error();
 }

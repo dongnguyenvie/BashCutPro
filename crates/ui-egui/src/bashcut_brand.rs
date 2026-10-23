@@ -319,6 +319,41 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "test ticket: BR6 engine.commands over the control channel says Selection as BashCutPro Project…, ids and shortcuts unchanged, filmcraft-cli in params becomes bashcutpro-cli, a non-command value passes through"]
-    fn control_channel_commands_name_bashcutpro() {}
+    fn control_channel_commands_name_bashcutpro() {
+        use serde_json::json;
+        let list = filmcraft_engine::Session::default().execute("command.list", json!({})).unwrap();
+        let branded = commands(list.clone());
+        let (before, after) = (list.as_array().unwrap(), branded.as_array().unwrap());
+        assert_eq!(before.len(), after.len());
+        let find = |l: &[serde_json::Value], id: &str| l.iter().find(|c| c["id"] == json!(id)).cloned().unwrap();
+        let (b, a) = (find(before, "file.exportSelectionProject"), find(after, "file.exportSelectionProject"));
+        assert_eq!(b["label"], json!("Selection as FilmCraft Project…"));
+        assert_eq!(a["label"], json!("Selection as BashCutPro Project…"));
+        for (b, a) in before.iter().zip(after) {
+            assert_eq!(
+                (&b["id"], &b["shortcut"], &b["shortcuts"], &b["defaultShortcut"]),
+                (&a["id"], &a["shortcut"], &a["shortcuts"], &a["defaultShortcut"]),
+                "{a}"
+            );
+            assert!(!a["label"].to_string().contains("FilmCraft") && !a["menu"].to_string().contains("FilmCraft"), "{a}");
+        }
+
+        // params: the CLI's name and the product's
+        let one = json!([{"id": "x.run", "label": "Run", "menu": ["FilmCraft", "Run"], "shortcut": "Cmd+R", "params": "{} — like `filmcraft-cli run`, in FilmCraft"}]);
+        let one = commands(one);
+        assert_eq!(one[0]["params"], json!("{} — like `bashcutpro-cli run`, in BashCutPro"));
+        assert_eq!(one[0]["menu"], json!(["BashCutPro", "Run"]));
+        assert_eq!((&one[0]["id"], &one[0]["shortcut"]), (&json!("x.run"), &json!("Cmd+R")));
+
+        // anything that is not a list of commands passes through
+        for v in [
+            json!({"label": "FilmCraft"}),
+            json!("FilmCraft"),
+            json!(null),
+            json!([{"id": "a", "label": "FilmCraft"}]),
+            json!([{"id": "a", "label": "FilmCraft", "params": "{}"}, 3]),
+        ] {
+            assert_eq!(commands(v.clone()), v);
+        }
+    }
 }
