@@ -15,9 +15,25 @@ fn exe(name: &str) -> String {
     format!("{name}{}", std::env::consts::EXE_SUFFIX)
 }
 
+/// `dir/name` when a file of exactly that name is there. On a case-insensitive volume (macOS)
+/// `Contents/MacOS/bashcutpro` opens the app's own `BashCutPro` executable (#187), so the listing must
+/// carry the name as written; a folder that cannot be listed falls back to the plain check. Windows
+/// names are case-insensitive by design and keep the plain check.
+fn file_named(dir: &Path, name: &str) -> Option<PathBuf> {
+    let p = dir.join(name);
+    if !p.is_file() {
+        return None;
+    }
+    if cfg!(windows) {
+        return Some(p);
+    }
+    let listed = std::fs::read_dir(dir).map_or(true, |entries| entries.flatten().any(|e| e.file_name() == OsStr::new(name)));
+    listed.then_some(p)
+}
+
 /// The first of [`NAMES`] in `dir`.
 pub fn in_dir(dir: &Path) -> Option<PathBuf> {
-    NAMES.iter().map(|n| dir.join(exe(n))).find(|p| p.is_file())
+    NAMES.iter().find_map(|n| file_named(dir, &exe(n)))
 }
 
 /// The first of [`NAMES`] next to this program.
@@ -29,7 +45,7 @@ pub fn beside_self() -> Option<PathBuf> {
 /// the next name.
 pub fn on_path(path: Option<&OsStr>) -> Option<PathBuf> {
     let dirs: Vec<PathBuf> = path.map(|p| std::env::split_paths(p).collect()).unwrap_or_default();
-    NAMES.iter().find_map(|n| dirs.iter().map(|d| d.join(exe(n))).find(|p| p.is_file()))
+    NAMES.iter().find_map(|n| dirs.iter().find_map(|d| file_named(d, &exe(n))))
 }
 
 /// The installed engine without the variables: in `exe_dir` (this program's folder), else on `path`.
@@ -84,6 +100,19 @@ mod tests {
         let path = std::env::join_paths([&none, &old]).unwrap();
         assert_eq!(on_path(Some(&path)), Some(old.join(exe("filmcraft-cli"))));
         assert_eq!(on_path(None), None);
+    }
+
+    #[test]
+    fn a_name_that_differs_only_in_case_is_not_the_engine() {
+        // the macOS app bundle: the app's `BashCutPro` executable next to `bcpro` (#187); on a
+        // case-insensitive volume `bashcutpro` would open `BashCutPro`
+        let bundle = tmp("bundle");
+        std::fs::write(bundle.join(exe("BashCutPro")), "").unwrap();
+        std::fs::write(bundle.join(exe("bcpro")), "").unwrap();
+        assert_eq!(in_dir(&bundle), Some(bundle.join(exe("bcpro"))));
+        let path = std::env::join_paths([&bundle]).unwrap();
+        assert_eq!(on_path(Some(&path)), Some(bundle.join(exe("bcpro"))));
+        let _ = std::fs::remove_dir_all(&bundle);
     }
 
     #[test]

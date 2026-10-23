@@ -71,7 +71,10 @@ substitutions over upstream's original text is the #39 follow-up and fits the sa
 `bashcut-setup.sh [--yes] [--skip-looks] [--skip-profiles] [--skip-kit] [--skip-doctor]` (Windows: `bashcut-setup.ps1`
 with `-Yes`, `-Skip…`):
 
-1. Creates `<data dir>/bashcut/{profiles,templates,looks}`.
+1. Creates `<data dir>/bashcut/{profiles,templates,looks}`. `<data dir>` is BashCutPro's own folder, by the app's rules
+   (`bashcut_dirs::data_dir`, SB1): `BASHCUTPRO_DATA_DIR`, `FILMCRAFT_DATA_DIR`, then `BashCutPro` (macOS, Windows;
+   `.\data` for a portable Windows install) or `bashcutpro` (XDG). The engine is `bashcutpro`, else `bcpro` (the
+   name inside the macOS app, #187), else `filmcraft-cli`.
 2. Writes the look pack as `.cube` LUTs + `looks.json` (`bashcut.looks.export`).
 3. Compiles the output profiles into the `BashCut <name>` export presets (`bashcut.profiles.compile`).
 4. Installs the agent kit as a Claude Code plugin when `claude` is found, and for Codex (clone + `install-codex.sh`) when `codex` is found.

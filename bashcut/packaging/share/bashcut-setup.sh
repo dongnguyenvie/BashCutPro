@@ -26,11 +26,12 @@ for a in "$@"; do
 done
 
 here="$(cd "$(dirname "$0")" && pwd)"
-# the tools sit next to this script (CLI zip), in ../../MacOS (macOS app: Resources/bashcut) or in ../../bin (Linux / FreeBSD share/)
+# the tools sit next to this script (CLI zip), in ../../MacOS (macOS app: Resources/bashcut) or in ../../bin (Linux / FreeBSD share/);
+# find -name matches the exact case: on a Mac volume MacOS/bashcutpro would open the app's own BashCutPro (#187)
 find_tool() {
   local t="$1" d
   for d in "$here" "$here/../../MacOS" "$here/../../bin" "$here/../../../bin"; do
-    if [ -x "$d/$t" ]; then printf '%s\n' "$d/$t"; return 0; fi
+    if [ -x "$d/$t" ] && [ -n "$(find "$d" -maxdepth 1 -name "$t" -print 2>/dev/null)" ]; then printf '%s\n' "$d/$t"; return 0; fi
   done
   command -v "$t" 2>/dev/null
 }
@@ -41,11 +42,14 @@ ask() {
   case "$reply" in y|Y|yes|YES) return 0 ;; *) return 1 ;; esac
 }
 
-if [ -n "${FILMCRAFT_DATA_DIR:-}" ]; then data="$FILMCRAFT_DATA_DIR"
-elif [ "$(uname -s)" = Darwin ]; then data="$HOME/Library/Application Support/FilmCraft"
-else data="${XDG_DATA_HOME:-$HOME/.local/share}/filmcraft"
+# BashCutPro's own data folder, the app's rules (bashcut_dirs::data_dir, SB1); not FilmCraft's
+if [ -n "${BASHCUTPRO_DATA_DIR:-}" ]; then data="$BASHCUTPRO_DATA_DIR"
+elif [ -n "${FILMCRAFT_DATA_DIR:-}" ]; then data="$FILMCRAFT_DATA_DIR"
+elif [ "$(uname -s)" = Darwin ]; then data="$HOME/Library/Application Support/BashCutPro"
+else data="${XDG_DATA_HOME:-$HOME/.local/share}/bashcutpro"
 fi
-cli="$(find_tool bashcutpro || find_tool filmcraft-cli || true)"
+# bcpro: the engine's name inside the macOS app, where bashcutpro would clash with BashCutPro (#187)
+cli="$(find_tool bashcutpro || find_tool bcpro || find_tool filmcraft-cli || true)"
 echo "BashCutPro setup: data folder $data, command line (bashcutpro) ${cli:-not found}"
 mkdir -p "$data/bashcut/profiles" "$data/bashcut/templates" "$data/bashcut/looks"
 
