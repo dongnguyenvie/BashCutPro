@@ -115,7 +115,8 @@ pub(crate) fn content_text(c: Option<&Value>) -> String {
     }
 }
 
-fn capped_input(v: Option<&Value>) -> Value {
+/// A tool's input, or `{"truncated": true}` when its JSON is longer than [`MAX_INPUT`] (Codex uses it too).
+pub(crate) fn capped_input(v: Option<&Value>) -> Value {
     let v = v.cloned().unwrap_or(Value::Null);
     if v.to_string().len() > MAX_INPUT { json!({"truncated": true}) } else { v }
 }

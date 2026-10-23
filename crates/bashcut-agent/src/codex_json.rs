@@ -8,12 +8,10 @@ use std::collections::HashSet;
 use serde_json::{Value, json};
 
 use crate::clip;
-use crate::stream_json::{Event, MAX_TEXT, content_text};
+use crate::stream_json::{Event, MAX_TEXT, capped_input, content_text};
 
 /// The event format name in agent specs and plugin manifests.
 pub const FORMAT: &str = "codex-json";
-/// Longest tool input kept (as JSON text).
-const MAX_INPUT: usize = 8 * 1024;
 /// Tool calls remembered as started (a hostile stream cannot grow this without bound).
 const MAX_STARTED: usize = 4096;
 
@@ -68,9 +66,9 @@ impl Parser {
             }
             "error" if done => return vec![Event::Notice(clip(&text("message"), 2048))],
             // named like Claude Code's MCP tools, so the panel groups them the same way
-            "mcp_tool_call" => (format!("mcp__{}__{}", clip(&text("server"), 64), clip(&text("tool"), 128)), capped(item.get("arguments"))),
+            "mcp_tool_call" => (format!("mcp__{}__{}", clip(&text("server"), 64), clip(&text("tool"), 128)), capped_input(item.get("arguments"))),
             "command_execution" => ("shell".to_string(), json!({"cmd": clip(&text("command"), 2048)})),
-            "file_change" => ("file_change".to_string(), capped(item.get("changes"))),
+            "file_change" => ("file_change".to_string(), capped_input(item.get("changes"))),
             "web_search" => ("web_search".to_string(), json!({"query": clip(&text("query"), 512)})),
             _ => return Vec::new(),
         };
@@ -100,11 +98,6 @@ impl Parser {
         }
         out
     }
-}
-
-fn capped(v: Option<&Value>) -> Value {
-    let v = v.cloned().unwrap_or(Value::Null);
-    if v.to_string().len() > MAX_INPUT { json!({"truncated": true}) } else { v }
 }
 
 #[cfg(test)]
