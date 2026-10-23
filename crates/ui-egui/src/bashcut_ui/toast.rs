@@ -1,7 +1,7 @@
 //! Finished-run toasts and dismissable status lines (`bashcut/in-app-ui.md` §3).
 //!
-//! A plugin run that ends while Runs is not on screen gets one toast, "✓ <run> finished" or
-//! "✕ <run> failed", with Show (opens Runs on that run) and ✕. Toasts are a foreground
+//! A plugin run that ends while Runs is not on screen gets one toast, `"✓ <run> finished"` or
+//! `"✕ <run> failed"`, with Show (opens Runs on that run) and ✕. Toasts are a foreground
 //! `egui::Area` above the rail's bottom corner and go after [`TTL`] seconds. A cancelled run gets
 //! none: whoever cancelled it knows. State lives in egui context data, like the rest of our UI.
 

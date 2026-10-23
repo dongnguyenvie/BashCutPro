@@ -5,7 +5,7 @@
 //! `i18n/*.tsv` catalog, [`text`] replaces the few branded strings at lookup time, in every
 //! language: `i18n::Language::tr` asks it first. The replacements are English only. The hook is off
 //! in this crate's unit tests, so upstream's catalog-coverage tests keep checking upstream's strings;
-//! the tests here check the replacements through [`shown`].
+//! the tests here check the replacements through `shown` (test-only).
 
 /// The product name shown in the About dialog.
 pub const NAME: &str = "BashCutPro";

@@ -639,7 +639,7 @@ impl Host {
 }
 
 /// A job without its log, for lists.
-pub fn job_summary(j: &Job) -> Value {
+fn job_summary(j: &Job) -> Value {
     json!({"id": j.id, "kind": j.kind, "title": j.title, "state": j.state, "progress": j.progress, "message": j.message, "elapsedMs": j.elapsed_ms, "then": j.then, "view": j.view.is_some()})
 }
 

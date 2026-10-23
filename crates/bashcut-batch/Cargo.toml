@@ -1,10 +1,11 @@
 [package]
 name = "bashcut-batch"
-description = "BashCutPro batch runner: parallel headless pipelines through filmcraft-cli, one project per input, resumable job book"
+description = "BashCutPro batch runner: parallel headless pipelines through the engine (bashcutpro, else filmcraft-cli), one project per input, resumable job book"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
 rust-version.workspace = true
+publish = false
 
 [lints]
 workspace = true

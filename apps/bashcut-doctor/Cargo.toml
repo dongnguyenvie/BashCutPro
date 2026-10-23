@@ -4,6 +4,7 @@ description = "BashCutPro doctor: setup checks before a run, update notices"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+rust-version.workspace = true
 publish = false
 
 [lints]

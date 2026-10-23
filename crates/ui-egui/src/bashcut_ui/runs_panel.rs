@@ -107,7 +107,7 @@ pub fn retry(j: &Job) -> Option<(&'static str, Value)> {
 }
 
 /// The files a finished run's result names under [`RESULT_PATH_KEYS`], in that order, without
-/// repeats, at most [`MAX_REVEAL`].
+/// repeats, at most `MAX_REVEAL` (8).
 pub fn result_paths(j: &Job) -> Vec<String> {
     let mut out: Vec<String> = Vec::new();
     if j.state.is_running() {
