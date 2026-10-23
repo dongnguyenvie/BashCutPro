@@ -90,8 +90,23 @@ pub fn check(s: &Setting, v: &Value) -> Result<Value> {
 /// empty or one of the setting's `env` names is already set in the host's own environment (the
 /// child inherits it, and a user's export must not be overridden by a default). Secrets have no default (the manifest
 /// refuses one): only a stored value is ever exported.
+/// First comes [`DATA_DIR_ENV`] (FX9), so a manifest setting of that name still wins.
 pub fn env_for(m: &Manifest, values: &Values, secrets: &dyn SecretStore) -> Vec<(String, String)> {
-    env_with(m, values, secrets, &|name| std::env::var_os(name).is_some())
+    let mut env: Vec<(String, String)> = data_dir_env(bashcut_dirs::data_dir().as_deref()).into_iter().collect();
+    env.extend(env_with(m, values, secrets, &|name| std::env::var_os(name).is_some()));
+    env
+}
+
+/// The variable plugins read their data folder from (`BASHCUTPRO_DATA_DIR`, then `FILMCRAFT_DATA_DIR`,
+/// then the per-OS default; plugins #69).
+pub const DATA_DIR_ENV: &str = "BASHCUTPRO_DATA_DIR";
+
+/// `BASHCUTPRO_DATA_DIR=<the app's data folder>` for a plugin child (FX9): a plugin cannot see the
+/// app's executable folder, so without it a portable install's plugins (`<exe dir>/data`) would write
+/// to the per-user folder. [`bashcut_dirs::data_dir`] already prefers a value the user exported, so
+/// this never changes an export, only spells out what the app resolved. Nothing without a folder.
+pub fn data_dir_env(dir: Option<&Path>) -> Option<(String, String)> {
+    dir.filter(|d| !d.as_os_str().is_empty()).map(|d| (DATA_DIR_ENV.to_string(), d.to_string_lossy().into_owned()))
 }
 
 /// [`env_for`] with the host environment lookup given (tests).
@@ -296,4 +311,8 @@ mod tests {
         assert_eq!(tool_with("sh", &["-c", "cat; echo; exit 1"], Some("sk-1"), Duration::from_secs(10)), Ok((false, "sk-1".to_string())));
         assert!(tool_with("/nonexistent/bashcut-key-tool", &[], None, Duration::from_secs(1)).unwrap_err().0.contains("key store"));
     }
+
+    #[test]
+    #[ignore = "test ticket: data_dir_env gives BASHCUTPRO_DATA_DIR=<dir>, None for no or an empty folder; env_for puts it first so a manifest setting named BASHCUTPRO_DATA_DIR wins"]
+    fn plugin_env_carries_the_data_dir() {}
 }

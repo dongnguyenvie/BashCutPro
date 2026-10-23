@@ -322,3 +322,7 @@ fn agent_plugins_are_listed_for_the_agent_section() {
     assert!(Host::new(None, Arc::new(MemoryStore::default())).agents().is_empty());
     let _ = std::fs::remove_dir_all(&data);
 }
+
+#[test]
+#[ignore = "test ticket: a fake plugin prints its env; BASHCUTPRO_DATA_DIR is the app's data folder for a portable layout (<exe dir>/data) and a normal one, and an exported value is kept"]
+fn plugin_runs_get_the_data_dir() {}
