@@ -123,6 +123,13 @@ and `bashcut-doctor --json`.
   `crates/bashcut-winres`, PK4; `bcpro.exe` shares `bashcutpro-cli.exe`'s resource). PK4 run (0.10.0, unsigned, Windows
   PowerShell 5.1): MSI 51.9 MB, portable zip 66.4 MB. Since NM2 the app exe, the `App Paths\bashcutpro.exe` key and
   the WiX ids are BashCutPro's; still upstream's: the log file `Logs/filmcraft.log` (`apps/filmcraft/src/logging.rs`).
+  PV1 run after NM1 + NM2 (main `cfe39233`, unsigned, Windows PowerShell 5.1): MSI 51.9 MB, portable zip 66.4 MB; the
+  MSI admin image (`msiexec /a`) and the zip hold `bashcutpro.exe`, `bashcutpro-cli.exe`, `bcpro.exe` and no
+  `filmcraft*.exe`; `wix msi decompile` shows `App Paths\bashcutpro.exe` and the Start menu shortcut BashCutPro; zip
+  entries use `/`. The portable app (run from a temp folder, data in `.\data`, nothing in `%APPDATA%`) took one Agent
+  section turn (Claude Code added a marker) and bridged `bcpro inspect sequence` / `bcpro exec clip.rename` with no
+  `--project`, both shown in the open window. Still upstream's: the zip's `README.md` (FilmCraft's) and the
+  `FilmCraft Previews` folder next to a saved project.
 - Codec patents: for a paid build prefer the OS encoders (VideoToolbox, Media Foundation) and get legal advice before
   selling.
 
