@@ -77,8 +77,25 @@ fn write_log(_summary: &str) {}
 
 #[cfg(test)]
 mod tests {
+    const CHILD: &str = "BASHCUT_CRASH_TEST_CHILD";
+
+    /// The hook and its slot are process-wide, so a panic in any other test of this process would
+    /// race the scenario: run it alone in a child test process.
     #[test]
     fn hook_records_and_logs_worker_panics() {
+        if std::env::var_os(CHILD).is_some() {
+            return scenario();
+        }
+        let exe = std::env::current_exe().expect("test exe");
+        let out = std::process::Command::new(exe)
+            .args(["--exact", "crash::tests::hook_records_and_logs_worker_panics", "--test-threads=1", "--nocapture"])
+            .env(CHILD, "1")
+            .output()
+            .expect("spawn child test process");
+        assert!(out.status.success(), "child failed:\n{}\n{}", String::from_utf8_lossy(&out.stdout), String::from_utf8_lossy(&out.stderr));
+    }
+
+    fn scenario() {
         let dir = std::env::temp_dir().join(format!("fc-crash-{}", std::process::id()));
         super::install(Some(dir.clone()));
         let _ = super::take_last();
