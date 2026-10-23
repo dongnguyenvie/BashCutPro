@@ -364,3 +364,9 @@ Install kit…	Cài bộ công cụ…
 Open a terminal that installs the BashCutPro kit (bcp plugin) for Claude Code.	Mở cửa sổ dòng lệnh để cài bộ công cụ BashCutPro (plugin bcp) cho Claude Code.
 Installing the BashCutPro kit for Claude Code. When it finishes, close this window and start a New conversation in BashCutPro.	Đang cài bộ công cụ BashCutPro cho Claude Code. Khi xong, đóng cửa sổ này và bắt đầu cuộc trò chuyện Mới trong BashCutPro.
 Needs the BashCutPro kit (bcp plugin) for Claude Code.	Cần bộ công cụ BashCutPro (plugin bcp) cho Claude Code.
+You · queued {n}	Bạn · đang chờ {n}
+Remove this message from the queue	Bỏ tin nhắn này khỏi hàng chờ
+Removing…	Đang bỏ…
+that message is not queued any more	Tin nhắn đó không còn trong hàng chờ
+the agent has this message already: stop it instead	Trợ lý đã nhận tin nhắn này: hãy bấm Dừng nếu không muốn nữa
+the agent has ended	Trợ lý đã thoát

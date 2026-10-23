@@ -387,6 +387,27 @@ labels or subclips (§1 rule 1). A project opened in upstream FilmCraft still wo
   message resumes the session in a new process; not exiting within 5 s kills its process group. A per-message turn
   (Codex) ends its process group as before; Batch agent steps (`bashcut-batch`) run their own per-step process and
   keep their stop. The project stays as it is.
+- **Queued messages with ✕ (AG4, checked with `claude` 2.1.309 on macOS)**: queued messages are numbered in the
+  order the agent gets them ("You · queued 1", `Bạn · đang chờ 1`, …) and each has ✕
+  (`bashcut.agent.queued.<n>.cancel`; command `bashcut.agent.cancel {index}`, 0-based in `bashcut.agent.state` →
+  `queued`; `queuedItems` adds `cancelling`). A live agent whose `system/init` has `interrupt_cancel_queued_v1`
+  gets every message with a `uuid` (`stream_json::user_message_with_uuid`), written at once as in AG2, and ✕ sends
+  `{"type":"control_request","request_id":"bashcut-cancel-<n>","request":{"subtype":"cancel_async_message",
+  "message_uuid":"<uuid>"}}` (`stream_json::cancel_request`; the item shows "Removing…" until the answer). Checked:
+  three messages during a 15 s Bash call, ✕ on the second: `{"response":{"cancelled":true}}` within milliseconds,
+  the second never runs (no `isReplay` echo); an unknown uuid answers `cancelled: false`. The `isReplay` echo
+  carries our `uuid`, so `Event::Picked {uuid}` takes exactly that message. `cancelled: false` (already taken, or
+  folded into the running turn: Claude Code can take a queued message into the turn under way at a tool boundary,
+  seen in the same check for the third message) keeps the item until its echo; it is answered. 2.1.309 has no
+  capability named for `cancel_async_message` itself; its schema says a client that wants per-message control
+  follows the `interrupt_cancel_queued_v1` interrupt with it, so that capability gates it. **Any other live agent**
+  (no such capability, e.g. an agent plugin speaking stream-json, or a Claude Code whose `system/init` has not
+  arrived yet for a message sent in its first second) gets a queued message only when the turn before it ends:
+  the panel keeps it (`Pending::held`) and writes the oldest at the `result`, so ✕ just drops it and each runs as
+  its own turn (no mid-turn pickup for those agents). **Stop with a queue**: Stop does not ask; it drops the whole
+  queue (`cancel_queued: true`, held ones never written) and puts the queued text back into the message box (AG3
+  behaviour, kept: nothing typed is lost, and one click stops everything). Claude Code merges messages it takes
+  together into one turn; a message cancelled before that never reaches it.
 - **Sign-in problem in a live session (AG3 for AG6)**: after an `Event::Auth` the live process is closed at its
   `result`, so the next message starts a new one with the login as it is then; its non-zero exit adds no generic
   error under the sign-in line.
@@ -406,7 +427,7 @@ labels or subclips (§1 rule 1). A project opened in upstream FilmCraft still wo
 - **Empty transcript (UX8)**: three kit recipes (Plan a vlog, Hook and script, Finish for posting) as example
   prompts; a click fills the message box with `Use the bcp:<id> recipe on this project.` and does not send. Under
   them: "The agent stops at each stage for your approval." Automation ids `bashcut.agent.example.<recipe id>`.
-- **Commands**: `bashcut.agent.{send, stop, state, transcript, conversations, open, new, agents, use, gate, approve,
+- **Commands**: `bashcut.agent.{send, stop, cancel, state, transcript, conversations, open, new, agents, use, gate, approve,
   change}`; automation ids `bashcut.agent.{input, send, stop, picker, conversations, new, transcript}`,
   `bashcut.gate.{approve, change, note}`.
 - **Terminal (AG5, `bashcut_ui/terminal.rs`)**: under the header, **Open in Terminal** (automation id

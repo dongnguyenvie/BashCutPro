@@ -12,6 +12,11 @@
 //! stream-json interrupt request and keeps the process for the next message; without the
 //! capability, or when the agent does not answer in time, it gets SIGINT (the process ends, the next
 //! message resumes).
+//!
+//! Queued messages (AG4) each have ✕: an agent that announces `interrupt_cancel_queued_v1` gets every
+//! message with a `uuid` and ✕ withdraws a written one with `cancel_async_message` (dropped when the
+//! agent confirms; one it took already stays). Any other agent gets a queued message only when the
+//! turn before it ends (it is held in the app, so ✕ just drops it, and each runs as its own turn).
 
 use std::collections::VecDeque;
 use std::path::{Path, PathBuf};
@@ -49,13 +54,27 @@ struct Interrupt {
     acked: bool,
 }
 
-/// A message written to the live agent and not taken yet.
+/// A message for the live agent not taken yet.
 struct Pending {
     /// As written (with the context line), to write again after a restart.
     message: String,
     /// What the user typed, when it was sent while the agent worked (shown as queued, added to the
     /// transcript when the agent takes it); `None`: already in the transcript.
     queued: Option<String>,
+    /// The `uuid` it is written with ([`INTERRUPT_CANCEL_QUEUED`]), for ✕; empty: written without one.
+    uuid: String,
+    /// Kept in the app, not written yet (AG4): written when the agent has nothing else to answer.
+    held: bool,
+    /// The id of the `cancel_async_message` request in flight for it.
+    cancelling: Option<String>,
+}
+
+/// One queued message as the panel shows it, oldest first.
+#[derive(Clone, Debug, PartialEq, Serialize)]
+pub struct Queued {
+    pub text: String,
+    /// ✕ was pressed and the agent has not answered yet.
+    pub cancelling: bool,
 }
 
 /// Where and how the live agent runs, to restart it.
@@ -108,7 +127,7 @@ pub struct Agent {
     /// The live agent's process, kept between messages.
     live: Option<Live>,
     launch: Option<Launch>,
-    /// Messages written to the live agent and not taken yet, oldest first.
+    /// Messages for the live agent not taken yet, oldest first (held ones after the written ones).
     pending: VecDeque<Pending>,
     /// The live agent took a message and has not sent its `result` yet.
     in_turn: bool,
@@ -130,7 +149,7 @@ pub struct Agent {
     outdated: bool,
     /// The Stop in flight as an interrupt request (AG3).
     interrupting: Option<Interrupt>,
-    /// Interrupt requests written so far (their ids).
+    /// Control requests (interrupt, cancel) written so far (their ids).
     requests: u64,
     /// A live agent that was closed and has not exited yet (Open in Terminal waits for it).
     closing: Option<Live>,
@@ -194,6 +213,43 @@ impl Agent {
     /// Messages sent while the agent worked that it has not taken yet, oldest first.
     pub fn queued(&self) -> Vec<String> {
         self.pending.iter().filter_map(|p| p.queued.clone()).collect()
+    }
+
+    /// [`Agent::queued`] with each one's ✕ state.
+    pub fn queued_items(&self) -> Vec<Queued> {
+        self.pending.iter().filter_map(|p| p.queued.as_ref().map(|text| Queued { text: text.clone(), cancelling: p.cancelling.is_some() })).collect()
+    }
+
+    /// The live agent can withdraw a written message (`cancel_async_message`, AG4).
+    fn can_withdraw(&self) -> bool {
+        self.capabilities.iter().any(|c| c == INTERRUPT_CANCEL_QUEUED)
+    }
+
+    /// ✕ on the queued message at `index` of [`Agent::queued`]: a held one is dropped at once; a
+    /// written one is withdrawn with `cancel_async_message` and dropped when the agent confirms (one
+    /// the agent took already stays and is answered).
+    pub fn cancel(&mut self, index: usize) -> Result<()> {
+        self.poll();
+        let at = self.pending.iter().enumerate().filter(|(_, p)| p.queued.is_some()).nth(index).map(|(i, _)| i);
+        let Some((i, p)) = at.and_then(|i| self.pending.get(i).map(|p| (i, p))) else { return err("that message is not queued any more") };
+        if p.held {
+            self.pending.remove(i);
+            return Ok(());
+        }
+        if p.cancelling.is_some() {
+            return Ok(());
+        }
+        if p.uuid.is_empty() {
+            return err("the agent has this message already: stop it instead");
+        }
+        let Some(l) = &self.live else { return err("the agent has ended") };
+        self.requests = self.requests.wrapping_add(1);
+        let id = format!("bashcut-cancel-{}", self.requests);
+        l.control(&stream_json::cancel_request(&id, &p.uuid))?;
+        if let Some(p) = self.pending.get_mut(i) {
+            p.cancelling = Some(id);
+        }
+        Ok(())
     }
 
     /// Queued messages the agent never read since the last call (for the message box).
@@ -401,13 +457,18 @@ impl Agent {
             self.start_live(argv, &launch)?;
         }
         self.launch = Some(launch);
-        let Some(live) = &self.live else { return err("the agent did not start") };
-        live.send(&message)?;
+        // an agent that cannot withdraw a written message gets a queued one when its turn ends (AG4)
+        let held = busy && (!self.can_withdraw() || self.pending.iter().any(|p| p.held));
+        let uuid = if self.can_withdraw() { new_uuid() } else { String::new() };
+        if !held {
+            self.write(&message, &uuid)?;
+        }
+        let pending = Pending { message, queued: None, uuid, held, cancelling: None };
         if busy {
-            self.pending.push_back(Pending { message, queued: Some(text.to_string()) });
+            self.pending.push_back(Pending { queued: Some(text.to_string()), ..pending });
         } else {
             self.conversation.transcript.push(Item::User { text: text.to_string() });
-            self.pending.push_back(Pending { message, queued: None });
+            self.pending.push_back(pending);
             self.busy_since = Some(Instant::now());
             self.idle_since = None;
             self.timed_out = false;
@@ -416,9 +477,28 @@ impl Agent {
         Ok(())
     }
 
+    /// Write one message to the live agent, with its `uuid` when it has one.
+    fn write(&self, message: &str, uuid: &str) -> Result<()> {
+        let Some(live) = &self.live else { return err("the agent has ended") };
+        if uuid.is_empty() { live.send(message) } else { live.control(&stream_json::user_message_with_uuid(message, uuid)) }
+    }
+
+    /// Write the oldest held message once no turn runs and nothing written waits.
+    fn write_held(&mut self) -> Result<()> {
+        if self.in_turn || self.pending.iter().any(|p| !p.held) {
+            return Ok(());
+        }
+        let Some(p) = self.pending.front_mut() else { return Ok(()) };
+        p.held = false;
+        let (message, uuid) = (p.message.clone(), p.uuid.clone());
+        self.write(&message, &uuid)
+    }
+
     fn start_live(&mut self, argv: &[String], launch: &Launch) -> Result<()> {
         let live = Live::start(argv, &launch.cwd, &launch.env, &self.agent.events)?;
         self.live = Some(live);
+        // its own system/init says again what it supports
+        self.capabilities.clear();
         self.in_turn = false;
         self.auth_failed = false;
         Ok(())
@@ -430,11 +510,10 @@ impl Agent {
         let session = Some(self.conversation.session.as_str()).filter(|s| !s.is_empty());
         let argv = self.agent.command_line(launch.mcp.as_deref(), session)?;
         self.start_live(&argv, &launch)?;
-        let Some(live) = &self.live else { return err("the agent did not start") };
-        for p in &self.pending {
-            live.send(&p.message)?;
+        for p in self.pending.iter().filter(|p| !p.held) {
+            self.write(&p.message, &p.uuid)?;
         }
-        Ok(())
+        self.write_held()
     }
 
     /// Stop the running turn: a per-message turn ends its process; a live agent gets the interrupt
@@ -472,7 +551,7 @@ impl Agent {
             return err("no interrupt request");
         }
         let cancel = has(INTERRUPT_CANCEL_QUEUED);
-        if !cancel && self.pending.len() > usize::from(!self.in_turn) {
+        if !cancel && self.pending.iter().filter(|p| !p.held).count() > usize::from(!self.in_turn) {
             return err("queued messages it cannot drop");
         }
         let Some(l) = &self.live else { return err("no agent") };
@@ -602,7 +681,20 @@ impl Agent {
                 self.plugins = Some(plugins.clone());
             }
             Event::Auth { .. } => self.auth_failed = true,
-            Event::Control { request, ok } => {
+            Event::Control { request, ok, cancelled } => {
+                if let Some(at) = self.pending.iter().position(|p| p.cancelling.as_deref() == Some(request.as_str())) {
+                    if *ok && *cancelled {
+                        self.pending.remove(at);
+                        if let Err(e) = self.write_held() {
+                            return self.live_failed(e.0);
+                        }
+                        self.after_cancel();
+                    } else if let Some(p) = self.pending.get_mut(at) {
+                        // taken already (its echo may still come): it stays and is answered
+                        p.cancelling = None;
+                    }
+                    return;
+                }
                 let Some(i) = self.interrupting.as_mut().filter(|i| i.id == *request) else { return };
                 if !*ok {
                     return self.interrupt_fallback("refused");
@@ -612,8 +704,8 @@ impl Agent {
                 i.acked = true;
                 return;
             }
-            Event::Picked => {
-                self.take_next();
+            Event::Picked { uuid } => {
+                self.take_next(uuid);
                 self.in_turn = true;
                 self.restarts = 0;
             }
@@ -623,7 +715,7 @@ impl Agent {
                 }
                 // an agent without the echo: the result answers the oldest message
                 if !self.in_turn {
-                    self.take_next();
+                    self.take_next("");
                 }
                 self.in_turn = false;
                 self.restarts = 0;
@@ -640,6 +732,9 @@ impl Agent {
                     return;
                 }
                 self.conversation.transcript.apply(&ev);
+                if let Err(e) = self.write_held() {
+                    return self.live_failed(e.0);
+                }
                 if self.busy() {
                     self.busy_since = Some(Instant::now());
                 } else {
@@ -661,11 +756,26 @@ impl Agent {
         self.conversation.transcript.apply(&ev);
     }
 
-    /// The oldest pending message was taken: a queued one joins the transcript.
-    fn take_next(&mut self) {
-        if let Some(Pending { queued: Some(text), .. }) = self.pending.pop_front() {
+    /// A pending message was taken (the one written with `uuid`, else the oldest written one): a
+    /// queued one joins the transcript.
+    fn take_next(&mut self, uuid: &str) {
+        let by_uuid = self.pending.iter().position(|p| !uuid.is_empty() && p.uuid == uuid);
+        let at = by_uuid.or_else(|| self.pending.front().filter(|p| !p.held).map(|_| 0));
+        if let Some(Pending { queued: Some(text), .. }) = at.and_then(|i| self.pending.remove(i)) {
             self.conversation.transcript.push(Item::User { text });
         }
+    }
+
+    /// A queued message was withdrawn: when it was the last thing waiting and no turn runs (the turn
+    /// ended before the confirmation), the agent is idle.
+    fn after_cancel(&mut self) {
+        if self.busy() || self.status != Status::Running {
+            return;
+        }
+        self.status = Status::Idle;
+        self.busy_since = None;
+        self.idle_since = Some(Instant::now());
+        self.save();
     }
 
     fn live_ended(&mut self, end: TurnEnd) {
@@ -770,6 +880,7 @@ impl Agent {
             "status": self.status,
             "live": self.live.is_some(),
             "queued": self.queued(),
+            "queuedItems": self.queued_items(),
             "capabilities": self.capabilities,
             "plugins": self.plugins,
             "conversation": {"id": self.conversation.id, "title": self.conversation.title(), "items": self.conversation.transcript.items.len(), "session": self.conversation.session},
@@ -790,6 +901,11 @@ impl Agent {
             }
             "stop" => {
                 self.stop();
+                Ok(self.state_json())
+            }
+            "cancel" => {
+                let index = params.get("index").and_then(Value::as_u64).ok_or_else(|| Error("which queued message? (index)".into()))?;
+                self.cancel(usize::try_from(index).unwrap_or(usize::MAX))?;
                 Ok(self.state_json())
             }
             "transcript" => {
@@ -822,6 +938,26 @@ impl Agent {
             _ => err(format!("unknown command bashcut.agent.{name}")),
         }
     }
+}
+
+/// A random version-4 UUID for a message written to the live agent (std only: two randomly keyed
+/// hashes of the time and a counter).
+fn new_uuid() -> String {
+    use std::hash::{BuildHasher, Hasher};
+    use std::sync::atomic::{AtomicU64, Ordering};
+    static NEXT: AtomicU64 = AtomicU64::new(0);
+    let n = NEXT.fetch_add(1, Ordering::Relaxed);
+    let nanos = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_nanos());
+    let half = || {
+        let mut h = std::collections::hash_map::RandomState::new().build_hasher();
+        h.write_u128(nanos);
+        h.write_u64(n);
+        h.finish()
+    };
+    let v = (u128::from(half()) << 64 | u128::from(half())) & !(0xf000 << 64) & !(0xc << 60) | (0x4000 << 64) | (0x8 << 60);
+    let x = format!("{v:032x}");
+    let part = |a: usize, b: usize| x.get(a..b).unwrap_or_default();
+    format!("{}-{}-{}-{}-{}", part(0, 8), part(8, 12), part(12, 16), part(16, 20), part(20, 32))
 }
 
 /// Where a turn runs: the project's folder, else [`unsaved_cwd`]. A terminal resuming the session

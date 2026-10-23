@@ -11,6 +11,9 @@
 //! sent mid-turn shows under the transcript as queued until the agent takes it; one it never read
 //! (it failed or was stopped) goes back into the message box.
 //!
+//! AG4: queued messages are numbered in the order the agent gets them, each with ✕
+//! (`bashcut.agent.queued.<n>.cancel`, `bashcut.agent.cancel`): the agent never answers a removed one.
+//!
 //! AG5: Open in Terminal continues the conversation in the agent's own terminal UI, Sign in opens
 //! `claude` for `/login`, and a missing Claude Code gets an Install button ([`super::terminal`]).
 //!
@@ -84,8 +87,8 @@ struct Snapshot {
     project: Option<std::path::PathBuf>,
     /// [`bashcut_agent::Agent::is_live`]: Send stays enabled while it works.
     live: bool,
-    /// [`bashcut_agent::Agent::queued`].
-    queued: Vec<String>,
+    /// [`bashcut_agent::Agent::queued_items`].
+    queued: Vec<bashcut_agent::session::Queued>,
     /// [`bashcut_agent::Agent::outdated`].
     outdated: bool,
     /// The sign-in or account problem the latest turn ended on (category, the agent's message).
@@ -143,7 +146,7 @@ pub fn draw(app: &mut FilmcraftApp, ui: &mut egui::Ui) {
                 .flatten(),
             project: c.project.clone(),
             live: a.is_live(),
-            queued: a.queued(),
+            queued: a.queued_items(),
             outdated: a.outdated(),
             auth: a.conversation.transcript.auth_problem().map(|(c, m)| (c.to_string(), m.to_string())),
             kit_missing: a.agent.id == "claude-code" && a.plugins.as_ref().is_some_and(|p| !p.iter().any(|n| n == terminal::KIT_PLUGIN)),
@@ -193,11 +196,25 @@ pub fn draw(app: &mut FilmcraftApp, ui: &mut egui::Ui) {
                 note(ui, s("The agent stops at each stage for your approval."), NOTE, t.text_dim);
             }
             transcript(app, ui, &snap.items);
-            for (i, text) in snap.queued.iter().enumerate() {
+            for (i, q) in snap.queued.iter().enumerate() {
                 ui.add_space(6.0);
-                strong_note(ui, s("You · queued"), META, t.text_dim);
-                let r = ui.add(egui::Label::new(egui::RichText::new(text).color(t.text_dim)).selectable(true).wrap());
-                app.auto.add_response(&format!("bashcut.agent.queued.{i}"), &r, text);
+                let id = format!("bashcut.agent.queued.{i}");
+                ui.horizontal(|ui| {
+                    strong_note(ui, f("You · queued {n}", &[("n", &(i + 1).to_string())]), META, t.text_dim);
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        if q.cancelling {
+                            note(ui, s("Removing…"), META, t.text_dim);
+                            return;
+                        }
+                        let r = ui.add(egui::Button::new("✕").small().frame(false)).on_hover_text(s("Remove this message from the queue"));
+                        app.auto.add_response(&format!("{id}.cancel"), &r, "✕");
+                        if r.clicked() {
+                            call(app, &ctx, &mut v, "cancel", json!({"index": i}));
+                        }
+                    });
+                });
+                let r = ui.add(egui::Label::new(egui::RichText::new(&q.text).color(t.text_dim)).selectable(true).wrap());
+                app.auto.add_response(&id, &r, &q.text);
             }
             if running {
                 ui.horizontal(|ui| {
@@ -684,7 +701,9 @@ mod tests {
             "Project not saved: conversations will not be kept",
             "Save…",
             OUTDATED_LINE,
-            "You · queued",
+            "You · queued {n}",
+            "Remove this message from the queue",
+            "Removing…",
         ] {
             assert_ne!(s(k), k);
         }
