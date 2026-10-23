@@ -536,7 +536,7 @@ impl Job {
     /// The runner currently holding this job, if its process is alive.
     pub fn runner_alive(&self) -> Option<u32> {
         let pid = std::fs::read_to_string(self.lock_path()).ok()?.trim().parse::<u32>().ok()?;
-        crate::process::pid_alive(pid).then_some(pid)
+        crate::pid_alive(pid).then_some(pid)
     }
 }
 

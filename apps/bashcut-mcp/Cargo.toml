@@ -15,4 +15,5 @@ path = "src/main.rs"
 
 [dependencies]
 bashcut-connect = { path = "../../crates/bashcut-connect" }
+bashcut-dirs = { path = "../../crates/bashcut-dirs" }
 serde_json = { workspace = true }

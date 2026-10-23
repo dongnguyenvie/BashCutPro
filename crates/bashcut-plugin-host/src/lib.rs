@@ -52,7 +52,7 @@ pub(crate) fn err<T>(msg: impl Into<String>) -> Result<T> {
 
 /// The folder plugins are installed in: `<data dir>/bashcut-plugins`.
 pub fn plugins_dir(data_dir: &std::path::Path) -> std::path::PathBuf {
-    data_dir.join("bashcut-plugins")
+    data_dir.join(bashcut_dirs::PLUGINS_DIR)
 }
 
 /// The OS name manifests use (`macos`, `windows`, `linux`).
