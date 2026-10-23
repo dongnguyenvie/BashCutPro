@@ -7,6 +7,13 @@
 
 # BashCutPro
 
+> **Status: preview, still in development.** BashCutPro is not finished yet. For everyday editing use
+> [BashCut](https://bashcut.birchapps.com), the stable app ([releases](https://github.com/dongnguyenvie/BashCut/releases)).
+> BashCutPro releases are published as GitHub pre-releases.
+>
+> **Trạng thái: bản xem trước, vẫn đang phát triển.** Để dựng video hằng ngày, hãy dùng
+> [BashCut](https://bashcut.birchapps.com/vi), bản ổn định ([các bản phát hành](https://github.com/dongnguyenvie/BashCut/releases)).
+
 BashCutPro is a cross-platform, pure-Rust non-linear video editor built for editing with AI agents.
 It is based on [FilmCraft](https://github.com/storytold/filmcraft) by the ArtCraft team, and brings
 what [BashCut](https://bashcut.birchapps.com) (our macOS editor) does for agents (editing skills,

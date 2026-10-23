@@ -1,5 +1,10 @@
 # BashCutPro: fork overview
 
+> **Status: preview, still in development.** Users should use [BashCut](https://bashcut.birchapps.com)
+> ([releases](https://github.com/dongnguyenvie/BashCut/releases)) for now. Everywhere a user meets BashCutPro says so
+> (en + vi): the site's `/pro` page, GitHub releases (published as pre-releases), the `bashcutpro` Homebrew cask and
+> the repo page.
+
 Read this first if you are an agent (or a person) picking up BashCutPro work without the earlier
 conversation. Everything here is about **our fork**; the rest of the repository is upstream FilmCraft
 and its own docs (`CLAUDE.md`, `AGENTS.md`, `docs/`) still apply in full.
