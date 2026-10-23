@@ -22,7 +22,7 @@ and upstream calls into ours through a recorded hook line (`bashcut/extending-up
 |---|---|---|---|
 | `scripts/upstream.sh` (+ `upstream.py`, `test_upstream.py`) | footprint check, upstream merge, setup | `bashcut/scripts/upstream.sh footprint --pr` | all (Git Bash on Windows) |
 | `scripts/fmt-check.sh` | fmt gate, per-crate fallback on Windows os error 206 | `bashcut/scripts/fmt-check.sh` | all |
-| `scripts/lint-scripts.sh` | lint + unit tests of every script on this page | `bashcut/scripts/lint-scripts.sh` | macOS, Linux, Git Bash |
+| `scripts/lint-scripts.sh` | lint + unit tests of every script on this page | `bashcut/scripts/lint-scripts.sh` | macOS, Linux, Git Bash (checked on Windows 11) |
 | `scripts/python.sh` | the one Python 3 lookup (sourced by `upstream.sh`, `lint-scripts.sh`, `brand/packaging.env`) | `. bashcut/scripts/python.sh; bashcut_python` | all |
 | `scripts/smoke.sh` / `smoke.ps1` (+ `isa-allow.txt`) | launch a build, screenshot, CLI + MCP check, AVX scan | `bashcut/scripts/smoke.sh --app target/release/filmcraft` | macOS, Linux / Windows |
 | `scripts/bashcutpro-mcp.sh` | MCP command for agents (reference for the kit's copy) | `claude mcp add bashcutpro -- bashcut/scripts/bashcutpro-mcp.sh` | macOS, Linux |
@@ -60,8 +60,11 @@ holds a secret. Keep it that way.
   `main(argv=None)` + `if __name__ == "__main__"`, exits non-zero on failure, works with `py -3` on Windows. Tests
   are `unittest` files next to the script.
 - **PowerShell:** comment-based help at the top, `param(...)`, `Set-StrictMode -Version Latest` and
-  `$ErrorActionPreference = 'Stop'`. Exceptions until checked with `pwsh` on Windows: `smoke.ps1` (keeps
-  `Continue`, counts FAILs like `smoke.sh`) and `bashcut-setup.ps1`.
+  `$ErrorActionPreference = 'Stop'`; works in Windows PowerShell 5.1 and PowerShell 7. Where every step must run
+  and report (`smoke.ps1` counts FAILs like `smoke.sh`; `bashcut-setup.ps1`'s optional steps), each step sits in its
+  own `try { } catch { }`. Windows PowerShell 5.1 turns a native tool's redirected stderr into an error, so around
+  native calls that write to stderr set `$ErrorActionPreference = 'Continue'` (function-local) and judge them by
+  `$LASTEXITCODE` / output. Under strict mode use `@(...).Count`, not `.Count` on what may be a single item.
 - **Generators** are deterministic (same input, byte-identical output; `test_generate.py` runs it twice), fail loudly
   when an anchor they substitute is missing or matches an unexpected number of times, and never edit upstream files
   in place.
@@ -69,5 +72,7 @@ holds a secret. Keep it that way.
 ## Lint
 
 `bashcut/scripts/lint-scripts.sh`: `bash -n` + shellcheck on every `.sh` and `packaging.env`; `py_compile` + ruff
-(`--select E9,F`, py39) on every `.py`; a PowerShell parse check when `pwsh` exists; then `test_upstream.py` and
-`test_generate.py`. Missing shellcheck / ruff / pwsh print `SKIP` (`brew install shellcheck ruff`).
+(`--select E9,F`, py39) on every `.py`; a PowerShell parse check with `pwsh`, else `powershell.exe` (Windows); then `test_upstream.py` and
+`test_generate.py`. Missing shellcheck / ruff / PowerShell print `SKIP` (`brew install shellcheck ruff`; on Windows
+`winget install koalaman.shellcheck` and `py -3 -m pip install --user ruff`). On Windows (Git Bash) it runs green
+with the Linux installer test in `test_generate.py` skipped (it needs Linux paths).

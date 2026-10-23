@@ -5,7 +5,7 @@
 #   bashcut/scripts/lint-scripts.sh
 #
 # bash: `bash -n` + shellcheck. Python: py_compile + ruff (syntax errors and pyflakes, py39). PowerShell: parse check
-# with pwsh. Then the unit tests (test_upstream.py, test_generate.py, which includes the determinism test).
+# with pwsh, or powershell.exe on Windows. Then the unit tests (test_upstream.py, test_generate.py, which includes the determinism test).
 # Optional tools (shellcheck, ruff, pwsh): a missing one is skipped with a SKIP line (brew install shellcheck ruff).
 set -euo pipefail
 case "${1:-}" in
@@ -50,13 +50,18 @@ else
     skip "ruff not installed"
 fi
 
-if command -v pwsh >/dev/null 2>&1; then
+# PowerShell 7 (pwsh) where it exists, else Windows PowerShell 5.1 (Git Bash on Windows)
+ps=""
+for c in pwsh powershell.exe; do
+    if command -v "$c" >/dev/null 2>&1; then ps="$c"; break; fi
+done
+if [ -n "$ps" ]; then
     for f in "${ps_files[@]}"; do
-        # shellcheck disable=SC2016 # PowerShell variables, expanded by pwsh
-        run "pwsh parse $f" pwsh -NoProfile -NonInteractive -Command '& { param($p) $e = $null; $null = [System.Management.Automation.Language.Parser]::ParseFile($p, [ref]$null, [ref]$e); if ($e) { $e | ForEach-Object { Write-Error $_.Message }; exit 1 } }' "$f"
+        # shellcheck disable=SC2016 # PowerShell variables, expanded by PowerShell
+        run "$ps parse $f" "$ps" -NoProfile -NonInteractive -Command '& { param($p) $e = $null; $null = [System.Management.Automation.Language.Parser]::ParseFile((Resolve-Path $p).Path, [ref]$null, [ref]$e); if ($e) { $e | ForEach-Object { Write-Error $_.Message }; exit 1 } }' "$f"
     done
 else
-    skip "pwsh not installed: ${#ps_files[@]} PowerShell files not parsed"
+    skip "pwsh / powershell.exe not installed: ${#ps_files[@]} PowerShell files not parsed"
 fi
 
 # shellcheck disable=SC2086
