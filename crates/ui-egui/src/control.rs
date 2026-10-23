@@ -320,6 +320,7 @@ pub fn handle(app: &mut FilmcraftApp, ctx: &egui::Context, req: &ControlRequest)
                 Err(e) if e.starts_with(RETRY) => return Outcome::Retry(e.trim_start_matches(RETRY).to_string()),
                 Err(e) => return err(e),
             };
+            crate::bashcut_ui::modal::guard!(app, ctx, req, pos); // BashCutPro: a click an open modal would swallow fails and names the modal (bashcut/extending-upstream.md)
             let m = modifiers(p);
             app.synthetic.push(egui::Event::ModifiersChanged(m));
             app.synthetic.push(egui::Event::PointerMoved(pos));

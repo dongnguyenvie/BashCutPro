@@ -122,6 +122,7 @@ Every hook is an **inserted** line; no upstream line is edited (rules: [extendin
 | H10 | `crates/ui-egui/src/i18n/mod.rs` | **not needed** (#34): our strings are translated by `bashcut_ui::strings::s`, which reads the interface language or our own override (Vietnamese is not an upstream language) | — |
 | H12 | `crates/ui-egui/src/lib.rs` (`frame()`) | before `self.handle_drops(&ctx);`: `bashcut_ui::batch::take_drops(self, &ctx);` (files dropped on the Batch section's drop zone become batch inputs instead of project imports, #46) | low |
 | H13 | `crates/ui-egui/src/lib.rs` (`logic()`) | right after `self.drain_control(ctx);`: `bashcut_ui::logic(self, ctx);` (`automation.json` follows the open project also while an occluded macOS window skips `ui()`, #191) | low |
+| H14 | `crates/ui-egui/src/control.rs` (`ui.click` arm) | after the click point is resolved: `crate::bashcut_ui::modal::guard!(app, ctx, req, pos);` (macro, as H7; FX14) | low |
 | H11 | `xtask/src/main.rs` | `mod bashcut;` and, as the first line of `layer_of`: `bashcut::our_layer_first!(name);` (macro, as H7) | 2 changes |
 
 About **16 lines in 8 upstream files**, all marked `// BashCutPro`, all listed in `UPSTREAM.md`.
@@ -267,6 +268,14 @@ preview need an HTTP image loader / player (later, or through plugin views #37).
 - **Automation ids**: every widget registers in `app.auto` with ids under `bashcut.` (`bashcut.rail.agent`,
   `bashcut.agent.input`, `bashcut.gate.approve`, `bashcut.plugins.<id>.run`), so `ui.inspect` / `ui.click` drive
   them like upstream widgets.
+- **Open modal dialogs** (FX14, `bashcut_ui/modal.rs`, hook H14): an egui `Modal` (upstream's Recover Unsaved
+  Changes, Revert, Preferences) takes every click outside its own widgets. `ui.click` on an element behind it (by
+  `id`, or at `x,y` over such an element) answers `ok: false` with `“Recover Unsaved Changes” is open and takes
+  every click: `<id>` is behind it; answer it first: recovery.discard, recovery.recover, recovery.later` instead of
+  `ok: true` with nothing happening. The dialog's own buttons already have upstream ids (`recovery.recover`,
+  `recovery.discard`, `recovery.later`, `recovery.item.<n>`; `revert.yes|no`; `settings.*`), so no extra hook
+  exposes them. A widget registered with its egui response is judged by its layer; the others by the modal's id
+  prefix; a modal we do not know only blocks the former. `ui.move`, `ui.drag` and `ui.scroll` are not checked.
 - **Strings**: English in code, translations in `bashcut_ui/strings/<lang>.tsv` (Vietnamese first), looked up by
   `bashcut_ui::strings::s` (interface language, or our own override `bashcut.ui.setLanguage {language:"vi"}`).
   Upstream's `.tsv` files are never edited and no i18n hook is needed. `strings.rs` tests guard the catalog: every
