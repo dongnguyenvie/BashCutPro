@@ -2995,7 +2995,7 @@ fn narrow_agent_panel_keeps_queued_x_and_checkbox_in_place() {
 /// only the not-found line (with Install), not the old "not signed in" line too.
 #[test]
 fn a_missing_claude_code_hides_the_old_not_signed_in_line() {
-    let Some(fake) = fake_claude("a_missing_claude_code_hides_the_old_not_signed_in_line", "auth", &[]) else { return };
+    let Some(fake) = fake_claude("a_missing_claude_code_hides_the_old_not_signed_in_line", "auth-missing", &[]) else { return };
     let mut d = fake.driver();
     d.exec("bashcut.agent.send", json!({"text": "please sign in"}));
     d.agent_idle();
