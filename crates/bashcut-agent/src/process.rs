@@ -667,16 +667,79 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "test ticket: Claude Code argv allows mcp__bashcutpro and the engine CLI, has --strict-mcp-config, never filmcraft"]
-    fn claude_code_allows_the_bashcutpro_server_only() {}
+    fn claude_code_allows_the_bashcutpro_server_only() {
+        assert_eq!(SERVER, "bashcutpro");
+        let argv = AgentSpec::claude_code(Some("/opt/claude".into())).command_line(Some(Path::new("/t/m.json")), None).unwrap();
+        assert_eq!(argv[0], "/opt/claude");
+        let at = |a: &str| argv.iter().position(|x| x == a);
+        let allowed = at("--allowedTools").expect("--allowedTools");
+        let mcp = at("--mcp-config").expect("--mcp-config");
+        assert!(allowed < mcp, "the allowed tools come before the MCP arguments: {argv:?}");
+        let tools = argv.get(allowed + 1..mcp).unwrap();
+        assert_eq!(tools, allowed_tools().as_slice());
+        assert!(tools.contains(&"mcp__bashcutpro".to_string()), "{tools:?}");
+        assert!(tools.contains(&"Bash(bashcutpro-cli commands *)".to_string()) && tools.contains(&"Bash(bcpro commands *)".to_string()), "{tools:?}");
+        // only the app's own server and read-only checks: no other MCP server, no install, build or write
+        for t in tools {
+            assert!(!t.starts_with("mcp__") || t == "mcp__bashcutpro", "{t}");
+            assert!(!t.contains("filmcraft__") && !t.contains("mcp__filmcraft"), "{t}");
+            assert!(t.starts_with("mcp__") || t.starts_with("Bash(") || t.starts_with("Read("), "{t}");
+            assert!(!t.contains("install") && !t.contains("cargo") && !t.contains("Write") && !t.contains("Edit"), "{t}");
+        }
+        assert_eq!(argv.get(mcp + 1..mcp + 3).unwrap(), ["/t/m.json", "--strict-mcp-config"]);
+        assert!(argv.windows(2).any(|w| w == ["--permission-prompt-tool", "stdio"]));
+        assert!(argv.contains(&"--replay-user-messages".to_string()));
+        assert!(!argv.iter().any(|a| a.contains("mcp__filmcraft") || a.contains("mcp_servers.filmcraft")), "{argv:?}");
+        // an empty override is claude
+        assert_eq!(AgentSpec::claude_code(Some("  ".into())).argv[0], "claude");
+    }
 
     #[test]
-    #[ignore = "test ticket: write_mcp_config writes server key bashcutpro and mcp_server reads it back"]
-    fn mcp_config_names_the_server_bashcutpro() {}
+    fn mcp_config_names_the_server_bashcutpro() {
+        let cfg = write_mcp_config("/apps/bashcutpro-cli", "127.0.0.1:47123").unwrap();
+        let text = std::fs::read_to_string(&cfg);
+        let server = mcp_server(&cfg);
+        let _ = std::fs::remove_file(&cfg);
+        let v: serde_json::Value = serde_json::from_str(&text.unwrap()).unwrap();
+        let servers = v["mcpServers"].as_object().unwrap();
+        assert_eq!(servers.keys().collect::<Vec<_>>(), ["bashcutpro"], "{v}");
+        assert_eq!(servers["bashcutpro"], serde_json::json!({"command": "/apps/bashcutpro-cli", "args": ["mcp", "--bridge", "127.0.0.1:47123"]}));
+        let (command, args) = server.unwrap();
+        assert_eq!(command, r#""/apps/bashcutpro-cli""#);
+        assert_eq!(args, r#"["mcp","--bridge","127.0.0.1:47123"]"#);
+
+        // a config naming the server otherwise (the old filmcraft name) is refused, not guessed
+        let old = std::env::temp_dir().join(format!("bashcut-agent-test-old-mcp-{}.json", std::process::id()));
+        std::fs::write(&old, r#"{"mcpServers":{"filmcraft":{"command":"filmcraft-cli","args":["mcp"]}}}"#).unwrap();
+        let refused = mcp_server(&old);
+        std::fs::write(&old, r#"{"mcpServers":{"bashcutpro":{"args":["mcp"]}}}"#).unwrap();
+        let no_command = mcp_server(&old);
+        std::fs::write(&old, "not json").unwrap();
+        let not_json = mcp_server(&old);
+        let _ = std::fs::remove_file(&old);
+        assert!(refused.is_err_and(|e| e.0.contains("no bashcutpro server")));
+        assert!(no_command.is_err_and(|e| e.0.contains("no command")));
+        assert!(not_json.is_err());
+        assert!(mcp_server(&old).is_err(), "a missing file");
+    }
 
     #[test]
-    #[ignore = "test ticket: Codex -c overrides use mcp_servers.bashcutpro.*"]
-    fn codex_overrides_name_the_server_bashcutpro() {}
+    fn codex_overrides_name_the_server_bashcutpro() {
+        let spec = AgentSpec::codex(None);
+        assert_eq!(spec.argv[0], "codex");
+        let overrides: Vec<&String> = spec.mcp_args.iter().filter(|a| *a != "-c").collect();
+        assert_eq!(overrides.len(), 2, "{:?}", spec.mcp_args);
+        assert!(overrides.iter().all(|a| a.starts_with(&format!("mcp_servers.{SERVER}."))), "{overrides:?}");
+        assert_eq!(spec.mcp_args.iter().filter(|a| *a == "-c").count(), 2);
+        let cfg = write_mcp_config("bcpro", "127.0.0.1:47124").unwrap();
+        let argv = spec.command_line(Some(&cfg), None);
+        let _ = std::fs::remove_file(&cfg);
+        let argv = argv.unwrap();
+        assert!(argv.windows(2).any(|w| w == ["-c", r#"mcp_servers.bashcutpro.command="bcpro""#]), "{argv:?}");
+        assert!(argv.windows(2).any(|w| w == ["-c", r#"mcp_servers.bashcutpro.args=["mcp","--bridge","127.0.0.1:47124"]"#]), "{argv:?}");
+        assert!(!argv.iter().any(|a| a.contains("filmcraft")), "{argv:?}");
+        assert_eq!(argv.last().map(String::as_str), Some("-"));
+    }
 
     #[test]
     fn lines_are_split_and_capped() {

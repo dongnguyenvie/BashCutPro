@@ -387,29 +387,192 @@ mod tests {
         assert!(matches!(&parse_line(&input)[0], Event::ToolUse { input, .. } if input["truncated"] == true));
     }
 
-    #[test]
-    #[ignore = "test ticket: system/init capabilities parsed (strings kept, non-strings skipped, capped at 64), isReplay user line is Picked"]
-    fn init_capabilities_and_replay_are_parsed() {}
+    fn init(line: &Value) -> (Vec<String>, Vec<String>) {
+        match parse_line(&line.to_string()).as_slice() {
+            [Event::Init { capabilities, plugins, .. }] => (capabilities.clone(), plugins.clone()),
+            other => panic!("not one Init: {other:?}"),
+        }
+    }
 
     #[test]
-    #[ignore = "test ticket: system/init plugins keep each name (bcp among others), entries without a name skipped, capped"]
-    fn init_plugin_names_are_parsed() {}
+    fn init_capabilities_and_replay_are_parsed() {
+        let line = json!({"type": "system", "subtype": "init", "session_id": "s", "model": "m",
+            "capabilities": ["interrupt_receipt_v1", 7, null, {"x": 1}, "interrupt_cancel_queued_v1", "c".repeat(MAX_CAPABILITY * 2)]});
+        let (caps, _) = init(&line);
+        assert_eq!(caps.len(), 3, "{caps:?}");
+        assert_eq!(&caps[..2], ["interrupt_receipt_v1", "interrupt_cancel_queued_v1"]);
+        assert_eq!(caps[2], format!("{}…", "c".repeat(MAX_CAPABILITY)));
+        let many: Vec<String> = (0..MAX_CAPABILITIES + 10).map(|i| format!("cap{i}")).collect();
+        let (caps, _) = init(&json!({"type": "system", "subtype": "init", "capabilities": many}));
+        assert_eq!(caps.len(), MAX_CAPABILITIES);
+        assert_eq!(caps[0], "cap0");
+        // not an array: none
+        assert_eq!(init(&json!({"type": "system", "subtype": "init", "capabilities": "interrupt_receipt_v1"})).0, Vec::<String>::new());
+        // the isReplay echo is Picked, not a tool result; a plain user line without tool_result is nothing
+        let replay = parse_line(r#"{"type":"user","isReplay":true,"message":{"role":"user","content":[{"type":"text","text":"cut"}]}}"#);
+        assert_eq!(replay, vec![Event::Picked { uuid: String::new() }]);
+        assert_eq!(parse_line(r#"{"type":"user","isReplay":false,"message":{"content":[{"type":"text","text":"cut"}]}}"#), vec![]);
+        // another system subtype is ignored
+        assert_eq!(parse_line(r#"{"type":"system","subtype":"status","session_id":"s"}"#), vec![]);
+    }
 
     #[test]
-    #[ignore = "test ticket: authentication_failed / oauth_org_not_allowed / billing_error from assistant, system/api_retry and a failed 'Not logged in' result decode to Event::Auth; other api_retry errors and successful results do not"]
-    fn auth_problems_decode_to_auth_events() {}
+    fn init_plugin_names_are_parsed() {
+        let line = json!({"type": "system", "subtype": "init", "session_id": "s", "model": "m", "plugins": [
+            {"name": "superpowers", "path": "/p/s", "source": "superpowers@market"},
+            {"name": "bcp", "path": "/p/bcp", "source": "bcp@bashcutpro-agent-kit", "version": "0.3.0"},
+            {"path": "/p/nameless"},
+            {"name": 5},
+            "bcp-as-a-string",
+            {"name": "n".repeat(MAX_CAPABILITY * 2)},
+        ]});
+        let (_, plugins) = init(&line);
+        assert_eq!(plugins.len(), 3, "{plugins:?}");
+        assert_eq!(&plugins[..2], ["superpowers", "bcp"]);
+        assert_eq!(plugins[2], format!("{}…", "n".repeat(MAX_CAPABILITY)));
+        let many: Vec<Value> = (0..MAX_CAPABILITIES + 3).map(|i| json!({"name": format!("p{i}")})).collect();
+        let (_, plugins) = init(&json!({"type": "system", "subtype": "init", "plugins": many}));
+        assert_eq!(plugins.len(), MAX_CAPABILITIES);
+        assert_eq!(init(&json!({"type": "system", "subtype": "init", "plugins": {"name": "bcp"}})).1, Vec::<String>::new());
+    }
 
     #[test]
-    #[ignore = "test ticket: control_response success/error parsed to Event::Control with its request_id; interrupt_request shape with and without cancel_queued"]
-    fn control_response_and_interrupt_request() {}
+    fn auth_problems_decode_to_auth_events() {
+        let auth = |category: &str, message: &str| Event::Auth { category: category.into(), message: message.into() };
+        // Claude Code 2.1.309 with no login: a synthetic assistant message, then a failed result
+        let a = parse_line(
+            r#"{"type":"assistant","error":"authentication_failed","message":{"content":[{"type":"text","text":"Not logged in · Please run /login"}]}}"#,
+        );
+        assert_eq!(a, vec![auth(NOT_SIGNED_IN, "Not logged in · Please run /login")]);
+        for category in AUTH_ERRORS {
+            let line = json!({"type": "assistant", "error": category, "message": {"content": "account problem"}});
+            assert_eq!(parse_line(&line.to_string()), vec![auth(category, "account problem")]);
+            let retry = json!({"type": "system", "subtype": "api_retry", "attempt": 1, "error": category});
+            assert_eq!(parse_line(&retry.to_string()), vec![auth(category, "")]);
+        }
+        let r = parse_line(r#"{"type":"result","subtype":"success","is_error":true,"result":"Not logged in · Please run /login","session_id":"s"}"#);
+        assert_eq!(r.len(), 2, "{r:?}");
+        assert_eq!(r[0], auth(NOT_SIGNED_IN, "Not logged in · Please run /login"));
+        assert!(matches!(&r[1], Event::Result { ok: false, .. }), "the Auth comes first, then the result");
+        let r = parse_line(r#"{"type":"result","is_error":true,"result":"Invalid API key · Please run /login"}"#);
+        assert_eq!(r[0], auth(NOT_SIGNED_IN, "Invalid API key · Please run /login"));
+        // a result carrying an auth error field is Auth too
+        let r = parse_line(r#"{"type":"result","is_error":true,"error":"billing_error","result":"Credit balance is too low"}"#);
+        assert_eq!(r[0], auth("billing_error", "Credit balance is too low"));
+
+        // not auth: other retries, other assistant errors, successful results, failed results on other things
+        assert_eq!(parse_line(r#"{"type":"system","subtype":"api_retry","attempt":2,"error":"rate_limit"}"#), vec![]);
+        assert_eq!(parse_line(r#"{"type":"system","subtype":"api_retry","attempt":2}"#), vec![]);
+        let other = parse_line(r#"{"type":"assistant","error":"server_error","message":{"content":[{"type":"text","text":"Overloaded"}]}}"#);
+        assert_eq!(other, vec![Event::Text("Overloaded".into())]);
+        let ok = parse_line(r#"{"type":"result","subtype":"success","is_error":false,"result":"You are not logged in to YouTube, so I skipped the upload."}"#);
+        assert!(matches!(ok.as_slice(), [Event::Result { ok: true, .. }]), "{ok:?}");
+        let failed = parse_line(r#"{"type":"result","subtype":"error_during_execution","is_error":true}"#);
+        assert!(matches!(failed.as_slice(), [Event::Result { ok: false, .. }]), "{failed:?}");
+    }
 
     #[test]
-    #[ignore = "test ticket: isReplay echo keeps its uuid in Event::Picked; control_response {cancelled:true} sets Control.cancelled; user_message_with_uuid and cancel_request shapes"]
-    fn queued_message_uuid_and_cancel_request() {}
+    fn control_response_and_interrupt_request() {
+        let ok = parse_line(r#"{"type":"control_response","response":{"subtype":"success","request_id":"int-1","response":{}}}"#);
+        assert_eq!(ok, vec![Event::Control { request: "int-1".into(), ok: true, cancelled: false }]);
+        let bad = parse_line(r#"{"type":"control_response","response":{"subtype":"error","request_id":"int-2","error":"no turn running"}}"#);
+        assert_eq!(bad, vec![Event::Control { request: "int-2".into(), ok: false, cancelled: false }]);
+        // no response object: a Control with nothing in it, not a crash
+        assert_eq!(parse_line(r#"{"type":"control_response"}"#), vec![Event::Control { request: String::new(), ok: false, cancelled: false }]);
+        let long = json!({"type": "control_response", "response": {"subtype": "success", "request_id": "r".repeat(500)}});
+        assert!(matches!(&parse_line(&long.to_string())[0], Event::Control { request, .. } if *request == format!("{}…", "r".repeat(128))));
+
+        let plain: Value = serde_json::from_str(&interrupt_request("int-1", false)).unwrap();
+        assert_eq!(plain, json!({"type": "control_request", "request_id": "int-1", "request": {"subtype": "interrupt"}}));
+        let queued: Value = serde_json::from_str(&interrupt_request("int-2", true)).unwrap();
+        assert_eq!(queued, json!({"type": "control_request", "request_id": "int-2", "request": {"subtype": "interrupt", "cancel_queued": true}}));
+        assert!(!interrupt_request("x", true).ends_with('\n'));
+    }
 
     #[test]
-    #[ignore = "test ticket: can_use_tool control_request decodes to Event::Permission (tool, detail from command/file_path/blocked_path, addRules allow suggestions kept, input over the cap → truncated); control_cancel_request → PermissionWithdrawn; permission_response shapes for Once / Always (localSettings) / Deny"]
-    fn permission_request_and_response() {}
+    fn queued_message_uuid_and_cancel_request() {
+        let replay = parse_line(r#"{"type":"user","isReplay":true,"uuid":"msg-7","message":{"role":"user","content":[{"type":"text","text":"cut"}]}}"#);
+        assert_eq!(replay, vec![Event::Picked { uuid: "msg-7".into() }]);
+        let long = json!({"type": "user", "isReplay": true, "uuid": "u".repeat(300)});
+        assert!(matches!(&parse_line(&long.to_string())[0], Event::Picked { uuid } if *uuid == format!("{}…", "u".repeat(64))));
+
+        let cancelled = parse_line(r#"{"type":"control_response","response":{"subtype":"success","request_id":"c-1","response":{"cancelled":true}}}"#);
+        assert_eq!(cancelled, vec![Event::Control { request: "c-1".into(), ok: true, cancelled: true }]);
+        let taken = parse_line(r#"{"type":"control_response","response":{"subtype":"success","request_id":"c-2","response":{"cancelled":false}}}"#);
+        assert_eq!(taken, vec![Event::Control { request: "c-2".into(), ok: true, cancelled: false }]);
+        let odd = parse_line(r#"{"type":"control_response","response":{"subtype":"success","request_id":"c-3","response":{"cancelled":"yes"}}}"#);
+        assert_eq!(odd, vec![Event::Control { request: "c-3".into(), ok: true, cancelled: false }]);
+
+        let m: Value = serde_json::from_str(&user_message_with_uuid("cắt \"đoạn\" này", "msg-7")).unwrap();
+        assert_eq!(m, json!({"type": "user", "uuid": "msg-7", "message": {"role": "user", "content": [{"type": "text", "text": "cắt \"đoạn\" này"}]}}));
+        let c: Value = serde_json::from_str(&cancel_request("c-1", "msg-7")).unwrap();
+        assert_eq!(c, json!({"type": "control_request", "request_id": "c-1", "request": {"subtype": "cancel_async_message", "message_uuid": "msg-7"}}));
+        assert!(!user_message_with_uuid("x", "u").ends_with('\n') && !cancel_request("c", "u").ends_with('\n'));
+    }
+
+    fn permission_of(request: Value) -> Permission {
+        let line = json!({"type": "control_request", "request_id": "perm-1", "request": request});
+        match parse_line(&line.to_string()).as_slice() {
+            [Event::Permission(p)] => p.clone(),
+            other => panic!("not one Permission: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn permission_request_and_response() {
+        let rule = json!({"toolName": "Bash", "ruleContent": "npm test:*"});
+        let p = permission_of(json!({
+            "subtype": "can_use_tool",
+            "tool_name": "Bash",
+            "input": {"command": "npm test", "description": "Run the tests"},
+            "tool_use_id": "toolu_1",
+            "permission_suggestions": [
+                {"type": "addRules", "rules": [rule, {"toolName": ""}, {"ruleContent": "x"}], "behavior": "allow", "destination": "localSettings"},
+                {"type": "addRules", "rules": [{"toolName": "Bash"}], "behavior": "deny", "destination": "localSettings"},
+                {"type": "setMode", "mode": "acceptEdits", "destination": "session"},
+            ],
+        }));
+        assert_eq!((p.request.as_str(), p.tool.as_str(), p.detail.as_str()), ("perm-1", "Bash", "npm test"));
+        assert_eq!(p.input, json!({"command": "npm test", "description": "Run the tests"}));
+        assert_eq!(p.rules, vec![rule.clone()], "only allow rules with a tool name");
+        assert!(!p.oversized);
+
+        // the detail: a file path, else blocked_path, else the description, else the input
+        let write = permission_of(json!({"subtype": "can_use_tool", "tool_name": "Write", "input": {"file_path": "/p/a.txt", "content": "x"}}));
+        assert_eq!(write.detail, "/p/a.txt");
+        assert!(write.rules.is_empty());
+        let blocked = permission_of(json!({"subtype": "can_use_tool", "tool_name": "Glob", "input": {"x": 1}, "blocked_path": "/etc", "description": "d"}));
+        assert_eq!(blocked.detail, "/etc");
+        let described = permission_of(json!({"subtype": "can_use_tool", "tool_name": "mcp__x__y", "input": {"x": 1}, "description": "Do y"}));
+        assert_eq!(described.detail, "Do y");
+        let bare = permission_of(json!({"subtype": "can_use_tool", "tool_name": "mcp__x__y", "input": {"x": 1}}));
+        assert_eq!(bare.detail, r#"{"x":1}"#);
+        let many = permission_of(json!({"subtype": "can_use_tool", "tool_name": "Bash", "input": {},
+            "permission_suggestions": [{"type": "addRules", "behavior": "allow", "rules": vec![rule.clone(); MAX_RULES + 4]}]}));
+        assert_eq!(many.rules.len(), MAX_RULES);
+
+        // an input over the cap is dropped: the request can only be denied
+        let huge = permission_of(json!({"subtype": "can_use_tool", "tool_name": "Write",
+            "input": {"file_path": "/p/big.txt", "content": "z".repeat(MAX_PERMISSION_INPUT)}}));
+        assert!(huge.oversized);
+        assert_eq!(huge.input, Value::Null);
+        assert_eq!(huge.detail, "/p/big.txt");
+
+        // other control requests are not permissions; a cancel withdraws one
+        assert_eq!(parse_line(r#"{"type":"control_request","request_id":"x","request":{"subtype":"hook_callback"}}"#), vec![]);
+        assert_eq!(parse_line(r#"{"type":"control_cancel_request","request_id":"perm-1"}"#), vec![Event::PermissionWithdrawn { request: "perm-1".into() }]);
+
+        let answer = |a: Answer| serde_json::from_str::<Value>(&permission_response(&p, a, "The user denied this in BashCutPro.")).unwrap();
+        let envelope = |response: Value| json!({"type": "control_response", "response": {"subtype": "success", "request_id": "perm-1", "response": response}});
+        assert_eq!(answer(Answer::Once), envelope(json!({"behavior": "allow", "updatedInput": p.input})));
+        assert_eq!(
+            answer(Answer::Always),
+            envelope(json!({"behavior": "allow", "updatedInput": p.input,
+                "updatedPermissions": [{"type": "addRules", "rules": [rule], "behavior": "allow", "destination": "localSettings"}]}))
+        );
+        assert_eq!(answer(Answer::Deny), envelope(json!({"behavior": "deny", "message": "The user denied this in BashCutPro."})));
+        assert!(!permission_response(&p, Answer::Once, "").ends_with('\n'));
+    }
 
     #[test]
     fn user_message_round_trips() {
