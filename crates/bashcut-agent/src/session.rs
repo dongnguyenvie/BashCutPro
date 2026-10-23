@@ -1070,10 +1070,11 @@ fn new_uuid() -> String {
     format!("{}-{}-{}-{}-{}", part(0, 8), part(8, 12), part(12, 16), part(16, 20), part(20, 32))
 }
 
-/// Where a turn runs: the project's folder, else [`unsaved_cwd`]. A terminal resuming the session
-/// starts here too (the agent keys its sessions by folder).
+/// Where a turn runs: the project's folder, else [`unsaved_cwd`] (also for a bare file name, whose
+/// parent is empty: no process starts in ""). A terminal resuming the session starts here too (the
+/// agent keys its sessions by folder).
 pub fn turn_dir(project: Option<&Path>) -> PathBuf {
-    project.and_then(Path::parent).map(Path::to_path_buf).unwrap_or_else(unsaved_cwd)
+    project.and_then(Path::parent).filter(|d| !d.as_os_str().is_empty()).map(Path::to_path_buf).unwrap_or_else(unsaved_cwd)
 }
 
 /// Where an unsaved project's turn runs: `agent` in the app's data folder (else the temp dir), never
@@ -1090,6 +1091,39 @@ mod tests {
     #[test]
     fn a_saved_project_runs_in_its_folder() {
         assert_eq!(turn_dir(Some(Path::new("/films/My Film.fcproj"))), Path::new("/films"));
+    }
+
+    /// A waiting `Bash` request, with a suggested rule when `rule`.
+    fn waiting(rule: bool) -> Permission {
+        Permission {
+            request: "perm-1".into(),
+            tool: "Bash".into(),
+            detail: "rm take.mov".into(),
+            input: json!({"command": "rm take.mov"}),
+            rules: if rule { vec![json!({"toolName": "Bash", "ruleContent": "rm:*"})] } else { Vec::new() },
+            oversized: false,
+        }
+    }
+
+    #[test]
+    fn always_needs_a_saved_project_and_a_rule() {
+        let mut agent = Agent::new(Vec::new());
+        agent.permissions.push(waiting(true));
+        assert!(!agent.permissions()[0].always, "an unsaved project has no folder for the rule");
+        let e = agent.answer_permission(0, Answer::Always).unwrap_err();
+        assert!(e.0.contains("allow it once"), "{e}");
+        assert_eq!(agent.permissions().len(), 1, "a refused answer leaves the request waiting");
+        assert!(agent.conversation.transcript.items.is_empty());
+
+        agent.sidecar = Some(PathBuf::from("/films/film.bashcut"));
+        assert!(agent.permissions()[0].always);
+        agent.permissions = vec![waiting(false)];
+        assert!(!agent.permissions()[0].always, "no suggested rule: nothing to keep");
+        assert!(agent.answer_permission(0, Answer::Always).unwrap_err().0.contains("allow it once"));
+        // without a process the answer cannot be written: the request stays
+        assert!(agent.answer_permission(0, Answer::Once).unwrap_err().0.contains("ended"));
+        assert_eq!(agent.permissions().len(), 1);
+        assert!(agent.command("permission", &json!({"answer": "maybe"}), &Context::default()).is_err());
     }
 
     #[test]

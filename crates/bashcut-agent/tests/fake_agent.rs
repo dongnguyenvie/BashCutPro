@@ -152,14 +152,19 @@ fn failure_and_stop_end_the_turn() {
 /// `slow` works 1.5 s, `hang` 60 s (an assistant line `working on …` and a tool call first); `please
 /// sign in` answers like a signed-out Claude Code (`no result`: exits 1 before the result, `then exit`:
 /// exits 1 after it); `please crash` exits 3 mid turn; any other `then exit` exits 0 after the answer.
+/// `ask <n>` asks `can_use_tool` for `n` Bash calls (`perm-0` …, each suggesting the rule `Bash(rm:*)`)
+/// and works until each is answered (at most 60 s); with `big` their input is over 256 KiB, with
+/// `withdraw` it withdraws `perm-0` at once (`control_cancel_request`), with `end early` it answers
+/// without waiting.
 /// `FAKE_MODE` (comma separated): `receipt` / `cancel-queued` announce `interrupt_receipt_v1` /
 /// `interrupt_cancel_queued_v1`; `refuse` answers the interrupt with an error, `silent` never answers
-/// it, `ack-only` acknowledges it and keeps working; `outdated` refuses a flag like an old Claude Code.
+/// it, `ack-only` acknowledges it and keeps working; `keep` answers `cancel_async_message` with
+/// `cancelled: false` and keeps the message; `outdated` refuses a flag like an old Claude Code.
 /// A `FAKE_EARLY` file that exists is removed and the process exits 0 before reading anything. Every
-/// start, line read, control request, taken message, SIGINT and EOF is a JSON line in `FAKE_LOG`
-/// ([`LiveFake::notes`]).
+/// start, line read, control request, control response (`answer`), taken message, SIGINT and EOF is a
+/// JSON line in `FAKE_LOG` ([`LiveFake::notes`]).
 const LIVE_FAKE: &str = r#"
-import json, os, queue, signal, sys, threading, time
+import json, os, queue, re, signal, sys, threading, time
 args = sys.argv[1:]
 opts = set(os.environ.get("FAKE_MODE", "").split(","))
 resumed = args[args.index("--resume") + 1] if "--resume" in args else ""
@@ -196,6 +201,7 @@ def read():
     lines.put(None)
 threading.Thread(target=read, daemon=True).start()
 waiting = []
+answered = set()
 eof = False
 def text_of(m):
     return m["message"]["content"][0]["text"]
@@ -217,7 +223,7 @@ def control(m):
             waiting.clear()
         return "stop"
     if r.get("subtype") == "cancel_async_message":
-        hit = [w for w in waiting if w.get("uuid") and w.get("uuid") == r.get("message_uuid")]
+        hit = [w for w in waiting if w.get("uuid") and w.get("uuid") == r.get("message_uuid") and "keep" not in opts]
         for w in hit:
             waiting.remove(w)
         answer("success", response={"cancelled": bool(hit)})
@@ -233,15 +239,41 @@ def pump(timeout):
         return None
     if m.get("type") == "control_request":
         return control(m)
+    if m.get("type") == "control_response":
+        note("answer", response=m.get("response"))
+        answered.add(m.get("response", {}).get("request_id", ""))
+        return None
     if m.get("type") == "user":
         note("read", text=text_of(m), uuid=m.get("uuid", ""))
         waiting.append(m)
     return None
+def ask(text, n):
+    for i in range(n):
+        tool, inp = ("Write", {"file_path": "/p/big.txt", "content": "x" * 300000}) if "big" in text else ("Bash", {"command": "rm take%d.mov" % i})
+        out({"type": "control_request", "request_id": "perm-%d" % i, "request": {"subtype": "can_use_tool", "tool_name": tool,
+             "input": inp, "tool_use_id": "tu%d" % i, "permission_suggestions": [{"type": "addRules",
+             "rules": [{"toolName": "Bash", "ruleContent": "rm:*"}], "behavior": "allow", "destination": "localSettings"}]}})
+    open_ = {"perm-%d" % i for i in range(n)}
+    answered.difference_update(open_)
+    if "withdraw" in text:
+        out({"type": "control_cancel_request", "request_id": "perm-0"})
+        open_.discard("perm-0")
+    if "end early" in text:
+        return True
+    end = time.time() + 60
+    while open_ - answered and time.time() < end:
+        if pump(0.05) == "stop":
+            return False
+    return True
 def turn(m):
     text = text_of(m)
     note("take", text=text, uuid=m.get("uuid", ""))
     out({"type": "system", "subtype": "init", "session_id": session, "model": "fake", "capabilities": caps})
     out({"type": "user", "isReplay": True, "uuid": m.get("uuid", ""), "message": m["message"]})
+    asks = re.search(r"ask (\d+)", text)
+    if asks and not ask(text, int(asks.group(1))):
+        out({"type": "result", "subtype": "error_during_execution", "is_error": True, "session_id": session})
+        return
     if "please crash" in text:
         sys.stderr.write("fake agent: boom\n")
         sys.exit(3)
@@ -305,7 +337,7 @@ impl LiveFake {
         Agent::new(vec![self.spec.clone()])
     }
 
-    /// The log lines of `kind` (`start`, `read`, `take`, `control`, `dropped`, `sigint`, `eof`, `early`), oldest first.
+    /// The log lines of `kind` (`start`, `read`, `take`, `control`, `answer`, `dropped`, `sigint`, `eof`, `early`), oldest first.
     fn notes(&self, kind: &str) -> Vec<serde_json::Value> {
         let text = std::fs::read_to_string(&self.log).unwrap_or_default();
         text.lines().filter_map(|l| serde_json::from_str::<serde_json::Value>(l).ok()).filter(|v| v["kind"] == kind).collect()
@@ -687,6 +719,8 @@ fn unsaved_project_runs_in_the_data_dir_agent_folder() {
     let f = LiveFake::new("unsaved", "").unwrap();
     let ctx = Context { project: None, ..f.ctx.clone() };
     assert_eq!(bashcut_agent::session::turn_dir(None), data.join("agent"));
+    // a bare file name has the parent "": it once gave an empty cwd and a misleading spawn error
+    assert_eq!(bashcut_agent::session::turn_dir(Some(Path::new("film.fcproj"))), data.join("agent"));
     let mut agent = f.agent();
     agent.send("where am I", &ctx).unwrap();
     run(&mut agent);
@@ -699,13 +733,221 @@ fn unsaved_project_runs_in_the_data_dir_agent_folder() {
     agent.shutdown();
 }
 
-#[test]
-#[ignore = "test ticket: a fake live agent with interrupt_cancel_queued_v1 gets 3 messages during a long turn, each user line with a uuid; ✕ on the second (Agent::cancel(1)) writes cancel_async_message with its uuid, the fake answers {cancelled: true}: only messages 1 and 3 reach the transcript and get results; a {cancelled: false} answer keeps it queued until its isReplay echo"]
-fn a_queued_message_is_withdrawn_with_cancel_async_message() {}
+/// The text of each `kind` note in the fake's log (`read`, `take`), oldest first.
+fn texts(f: &LiveFake, kind: &str) -> Vec<String> {
+    f.notes(kind).iter().filter_map(|n| n["text"].as_str().map(str::to_string)).collect()
+}
+
+/// Send `slow zero` to a fake in `mode`, then `one`, `two`, `three` while it works.
+fn three_queued(name: &str, mode: &str) -> Option<(LiveFake, Agent)> {
+    let f = LiveFake::new(name, mode)?;
+    let mut agent = f.agent();
+    agent.send("slow zero", &f.ctx).unwrap();
+    working(&mut agent, "slow zero");
+    for t in ["one", "two", "three"] {
+        agent.send(t, &f.ctx).unwrap();
+    }
+    assert_eq!(agent.queued(), ["one", "two", "three"]);
+    Some((f, agent))
+}
 
 #[test]
-#[ignore = "test ticket: a fake live agent without interrupt_cancel_queued_v1: messages sent mid-turn are not written to stdin until the turn's result (one per turn, in order); cancel(1) of 3 drops it at once, only 1 and 3 are answered; Stop puts the held ones back in the message box"]
-fn without_cancel_queued_messages_are_held_in_the_app() {}
+fn a_queued_message_is_withdrawn_with_cancel_async_message() {
+    let Some((f, mut agent)) = three_queued("withdraw", "cancel-queued") else { return };
+    agent.cancel(1).unwrap();
+    assert_eq!(agent.queued_items()[1], bashcut_agent::session::Queued { text: "two".into(), cancelling: true }, "Removing… until the answer");
+    assert!(agent.cancel(1).is_ok(), "a second ✕ while it is being removed changes nothing");
+    run(&mut agent);
+    assert_eq!(agent.status, Status::Idle);
+    let reads = f.notes("read");
+    let two = reads.iter().find(|n| n["text"].as_str().is_some_and(|t| t.ends_with("two"))).and_then(|n| n["uuid"].as_str()).unwrap();
+    let control = f.notes("control");
+    assert_eq!(control.len(), 1, "{control:?}");
+    assert_eq!(control[0]["request"], serde_json::json!({"subtype": "cancel_async_message", "message_uuid": two}));
+    assert_eq!(users(&agent), ["slow zero", "one", "three"]);
+    let got = answers(&agent);
+    assert_eq!(got.len(), 3, "{got:?}");
+    assert!(got[1].ends_with("one") && got[2].ends_with("three"), "{got:?}");
+    assert!(!texts(&f, "take").iter().any(|t| t.ends_with("two")), "the withdrawn message never runs");
+    assert!(agent.take_unsent().is_empty() && agent.queued().is_empty());
+    assert_eq!(f.pids().len(), 1);
+    no_error(&agent);
+    agent.shutdown();
+
+    // `cancelled: false` (taken already): it stays queued until its echo and is answered
+    let Some((f, mut agent)) = three_queued("withdraw-late", "cancel-queued,keep") else { return };
+    agent.cancel(1).unwrap();
+    until(&mut agent, "the agent to answer the cancel", |a| a.queued_items().iter().all(|q| !q.cancelling));
+    assert_eq!(agent.queued(), ["one", "two", "three"], "kept until the agent takes it");
+    run(&mut agent);
+    assert_eq!(users(&agent), ["slow zero", "one", "two", "three"]);
+    assert_eq!(answers(&agent).len(), 4);
+    assert_eq!(f.notes("control").len(), 1);
+    no_error(&agent);
+    agent.shutdown();
+}
+
+#[test]
+fn without_cancel_queued_messages_are_held_in_the_app() {
+    let Some((f, mut agent)) = three_queued("held", "") else { return };
+    // held in the app: the agent reads nothing while the first turn works
+    std::thread::sleep(Duration::from_millis(300));
+    agent.poll();
+    assert_eq!(texts(&f, "read").len(), 1, "{:?}", texts(&f, "read"));
+    agent.cancel(1).unwrap();
+    assert_eq!(agent.queued(), ["one", "three"], "a held message is dropped at once");
+    run(&mut agent);
+    assert_eq!(agent.status, Status::Idle);
+    assert!(f.notes("control").is_empty(), "nothing to withdraw from the agent");
+    assert_eq!(users(&agent), ["slow zero", "one", "three"]);
+    let got = answers(&agent);
+    assert_eq!(got.len(), 3, "{got:?}");
+    assert!(got[1].ends_with("one") && got[2].ends_with("three"), "{got:?}");
+    // one per turn, in order: each message is written only after the turn before it ended
+    let log = std::fs::read_to_string(&f.log).unwrap();
+    let steps: Vec<String> = log
+        .lines()
+        .filter_map(|l| serde_json::from_str::<serde_json::Value>(l).ok())
+        .filter(|v| v["kind"] == "read" || v["kind"] == "take")
+        .map(|v| format!("{} {}", v["kind"].as_str().unwrap_or_default(), v["text"].as_str().unwrap_or_default().rsplit("\n\n").next().unwrap_or_default()))
+        .collect();
+    assert_eq!(steps, ["read slow zero", "take slow zero", "read one", "take one", "read three", "take three"]);
+    assert!(f.notes("read").iter().all(|n| n["uuid"] == ""), "no uuid without interrupt_cancel_queued_v1");
+    assert_eq!(f.pids().len(), 1);
+    no_error(&agent);
+    agent.shutdown();
+
+    // Stop gives the held ones back to the message box; the agent never saw them
+    let Some(f) = LiveFake::new("held-stop", "") else { return };
+    let mut agent = f.agent();
+    agent.send("hang a", &f.ctx).unwrap();
+    working(&mut agent, "hang a");
+    agent.send("queued b", &f.ctx).unwrap();
+    agent.send("queued c", &f.ctx).unwrap();
+    agent.stop();
+    run(&mut agent);
+    assert_eq!(agent.status, Status::Idle);
+    assert!(stopped(&agent), "{:?}", agent.conversation.transcript.items);
+    assert_eq!(agent.take_unsent(), ["queued b", "queued c"]);
+    assert!(!texts(&f, "read").iter().any(|t| t.contains("queued")));
+    no_error(&agent);
+    agent.shutdown();
+}
+
+/// The fake's `answer` notes: (request id, the answer's `response`), oldest first.
+fn permission_answers(f: &LiveFake) -> Vec<(String, serde_json::Value)> {
+    f.notes("answer").iter().map(|n| (n["response"]["request_id"].as_str().unwrap_or_default().to_string(), n["response"]["response"].clone())).collect()
+}
+
+/// The answers of the transcript's permission items, in order.
+fn permission_items(agent: &Agent) -> Vec<String> {
+    agent.conversation.transcript.items.iter().filter_map(|i| if let Item::Permission { answer, .. } = i { Some(answer.clone()) } else { None }).collect()
+}
+
+fn asking(agent: &mut Agent, n: usize) {
+    until(agent, "the permission requests", |a| a.permissions().len() == n);
+}
+
+#[test]
+fn permission_requests_are_answered_once_always_or_deny() {
+    let Some(f) = LiveFake::new("permissions", "") else { return };
+    let mut agent = f.agent();
+    agent.send("ask 3", &f.ctx).unwrap();
+    asking(&mut agent, 3);
+    let waiting = agent.permissions();
+    assert_eq!((waiting[0].tool.as_str(), waiting[0].detail.as_str()), ("Bash", "rm take0.mov"));
+    assert!(waiting.iter().all(|p| p.always), "a saved project with a suggested rule offers Always");
+    assert_eq!(agent.state_json()["permissions"].as_array().map(Vec::len), Some(3));
+    assert!(agent.answer_permission(3, bashcut_agent::stream_json::Answer::Once).is_err());
+
+    agent.answer_permission(0, bashcut_agent::stream_json::Answer::Once).unwrap();
+    agent.answer_permission(0, bashcut_agent::stream_json::Answer::Always).unwrap();
+    agent.command("permission", &serde_json::json!({"answer": "deny", "index": 0}), &f.ctx).unwrap();
+    assert!(agent.permissions().is_empty());
+    run(&mut agent);
+    assert_eq!(agent.status, Status::Idle);
+    assert!(answers(&agent).last().unwrap().ends_with("ask 3"), "the turn goes on once all are answered");
+
+    let got = permission_answers(&f);
+    let ids: Vec<&str> = got.iter().map(|(id, _)| id.as_str()).collect();
+    assert_eq!(ids, ["perm-0", "perm-1", "perm-2"]);
+    assert_eq!(got[0].1, serde_json::json!({"behavior": "allow", "updatedInput": {"command": "rm take0.mov"}}));
+    assert_eq!(
+        got[1].1,
+        serde_json::json!({"behavior": "allow", "updatedInput": {"command": "rm take1.mov"},
+            "updatedPermissions": [{"type": "addRules", "rules": [{"toolName": "Bash", "ruleContent": "rm:*"}], "behavior": "allow", "destination": "localSettings"}]})
+    );
+    assert_eq!(got[2].1, serde_json::json!({"behavior": "deny", "message": "The user denied this in BashCutPro."}));
+    assert_eq!(permission_items(&agent), ["allowed", "always", "denied"]);
+    no_error(&agent);
+    agent.shutdown();
+}
+
+#[test]
+fn stop_denies_waiting_permission_requests() {
+    let Some(f) = LiveFake::new("perm-stop", "receipt") else { return };
+    let mut agent = f.agent();
+    // over 16 waiting: the rest are denied at once
+    agent.send("ask 18", &f.ctx).unwrap();
+    asking(&mut agent, 16);
+    until(&mut agent, "the extra requests to be denied", |_| f.notes("answer").len() == 2);
+    let got = permission_answers(&f);
+    assert_eq!(got.iter().map(|(id, _)| id.as_str()).collect::<Vec<_>>(), ["perm-16", "perm-17"]);
+    assert!(got.iter().all(|(_, r)| r["behavior"] == "deny" && r["message"] == "BashCutPro could not show this request."), "{got:?}");
+    assert_eq!(agent.permissions().len(), 16);
+
+    agent.stop();
+    assert!(agent.permissions().is_empty(), "Stop answers them at once");
+    run(&mut agent);
+    assert_eq!(agent.status, Status::Idle);
+    assert!(stopped(&agent), "{:?}", agent.conversation.transcript.items);
+    let got = permission_answers(&f);
+    assert_eq!(got.len(), 18);
+    assert!(got[2..].iter().all(|(_, r)| r["behavior"] == "deny" && r["message"] == "The user stopped the turn in BashCutPro."), "{got:?}");
+    assert_eq!(permission_items(&agent), vec!["denied"; 18]);
+    assert_eq!(f.notes("control").len(), 1, "then the interrupt request");
+    assert_eq!(agent.state_json()["live"], true, "stopped in place");
+    no_error(&agent);
+    agent.shutdown();
+}
+
+#[test]
+fn permission_requests_nobody_can_answer_are_withdrawn() {
+    let Some(f) = LiveFake::new("perm-withdraw", "") else { return };
+    let mut agent = f.agent();
+    // the agent withdraws one (control_cancel_request)
+    agent.send("ask 2 withdraw", &f.ctx).unwrap();
+    until(&mut agent, "the withdrawal", |a| a.permissions().len() == 1 && permission_items(a) == ["withdrawn"]);
+    assert_eq!(agent.permissions()[0].detail, "rm take1.mov");
+    agent.answer_permission(0, bashcut_agent::stream_json::Answer::Once).unwrap();
+    run(&mut agent);
+    assert_eq!(permission_answers(&f).iter().map(|(id, _)| id.as_str()).collect::<Vec<_>>(), ["perm-1"]);
+
+    // the turn's result: nothing waits on an answer any more
+    agent.send("ask 2 end early", &f.ctx).unwrap();
+    run(&mut agent);
+    assert!(agent.permissions().is_empty());
+    assert_eq!(permission_items(&agent), ["withdrawn", "allowed", "withdrawn", "withdrawn"]);
+
+    // an input over 256 KiB cannot be shown: denied at once
+    agent.send("ask 1 big", &f.ctx).unwrap();
+    run(&mut agent);
+    assert_eq!(agent.status, Status::Idle);
+    let (id, r) = permission_answers(&f).pop().unwrap();
+    assert_eq!((id.as_str(), &r), ("perm-0", &serde_json::json!({"behavior": "deny", "message": "BashCutPro could not show this request."})));
+    assert_eq!(permission_items(&agent).last().map(String::as_str), Some("denied"));
+    no_error(&agent);
+
+    // the process ends while they wait
+    agent.send("ask 2", &f.ctx).unwrap();
+    asking(&mut agent, 2);
+    kill(*f.pids().last().unwrap());
+    until(&mut agent, "the killed agent to end", |a| a.state_json()["live"] == false);
+    assert!(agent.permissions().is_empty());
+    assert_eq!(permission_items(&agent).iter().rev().take(2).collect::<Vec<_>>(), ["withdrawn", "withdrawn"]);
+    assert!(matches!(agent.status, Status::Failed { .. }), "{:?}", agent.status);
+    agent.shutdown();
+}
 
 #[test]
 fn claude_code_needs_the_bridge() {
