@@ -567,6 +567,10 @@ mod tests {
     use super::*;
 
     #[test]
+    #[ignore = "test ticket: Live::start child has no console window on Windows (spawn from a DETACHED_PROCESS test child, GetConsoleWindow 0, like child::tests::windows_spawn_opens_no_console_window); FX21 follow-up"]
+    fn live_start_has_no_console_window() {}
+
+    #[test]
     fn command_line_adds_mcp_and_resume() {
         let spec = AgentSpec::claude_code(None);
         assert!(spec.command_line(None, None).is_err(), "Claude Code needs the bridge");

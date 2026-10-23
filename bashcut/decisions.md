@@ -297,9 +297,24 @@ decides something; don't change an old one, add a new one that supersedes it.
   `SecretStore` (`CachedKeyStore::new`; the OS store by default, a fake via `plugins::use_key_store` before the host
   exists), which is how the tests drive it (T7). On Windows
   `bashcut_dirs::child::terminate` runs `taskkill /PID <pid> /T /F`, killing grandchildren too, then falls back to
-  `Child::kill`; Windows still has no soft stop.
+  `Child::kill`; Windows still has no soft stop (CTRL_BREAK / CTRL_C tried for the live agent, FX22 below).
 - **Why:** an unlock prompt froze the app on a click; job objects need `unsafe` FFI, which only `crates/platform`
   may use (`AGENTS.md` §0.3), and `taskkill /T` gets the tree without it.
+
+## 2026-10-23: Windows Stop keeps `taskkill`; CTRL_BREAK / CTRL_C do not end a turn (FX22)
+
+- **Decision:** the Windows branch of the live agent's Stop fallback (`process::interrupt`) stays `taskkill /T /F`
+  (`child::terminate`). No CTRL_BREAK step was added.
+- **Why (measured, claude 2.1.309 on Windows 11, live stream-json session in a tool call):** `GenerateConsoleCtrlEvent`
+  needs `unsafe`, so it runs from a hidden PowerShell helper (AttachConsole to the agent's console, ignore the event itself,
+  send it; about 1 to 3 s of start-up). (1) CTRL_BREAK to a `CREATE_NEW_PROCESS_GROUP` child (works with
+  `CREATE_NO_WINDOW`: the helper attaches to the child's own hidden console) ended the process after about 3 s, but
+  with no `result` event, the same outcome as the kill, only slower. (2) CTRL_C to the console (no group flag) was ignored:
+  the agent lived until the 5 s kill. So neither is SIGINT's clean turn end; the session is resumable the same way
+  either way (`--resume`). A node child with no handler does die on a break (tested), so the mechanism works; it is
+  Claude Code that does not turn it into a `result`. Re-check when a Claude Code release says it handles Ctrl-C/SIGBREAK on Windows.
+- **Left in place:** the stream-json interrupt request (AG3) remains the clean path; the fallback only runs when the
+  agent lacks the capability, answers an error, or is silent (`ACK_WAIT` / `RESULT_WAIT`).
 
 ## 2026-10-23: Two windows: the first started keeps automation.json (FX7)
 
