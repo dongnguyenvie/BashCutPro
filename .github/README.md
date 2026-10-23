@@ -38,7 +38,16 @@ FilmCraft's documentation, projects and tools work unchanged. Before a commit, r
 
 ## Licence
 
-MIT OR Apache-2.0, like FilmCraft ([`LICENSE-MIT`](../LICENSE-MIT), [`LICENSE-APACHE`](../LICENSE-APACHE),
-[`NOTICE`](../NOTICE)). BashCutPro's icon and wordmarks are in [`bashcut/brand/`](../bashcut/brand/).
+BashCutPro is under the same terms as FilmCraft: licensed under either of
+[Apache License, Version 2.0](../LICENSE-APACHE) or [MIT license](../LICENSE-MIT), at your option. Every crate,
+ours included, takes `license = "MIT OR Apache-2.0"` from the workspace.
+
+FilmCraft's copyright (ArtCraft Team and the FilmCraft contributors) and the required notices stay in
+[`LICENSE-MIT`](../LICENSE-MIT) and [`NOTICE`](../NOTICE), next to ours. BashCutPro's icon and wordmarks in
+[`bashcut/brand/`](../bashcut/brand/) are MIT OR Apache-2.0 too ([`bashcut/brand/LICENSE.txt`](../bashcut/brand/LICENSE.txt));
+every bundled asset is listed with its author and licence in [`ATTRIBUTION.md`](../ATTRIBUTION.md).
 BashCutPro is not made, endorsed or supported by the ArtCraft team; the ArtCraft marks are not used in
-its builds.
+its builds. More in [`bashcut/README.md`](../bashcut/README.md#license).
+
+Unless you explicitly state otherwise, any contribution intentionally submitted for inclusion in the work by you,
+as defined in the Apache-2.0 license, shall be dual licensed as above, without any additional terms or conditions.
