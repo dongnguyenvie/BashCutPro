@@ -133,7 +133,7 @@ impl Finding {
 }
 
 fn round2(v: f64) -> f64 {
-    (v * 100.0).round() / 100.0
+    super::data::round_to(v, 2)
 }
 
 fn sec_tick(base: Tick, s: usize) -> Tick {

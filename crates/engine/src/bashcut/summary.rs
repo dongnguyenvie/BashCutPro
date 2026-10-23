@@ -10,28 +10,24 @@ use filmcraft_project::{ItemId, Sequence, Track, TrackItem, TrackKind};
 use filmcraft_time::Tick;
 use serde_json::{Map, Value, json};
 
+use super::data::{round_to, secs};
 use crate::commands::{CommandSpec, always, bad};
 use crate::{EngineError, Result, Session};
 
 const CMD: &str = "bashcut.timeline.summary";
-
-/// Seconds rounded to the millisecond.
-fn s3(t: Tick) -> f64 {
-    (t.seconds() * 1000.0).round() / 1000.0
-}
 
 fn clip_json(s: &Session, it: &TrackItem) -> Value {
     let mut o = Map::new();
     o.insert("id".into(), json!(it.id.0));
     o.insert("item".into(), json!(it.item.0));
     o.insert("name".into(), json!(it.name));
-    o.insert("start".into(), json!(s3(it.start)));
-    o.insert("end".into(), json!(s3(it.end())));
+    o.insert("start".into(), json!(secs(it.start)));
+    o.insert("end".into(), json!(secs(it.end())));
     if it.source_in != Tick::ZERO {
-        o.insert("in".into(), json!(s3(it.source_in)));
+        o.insert("in".into(), json!(secs(it.source_in)));
     }
     if (it.speed - 1.0).abs() > 1e-9 {
-        o.insert("speed".into(), json!((it.speed * 1000.0).round() / 1000.0));
+        o.insert("speed".into(), json!(round_to(it.speed, 3)));
     }
     if it.reverse {
         o.insert("reverse".into(), json!(true));
@@ -94,8 +90,8 @@ pub(crate) fn summarize(s: &Session, id: ItemId, q: &Sequence) -> Value {
         "sequence": id.0,
         "name": name,
         "size": [q.settings.width, q.settings.height],
-        "fps": (q.settings.frame_rate.sane().as_f64() * 1000.0).round() / 1000.0,
-        "duration": s3(q.duration()),
+        "fps": round_to(q.settings.frame_rate.sane().as_f64(), 3),
+        "duration": secs(q.duration()),
         "tracks": tracks,
         "units": "seconds",
     });
@@ -106,7 +102,7 @@ pub(crate) fn summarize(s: &Session, id: ItemId, q: &Sequence) -> Value {
         o["markers"] = json!(q.markers.len());
     }
     if s.state.active_sequence == Some(id) {
-        o["playhead"] = json!(s3(s.playhead()));
+        o["playhead"] = json!(secs(s.playhead()));
         if !s.state.selection.is_empty() {
             o["selection"] = json!(s.state.selection.iter().map(|c| c.0).collect::<Vec<_>>());
         }
