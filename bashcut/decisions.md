@@ -266,7 +266,9 @@ decides something; don't change an old one, add a new one that supersedes it.
   shows a spinner with "Saving…" / "Clearing…" and its field and buttons wait until the write settles (a failure goes
   to the status line). The control channel's `bashcut.plugins.setSecret` stays synchronous (it answers with the
   result). `CachedKeyStore`: writes win over reads in flight (a read fills only an empty key; a successful delete
-  caches `None`), so the warm thread cannot bring back a value deleted while it ran. On Windows
+  caches `None`), so the warm thread cannot bring back a value deleted while it ran. It wraps any
+  `SecretStore` (`CachedKeyStore::new`; the OS store by default, a fake via `plugins::use_key_store` before the host
+  exists), which is how the tests drive it (T7). On Windows
   `bashcut_dirs::child::terminate` runs `taskkill /PID <pid> /T /F`, killing grandchildren too, then falls back to
   `Child::kill`; Windows still has no soft stop.
 - **Why:** an unlock prompt froze the app on a click; job objects need `unsafe` FFI, which only `crates/platform`
