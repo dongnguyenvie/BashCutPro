@@ -43,7 +43,7 @@ fn key() -> egui::Id {
 /// Toast the runs that finished since the last frame, then draw the toasts. `runs_visible`: the
 /// Runs section is on screen (docked or popped out), so nothing new is toasted and toasts go.
 pub fn show(app: &mut FilmcraftApp, ctx: &egui::Context, runs_visible: bool) {
-    let mut ts = ctx.data_mut(|d| d.get_temp_mut_or_default::<Toasts>(key()).clone());
+    let mut ts = super::shared::temp::<Toasts>(ctx, key());
     let now = ctx.input(|i| i.time);
     // no host yet means nothing ever ran
     let finished: Vec<(u64, Option<bool>, String)> = plugins::existing(ctx).map_or_else(Vec::new, |h| {
@@ -81,7 +81,7 @@ pub fn show(app: &mut FilmcraftApp, ctx: &egui::Context, runs_visible: bool) {
         draw(app, ctx, &mut ts);
         ctx.request_repaint_after(Duration::from_millis(500));
     }
-    ctx.data_mut(|d| d.insert_temp(key(), ts));
+    super::shared::put_temp(ctx, key(), ts);
 }
 
 /// The toast's sentence, in our language.

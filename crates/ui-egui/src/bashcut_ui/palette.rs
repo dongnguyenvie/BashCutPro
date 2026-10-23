@@ -181,11 +181,11 @@ fn key() -> egui::Id {
 }
 
 fn get(ctx: &egui::Context) -> Palette {
-    ctx.data_mut(|d| d.get_temp_mut_or_default::<Palette>(key()).clone())
+    super::shared::temp::<Palette>(ctx, key())
 }
 
 fn put(ctx: &egui::Context, p: Palette) {
-    ctx.data_mut(|d| d.insert_temp(key(), p));
+    super::shared::put_temp(ctx, key(), p);
 }
 
 // ---------------------------------------------------------------- items

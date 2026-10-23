@@ -67,7 +67,7 @@ fn sync(fields: &mut Fields, view: &View) {
 pub fn draw(app: &mut FilmcraftApp, ui: &mut egui::Ui, plugin: &str, dir: &Path, job: u64, view: &View) -> Option<Click> {
     let ctx = ui.ctx().clone();
     let key = fields_key(plugin, job);
-    let mut fields = ctx.data_mut(|d| d.get_temp_mut_or_default::<Fields>(key).clone());
+    let mut fields = super::shared::temp::<Fields>(&ctx, key);
     sync(&mut fields, view);
     let t = app.tokens;
     let mut pressed: Option<(String, Option<(String, String)>)> = None;
@@ -182,7 +182,7 @@ pub fn draw(app: &mut FilmcraftApp, ui: &mut egui::Ui, plugin: &str, dir: &Path,
             }
         }
     });
-    ctx.data_mut(|d| d.insert_temp(key, fields.clone()));
+    super::shared::put_temp(&ctx, key, fields.clone());
     let (button, item) = pressed?;
     Some(Click { button, item, values: fields.0.into_iter().map(|(k, (_, v))| (k, v)).collect() })
 }

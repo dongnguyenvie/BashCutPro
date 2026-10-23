@@ -72,11 +72,11 @@ fn key() -> egui::Id {
 }
 
 fn get(ctx: &egui::Context) -> Panel {
-    ctx.data_mut(|d| d.get_temp_mut_or_default::<Panel>(key()).clone())
+    super::shared::temp::<Panel>(ctx, key())
 }
 
 fn put(ctx: &egui::Context, p: Panel) {
-    ctx.data_mut(|d| d.insert_temp(key(), p));
+    super::shared::put_temp(ctx, key(), p);
 }
 
 /// `<data dir>/bashcut/looks-ui.json`.
