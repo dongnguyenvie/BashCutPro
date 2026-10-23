@@ -86,9 +86,11 @@ fn serve_within(
 
 /// Hook at the top of upstream's `ui.focus {}` (FX17): un-minimise the window first. Upstream's
 /// `ViewportCommand::Focus` alone leaves a minimised window minimised on Windows, so the [`NOT_IN_FRONT`]
-/// advice would not help there.
+/// advice would not help there. `Visible(true)` also unhides a macOS window hidden with Cmd-H (`Focus` alone
+/// leaves the app hidden, so a held click never lands).
 pub fn restore(ctx: &egui::Context) {
     ctx.send_viewport_cmd(egui::ViewportCommand::Minimized(false));
+    ctx.send_viewport_cmd(egui::ViewportCommand::Visible(true));
 }
 
 /// The UI's reply, or [`NOT_IN_FRONT`] after `timeout`. A late reply goes to a dropped receiver (harmless).
@@ -432,6 +434,39 @@ mod tests {
 
     /// FX32: control input is not drained while the window is hidden (no `ui` pass would see it).
     #[test]
-    #[ignore = "test ticket: hold_while_hidden keeps queued events while viewport minimised/occluded, release restores order, visible/unknown drains"]
-    fn control_input_waits_while_the_window_is_hidden() {}
+    fn control_input_waits_while_the_window_is_hidden() {
+        let events = || vec![egui::Event::Text("a".into()), egui::Event::Text("b".into()), egui::Event::Text("c".into())];
+        let input = |minimized, occluded| {
+            let mut raw = egui::RawInput::default();
+            let info = raw.viewports.entry(raw.viewport_id).or_default();
+            info.minimized = minimized;
+            info.occluded = occluded;
+            raw
+        };
+        // minimised, occluded, or both: everything queued is held, in order
+        for (minimized, occluded) in [(Some(true), Some(false)), (Some(false), Some(true)), (Some(true), Some(true)), (Some(true), None), (None, Some(true))] {
+            let mut queue = events();
+            let held = hold_while_hidden(&input(minimized, occluded), &mut queue);
+            assert!(queue.is_empty(), "{minimized:?} {occluded:?}");
+            assert_eq!(held, events());
+        }
+        // visible, or not known yet: nothing is held
+        for (minimized, occluded) in [(Some(false), Some(false)), (None, None), (Some(false), None), (None, Some(false))] {
+            let mut queue = events();
+            let held = hold_while_hidden(&input(minimized, occluded), &mut queue);
+            assert!(held.is_empty(), "{minimized:?} {occluded:?}");
+            assert_eq!(queue, events());
+        }
+        // release puts the held events back ahead of what was queued since, keeping their order
+        let mut queue = events();
+        let held = hold_while_hidden(&input(Some(true), None), &mut queue);
+        queue.push(egui::Event::Text("d".into()));
+        release(held, &mut queue);
+        let mut expected = events();
+        expected.push(egui::Event::Text("d".into()));
+        assert_eq!(queue, expected);
+        // releasing nothing changes nothing
+        release(Vec::new(), &mut queue);
+        assert_eq!(queue, expected);
+    }
 }
