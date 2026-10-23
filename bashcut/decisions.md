@@ -319,11 +319,11 @@ decides something; don't change an old one, add a new one that supersedes it.
 
 ## 2026-10-23: `ui.screenshot` gives up after 11 s on the server thread (FX17)
 
-- **Decided:** upstream's control server answers `ui.screenshot` through `bashcut_ui::control::serve_screenshot`
-  (one-line `bashcut_cli::screenshot_first!` hook in `apps/filmcraft/src/control_server.rs`): the request is sent as
+- **Decided:** upstream's control server answers `ui.screenshot` through `bashcut_ui::control::serve_ui`
+  (one-line `bashcut_cli::ui_first!` hook; both renamed from `serve_screenshot` / `screenshot_first!` by FX19 in `apps/filmcraft/src/control_server.rs`): the request is sent as
   before, and when the UI thread has not replied within 11 s the server replies `{"ok": false, "error": "window not in
-  front: no frame was drawn within 11 s …; call ui.focus {} and try again"}`. Every other method keeps upstream's
-  60 s wait. The app still does not activate itself for a screenshot (docs/control-protocol.md "Focus": only an
+  front: no frame was drawn within 11 s …; call ui.focus {} and try again"}`. Every other method kept upstream's
+  60 s wait (FX19 below widens the cap to the other `ui.*` requests). The app still does not activate itself for a screenshot (docs/control-protocol.md "Focus": only an
   explicit `ui.focus {}` does), so the agent is told to call it rather than the app taking the user's keyboard.
 - **Why:** after Open in Terminal / Sign in… put Terminal in front (TM1, macOS), `ui.screenshot` hung for upstream's
   60 s request timeout. The documented 10 s give-up (`SCREENSHOT_TIMEOUT_S`, plus 0.25 s settle) is checked in the
@@ -365,3 +365,20 @@ decides something; don't change an old one, add a new one that supersedes it.
 - **Left as is:** a dev build in a second checkout with older, different `contributors/` files can still show the
   other checkout's credits until either file is touched (`touch contributors/*`); a separate `CARGO_TARGET_DIR` per
   checkout avoids it entirely.
+
+## 2026-10-23: every frame-bound `ui.*` request gives up after 11 s on the server thread (FX19)
+
+- **Decided:** FX17's server-side cap covers every `ui.*` request (`ui.click`, `ui.key`, `ui.type`, `ui.drag`,
+  `ui.elements`, `ui.inspect`, `ui.set`, `ui.screenshot`…; `bashcut_ui::control::capped`), with the same reply
+  `window not in front: … call ui.focus {} and try again` after 11 s. Not capped, so upstream's 60 s stays:
+  `ui.focus` (the way out; the error would tell it to call itself) and `ui.menu.invoke` (runs any command, like
+  `engine.execute`, which may legitimately take longer). Still the one recorded hook line in `control_server.rs`;
+  no wake timer.
+- **Why:** upstream's Retry deadline (3 s, for "no element yet", a zooming timeline…) and the synthetic-input wait
+  are checked on frames, so on a window that draws none the request waited the server's 60 s. Reproduced on Windows
+  (02): `ui.click {id: "no.such.element"}` on a minimised window now answers in 11.0 s with the error; the requests
+  after it (`ui.key`, `ui.click {x,y}`, `ui.inspect`) answered in under 1 s because the first one's raise woke the
+  window; with frames, the same click gets upstream's own "no element" error after 3 s. A wake timer would keep the
+  window repainting while hidden and still not answer when the OS gives the window no frames; the cap always
+  answers. A reply after 11 s goes to a dropped channel, so a click that lands late still happens: agents should
+  `ui.focus {}` and check state rather than blindly repeat a click.
