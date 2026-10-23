@@ -164,8 +164,9 @@ pub fn context(app: &FilmcraftApp) -> Context {
     }
 }
 
-/// The terminal actions `spec` offers now (AG10), as `bashcut.agent.<name>` names.
-fn actions(spec: &AgentSpec) -> Vec<&'static str> {
+/// The terminal actions `spec` offers now (AG10), as `bashcut.agent.<name>` names; `kit_present`: the session's init
+/// already lists the kit, so `installKit` (Claude Code, found, kit not listed: AG14) is left out.
+fn actions(spec: &AgentSpec, kit_present: bool) -> Vec<&'static str> {
     let found = hints::agent_found(spec);
     let mut v = Vec::new();
     if found && matches!(spec.id.as_str(), "claude-code" | "codex") {
@@ -173,6 +174,9 @@ fn actions(spec: &AgentSpec) -> Vec<&'static str> {
     }
     if spec.id == "claude-code" {
         v.push(if found { "signIn" } else { "install" });
+        if found && !kit_present {
+            v.push("installKit");
+        }
     }
     v
 }
@@ -190,7 +194,7 @@ pub fn invoke(app: &mut FilmcraftApp, ctx: &egui::Context, name: &str, params: &
                     }
                     a.agents = list;
                 }
-                let list = a.agents.iter().map(|s| json!({"id": s.id, "name": s.name, "events": s.events, "actions": actions(s)}));
+                let list = a.agents.iter().map(|s| json!({"id": s.id, "name": s.name, "events": s.events, "actions": actions(s, kit_present(a))}));
                 json!(list.collect::<Vec<_>>())
             }));
         }
@@ -410,11 +414,12 @@ mod tests {
 
     #[test]
     fn agents_list_terminal_actions() {
-        assert_eq!(actions(&AgentSpec::claude_code(Some(found()))), ["terminal", "signIn"]);
-        assert_eq!(actions(&AgentSpec::claude_code(Some(MISSING.into()))), ["install"]);
-        assert_eq!(actions(&AgentSpec::codex(Some(found()))), ["terminal"]);
-        assert!(actions(&AgentSpec::codex(Some(MISSING.into()))).is_empty());
-        assert!(actions(&plugin_agent(&found())).is_empty(), "a plugin agent has no terminal actions");
+        assert_eq!(actions(&AgentSpec::claude_code(Some(found())), false), ["terminal", "signIn", "installKit"]);
+        assert_eq!(actions(&AgentSpec::claude_code(Some(found())), true), ["terminal", "signIn"], "kit listed: no installKit");
+        assert_eq!(actions(&AgentSpec::claude_code(Some(MISSING.into())), false), ["install"]);
+        assert_eq!(actions(&AgentSpec::codex(Some(found())), false), ["terminal"]);
+        assert!(actions(&AgentSpec::codex(Some(MISSING.into())), false).is_empty());
+        assert!(actions(&plugin_agent(&found()), false).is_empty(), "a plugin agent has no terminal actions");
         // every action is a bashcut.agent.* command
         let ids: Vec<String> = commands().into_iter().map(|c| c.id).collect();
         for a in ["terminal", "signIn", "install", "installKit"] {
