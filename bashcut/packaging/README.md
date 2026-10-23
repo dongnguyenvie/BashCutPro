@@ -201,6 +201,8 @@ no "cannot be opened" / "downloaded from the internet" warning that blocks it.
     run fails with "hostfxr.dll not found". Set it and run again.
   - Linux via podman: the podman VM needs at least 8 GB RAM (`podman machine set --memory 8192`); with 3.7 GB the
     release build is OOM-killed.
+  - Linux via podman from Windows: make the source tree with `git -c core.autocrlf=false archive`, or CRLF line endings
+    break the shebangs of the packaging scripts.
   - Windows smoke (`smoke.ps1`): set `CARGO_PROFILE_RELEASE_DEBUG=line-tables-only` for the release build, or the ISA
     check misnames 2 failures.
   - Builds ship without craft-fonts (no Japanese UI/title glyphs) unless `CRAFT_FONTS_DIR` points at a
