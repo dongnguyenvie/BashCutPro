@@ -3,9 +3,9 @@
 //! Without a logger every `log::warn!`/`log::error!` in the workspace (GPU compositor fallbacks,
 //! audio output problems, a panicked frame job or audio mixer, container warnings) vanished. A
 //! launch from a desktop menu has no terminal, so the file is what a bug report can attach:
-//! `<data dir>/Logs/filmcraft.log`, next to the crash logs (`--data-dir`, `FILMCRAFT_DATA_DIR` or
+//! `<data dir>/Logs/bashcutpro.log`, next to the crash logs (`--data-dir`, `FILMCRAFT_DATA_DIR` or
 //! `filmcraft_engine::autosave::default_data_dir`; Help ▸ Reveal Log Files opens the folder). Each
-//! start moves the previous log to `filmcraft.1.log` (and that one to `.2`), so the log of a run
+//! start moves the previous log to `bashcutpro.1.log` (and that one to `.2`), so the log of a run
 //! that crashed survives the next launch.
 //!
 //! Levels: `info` for FilmCraft's own crates, `warn` for everything else (wgpu and naga are
@@ -31,10 +31,10 @@ use std::time::SystemTime;
 use log::LevelFilter;
 
 /// The current log file's name inside the log directory.
-pub const LOG_FILE: &str = "filmcraft.log";
+pub const LOG_FILE: &str = "bashcutpro.log"; // BashCutPro: our log name (UPSTREAM.md "Carried edits")
 /// The log directory inside the data directory (shared with the crash logs and Reveal Log Files).
 pub const LOG_DIR: &str = "Logs";
-/// How many previous logs are kept (`filmcraft.1.log` … `filmcraft.<KEEP>.log`).
+/// How many previous logs are kept (`bashcutpro.1.log` … `bashcutpro.<KEEP>.log`).
 pub const KEEP: usize = 2;
 /// The log file stops growing past this size (a runaway warning can't fill the disk).
 pub const MAX_FILE_BYTES: u64 = 16 * 1024 * 1024;
@@ -123,7 +123,7 @@ fn civil_from_days(days: u64) -> (u64, u64, u64) {
 }
 
 fn numbered(dir: &Path, n: usize) -> PathBuf {
-    if n == 0 { dir.join(LOG_FILE) } else { dir.join(format!("filmcraft.{n}.log")) }
+    if n == 0 { dir.join(LOG_FILE) } else { dir.join(format!("bashcutpro.{n}.log")) }
 }
 
 /// Shift the previous logs up one (`.log` → `.1.log` → … → `.<KEEP>.log`, the oldest dropped)
@@ -402,9 +402,9 @@ mod tests {
             std::fs::write(&path, format!("run {run}")).expect("write");
         }
         assert_eq!(read(&dir.join(LOG_FILE)), "run 4");
-        assert_eq!(read(&dir.join("filmcraft.1.log")), "run 3");
-        assert_eq!(read(&dir.join("filmcraft.2.log")), "run 2");
-        assert!(!dir.join("filmcraft.3.log").exists(), "only {KEEP} old logs are kept");
+        assert_eq!(read(&dir.join("bashcutpro.1.log")), "run 3");
+        assert_eq!(read(&dir.join("bashcutpro.2.log")), "run 2");
+        assert!(!dir.join("bashcutpro.3.log").exists(), "only {KEEP} old logs are kept");
         let _ = std::fs::remove_dir_all(&dir);
     }
 
@@ -507,7 +507,7 @@ mod tests {
         // A second launch rotates: the first log becomes `.1`.
         let second = AppLogger::new(Filter::parse(DEFAULT_FILTER), false);
         assert_eq!(second.attach_dir(&dir).expect("attach again"), dir.join(LOG_FILE));
-        assert_eq!(read(&dir.join("filmcraft.1.log")), text);
+        assert_eq!(read(&dir.join("bashcutpro.1.log")), text);
         let _ = std::fs::remove_dir_all(&dir);
     }
 

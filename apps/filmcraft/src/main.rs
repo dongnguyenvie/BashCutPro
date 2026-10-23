@@ -27,6 +27,7 @@ mod appearance;
 mod args;
 mod audio;
 mod audio_in;
+mod bashcut_cli; // BashCutPro: --version, --help and errors name bashcutpro (bashcut/extending-upstream.md)
 mod control_server;
 #[cfg(target_os = "linux")]
 mod dev_icon;
@@ -64,6 +65,7 @@ fn app_icon() -> egui::IconData {
 /// (`windows_subsystem = "windows"`), so there it is also shown in a message box: otherwise `--help`
 /// would print nothing and a bad option would quit without a word.
 fn tell(text: &str, error: bool) {
+    bashcut_cli::tell_first!(text, error); // BashCutPro: bashcutpro, not filmcraft (bashcut/extending-upstream.md)
     if error {
         eprint!("{text}");
     } else {

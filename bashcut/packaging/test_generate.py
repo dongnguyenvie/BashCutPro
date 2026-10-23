@@ -109,6 +109,23 @@ class GenerateTest(unittest.TestCase):
         self.assertNotIn("filmcraft", wxs.replace("wix build filmcraft.wxs", ""))
         self.assertIn("next to bashcutpro.exe.", ps1)
 
+    def test_archives_ship_our_readme_and_the_pe_check_names_the_installed_exe(self):
+        # BR1: copy_docs (Linux, FreeBSD, macOS CLI zip, web) and the portable zip copy BashCutPro's README, never
+        # upstream's; the README itself names BashCutPro and its CLI, in English and Vietnamese
+        generate.generate(ROOT, self.out)
+        env = self.read("env.sh")
+        ps1 = self.read("windows/package.ps1")
+        self.assertIn('cp "$ROOT/bashcut/packaging/share/README.md" "$dest/README.md"', env)
+        self.assertNotIn("for f in README.md", env)
+        self.assertIn("Copy-Item (Join-Path $Root 'bashcut\\packaging\\share\\README.md') $Portable", ps1)
+        self.assertNotIn("'README.md', 'LICENSE'", ps1)
+        self.assertIn("-replace '^filmcraft\\.exe$', 'bashcutpro.exe'", ps1)
+        with open(os.path.join(HERE, "share", "README.md"), encoding="utf-8") as fh:
+            readme = fh.read()
+        for text in ("# BashCutPro", "bashcutpro-cli", "bcpro", "https://github.com/dongnguyenvie/BashCutPro", "Tiếng Việt"):
+            self.assertIn(text, readme)
+        self.assertNotIn("getartcraft", readme)
+
     def test_windows_zip_entries_use_forward_slashes(self):
         # PK4: Compress-Archive on Windows PowerShell 5.1 writes zip entry names with backslashes
         generate.generate(ROOT, self.out)

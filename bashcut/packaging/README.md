@@ -122,14 +122,14 @@ and `bashcut-doctor --json`.
   the BashCutPro icon and VERSIONINFO too (ProductName BashCutPro, its own FileDescription, the package version;
   `crates/bashcut-winres`, PK4; `bcpro.exe` shares `bashcutpro-cli.exe`'s resource). PK4 run (0.10.0, unsigned, Windows
   PowerShell 5.1): MSI 51.9 MB, portable zip 66.4 MB. Since NM2 the app exe, the `App Paths\bashcutpro.exe` key and
-  the WiX ids are BashCutPro's; still upstream's: the log file `Logs/filmcraft.log` (`apps/filmcraft/src/logging.rs`).
+  the WiX ids are BashCutPro's; since BR1 the log file is `Logs/bashcutpro.log` too.
   PV1 run after NM1 + NM2 (main `cfe39233`, unsigned, Windows PowerShell 5.1): MSI 51.9 MB, portable zip 66.4 MB; the
   MSI admin image (`msiexec /a`) and the zip hold `bashcutpro.exe`, `bashcutpro-cli.exe`, `bcpro.exe` and no
   `filmcraft*.exe`; `wix msi decompile` shows `App Paths\bashcutpro.exe` and the Start menu shortcut BashCutPro; zip
   entries use `/`. The portable app (run from a temp folder, data in `.\data`, nothing in `%APPDATA%`) took one Agent
   section turn (Claude Code added a marker) and bridged `bcpro inspect sequence` / `bcpro exec clip.rename` with no
-  `--project`, both shown in the open window. Still upstream's: the zip's `README.md` (FilmCraft's) and the
-  `FilmCraft Previews` folder next to a saved project.
+  `--project`, both shown in the open window. Fixed in BR1: the zip's `README.md` is
+  BashCutPro's (`share/README.md`) and a saved project's previews go to `BashCutPro Previews`.
 - Linux (PV2 run 2026-10-23, after NM2; aarch64 in podman, Ubuntu 22.04 for `package.sh`, Debian trixie for
   `flatpak-bundle.sh`): needs `nfpm` (deb/rpm), `zsync` (AppImage `.zsync`), `desktop-file-utils` and `appstream`
   (validation); `appimagetool` downloads itself. Output 0.10.0: deb 45.4 MB, rpm 46.2 MB, tar.gz 43.8 MB, AppImage
@@ -138,8 +138,8 @@ and `bashcut-doctor --json`.
   `Exec=bashcutpro %F`, `TryExec=bashcutpro`, AppImage `AppRun -> usr/bin/bashcutpro`, Flatpak `command=bashcutpro`;
   desktop-file-validate clean, `appstreamcli validate` passes (one info: 22.04's appstream 0.15 does not know
   `<developer>`). The flatpak bundle needs flatpak-builder 1.4+ (Ubuntu 22.04's 1.2 calls `appstream-compose`, which
-  the 25.08 SDK no longer has). Still upstream's: the app's own `--version` / usage text says `filmcraft`
-  (`apps/filmcraft/src/main.rs`).
+  the 25.08 SDK no longer has). The app's own `--version` / usage text says `bashcutpro` since BR1
+  (`apps/filmcraft/src/bashcut_cli.rs`).
 - macOS (PV3 run 2026-10-23, 0.10.0 aarch64, ad-hoc): `packaging/macos/package.sh --arch aarch64` gives
   `BashCutPro.app` (`Contents/MacOS/`: `BashCutPro`, `bashcutpro-cli`, `bcpro -> bashcutpro-cli`, `bashcut-doctor`,
   `bashcut-batch`, `bashcut-mcp`), a 40 MB DMG and a 17 MB CLI zip; `codesign --verify --deep --strict` passes with the
@@ -155,5 +155,5 @@ Tests: `python3 bashcut/packaging/test_generate.py` (every substitution matches 
 copies parse, the WiX source is valid XML, no generated Linux file names or mentions `ai.storyteller.filmcraft`
 (`StartupWMClass` included) or ships `filmcraft-cli`, the Flatpak manifests parse and find their sources, the Windows
 copy names BashCutPro and zips with `/`, no installed binary name says filmcraft (app `bashcutpro`, CLI
-`bashcutpro-cli` + `bcpro`, `Exec=bashcutpro`, `App Paths\bashcutpro.exe`; NM2) (and parses, when PowerShell is there); on Linux,
+`bashcutpro-cli` + `bcpro`, `Exec=bashcutpro`, `App Paths\bashcutpro.exe`; NM2), every archive's README is `share/README.md` (BR1) (and parses, when PowerShell is there); on Linux,
 upstream's installer test runs on the copy).
