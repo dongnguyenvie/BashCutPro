@@ -25,6 +25,7 @@ fn key() -> egui::Id {
 pub fn host(app: &FilmcraftApp, ctx: &egui::Context) -> Shared {
     super::shared::get_or_init(ctx, key(), || {
         let store = Arc::new(CachedKeyStore::default());
+        ctx.data_mut(|d| d.insert_temp(store_key(), store.clone()));
         let host = Host::new(super::data_dir(app), store.clone());
         let keys = host
             .installed()
@@ -37,10 +38,47 @@ pub fn host(app: &FilmcraftApp, ctx: &egui::Context) -> Shared {
     })
 }
 
+fn store_key() -> egui::Id {
+    egui::Id::new("bashcut.plugins.keyStore")
+}
+
+/// What a background secret write said: `None` while it runs.
+pub type Pending = Arc<Mutex<Option<Result<(), String>>>>;
+
+/// Store (`Some`) or delete (`None`) a plugin's secret on a side thread, so a click never waits on
+/// an unlock prompt (RC13). The setting is checked here; the returned slot fills with the outcome.
+pub fn set_secret_async(app: &FilmcraftApp, ctx: &egui::Context, plugin: &str, setting: &str, value: Option<String>) -> Result<Pending, String> {
+    let known = with(app, ctx, |h| h.plugin(plugin).and_then(|p| p.manifest.as_ref()).and_then(|m| m.setting(setting)).is_some_and(|s| s.is_secret()));
+    if !known {
+        return Err(format!("{plugin} has no secret `{setting}`"));
+    }
+    let store = ctx.data(|d| d.get_temp::<Arc<CachedKeyStore>>(store_key())).ok_or("the plugin host is not ready")?;
+    let slot: Pending = Arc::new(Mutex::new(None));
+    let out = slot.clone();
+    let (plugin, setting, value) = (plugin.to_string(), setting.to_string(), value.filter(|v| !v.is_empty()));
+    let ctx2 = ctx.clone();
+    let started = std::thread::Builder::new().name("bashcut-key-store-write".into()).spawn(move || {
+        let r = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| match &value {
+            Some(v) => store.set(&plugin, &setting, v),
+            None => store.delete(&plugin, &setting),
+        }));
+        let r = match r {
+            Ok(r) => r.map_err(|e| e.0),
+            Err(_) => Err("the key store write failed".to_string()),
+        };
+        *out.lock().unwrap_or_else(PoisonError::into_inner) = Some(r);
+        ctx2.request_repaint();
+    });
+    started.map_err(|e| e.to_string())?;
+    Ok(slot)
+}
+
 /// The OS key store behind a cache (S10): a lookup can wait up to 20 s on an unlock prompt, and
 /// the host asks for secrets on the UI thread (the settings form, every run's environment, the
 /// agent list). [`CachedKeyStore::warm`] reads the installed plugins' secrets on a side thread; a
 /// key it has not read yet is asked once, then served from the cache; set / delete go through.
+/// Writes win over reads in flight (RC13): a read only fills a key nothing wrote meanwhile, and a
+/// delete leaves `None` cached, so a warm read that started before it cannot bring the value back.
 #[derive(Default)]
 pub struct CachedKeyStore {
     cache: Mutex<BTreeMap<(String, String), Option<String>>>,
@@ -51,8 +89,15 @@ impl CachedKeyStore {
         self.cache.lock().unwrap_or_else(PoisonError::into_inner).get(&(plugin.to_string(), key.to_string())).cloned()
     }
 
+    /// A write: replaces what is cached.
     fn remember(&self, plugin: &str, key: &str, value: Option<String>) {
         self.cache.lock().unwrap_or_else(PoisonError::into_inner).insert((plugin.to_string(), key.to_string()), value);
+    }
+
+    /// A read: fills the key only if no write landed while the store was asked.
+    fn remember_read(&self, plugin: &str, key: &str, value: Option<String>) -> Option<String> {
+        let mut c = self.cache.lock().unwrap_or_else(PoisonError::into_inner);
+        c.entry((plugin.to_string(), key.to_string())).or_insert(value).clone()
     }
 
     /// Read `keys` (plugin id, setting id) into the cache on a side thread.
@@ -67,7 +112,7 @@ impl CachedKeyStore {
                     if me.cached(&plugin, &key).is_none()
                         && let Ok(v) = OsKeyStore.get(&plugin, &key)
                     {
-                        me.remember(&plugin, &key, v);
+                        me.remember_read(&plugin, &key, v);
                     }
                 }
             }));
@@ -81,8 +126,7 @@ impl SecretStore for CachedKeyStore {
             return Ok(v);
         }
         let v = OsKeyStore.get(plugin, key)?;
-        self.remember(plugin, key, v.clone());
-        Ok(v)
+        Ok(self.remember_read(plugin, key, v))
     }
 
     fn set(&self, plugin: &str, key: &str, value: &str) -> HostResult<()> {
@@ -93,8 +137,13 @@ impl SecretStore for CachedKeyStore {
 
     fn delete(&self, plugin: &str, key: &str) -> HostResult<()> {
         let r = OsKeyStore.delete(plugin, key);
-        // whatever the store said, ask it again next time
-        self.cache.lock().unwrap_or_else(PoisonError::into_inner).remove(&(plugin.to_string(), key.to_string()));
+        if r.is_ok() {
+            // delete wins: a warm read in flight finds the key filled and keeps `None`
+            self.remember(plugin, key, None);
+        } else {
+            // the store said no: ask it again next time
+            self.cache.lock().unwrap_or_else(PoisonError::into_inner).remove(&(plugin.to_string(), key.to_string()));
+        }
         r
     }
 }
@@ -229,4 +278,8 @@ mod tests {
     #[test]
     #[ignore = "test ticket: CachedKeyStore serves a warmed key without calling the OS store again; set updates and delete clears the cache"]
     fn cached_key_store_serves_warmed_keys() {}
+
+    #[test]
+    #[ignore = "test ticket: a delete (or set) that lands while a warm read is in flight is not overwritten by that read (delete wins)"]
+    fn cached_key_store_write_beats_warm_read() {}
 }
