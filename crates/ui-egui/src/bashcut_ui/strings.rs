@@ -195,6 +195,9 @@ mod tests {
         for k in super::super::palette::Kind::ALL {
             keys.push(("palette.rs".into(), k.label().into()));
         }
+        for line in super::super::agent_panel::QUIET_LINES {
+            keys.push(("agent_panel.rs".into(), line.into()));
+        }
         assert!(keys.len() > 100, "the scan found only {} strings", keys.len());
         let gaps = untranslated(keys);
         assert!(gaps.is_empty(), "strings with no row in strings/vi.tsv:\n{gaps}");

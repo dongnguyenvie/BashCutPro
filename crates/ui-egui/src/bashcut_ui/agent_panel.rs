@@ -154,13 +154,15 @@ pub fn draw(app: &mut FilmcraftApp, ui: &mut egui::Ui) {
     super::shared::put_temp(&ctx, key(), v);
 }
 
+/// The hints after [`QUIET_HINT`] with no output, macOS first (the strings test reads both).
+pub(super) const QUIET_LINES: [&str; 2] = [
+    "No output for 30 s: check for a macOS permission prompt (it can be behind this window).",
+    "No output for 30 s: the agent may be waiting for a sign-in or a prompt outside BashCutPro.",
+];
+
 /// The hint after [`QUIET_HINT`] with no output: where a blocked agent usually waits.
 fn quiet_line() -> &'static str {
-    if cfg!(target_os = "macos") {
-        "No output for 30 s: check for a macOS permission prompt (it can be behind this window)."
-    } else {
-        "No output for 30 s: the agent may be waiting for a sign-in or a prompt outside BashCutPro."
-    }
+    if cfg!(target_os = "macos") { QUIET_LINES[0] } else { QUIET_LINES[1] }
 }
 
 /// "Claude Code not found: install it, or set BASHCUT_CLAUDE" (an agent plugin: install its program).

@@ -418,4 +418,46 @@ mod tests {
         let mut app = FilmcraftApp::new(filmcraft_engine::Session::default());
         assert!(invoke(&mut app, &egui::Context::default(), "edit.undo", &json!({})).is_none());
     }
+
+    /// Our default keys never land on an upstream default (any command's own key, the panel
+    /// tables, a Premiere key the audit or a preset can adopt, the other presets) on macOS, Windows
+    /// or Linux, in any context (a panel key shadows an application one), and every built-in preset
+    /// keeps them.
+    #[test]
+    fn our_default_keys_never_share_a_chord_with_upstream() {
+        use filmcraft_engine::shortcut_presets as presets;
+        use filmcraft_engine::shortcuts::{BUILTIN_PRESETS, Chord, Platform, Shortcuts};
+        let mut sc = Shortcuts::new();
+        sc.register_external(crate::menus::external_commands());
+        let all = sc.commands();
+        let ours: Vec<(String, String)> =
+            all.iter().filter(|c| c.id.starts_with("bashcut.")).flat_map(|c| c.defaults.iter().map(|(k, _)| (c.id.clone(), k.clone()))).collect();
+        assert!(ours.iter().any(|(id, _)| id == "bashcut.palette.open"), "{ours:?}");
+        assert!(ours.iter().any(|(id, _)| id == "bashcut.ui.focusAgent"), "{ours:?}");
+        let mut upstream: Vec<(String, String)> =
+            all.iter().filter(|c| !c.id.starts_with("bashcut.")).flat_map(|c| c.defaults.iter().map(|(k, _)| (c.id.clone(), k.clone()))).collect();
+        for t in [presets::FILMCRAFT_PANEL, presets::PREMIERE, presets::PREMIERE_PANEL, presets::FINAL_CUT, presets::AVID] {
+            upstream.extend(t.iter().map(|(c, k, _)| (c.to_string(), k.to_string())));
+        }
+        assert!(upstream.len() > 100, "the upstream tables are read: {}", upstream.len());
+        for p in [Platform::Mac, Platform::Windows, Platform::Linux] {
+            for (id, keys) in &ours {
+                let mine = Chord::parse(keys).map(|c| c.effective(p)).unwrap_or_else(|e| panic!("{id}: {keys}: {e}"));
+                for (other, k) in &upstream {
+                    let Ok(theirs) = Chord::parse(k) else { continue };
+                    assert_ne!(theirs.effective(p), mine, "{p:?}: {id} ({keys}) shares a key with {other} ({k})");
+                }
+            }
+        }
+        // what the app builds here: no conflict or panel shadow names ours, and each preset keeps them
+        let here = Platform::current();
+        assert!(sc.conflicts(here).iter().all(|(_, _, v)| !v.iter().any(|id| id.starts_with("bashcut."))), "{:?}", sc.conflicts(here));
+        assert!(sc.overrides(here).iter().all(|o| !o.2.starts_with("bashcut.") && !o.3.starts_with("bashcut.")), "{:?}", sc.overrides(here));
+        for name in BUILTIN_PRESETS {
+            let b = sc.builtin(name).unwrap_or_default();
+            for (id, keys) in &ours {
+                assert!(b.iter().any(|x| &x.command == id && &x.keys == keys), "{name} keeps {id} on {keys}");
+            }
+        }
+    }
 }
