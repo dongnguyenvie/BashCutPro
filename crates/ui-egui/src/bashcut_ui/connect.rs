@@ -75,7 +75,10 @@ pub fn publish(app: &FilmcraftApp, ctx: &egui::Context, data_dir: Option<&Path>)
     }
     let project = app.session.path.clone();
     let last = ctx.data(|d| d.get_temp::<Published>(id));
-    if last.as_ref().is_some_and(|l| l.project == project && l.checked.elapsed() < CHECK) {
+    if let Some(l) = last.as_ref().filter(|l| l.project == project && l.checked.elapsed() < CHECK) {
+        // egui wakes an idle window a frame early (the delay minus the predicted frame time), so
+        // ask again for the rest or the 3 s checks stop once nothing else repaints (T9)
+        ctx.request_repaint_after(CHECK.saturating_sub(l.checked.elapsed()));
         return;
     }
     // remembered even when the write fails, so a read-only data dir is not retried every frame
