@@ -15,7 +15,8 @@ cài). Hàng loạt chạy nó trước khi bắt đầu.
 | Plugin không chạy, hoặc báo *Không tìm thấy Python 3* | Plugin cần Python 3.9 trở lên (`bashcut-doctor` nêu tên plugin). Cài Python rồi chạy lại thao tác. |
 | Lượt chạy báo *Không tìm thấy bộ máy BashCutPro (bashcutpro-cli) cạnh ứng dụng* | Plugin sửa dự án qua bộ máy nằm cạnh ứng dụng. Cài lại BashCutPro, hoặc build theo [Bắt đầu](getting-started.md), hoặc trỏ `BASHCUTPRO_CLI` tới nó. |
 | Lượt chạy ghi **Cần trợ lý** | Plugin không tự làm xong (ví dụ dịch mà không có khóa API). Bấm **Gửi cho trợ lý** trong Tác vụ, hoặc thêm khóa trong **Cài đặt** của plugin rồi chạy lại. |
-| Mục Trợ lý không làm gì, hoặc báo *Không tìm thấy Claude Code* | Cài Claude Code và đăng nhập (`claude` trong cửa sổ dòng lệnh). Lưu dự án trước. |
+| Mục Trợ lý không làm gì, hoặc báo *Không tìm thấy Claude Code* | Cài Claude Code và đăng nhập (`claude` trong cửa sổ dòng lệnh). Lưu dự án trước. Cài ngoài các thư mục thường gặp? Đặt `BASHCUT_CLAUDE` (xem [Trợ lý](agent.md#trong-ứng-dụng-mục-trợ-lý)). |
+| Trên macOS trợ lý cứ *đang chạy* mà không làm gì | macOS đang chờ hỏi *"BashCutPro" muốn truy cập các tệp trong thư mục …*, có thể bị cửa sổ khác che: bấm **Cho phép**. |
 | Một mục hàng loạt **cần xem lại** | Xem [Sửa một mục cần sửa](batch.md#sửa-một-mục-cần-sửa). Mục bị dừng giữa chừng một bước (máy ngủ hoặc treo) cũng nằm ở đây: mở, kiểm tra, **Chạy lại**. |
 | Hàng loạt đứng chờ, không chạy mục mới | Máy thiếu bộ nhớ hoặc ổ đĩa; nó tự chạy tiếp khi đủ chỗ. Dọn bớt ổ đĩa, hoặc giảm số **Cùng lúc**. |
 | Thư viện ▸ Trực tuyến ghi *Chưa rõ giấy phép* | Nguồn không ghi giấy phép. Đừng đăng tệp đó khi chưa biết rõ. |
