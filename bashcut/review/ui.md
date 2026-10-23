@@ -136,6 +136,9 @@ Behaviour-neutral, merged to `main`:
 - D2: `widgets::button` / `widgets::small_button` (new `widgets.rs`); Library's private copy is gone (#271).
 - D3: `shared::get_or_init` / `existing` / `lock` (new `shared.rs`) hold the plugin host, agent and
   batch; unit test `shared::tests::created_once_then_found`.
+- D4: `shared::temp` / `shared::put_temp` for every section's per-frame state (Agent, Batch,
+  Looks, Library, Palette, Plugins, Runs, toasts, plugin views, rail `State`); unit test
+  `shared::tests::temp_defaults_then_keeps_what_was_put`.
 
 Everything else is below.
 
@@ -143,10 +146,9 @@ Everything else is below.
 
 | Key | Owns | Do | Acceptance | Touches same files as |
 |-----|------|----|------------|------------------------|
-| RU1 | `bashcut_ui/widgets.rs`, all `*_panel.rs`, `rail.rs`, `palette.rs`, `view.rs` | D1 + D2: `note` / `meta` / `error_note` / `button` / `small_button` helpers; sweep every call site keeping its current size | no `RichText::new(..).size(..).color(t.text_dim)` left outside `widgets.rs`; screenshots unchanged; `bashcut_ui` tests green | RU2, RU3 (panels). Start after CC1 merges (`plugins_panel.rs`). |
+| RU1 | `bashcut_ui/widgets.rs`, all `*_panel.rs`, `rail.rs`, `palette.rs`, `view.rs` | D1 (D2 done): `note` / `meta` / `error_note` helpers in `widgets.rs`; sweep every call site keeping its current size | no `RichText::new(..).size(..).color(t.text_dim)` left outside `widgets.rs`; screenshots unchanged; `bashcut_ui` tests green | RU2 |
 | RU2 | `widgets.rs`, `bashcut/in-app-ui.md` | I1: pick one size per role (UX decision), document the scale | doc section "Text"; one size per role in code | RU1 |
-| RU3 | `shared.rs`, panels' `key/get/put` | D4 (D3 done): generic temp-state helper next to `shared.rs` | no hand-written `get_temp_mut_or_default` outside the helper; tests green | RU1 (panel headers) |
-| RU4 | new `bashcut_ui/prefs.rs`, `looks_panel.rs`, `library_panel.rs`, `palette.rs`, `state.rs`, `batch.rs` | D5: one prefs store, atomic write (tmp + rename) | unit test: an interrupted write (tmp left behind) never truncates the real file; each panel's existing load/save tests green | RU3 |
+| RU4 | new `bashcut_ui/prefs.rs` (or in `shared.rs`), `looks_panel.rs`, `library_panel.rs`, `palette.rs`, `state.rs`, `batch.rs` | D5: one prefs store, atomic write (tmp + rename) | unit test: an interrupted write (tmp left behind) never truncates the real file; each panel's existing load/save tests green | — |
 | RU5 | `mod.rs`, other `invoke` fns, `strings/vi.tsv` | I3: decide whether `bashcut.*` command errors are translated; if yes, route through `s()`/`f()` with vi rows | decision in `bashcut/decisions.md`; errors in both languages | — |
-| RU6 | `mod.rs`, `rail.rs`, `state.rs` | S1 + S2: section badge / shortcut as `Section` fields, `State::on_screen`, one module table for routing + `commands()` | adding a test-only section needs one `SECTIONS` row + its `draw`; `mod.rs:8` true again | RU1 (rail.rs). After CC1 (rail menu). |
+| RU6 | `mod.rs`, `rail.rs`, `state.rs` | S1 (S2 done): section badge / shortcut as `Section` fields, one module table for routing + `commands()` | adding a test-only section needs one `SECTIONS` row + its `draw`; `mod.rs:8` true again | RU1, RU7 (rail.rs) |
 | RU7 | `side_panel.rs`, `rail.rs` | I2: name the inline layout numbers | no bare px literal in layout code | RU6 |
