@@ -966,6 +966,26 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "test ticket: palette command items show 'Selection as BashCutPro Project…' / 'BashCutPro Help…' (vi: their vi.tsv rows), never FilmCraft"]
-    fn command_labels_name_bashcutpro() {}
+    fn command_labels_name_bashcutpro() {
+        use super::super::strings::set_language;
+        let session = filmcraft_engine::Session::default();
+        let label = |items: &[Item], id: &str| items.iter().find(|i| i.command == id).map(|i| i.label.clone()).unwrap_or_else(|| panic!("{id} listed"));
+        let named = |items: &[Item]| items.iter().filter(|i| i.label.contains("FilmCraft")).map(|i| format!("{}: {}", i.command, i.label)).collect::<Vec<_>>();
+
+        set_language(Some("en"));
+        let en = command_items(&session);
+        set_language(Some("vi"));
+        let vi = command_items(&session);
+        set_language(None);
+
+        assert_eq!(label(&en, "file.exportSelectionProject"), "Selection as BashCutPro Project…");
+        assert_eq!(label(&en, "help.filmcraftHelp"), "BashCutPro Help…");
+        assert_eq!(label(&vi, "file.exportSelectionProject"), "Vùng chọn thành dự án BashCutPro…");
+        assert_eq!(label(&vi, "help.filmcraftHelp"), "Trợ giúp BashCutPro…");
+        // ours in the UI language (AG11's rows)
+        assert_eq!(label(&en, "bashcut.agent.installKit"), "Install BashCutPro Kit");
+        assert_ne!(label(&vi, "bashcut.agent.installKit"), "Install BashCutPro Kit");
+        assert_eq!(named(&en), Vec::<String>::new(), "English labels that name FilmCraft");
+        assert_eq!(named(&vi), Vec::<String>::new(), "Vietnamese labels that name FilmCraft");
+    }
 }

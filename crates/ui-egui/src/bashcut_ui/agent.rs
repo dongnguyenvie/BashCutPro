@@ -376,24 +376,95 @@ pub fn commands() -> Vec<CommandInfo> {
 
 #[cfg(test)]
 mod tests {
-    #[cfg(unix)]
     use super::*;
 
+    /// A file that exists (the test binary), so an agent run with it counts as found.
+    fn found() -> String {
+        std::env::current_exe().unwrap().to_string_lossy().into_owned()
+    }
+
+    /// A program that is nowhere.
+    const MISSING: &str = "/no/such/folder/bashcut-ta4-missing-agent";
+
+    fn plugin_agent(program: &str) -> AgentSpec {
+        AgentSpec { id: "bashcut.my-agent".into(), name: "My agent".into(), ..AgentSpec::codex(Some(program.into())) }
+    }
+
+    /// An app and context whose agent host holds `agents` (the first one in use).
+    fn app_with(agents: Vec<AgentSpec>) -> (FilmcraftApp, egui::Context) {
+        let app = FilmcraftApp::new(filmcraft_engine::Session::default());
+        let ctx = egui::Context::default();
+        super::super::shared::get_or_init(&ctx, key(), || Agent::new(agents));
+        (app, ctx)
+    }
+
     #[test]
-    #[ignore = "test ticket: bashcut.agent.agents lists terminal/signIn for a found Claude Code, install for a missing one, terminal only for Codex, none for a plugin agent"]
-    fn agents_list_terminal_actions() {}
+    fn agents_list_terminal_actions() {
+        assert_eq!(actions(&AgentSpec::claude_code(Some(found()))), ["terminal", "signIn"]);
+        assert_eq!(actions(&AgentSpec::claude_code(Some(MISSING.into()))), ["install"]);
+        assert_eq!(actions(&AgentSpec::codex(Some(found()))), ["terminal"]);
+        assert!(actions(&AgentSpec::codex(Some(MISSING.into()))).is_empty());
+        assert!(actions(&plugin_agent(&found())).is_empty(), "a plugin agent has no terminal actions");
+        // every action is a bashcut.agent.* command
+        let ids: Vec<String> = commands().into_iter().map(|c| c.id).collect();
+        for a in ["terminal", "signIn", "install", "installKit"] {
+            assert!(ids.contains(&format!("bashcut.agent.{a}")), "{a}");
+        }
+    }
+
+    #[test]
+    fn use_agent_clears_the_kit_plugins() {
+        let mut a = Agent::new(vec![AgentSpec::claude_code(Some(found())), AgentSpec::codex(Some(found()))]);
+        a.plugins = Some(vec![terminal::KIT_PLUGIN.into()]);
+        assert!(kit_present(&a) && !kit_missing(&a));
+        // the same agent keeps what its init said
+        a.use_agent("claude-code").unwrap();
+        assert_eq!(a.plugins.as_deref(), Some(&[terminal::KIT_PLUGIN.to_string()][..]));
+        a.use_agent("codex").unwrap();
+        assert_eq!(a.plugins, None, "the plugins were Claude Code's");
+        a.use_agent("claude-code").unwrap();
+        assert_eq!(a.plugins, None, "unknown until this one's init");
+        assert!(!kit_present(&a) && !kit_missing(&a));
+        a.plugins = Some(vec!["other".into()]);
+        assert!(kit_missing(&a) && !kit_present(&a));
+    }
 
     #[test]
     #[ignore = "test ticket: bashcut.agent.terminal while a turn runs returns pending, poll opens it once the agent ended and the transcript says Continued in Terminal"]
     fn terminal_command_hands_off_after_the_turn_ends() {}
 
     #[test]
-    #[ignore = "test ticket: bashcut.agent.install errors while Claude Code is found; signIn errors for Codex or a missing Claude Code"]
-    fn install_and_sign_in_commands_refuse_when_not_applicable() {}
+    fn install_and_sign_in_commands_refuse_when_not_applicable() {
+        super::super::strings::set_language(Some("en"));
+        // install: never while Claude Code is found
+        let (mut app, ctx) = app_with(vec![AgentSpec::claude_code(Some(found())), AgentSpec::codex(Some(found()))]);
+        assert_eq!(invoke(&mut app, &ctx, "install", &json!({})), Err("Claude Code is already installed.".into()));
+        // sign in: Codex in use, or Claude Code missing
+        with(&app, &ctx, |a| a.use_agent("codex")).unwrap();
+        assert_eq!(invoke(&mut app, &ctx, "signIn", &json!({})), Err("Sign in works with Claude Code once it is installed.".into()));
+        let (mut app, ctx) = app_with(vec![AgentSpec::claude_code(Some(MISSING.into()))]);
+        assert_eq!(invoke(&mut app, &ctx, "signIn", &json!({})), Err("Sign in works with Claude Code once it is installed.".into()));
+        // in Vietnamese too
+        super::super::strings::set_language(Some("vi"));
+        let e = invoke(&mut app, &ctx, "signIn", &json!({})).unwrap_err();
+        assert_eq!(e, s("Sign in works with Claude Code once it is installed."));
+        assert_ne!(e, "Sign in works with Claude Code once it is installed.");
+        super::super::strings::set_language(None);
+    }
 
     #[test]
-    #[ignore = "test ticket: bashcut.agent.installKit errors once the init plugins list bcp, errors for Codex or a missing Claude Code, opens the kit terminal when the kit is missing or not known yet"]
-    fn install_kit_command_refuses_when_kit_present() {}
+    fn install_kit_command_refuses_when_kit_present() {
+        super::super::strings::set_language(Some("en"));
+        let (mut app, ctx) = app_with(vec![AgentSpec::claude_code(Some(found())), AgentSpec::codex(Some(found()))]);
+        with(&app, &ctx, |a| a.plugins = Some(vec!["other".into(), terminal::KIT_PLUGIN.into()]));
+        assert_eq!(invoke(&mut app, &ctx, "installKit", &json!({})), Err("The BashCutPro kit is already installed.".into()));
+        with(&app, &ctx, |a| a.use_agent("codex")).unwrap();
+        assert_eq!(invoke(&mut app, &ctx, "installKit", &json!({})), Err("Install kit works with Claude Code once it is installed.".into()));
+        let (mut app, ctx) = app_with(vec![AgentSpec::claude_code(Some(MISSING.into()))]);
+        assert_eq!(invoke(&mut app, &ctx, "installKit", &json!({})), Err("Install kit works with Claude Code once it is installed.".into()));
+        super::super::strings::set_language(None);
+        // opening the kit terminal (kit missing or not known yet) needs a real terminal: manual check
+    }
 
     /// PV3: `claude` in `~/.local/bin` with a login `PATH` resolves to that file and puts its folder
     /// first on the child's `PATH`; found on `PATH`, or `BASHCUT_CLAUDE` set, keeps the given program.
