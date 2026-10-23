@@ -37,7 +37,7 @@ def progress(m):
 if mode == "ok":
     progress("10% starting")
     progress("90% almost")
-    print(json.dumps({"ok": True, "message": "done", "data": {"args": args, "key": os.environ.get("FAKE_KEY"), "service": os.environ.get("FAKE_SERVICE"), "cli": os.environ.get("BASHCUTPRO_CLI")}}))
+    print(json.dumps({"ok": True, "message": "done", "data": {"args": args, "key": os.environ.get("FAKE_KEY"), "service": os.environ.get("FAKE_SERVICE"), "cli": os.environ.get("BASHCUTPRO_CLI"), "dataDir": os.environ.get("BASHCUTPRO_DATA_DIR")}}))
 elif mode == "error":
     print(json.dumps({"ok": False, "error": {"code": "bad_input", "message": "no captions"}}))
     sys.exit(1)
@@ -323,6 +323,71 @@ fn agent_plugins_are_listed_for_the_agent_section() {
     let _ = std::fs::remove_dir_all(&data);
 }
 
+/// Set in the copies of this test binary that [`plugin_runs_get_the_data_dir`] starts: the
+/// `BASHCUTPRO_DATA_DIR` the fake plugin must see.
+const EXPECT_DATA_DIR: &str = "BASHCUT_TEST_EXPECT_DATA_DIR";
+
 #[test]
-#[ignore = "test ticket: a fake plugin prints its env; BASHCUTPRO_DATA_DIR is the app's data folder for a portable layout (<exe dir>/data) and a normal one, and an exported value is kept"]
-fn plugin_runs_get_the_data_dir() {}
+fn plugin_runs_get_the_data_dir() {
+    // FX9: the app's data folder (as this process resolves it) reaches an action run as BASHCUTPRO_DATA_DIR.
+    // The parent copies this test binary into folders it lays out (portable or not) and runs the copy,
+    // since the data folder depends on the executable's folder and the process env.
+    let Some(py) = ["python3", "python"].into_iter().find(|p| has(p)) else {
+        eprintln!("skipped: no python3 or python");
+        return;
+    };
+    if let Ok(expect) = std::env::var(EXPECT_DATA_DIR) {
+        let data = scratch("datadir-host");
+        let dir = bashcut_plugin_host::plugins_dir(&data).join("test.fake");
+        write_plugin(&dir, "test.fake");
+        let mut m = manifest("test.fake");
+        m["entry"] = json!({"command": [py, "plugin.py"]});
+        std::fs::write(dir.join("bashcut-plugin.json"), m.to_string()).unwrap();
+        let mut host = Host::new(Some(data.clone()), Arc::new(MemoryStore::default()));
+        let ctx = RunContext::default();
+        let job = host.command("run", &json!({"plugin": "test.fake", "action": "ok"}), &ctx).unwrap()["job"].as_u64().unwrap();
+        assert_eq!(wait_job(&mut host, job), JobState::Succeeded, "{:?}", host.job(job));
+        let seen = host.job(job).unwrap().outcome.as_ref().unwrap().result.as_ref().unwrap().data["dataDir"].clone();
+        let _ = std::fs::remove_dir_all(&data);
+        assert_eq!(seen, json!(expect));
+        return;
+    }
+    let Ok(exe) = std::env::current_exe() else {
+        eprintln!("skipped: no current_exe");
+        return;
+    };
+    let root = scratch("datadir");
+    let home = root.join("home");
+    let run = |bin_dir: &Path, portable: bool, exported: Option<&Path>, expect: &Path| {
+        std::fs::create_dir_all(bin_dir).unwrap();
+        if portable {
+            std::fs::write(bin_dir.join(bashcut_dirs::PORTABLE_MARKER), "").unwrap();
+        }
+        let copy = bin_dir.join(exe.file_name().unwrap());
+        std::fs::copy(&exe, &copy).unwrap();
+        let mut c = Command::new(&copy);
+        c.args(["--exact", "plugin_runs_get_the_data_dir", "--nocapture", "--test-threads=1"]);
+        c.env(EXPECT_DATA_DIR, expect).env_remove("FILMCRAFT_DATA_DIR").env_remove("BASHCUTPRO_DATA_DIR");
+        c.env("HOME", &home).env("APPDATA", &home).env("XDG_DATA_HOME", &home);
+        if let Some(v) = exported {
+            c.env("BASHCUTPRO_DATA_DIR", v);
+        }
+        let out = c.output().unwrap();
+        let text = format!("{}{}", String::from_utf8_lossy(&out.stdout), String::from_utf8_lossy(&out.stderr));
+        assert!(out.status.success(), "portable={portable} exported={exported:?}: {text}");
+        assert!(text.contains("1 passed"), "the copy ran the check: {text}");
+    };
+    // portable: <exe dir>/data
+    let portable = root.join("portable");
+    run(&portable, true, None, &portable.join("data"));
+    // normal: the per-user folder (the same rule bashcut-dirs applies)
+    let normal = root.join("normal");
+    let vars = |k: &str| matches!(k, "HOME" | "APPDATA" | "XDG_DATA_HOME").then(|| home.to_string_lossy().into_owned());
+    let per_user = bashcut_dirs::Host { var: &vars, os: std::env::consts::OS, exe_dir: Some(normal.clone()) }.data_dir().unwrap();
+    run(&normal, false, None, &per_user);
+    // an exported value is kept, on a portable install too
+    let exported = root.join("exported");
+    run(&root.join("exported-portable"), true, Some(&exported), &exported);
+    run(&root.join("exported-normal"), false, Some(&exported), &exported);
+    let _ = std::fs::remove_dir_all(&root);
+}
