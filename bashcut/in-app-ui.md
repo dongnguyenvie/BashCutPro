@@ -369,7 +369,7 @@ labels or subclips (§1 rule 1). A project opened in upstream FilmCraft still wo
   the session (`Agent::capabilities`, in `bashcut.agent.state`) for AG3/AG4. **Restart**: a process that exits
   (crash, app restart, idle close) is started again with `--resume <session_id>` by the next message; one that
   exits 0 before taking a written message is restarted once at once and the message written again. A failure
-  with messages unanswered shows the error and puts the queued messages it never read back into the message
+  mid turn (it exits after taking a message and before its `result`) or with messages unanswered shows the error and puts the queued messages it never read back into the message
   box. **Too old**: when Claude Code refuses a flag (`unknown option`), the readiness line says "Update Claude
   Code: run `claude update`" (en+vi). **Session end**: changing conversation, agent or project, hiding the Agent
   section while idle, `session::IDLE_CLOSE` (30 min) idle, and app exit close stdin; the process gets 2 s, then SIGINT,
@@ -395,13 +395,15 @@ labels or subclips (§1 rule 1). A project opened in upstream FilmCraft still wo
   never runs (no `isReplay` echo), so queued messages go back into the message box. The transcript says "Stopped."
   (`Đã dừng.`) and status is Idle at that `result`, never at the ack: the `isReplay` echo of a message can come
   only with the turn's first output, after the ack (seen in the app: a long reply with no tool call). **Fallback: SIGINT** (not
-  SIGTERM, which drops the turn with exit 143 and no result) when the capability is missing, when queued messages
-  wait and `cancel_queued` is not offered, when the ack is an error or does not come within 3 s
+  SIGTERM, which drops the turn with exit 143 and no result) when the capability is missing, when written queued
+  messages wait and `cancel_queued` is not offered (since AG4 such messages are held in the app and not written, so
+  the request is sent without `cancel_queued` and the held ones go back into the message box), when the ack is an error or does not come within 3 s
   (`session::ACK_WAIT`), when no `result` follows within 5 s (`RESULT_WAIT`), and on a second Stop. Checked (AG2):
   Claude Code then echoes `[Request interrupted by user]`, sends the same error `result` and exits 0; the next
   message resumes the session in a new process; not exiting within 5 s kills its process group. A per-message turn
   (Codex) ends its process group as before; Batch agent steps (`bashcut-batch`) run their own per-step process and
-  keep their stop. The project stays as it is.
+  keep their stop. The project stays as it is. Tests: `crates/bashcut-agent/tests/fake_agent.rs` drives all of this
+  with a scripted live stream-json fake (`LIVE_FAKE`, TA2).
 - **Queued messages with ✕ (AG4, checked with `claude` 2.1.309 on macOS)**: queued messages are numbered in the
   order the agent gets them ("You · queued 1", `Bạn · đang chờ 1`, …) and each has ✕
   (`bashcut.agent.queued.<n>.cancel`; command `bashcut.agent.cancel {index}`, 0-based in `bashcut.agent.state` →
