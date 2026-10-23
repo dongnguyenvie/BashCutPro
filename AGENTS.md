@@ -2,6 +2,7 @@
 
 > **BashCutPro fork:** read [`bashcut/README.md`](bashcut/README.md) first (fork overview, decisions, status). Everything below is upstream FilmCraft's and still applies.
 > **BashCutPro scripts gate:** when you change a script under `bashcut/scripts/`, `bashcut/packaging/` or `bashcut/brand/`, run `bashcut/scripts/lint-scripts.sh` (standard: [`bashcut/scripts/README.md`](bashcut/scripts/README.md)).
+> **BashCutPro dev run:** `cargo xtask dev [--release] [--features whisper] [-- <app args>]` builds the app together with the engine CLI, `bashcut-mcp`, `bashcut-batch` and `bashcut-doctor`, then runs it; `cargo run -p filmcraft` alone leaves the engine in `target/<profile>/` stale.
 
 These rules apply to every human and AI contributor. `CLAUDE.md` holds the working instructions; this
 file holds the rules that must never be broken. When the two disagree, this file wins.

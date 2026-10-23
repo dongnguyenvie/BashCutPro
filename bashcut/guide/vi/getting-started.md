@@ -36,6 +36,10 @@ cần chừng 10 GB đĩa trống. Các bước dưới đây dành cho macOS; t
 Với bản tự dựng, bước thiết lập lần đầu bên dưới là `bash bashcut/packaging/share/bashcut-setup.sh`, và bạn mở ứng dụng
 bằng `target/debug/filmcraft --control 9876`.
 
+Nếu bạn sửa mã nguồn, hãy dùng `cargo xtask dev --features whisper -- --control 9876`: lệnh này dựng lại ứng dụng cùng
+mọi công cụ dòng lệnh của nó rồi mở ứng dụng. `cargo run -p filmcraft` chỉ dựng lại ứng dụng, nên trợ lý AI, plugin,
+Batch và doctor sẽ vẫn dùng bộ máy cũ.
+
 Muốn có ứng dụng macOS và tệp DMG thì chạy `bash packaging/macos/package.sh --arch aarch64` (máy Mac chip Intel dùng
 `x86_64`). Lệnh này dựng bản phát hành đầy đủ nên lâu hơn. Kết quả nằm trong `dist/release/`. Bản này chỉ được ký cho máy
 này: nó mở được ở đây, còn máy Mac khác sẽ từ chối cho đến khi được ký và công chứng (notarise) bằng Developer ID.

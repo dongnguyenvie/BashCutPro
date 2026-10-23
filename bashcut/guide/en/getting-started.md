@@ -35,6 +35,10 @@ the same.
 From a source build, the first-run setup below is `bash bashcut/packaging/share/bashcut-setup.sh`, and you open the app
 with `target/debug/filmcraft --control 9876`.
 
+If you change the code, use `cargo xtask dev --features whisper -- --control 9876` instead: it rebuilds the app and all
+its command-line tools together, then opens the app. `cargo run -p filmcraft` rebuilds only the app, so agents,
+plugins, Batch and the doctor would keep using an old engine.
+
 To make the macOS app and its DMG instead, run `bash packaging/macos/package.sh --arch aarch64` (use `x86_64` on an
 Intel Mac). This does a full release build, so it takes longer. The result goes to `dist/release/`. It is signed only for this
 Mac: the copy opens here, but other Macs refuse it until it is signed and notarised with a Developer ID.

@@ -955,7 +955,7 @@ fn speech_next_step(detail: &str) -> Option<String> {
         ));
     }
     detail.contains("speech-to-text is not available in this build").then(|| {
-        "Next: install BashCutPro from its installer (it includes speech-to-text) or build with `cargo build -p bashcutpro-cli --features whisper`; `bashcut-doctor` checks it".to_string()
+        "Next: install BashCutPro from its installer (it includes speech-to-text) or in a source build run `cargo xtask dev --features whisper`; `bashcut-doctor` checks it".to_string()
     })
 }
 

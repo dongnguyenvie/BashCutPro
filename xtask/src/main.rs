@@ -487,6 +487,7 @@ fn root() -> std::path::PathBuf {
 
 fn main() -> ExitCode {
     let task = std::env::args().nth(1).unwrap_or_default();
+    bashcut::dev_first!(task); // BashCutPro: `cargo xtask dev` builds the app with its engine and runs it (bashcut/extending-upstream.md)
     let r = match task.as_str() {
         "layers" => layers(),
         "wasm" => wasm(),
