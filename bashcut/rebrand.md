@@ -71,6 +71,7 @@ files upstream changes often (`dialogs.rs`, `main.rs`, `header.rs`) carry one ho
 | `crates/ui-egui/src/lib.rs` | 1 | `pub mod bashcut_brand; // BashCutPro…` (hook) |
 | `crates/ui-egui/src/i18n/mod.rs` | 4 | `Language::tr` asks `bashcut_brand::text` first (not in this crate's unit tests, so upstream's catalog tests stay as they are) |
 | `crates/ui-egui/src/links.rs` | 5 + test | URL constants; the scheme test checks our URLs |
+| `crates/ui-egui/src/control.rs` | 1 (hook) | `bashcut_brand::engine_commands!` answers `engine.commands` through `bashcut_brand::commands`: "FilmCraft" → BashCutPro in labels, menus and params, `filmcraft-cli` → `bashcutpro-cli` (BR6; English, ids unchanged) |
 | `crates/ui-egui/src/header.rs` | 1 (hook) | community button label from `bashcut_brand::community_button` (the automation label stays upstream's) |
 | `crates/ui-egui/src/panels/dialogs.rs` | 1 (hook) | About ▸ About is drawn by `bashcut_brand::about_tab`: heading `NAME`, website label from `links::WEBSITE`, a NOTICE link (`about.notice`) |
 | `apps/filmcraft/src/main.rs` | 1 (hook) | `.with_icon(bashcut_brand::app_icon())` after upstream's: window / Dock icon from `bashcut/brand/app-icon/` |

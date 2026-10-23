@@ -325,7 +325,10 @@ labels or subclips (§1 rule 1). A project opened in upstream FilmCraft still wo
   that parses as a list of commands); `bashcutpro-cli commands`, `describe` and `exec command.list` apply it through two
   `build.rs` anchors, and `build.rs` fails when upstream's server stops sending the catalog the way `MCP_CATALOG`
   expects. The command palette shows engine and UI command labels through `bashcut_brand::text` (the BR2/BR3
-  overrides, with their Vietnamese rows), so it says "Selection as BashCutPro Project…" and "BashCutPro Help…" too.
+  overrides, with their Vietnamese rows), so it says "Selection as BashCutPro Project…" and "BashCutPro Help…" too. The control channel's
+  `engine.commands` (scripts, tests, the web API) gives the same English list as MCP: `bashcut_brand::commands`, through
+  the one-line `bashcut_brand::engine_commands!` hook at the top of `control::handle` (BR6); `bashcutpro-cli` can't share the function (it doesn't depend on `ui-egui`),
+  so the two copies follow the same rule.
 - **MCP server and permissions (AG7, checked with `claude` 2.1.309 on macOS)**: the config names the server
   `bashcutpro` (`bashcut_agent::process::SERVER`), the name the agent kit's `bcp` plugin and `/bcp:setup` use, so
   Claude Code's tools are `mcp__bashcutpro__*` (Codex: `-c mcp_servers.bashcutpro.*`). Claude Code also gets
