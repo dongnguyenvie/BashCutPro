@@ -116,6 +116,11 @@ pub fn run_watched(
 
 /// The last `max` bytes of a file as text (lossy), trimmed.
 pub fn tail(path: &Path, max: u64) -> String {
+    tail_raw(path, max).trim().to_string()
+}
+
+/// The last `max` bytes of a file as text (lossy), as read; empty when it cannot be read.
+pub fn tail_raw(path: &Path, max: u64) -> String {
     let Ok(mut f) = std::fs::File::open(path) else { return String::new() };
     let len = f.metadata().map(|m| m.len()).unwrap_or(0);
     if f.seek(SeekFrom::Start(len.saturating_sub(max))).is_err() {
@@ -125,7 +130,12 @@ pub fn tail(path: &Path, max: u64) -> String {
     if f.take(max).read_to_end(&mut buf).is_err() {
         return String::new();
     }
-    String::from_utf8_lossy(&buf).trim().to_string()
+    String::from_utf8_lossy(&buf).into_owned()
+}
+
+/// `s` cut to at most `max` characters, with `…` appended when it was cut.
+pub fn cap(s: &str, max: usize) -> String {
+    if s.chars().count() <= max { s.to_string() } else { s.chars().take(max).collect::<String>() + "…" }
 }
 
 #[cfg(test)]

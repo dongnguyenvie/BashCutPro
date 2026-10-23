@@ -26,8 +26,8 @@ Size: **S** < 1 h, **M** half a day, **L** more. **Beh.** = whether the proposed
 | D11 | Undo fold twice: `engine/src/bashcut/batch.rs` `Before::take/fold` and `undo.rs` `UndoGroup` (already disagree on order of the `pushed == 0` / history-reset checks) | Divergent undo for a step that opens a project | `Before` wraps `UndoGroup` (**done** RC10: both orders give 0 / false in every case, since a reset leaves `pushed == 0`) | S | no |
 | D12 | Engine data base computed twice: `engine/src/bashcut/data.rs` and `hooks.rs` `plugins_dir` | Drift | `data::base(s)` (**done** RV2) | S | no |
 | D13 | Batch "engine argv → Spec → spawn → outcome" block 6× in `bashcut-batch/src/runner.rs` (profile export, export, create, review, inspect, engine step) | New engine step = 15 copied lines; env/data-dir args can drift | `run_engine(...)` helper (**done** RV2) | M | no |
-| D14 | Tail/cap readers: `bashcut-batch/src/process.rs` `tail` vs `agent.rs` `read_log`; `agent.rs` `cap` vs inline in `runner.rs` | Drift | One `tail`, one `cap` | S | no |
-| D15 | Test benches `Bench`/`max_concurrent` copied in `bashcut-batch/tests/batch.rs` and `tests/governor.rs` (governor copy counts `agent-start` as an end) | Wrong concurrency count in a test | `tests/support/mod.rs` | S | test only |
+| D14 | Tail/cap readers: `bashcut-batch/src/process.rs` `tail` vs `agent.rs` `read_log`; `agent.rs` `cap` vs inline in `runner.rs` | Drift | One `tail`, one `cap` (**done** RC7: `process::tail_raw` / `process::cap`) | S | no |
+| D15 | Test benches `Bench`/`max_concurrent` copied in `bashcut-batch/tests/batch.rs` and `tests/governor.rs` (governor copy counts `agent-start` as an end) | Wrong concurrency count in a test | `tests/support/mod.rs` (**done** RC7) | S | test only |
 
 ## Inconsistency
 
@@ -42,7 +42,7 @@ Size: **S** < 1 h, **M** half a day, **L** more. **Beh.** = whether the proposed
 | I7 | `speech::engine_models` and doctor's speech probe use `Command::output()` with no timeout / inherited stdin | A stuck engine blocks the run start | `run_watched` with a timeout | S | yes |
 | I8 | Crate manifests: `bashcut-dirs` lacked `[lints] workspace = true`; `apps/bashcut-doctor` lacks `rust-version.workspace`; `publish = false` missing on most of ours; `apps/bashcut-mcp` lacks the crate-level `deny(clippy::unwrap_used, …)` the other apps have | Never-crash lints silently off for a crate | Add the lines (`bashcut-dirs` lints **done** RV2, mcp `deny` **done** RCA) | S | no |
 | I9 | Background task panic reported as `Task::Install` even for a registry fetch (`host.rs` `spawn_task`, `Disconnected` branch) | Misleading status | Carry the task kind | S | no |
-| I10 | `KIT_TOOLS` in `bashcut-batch/src/agent.rs` hard-codes `python3/python/py`; `python.rs` probes its own list | New OS/interpreter = 2 edits | Build one from the other | S | no |
+| I10 | `KIT_TOOLS` in `bashcut-batch/src/agent.rs` hard-codes `python3/python/py`; `python.rs` probes its own list | New OS/interpreter = 2 edits | Build one from the other (**done** RC7: `agent::kit_tools()` from `python::AGENT_PYTHONS`) | S | no |
 
 ## Scalability
 
