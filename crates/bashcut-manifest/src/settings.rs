@@ -263,7 +263,9 @@ mod tests {
         let store = MemoryStore::default();
         store.set(&m.id, "apiKey", "sk-1").unwrap();
         let env = env_for(&m, &loaded, &store);
-        assert_eq!(env, [("S_SERVICE".to_string(), "b".to_string()), ("S_KEY".to_string(), "sk-1".to_string())]);
+        // FX9: the data folder comes first (when the process has one), then the settings
+        let settings = env.iter().filter(|(k, _)| k != DATA_DIR_ENV).cloned().collect::<Vec<_>>();
+        assert_eq!(settings, [("S_SERVICE".to_string(), "b".to_string()), ("S_KEY".to_string(), "sk-1".to_string())]);
         let _ = std::fs::remove_dir_all(&dir);
     }
 
@@ -313,6 +315,32 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "test ticket: data_dir_env gives BASHCUTPRO_DATA_DIR=<dir>, None for no or an empty folder; env_for puts it first so a manifest setting named BASHCUTPRO_DATA_DIR wins"]
-    fn plugin_env_carries_the_data_dir() {}
+    fn plugin_env_carries_the_data_dir() {
+        // FX9: BASHCUTPRO_DATA_DIR=<dir>, nothing for no folder or an empty one
+        let dir = Path::new("/portable/BashCutPro/data");
+        assert_eq!(data_dir_env(Some(dir)), Some((DATA_DIR_ENV.to_string(), dir.to_string_lossy().into_owned())));
+        assert_eq!(DATA_DIR_ENV, "BASHCUTPRO_DATA_DIR");
+        assert_eq!(data_dir_env(None), None);
+        assert_eq!(data_dir_env(Some(Path::new(""))), None);
+        // env_for: the app's folder first, so a manifest setting of the same name (later) wins
+        let m = Manifest::parse(
+            &json!({"schema": "bashcut-plugin/1", "id": "test.dd", "version": "0.1.0", "entry": {"command": ["x"]},
+            "settings": [{"id": "data", "type": "string", "env": ["BASHCUTPRO_DATA_DIR"]}]})
+            .to_string(),
+        )
+        .unwrap();
+        let store = MemoryStore::default();
+        let saved: Values = [("data".to_string(), json!("/mine"))].into();
+        let env = env_for(&m, &saved, &store);
+        let app = data_dir_env(bashcut_dirs::data_dir().as_deref());
+        if let Some(app) = &app {
+            assert_eq!(env.first(), Some(app), "the app's folder leads: {env:?}");
+        }
+        let last = env.iter().rev().find(|(k, _)| k == DATA_DIR_ENV);
+        assert_eq!(last, Some(&(DATA_DIR_ENV.to_string(), "/mine".to_string())), "the setting is the last value, so it wins: {env:?}");
+        assert_eq!(env.len(), app.iter().count() + 1, "{env:?}");
+        // without a saved value the plain export is only the app's folder
+        let none = env_for(&m, &Values::new(), &store);
+        assert_eq!(none, app.into_iter().collect::<Vec<_>>());
+    }
 }

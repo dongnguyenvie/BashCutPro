@@ -611,5 +611,38 @@ fn engine_children_get_the_data_dir_and_every_child_the_bridge_off() {
 }
 
 #[test]
-#[ignore = "test ticket: a plugin step (and an agent step) sees BASHCUTPRO_DATA_DIR = --data-dir, else the app's data folder; a step's own env value for it wins"]
-fn step_children_get_the_data_dir() {}
+fn step_children_get_the_data_dir() {
+    // FX9: plugin and agent steps see BASHCUTPRO_DATA_DIR = --data-dir, else the app's data folder;
+    // a plugin step's own env value for it wins (the agent step next to it keeps the folder)
+    let data = std::env::temp_dir().join(format!("bashcut-batch-step-data-dir-{}", std::process::id()));
+    let seen = |tag: &str, data_dir: Option<&PathBuf>, step_env: Value| {
+        let b = bench(&format!("step-data-dir-{tag}"), &["a"]);
+        let args = b.dir.join(format!("fake-cli-args-{tag}.log"));
+        let mut agent = json!({"skill": "captions-text", "argv": [FAKE, "fake-agent", "--mode", "fixfirst", "--prompt", "{prompt}", "--session", "{session}", "--project", "{project}"]});
+        agent["fixRounds"] = json!(0);
+        let p = b.pipeline(json!({"steps": [{"plugin": {"argv": [FAKE, "plugin-ok", "--project", "{project}"], "env": step_env}}, {"agent": agent}]}));
+        let job = Job::create(&p, Some(tag)).unwrap();
+        let mut o = b.opts();
+        o.data_dir = data_dir.cloned();
+        o.env.push(("FAKE_CLI_ARGS".into(), args.to_string_lossy().into_owned()));
+        let summary = run(&job, &o).unwrap();
+        assert_eq!(summary.status, Status::Done, "{tag}: {summary:?}");
+        let lines = std::fs::read_to_string(&args).unwrap_or_default();
+        let by = |first: &str| {
+            lines
+                .lines()
+                .filter_map(|l| serde_json::from_str::<Value>(l).ok())
+                .filter(|v| v["argv"][0] == json!(first))
+                .map(|v| v["dataDir"].as_str().map(str::to_string))
+                .collect::<Vec<_>>()
+        };
+        (by("plugin-ok"), by("fake-agent"))
+    };
+    let ours = Some(data.to_string_lossy().into_owned());
+    assert_eq!(seen("given", Some(&data), json!({})), (vec![ours.clone()], vec![ours.clone()]), "--data-dir");
+    let app = bashcut_dirs::data_dir().map(|d| d.to_string_lossy().into_owned());
+    assert!(app.is_some(), "the test process has an app data folder");
+    assert_eq!(seen("app", None, json!({})), (vec![app.clone()], vec![app]), "no --data-dir: the app's folder");
+    let own = json!({"BASHCUTPRO_DATA_DIR": "/step/own", "OTHER": "x"});
+    assert_eq!(seen("own", Some(&data), own), (vec![Some("/step/own".to_string())], vec![ours]), "the step's own value wins");
+}
