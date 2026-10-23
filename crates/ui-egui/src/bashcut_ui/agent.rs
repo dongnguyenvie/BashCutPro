@@ -161,6 +161,7 @@ pub fn context(app: &FilmcraftApp) -> Context {
         line: context_line(app),
         cli: plugins::cli_path(),
         bridge: plugins::bridge_address(),
+        control_token: plugins::control_token_for(plugins::bridge_address().as_deref()),
     }
 }
 

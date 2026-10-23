@@ -53,7 +53,7 @@ fn setup(name: &str) -> Option<(PathBuf, AgentSpec, Context)> {
         timeout_secs: 30,
         ..AgentSpec::default()
     };
-    let ctx = Context { project: Some(dir.join("film.fcproj")), line: "Project film, playhead 00:00:01".into(), cli: None, bridge: None };
+    let ctx = Context { project: Some(dir.join("film.fcproj")), line: "Project film, playhead 00:00:01".into(), cli: None, bridge: None, control_token: None };
     Some((dir, spec, ctx))
 }
 

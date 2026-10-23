@@ -150,6 +150,9 @@ pub struct RunContext {
     pub cli: Option<String>,
     /// The running build's command ids (checked against `app.commands`); empty skips the check.
     pub known_commands: Vec<String>,
+    /// The session token of the app's control channel, only for a `bridge` that is the app's own; passed to the run as
+    /// `FILMCRAFT_CONTROL_TOKEN` (SY7).
+    pub control_token: Option<String>,
 }
 
 pub struct Host {
@@ -378,6 +381,9 @@ impl Host {
         let mut spec = RunSpec::new(dir, argv);
         spec.env = env;
         spec.env.push(("BASHCUT_PLUGIN_HOST".into(), "1".into()));
+        if let Some(t) = ctx.control_token.as_deref().filter(|_| ctx.bridge.is_some()) {
+            spec.env.push(("FILMCRAFT_CONTROL_TOKEN".into(), t.to_string()));
+        }
         if let Some(t) = timeout {
             spec.timeout = t;
         }

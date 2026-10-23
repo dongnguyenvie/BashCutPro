@@ -210,7 +210,7 @@ fn install_settings_run_update_remove() {
     let repo = registry_repo("0.1.0");
     let secrets = Arc::new(MemoryStore::default());
     let mut host = Host::new(Some(data.clone()), secrets);
-    let ctx = RunContext { bridge: Some("127.0.0.1:9".into()), cli: Some("/apps/bashcutpro".into()), known_commands: Vec::new() };
+    let ctx = RunContext { bridge: Some("127.0.0.1:9".into()), cli: Some("/apps/bashcutpro".into()), known_commands: Vec::new(), control_token: None };
 
     host.command("registry", &json!({"location": format!("{}@main", repo.display())}), &ctx).unwrap();
     let job = host.jobs().last().unwrap().id;
