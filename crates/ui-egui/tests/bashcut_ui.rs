@@ -1957,30 +1957,6 @@ fn help_menu_names_bashcutpro_and_opens_the_guide_in_both_languages() {
     assert!(d.harness.state().ui_error.is_none(), "{:?}", d.harness.state().ui_error);
 }
 
-#[test]
-#[ignore = "test ticket: a fake claude-code turn that prints an authentication_failed assistant line shows bashcut.agent.ready.auth ('Claude Code is not signed in', vi too) with bashcut.agent.signIn and the selectable message, no generic error; a new Send clears it"]
-fn a_sign_in_failure_shows_the_not_signed_in_line_with_sign_in() {}
-
-#[test]
-#[ignore = "test ticket: with the rail hidden, bashcut.agent.send over the control channel twice to a fake live agent uses one process (not closed after each turn); showing the Agent section then hiding it while idle closes it"]
-fn a_control_channel_client_keeps_the_hidden_agent_alive() {}
-
-#[test]
-#[ignore = "test ticket: clicking bashcut.agent.terminal while a fake live agent works shows bashcut.agent.handoff ('Ending the in-app session…', vi too), stops and closes it, then opens the terminal job and the transcript ends with 'Continued in Terminal.' (vi: 'Đã chuyển sang tiếp tục trong Terminal.')"]
-fn open_in_terminal_ends_the_live_agent_first() {}
-
-#[test]
-#[ignore = "test ticket: a fake claude-code live turn whose system/init plugins lack bcp shows bashcut.agent.ready.kit ('BashCutPro skills are not installed', vi too) with bashcut.agent.installKit and the commands; with a bcp plugin, or before any init, the line is absent"]
-fn a_session_without_the_bcp_plugin_shows_the_kit_line() {}
-
-#[test]
-#[ignore = "test ticket: with a fake live agent working, three Sends show 'You · queued 1..3' (vi: 'Bạn · đang chờ 1..3') with bashcut.agent.queued.<n>.cancel; clicking the second's ✕ shows 'Removing…' then removes it, and only 1 and 3 join the transcript"]
-fn queued_messages_are_numbered_and_cancel_with_x() {}
-
-#[test]
-#[ignore = "test ticket: with the Recover Unsaved Changes modal open (a recovery journal in the data dir), ui.click on a rail id answers ok:false naming the modal and recovery.recover / recovery.discard / recovery.later; ui.click recovery.later still works and closes it"]
-fn a_click_behind_the_recovery_modal_names_it() {}
-
 /// A live Claude Code stand-in for [`queued_x_stays_clear_of_the_transcript_scroll_bar`]: it takes
 /// the first message, answers with a long text (the transcript scrolls) and works until stdin closes,
 /// so every later message stays queued.
@@ -2182,5 +2158,674 @@ fn runs_rows_stay_clear_of_the_section_scroll_bar() {
     }
     d.exec("bashcut.ui.setLanguage", json!({"language": null}));
     assert!(d.harness.state().ui_error.is_none(), "{:?}", d.harness.state().ui_error);
+    let _ = std::fs::remove_dir_all(&data);
+}
+
+/// A scripted live Claude Code for the Agent tests below (TA2's `LiveFake` in
+/// `crates/bashcut-agent/tests/fake_agent.rs`, cut down): it keeps reading stdin and takes one message
+/// at a time (`system/init` with its capabilities and plugins, the `isReplay` echo with the message's
+/// uuid, the answer, a `result`), answering control requests while it works. A message containing
+/// `hold` works (an assistant line `working on …` first) until the `FAKE_GO` file exists; `please
+/// sign in` answers like a signed-out Claude Code; `please ask` asks to run `rm -rf build` (a
+/// `can_use_tool` request) and waits for the answer; `no kit` leaves `bcp` out of the init's plugins.
+/// `FAKE_MODE` (comma separated): `receipt` / `cancel-queued` announce `interrupt_receipt_v1` /
+/// `interrupt_cancel_queued_v1`; `slow-stop` / `slow-cancel` answer the interrupt / a cancel after a
+/// pause; `outdated` refuses a flag like an old Claude Code. Every start, control request, answer,
+/// taken message and EOF is a JSON line in `FAKE_LOG` ([`Fake::notes`]).
+const LIVE_FAKE: &str = r#"
+import json, os, queue, sys, threading, time
+args = sys.argv[1:]
+opts = set(os.environ.get("FAKE_MODE", "").split(","))
+resumed = args[args.index("--resume") + 1] if "--resume" in args else ""
+session = resumed or "live-1"
+log = open(os.environ["FAKE_LOG"], "a")
+go = os.environ.get("FAKE_GO", "")
+def note(kind, **kw):
+    log.write(json.dumps(dict(pid=os.getpid(), kind=kind, **kw)) + "\n")
+    log.flush()
+def out(v):
+    sys.stdout.write(json.dumps(v) + "\n")
+    sys.stdout.flush()
+note("start", args=args)
+if "outdated" in opts:
+    sys.stderr.write("error: unknown option '--replay-user-messages'\n")
+    sys.exit(1)
+caps = [c for o, c in (("receipt", "interrupt_receipt_v1"), ("cancel-queued", "interrupt_cancel_queued_v1")) if o in opts]
+lines = queue.Queue()
+def read():
+    for line in sys.stdin:
+        try:
+            lines.put(json.loads(line))
+        except ValueError:
+            note("bad", line=line)
+    lines.put(None)
+threading.Thread(target=read, daemon=True).start()
+waiting = []
+answers = {}
+eof = False
+def text_of(m):
+    # the user's line, after the app's context line
+    return m["message"]["content"][0]["text"].splitlines()[-1]
+def control(m):
+    r, rid = m.get("request", {}), m.get("request_id", "")
+    note("control", request=r)
+    def answer(subtype, **kw):
+        out({"type": "control_response", "response": dict(subtype=subtype, request_id=rid, **kw)})
+    if r.get("subtype") == "interrupt":
+        if "slow-stop" in opts:
+            time.sleep(2)
+        answer("success")
+        return "stop"
+    if r.get("subtype") == "cancel_async_message":
+        if "slow-cancel" in opts:
+            time.sleep(1.5)
+        hit = [w for w in waiting if w.get("uuid") and w.get("uuid") == r.get("message_uuid")]
+        for w in hit:
+            waiting.remove(w)
+        answer("success", response={"cancelled": bool(hit)})
+    return None
+def pump(timeout):
+    global eof
+    try:
+        m = lines.get(timeout=timeout)
+    except queue.Empty:
+        return None
+    if m is None:
+        eof = True
+        return None
+    if m.get("type") == "control_request":
+        return control(m)
+    if m.get("type") == "control_response":
+        r = m.get("response", {})
+        note("answer", response=r)
+        answers[r.get("request_id", "")] = r
+    if m.get("type") == "user":
+        waiting.append(m)
+    return None
+def turn(m):
+    text = text_of(m)
+    note("take", text=text, uuid=m.get("uuid", ""))
+    plugins = [] if "no kit" in text else [{"name": "bcp", "path": "/kit", "source": "bcp@bashcutpro-agent-kit"}]
+    out({"type": "system", "subtype": "init", "session_id": session, "model": "fake", "capabilities": caps, "plugins": plugins})
+    out({"type": "user", "isReplay": True, "uuid": m.get("uuid", ""), "message": m["message"]})
+    if "please sign in" in text:
+        line = "Not logged in · Please run /login"
+        out({"type": "assistant", "error": "authentication_failed", "message": {"content": [{"type": "text", "text": line}]}})
+        out({"type": "result", "subtype": "success", "is_error": True, "result": line, "session_id": session})
+        return
+    if "please ask" in text:
+        out({"type": "control_request", "request_id": "perm-1", "request": {"subtype": "can_use_tool", "tool_name": "Bash",
+             "input": {"command": "rm -rf build"}, "tool_use_id": "t9", "permission_suggestions": [
+                 {"type": "addRules", "rules": [{"toolName": "Bash", "ruleContent": "rm -rf build"}], "behavior": "allow", "destination": "localSettings"}]}})
+        while "perm-1" not in answers and not eof:
+            pump(0.05)
+    if "hold" in text:
+        out({"type": "assistant", "message": {"content": [{"type": "text", "text": "working on " + text}]}})
+        while not (go and os.path.exists(go)) and not eof:
+            if pump(0.05) == "stop":
+                out({"type": "result", "subtype": "error_during_execution", "is_error": True, "session_id": session})
+                return
+    out({"type": "assistant", "message": {"content": [{"type": "text", "text": "echo " + text}]}})
+    out({"type": "result", "subtype": "success", "is_error": False, "result": "done", "session_id": session, "num_turns": 1})
+while True:
+    if waiting:
+        turn(waiting.pop(0))
+    elif eof:
+        note("eof")
+        sys.exit(0)
+    else:
+        pump(0.2)
+"#;
+
+/// The child test process of [`fake_claude`]: the test it runs, the case, and the fake's folder.
+const FAKE_CHILD: &str = "BASHCUT_UI_TEST_FAKE_CLAUDE";
+const FAKE_CASE: &str = "BASHCUT_UI_TEST_FAKE_CASE";
+const FAKE_DIR: &str = "BASHCUT_UI_TEST_FAKE_DIR";
+
+type Opened = (std::path::PathBuf, filmcraft_ui_egui::bashcut_ui::terminal::Job, Option<String>);
+
+/// What `terminal::open` was asked to open in a [`fake_claude`] child: folder, job and hint, oldest
+/// first (no window opens).
+static OPENED: std::sync::Mutex<Vec<Opened>> = std::sync::Mutex::new(Vec::new());
+
+fn record_terminal(dir: &Path, job: &filmcraft_ui_egui::bashcut_ui::terminal::Job, hint: Option<&str>) -> Result<(), String> {
+    OPENED.lock().unwrap_or_else(std::sync::PoisonError::into_inner).push((dir.to_path_buf(), job.clone(), hint.map(str::to_string)));
+    Ok(())
+}
+
+fn opened() -> Vec<Opened> {
+    OPENED.lock().unwrap_or_else(std::sync::PoisonError::into_inner).clone()
+}
+
+/// The real Python interpreter (`py -3`'s on Windows, so the wrapper needs no launcher in between).
+fn python_exe() -> Option<String> {
+    let (exe, pre): (&str, &[&str]) = if cfg!(windows) { ("py", &["-3"]) } else { ("python3", &[]) };
+    let out = std::process::Command::new(exe).args(pre).args(["-c", "import sys; print(sys.executable)"]).output().ok().filter(|o| o.status.success())?;
+    let path = String::from_utf8_lossy(&out.stdout).trim().to_string();
+    (!path.is_empty()).then_some(path)
+}
+
+/// A [`fake_claude`] child's fake: its folder, the program `BASHCUT_CLAUDE` names, and the case.
+struct Fake {
+    dir: std::path::PathBuf,
+    claude: String,
+    case: String,
+}
+
+impl Fake {
+    /// The log lines of `kind` (`start`, `control`, `answer`, `take`, `eof`), oldest first.
+    fn notes(&self, kind: &str) -> Vec<Value> {
+        let text = std::fs::read_to_string(self.dir.join("fake.log")).unwrap_or_default();
+        text.lines().filter_map(|l| serde_json::from_str::<Value>(l).ok()).filter(|v| v["kind"] == json!(kind)).collect()
+    }
+
+    /// A `hold` turn ends.
+    fn go(&self) {
+        std::fs::write(self.dir.join("go"), b"").unwrap();
+    }
+
+    /// The app with the demo project saved as `film.fcproj` in the fake's folder (conversations and
+    /// the agent's folder stay there), terminals recorded instead of opened, the Agent section open.
+    fn driver(&self) -> Driver {
+        assert!(filmcraft_ui_egui::bashcut_ui::terminal::stand_in(record_terminal), "one driver per child");
+        let mut d = Driver::with_data(&self.dir.join("data"), |_| {});
+        d.exec("file.saveAs", json!({"path": self.dir.join("film.fcproj").to_string_lossy()}));
+        d.click("bashcut.rail.agent");
+        d
+    }
+}
+
+/// The Agent tests against a fake Claude Code ([`LIVE_FAKE`]). `BASHCUT_CLAUDE` is read for the
+/// whole process (when the agent is created and by `bashcut.agent.agents`), and Claude Code's MCP
+/// config needs the engine next to the app and a control port, so `test` runs again in a child
+/// test process: from a hard link (or copy) of this test binary beside a stand-in `bashcutpro-cli`,
+/// with `FILMCRAFT_CONTROL_PORT` set, `BASHCUT_CLAUDE` naming a wrapper around [`LIVE_FAKE`], and
+/// `env` (`FAKE_MODE`, or another `BASHCUT_CLAUDE`). `Some` in the child (the test body runs), `None`
+/// in the parent once the child passed, or without Python.
+fn fake_claude(test: &str, case: &str, env: &[(&str, &str)]) -> Option<Fake> {
+    if std::env::var(FAKE_CHILD).as_deref() == Ok(test) {
+        let dir = std::path::PathBuf::from(std::env::var_os(FAKE_DIR)?);
+        return Some(Fake { dir, claude: std::env::var("BASHCUT_CLAUDE").unwrap_or_default(), case: std::env::var(FAKE_CASE).unwrap_or_default() });
+    }
+    let Some(python) = python_exe() else {
+        eprintln!("python not found: skipped");
+        return None;
+    };
+    let dir = std::env::temp_dir().join(format!("bashcut-ui-fake-{case}-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    let bin = dir.join("bin");
+    std::fs::create_dir_all(&bin).unwrap();
+    let exe = std::env::current_exe().unwrap();
+    let link = bin.join(exe.file_name().unwrap());
+    if std::fs::hard_link(&exe, &link).is_err() {
+        std::fs::copy(&exe, &link).unwrap();
+    }
+    std::fs::write(bin.join(format!("bashcutpro-cli{}", std::env::consts::EXE_SUFFIX)), b"").unwrap();
+    std::fs::write(dir.join("live.py"), LIVE_FAKE).unwrap();
+    let claude = if cfg!(windows) {
+        let w = dir.join("claude.cmd");
+        std::fs::write(&w, format!("@\"{python}\" \"%~dp0live.py\" %*\r\n")).unwrap();
+        w
+    } else {
+        let w = dir.join("claude");
+        std::fs::write(&w, format!("#!/bin/sh\nexec '{python}' \"$(dirname \"$0\")/live.py\" \"$@\"\n")).unwrap();
+        #[cfg(unix)]
+        std::fs::set_permissions(&w, std::os::unix::fs::PermissionsExt::from_mode(0o755)).unwrap();
+        w
+    };
+    let mut cmd = std::process::Command::new(&link);
+    cmd.args(["--exact", test, "--nocapture", "--test-threads=1"])
+        .env(FAKE_CHILD, test)
+        .env(FAKE_CASE, case)
+        .env(FAKE_DIR, &dir)
+        .env("FILMCRAFT_CONTROL_PORT", "1")
+        .env("BASHCUT_CLAUDE", &claude)
+        .env("FAKE_LOG", dir.join("fake.log"))
+        .env("FAKE_GO", dir.join("go"))
+        .env_remove("BASHCUT_CODEX");
+    for (k, v) in env {
+        cmd.env(k, v);
+    }
+    let out = cmd.output().unwrap();
+    let log = format!("{}{}", String::from_utf8_lossy(&out.stdout), String::from_utf8_lossy(&out.stderr));
+    let _ = std::fs::remove_dir_all(&dir);
+    assert!(out.status.success() && log.contains("1 passed"), "{test} ({case}):\n{log}");
+    None
+}
+
+impl Driver {
+    fn agent_state(&mut self) -> Value {
+        self.exec("bashcut.agent.state", json!({}))
+    }
+
+    /// The agent's state once its turn (and the queue) ended.
+    fn agent_idle(&mut self) -> Value {
+        self.wait(|d| d.agent_state(), |s| s["status"]["state"] != json!("running") && s["status"]["state"] != json!("stopping"))
+    }
+
+    fn agent_items(&mut self) -> Vec<Value> {
+        self.exec("bashcut.agent.transcript", json!({}))["items"].as_array().cloned().unwrap_or_default()
+    }
+
+    /// Wait until the transcript has the assistant line `text`.
+    fn agent_said(&mut self, text: &str) {
+        let said = |v: &Value| v.as_array().is_some_and(|a| a.iter().any(|i| i["type"] == json!("assistant") && i["text"] == json!(text)));
+        let items = self.wait(|d| json!(d.agent_items()), said);
+        assert!(said(&items), "no {text:?}: {items}");
+    }
+
+    /// The label of `id` in English, then in Vietnamese (the language is reset after).
+    fn labels(&mut self, id: &str) -> (Value, Value) {
+        let en = self.element(id)["label"].clone();
+        self.exec("bashcut.ui.setLanguage", json!({"language": "vi"}));
+        self.frames(2);
+        let vi = self.element(id)["label"].clone();
+        self.exec("bashcut.ui.setLanguage", json!({"language": null}));
+        self.frames(2);
+        (en, vi)
+    }
+
+    fn no_ui_error(&mut self) {
+        assert!(self.harness.state().ui_error.is_none(), "{:?}", self.harness.state().ui_error);
+    }
+}
+
+/// AG6: a turn whose Claude Code is signed out shows "Claude Code is not signed in" with Sign in…
+/// and the agent's own message (selectable), not a generic error; Sign in… opens `claude` in a
+/// terminal with the /login hint; the next turn clears the line.
+#[test]
+fn a_sign_in_failure_shows_the_not_signed_in_line_with_sign_in() {
+    let Some(fake) = fake_claude("a_sign_in_failure_shows_the_not_signed_in_line_with_sign_in", "auth", &[]) else { return };
+    let mut d = fake.driver();
+    assert!(d.element("bashcut.agent.ready.auth").is_null(), "no line before a turn");
+    d.exec("bashcut.agent.send", json!({"text": "please sign in"}));
+    let st = d.agent_idle();
+    assert_ne!(st["status"]["state"], json!("failed"), "no generic failure: {st}");
+    d.frames(2);
+    let (en, vi) = d.labels("bashcut.agent.ready.auth");
+    assert_eq!((en, vi), (json!("Claude Code is not signed in"), json!("Claude Code chưa đăng nhập")));
+    assert_eq!(d.element("bashcut.agent.ready.auth.message")["label"], json!("Not logged in · Please run /login"));
+    let items = d.agent_items();
+    assert!(!items.iter().any(|i| i["type"] == json!("error")), "no generic error: {items:?}");
+    let (en, vi) = d.labels("bashcut.agent.signIn");
+    assert_eq!((en, vi), (json!("Sign in…"), json!("Đăng nhập…")));
+    d.click("bashcut.agent.signIn");
+    let (_, job, hint) = opened().pop().expect("Sign in opened a terminal");
+    assert_eq!(job, filmcraft_ui_egui::bashcut_ui::terminal::Job::Program(vec![fake.claude.clone()]));
+    assert!(hint.is_some_and(|h| h.contains("/login")));
+
+    d.exec("bashcut.agent.send", json!({"text": "hello"}));
+    d.agent_said("echo hello");
+    d.agent_idle();
+    d.frames(2);
+    assert!(d.element("bashcut.agent.ready.auth").is_null(), "the next turn clears it");
+    d.no_ui_error();
+}
+
+/// AG3: with the rail hidden, a control-channel client sends twice to one live process (not closed
+/// after each turn); once the Agent section was shown, hiding it while idle closes the process.
+#[test]
+fn a_control_channel_client_keeps_the_hidden_agent_alive() {
+    let Some(fake) = fake_claude("a_control_channel_client_keeps_the_hidden_agent_alive", "hidden", &[]) else { return };
+    let mut d = fake.driver();
+    d.exec("bashcut.ui.toggleRail", json!({}));
+    assert!(!d.has("bashcut.panel.agent"), "hidden");
+    for text in ["first", "second"] {
+        d.exec("bashcut.agent.send", json!({"text": text}));
+        d.agent_said(&format!("echo {text}"));
+        d.agent_idle();
+        d.frames(10);
+        assert_eq!(d.agent_state()["live"], json!(true), "still open after the turn {text}");
+    }
+    assert_eq!(fake.notes("start").len(), 1, "one process for both: {:?}", fake.notes("start"));
+
+    d.exec("bashcut.ui.toggleRail", json!({}));
+    d.exec("bashcut.ui.show.agent", json!({}));
+    d.frames(3);
+    assert!(d.has("bashcut.panel.agent"));
+    d.exec("bashcut.ui.toggleRail", json!({}));
+    let st = d.wait(|d| d.agent_state(), |s| s["live"] == json!(false));
+    assert_eq!(st["live"], json!(false), "hidden while idle closes it: {st}");
+    let eof = d.wait(|_| json!(fake.notes("eof").len()), |n| *n == json!(1));
+    assert_eq!(eof, json!(1), "the process read EOF and ended");
+    d.no_ui_error();
+}
+
+/// AG3/AG10: Open in Terminal while the live agent works says "Ending the in-app session…" (both
+/// languages), stops the turn and closes the process, then opens the terminal on `claude --resume
+/// <session>`, and the transcript ends with "Continued in Terminal." (Vietnamese when drawn in vi).
+#[test]
+fn open_in_terminal_ends_the_live_agent_first() {
+    let Some(fake) = fake_claude("open_in_terminal_ends_the_live_agent_first", "click", &[("FAKE_MODE", "receipt,slow-stop")]) else { return };
+    let mut d = fake.driver();
+    d.exec("bashcut.agent.send", json!({"text": "hold the cut"}));
+    d.agent_said("working on hold the cut");
+    d.click("bashcut.agent.terminal");
+    let (en, vi) = d.labels("bashcut.agent.handoff");
+    assert_eq!(en, json!("Ending the in-app session before the terminal opens…"));
+    assert_eq!(vi, json!("Đang đóng phiên trong ứng dụng trước khi mở Terminal…"));
+    assert!(opened().is_empty(), "not before the agent ended");
+
+    let n = d.wait(|_| json!(opened().len()), |n| *n == json!(1));
+    assert_eq!(n, json!(1), "the terminal opened once the agent ended");
+    let st = d.agent_state();
+    assert_eq!(st["live"], json!(false), "{st}");
+    assert!(fake.notes("control").iter().any(|c| c["request"]["subtype"] == json!("interrupt")), "the turn was stopped");
+    let (_, job, _) = opened().remove(0);
+    let filmcraft_ui_egui::bashcut_ui::terminal::Job::Program(argv) = job else { panic!("a program: {job:?}") };
+    assert_eq!(argv.first(), Some(&fake.claude));
+    assert!(argv.windows(2).any(|w| w == ["--resume", "live-1"]), "{argv:?}");
+    let items = d.agent_items();
+    assert_eq!(items.last().map(|i| i["message"].clone()), Some(json!("Continued in Terminal.")), "{items:?}");
+    d.frames(2);
+    assert!(d.element("bashcut.agent.handoff").is_null(), "the line goes");
+    d.exec("bashcut.ui.setLanguage", json!({"language": "vi"}));
+    d.frames(3);
+    assert!(d.harness.query_by_label("Đã chuyển sang tiếp tục trong Terminal.").is_some(), "drawn in Vietnamese");
+    d.exec("bashcut.ui.setLanguage", json!({"language": null}));
+    d.no_ui_error();
+}
+
+/// AG10: `bashcut.agent.terminal` while a turn runs answers `pending`; the window opens once the
+/// agent ended (the frame loop polls it), and when idle it opens at once.
+#[test]
+fn terminal_command_hands_off_after_the_turn_ends() {
+    let Some(fake) = fake_claude("terminal_command_hands_off_after_the_turn_ends", "command", &[("FAKE_MODE", "receipt")]) else { return };
+    let mut d = fake.driver();
+    d.exec("bashcut.agent.send", json!({"text": "hold it"}));
+    d.agent_said("working on hold it");
+    let r = d.exec("bashcut.agent.terminal", json!({}));
+    assert_eq!(r, json!({"opened": false, "pending": true}));
+    let n = d.wait(|_| json!(opened().len()), |n| *n == json!(1));
+    assert_eq!(n, json!(1), "opened once the agent ended");
+    assert_eq!(d.agent_state()["live"], json!(false));
+    let items = d.agent_items();
+    assert_eq!(items.last().map(|i| i["message"].clone()), Some(json!("Continued in Terminal.")), "{items:?}");
+    // idle: at once
+    let r = d.exec("bashcut.agent.terminal", json!({}));
+    assert_eq!(r, json!({"opened": true, "pending": false}));
+    assert_eq!(opened().len(), 2);
+    d.no_ui_error();
+}
+
+/// AG9: a session whose init lists no `bcp` plugin shows "BashCutPro skills are not installed" (both
+/// languages) with Install kit… and the commands; Install kit… opens the kit's commands in a
+/// terminal. Before any init, or with `bcp`, the line is absent and `installKit` is refused.
+#[test]
+fn a_session_without_the_bcp_plugin_shows_the_kit_line() {
+    use filmcraft_ui_egui::bashcut_ui::terminal;
+    let Some(fake) = fake_claude("a_session_without_the_bcp_plugin_shows_the_kit_line", "kit", &[]) else { return };
+    let mut d = fake.driver();
+    assert!(d.element("bashcut.agent.ready.kit").is_null(), "unknown before an init");
+    d.exec("bashcut.agent.send", json!({"text": "no kit here"}));
+    d.agent_said("echo no kit here");
+    d.agent_idle();
+    d.frames(2);
+    let (en, vi) = d.labels("bashcut.agent.ready.kit");
+    assert_eq!((en, vi), (json!("BashCutPro skills are not installed"), json!("Chưa cài kỹ năng BashCutPro")));
+    let (en, vi) = d.labels("bashcut.agent.installKit");
+    assert_eq!((en, vi), (json!("Install kit…"), json!("Cài bộ công cụ…")));
+    let cmds = d.element("bashcut.agent.ready.kit.commands")["label"].as_str().unwrap_or_default().to_string();
+    assert!(cmds.contains(terminal::KIT_MARKETPLACE) && cmds.contains(terminal::KIT_INSTALL), "{cmds}");
+    d.click("bashcut.agent.installKit");
+    let (_, job, hint) = opened().pop().expect("Install kit opened a terminal");
+    assert_eq!(job, terminal::kit_job(terminal::Os::current(), &fake.claude));
+    assert!(hint.is_some_and(|h| h.contains("kit")));
+
+    d.exec("bashcut.agent.send", json!({"text": "with the kit"}));
+    d.agent_said("echo with the kit");
+    d.agent_idle();
+    d.frames(2);
+    assert!(d.element("bashcut.agent.ready.kit").is_null(), "bcp listed: no line");
+    assert!(!d.has("bashcut.agent.installKit"));
+    let r = d.call("engine.execute", json!({"command": "bashcut.agent.installKit", "params": {}}));
+    assert_eq!(r["ok"], json!(false), "{r}");
+    assert!(r.to_string().contains("already installed"), "{r}");
+    d.no_ui_error();
+}
+
+/// AG4 (and AG2's queued items): three messages sent while the live agent works show "You · queued
+/// 1..3" (vi: "Bạn · đang chờ 1..3") with ✕; ✕ on the second shows "Removing…" until the agent
+/// confirms, then it is gone, and only the first and third join the transcript.
+#[test]
+fn queued_messages_are_numbered_and_cancel_with_x() {
+    let mode = [("FAKE_MODE", "receipt,cancel-queued,slow-cancel")];
+    let Some(fake) = fake_claude("queued_messages_are_numbered_and_cancel_with_x", "queue", &mode) else { return };
+    let mut d = fake.driver();
+    d.exec("bashcut.agent.send", json!({"text": "hold first"}));
+    d.agent_said("working on hold first");
+    for q in ["q1", "q2", "q3"] {
+        d.exec("bashcut.agent.send", json!({"text": q}));
+    }
+    d.frames(3);
+    for (i, q) in ["q1", "q2", "q3"].iter().enumerate() {
+        assert_eq!(d.element(&format!("bashcut.agent.queued.{i}"))["label"], json!(q));
+        assert_eq!(d.element(&format!("bashcut.agent.queued.{i}.cancel"))["label"], json!("✕"));
+        assert!(d.harness.query_by_label(&format!("You · queued {}", i + 1)).is_some(), "queued {}", i + 1);
+    }
+    d.exec("bashcut.ui.setLanguage", json!({"language": "vi"}));
+    d.frames(2);
+    for n in 1..=3 {
+        assert!(d.harness.query_by_label(&format!("Bạn · đang chờ {n}")).is_some(), "vi queued {n}");
+    }
+    d.exec("bashcut.ui.setLanguage", json!({"language": null}));
+    d.frames(2);
+
+    d.click("bashcut.agent.queued.1.cancel");
+    assert!(d.harness.query_by_label("Removing…").is_some(), "waits for the agent");
+    assert!(d.element("bashcut.agent.queued.1.cancel").is_null(), "no second ✕ meanwhile");
+    let st = d.wait(|d| d.agent_state(), |s| s["queued"] == json!(["q1", "q3"]));
+    assert_eq!(st["queued"], json!(["q1", "q3"]), "{st}");
+    d.frames(2);
+    assert_eq!(d.element("bashcut.agent.queued.1")["label"], json!("q3"));
+    assert!(d.harness.query_by_label("Removing…").is_none());
+
+    fake.go();
+    d.agent_said("echo q3");
+    d.agent_idle();
+    let users: Vec<Value> = d.agent_items().into_iter().filter(|i| i["type"] == json!("user")).map(|i| i["text"].clone()).collect();
+    assert_eq!(users, [json!("hold first"), json!("q1"), json!("q3")]);
+    let taken: Vec<Value> = fake.notes("take").into_iter().map(|n| n["text"].clone()).collect();
+    assert!(!taken.contains(&json!("q2")), "{taken:?}");
+    d.no_ui_error();
+}
+
+/// AG8: a permission request shows its card (tool, command, Allow once / Always for this project /
+/// Deny, both languages); Allow once writes an allow answer for that request and the turn goes on.
+#[test]
+fn a_permission_request_shows_a_card_and_the_click_answers_it() {
+    let Some(fake) = fake_claude("a_permission_request_shows_a_card_and_the_click_answers_it", "permission", &[]) else { return };
+    let mut d = fake.driver();
+    d.exec("bashcut.agent.send", json!({"text": "please ask"}));
+    let st = d.wait(|d| d.agent_state(), |s| s["permissions"].as_array().is_some_and(|p| p.len() == 1));
+    assert_eq!(st["permissions"][0]["tool"], json!("Bash"), "{st}");
+    d.frames(2);
+    assert!(d.has("bashcut.agent.permission.0"));
+    assert_eq!(d.element("bashcut.agent.permission.0.detail")["label"], json!("rm -rf build"));
+    assert!(d.harness.query_by_label("Claude Code wants to use Bash").is_some());
+    let (en, vi) = d.labels("bashcut.agent.permission.0.once");
+    assert_eq!((en, vi), (json!("Allow once"), json!("Cho phép lần này")));
+    let (en, vi) = d.labels("bashcut.agent.permission.0.always");
+    assert_eq!((en, vi), (json!("Always for this project"), json!("Luôn cho phép trong dự án này")));
+    let (en, vi) = d.labels("bashcut.agent.permission.0.deny");
+    assert_eq!((en, vi), (json!("Deny"), json!("Từ chối")));
+
+    d.click("bashcut.agent.permission.0.once");
+    let n = d.wait(|_| json!(fake.notes("answer").len()), |n| *n == json!(1));
+    assert_eq!(n, json!(1), "the answer reached the agent");
+    let answer = fake.notes("answer").remove(0);
+    assert_eq!(answer["response"]["request_id"], json!("perm-1"), "{answer}");
+    assert_eq!(answer["response"]["response"]["behavior"], json!("allow"), "{answer}");
+    assert_eq!(answer["response"]["response"]["updatedInput"], json!({"command": "rm -rf build"}), "{answer}");
+    d.agent_said("echo please ask");
+    d.agent_idle();
+    d.frames(2);
+    assert!(!d.has("bashcut.agent.permission.0"), "the card goes");
+    let items = d.agent_items();
+    assert!(items.iter().any(|i| i["type"] == json!("permission") && i["tool"] == json!("Bash")), "{items:?}");
+    d.no_ui_error();
+}
+
+/// AG5: a found Claude Code offers Open in Terminal and Sign in… (and `bashcut.agent.agents` lists
+/// them); with `BASHCUT_CLAUDE` pointing nowhere it offers Install (both languages) next to the
+/// not-found line, and Install opens the official installer in a terminal.
+#[test]
+fn terminal_sign_in_and_install_follow_whether_claude_is_found() {
+    use filmcraft_ui_egui::bashcut_ui::terminal;
+    let test = "terminal_sign_in_and_install_follow_whether_claude_is_found";
+    let nowhere = std::env::temp_dir().join(format!("bashcut-ui-no-claude-{}", std::process::id())).join("claude");
+    let nowhere = nowhere.to_string_lossy().into_owned();
+    for (case, env) in [("found", vec![]), ("missing", vec![("BASHCUT_CLAUDE", nowhere.as_str())])] {
+        let Some(fake) = fake_claude(test, case, &env) else { continue };
+        let mut d = fake.driver();
+        let agents = d.exec("bashcut.agent.agents", json!({}));
+        let claude = agents.as_array().and_then(|a| a.iter().find(|a| a["id"] == json!("claude-code")).cloned()).unwrap_or_default();
+        if fake.case == "found" {
+            assert_eq!(claude["actions"], json!(["terminal", "signIn"]), "{agents}");
+            let (en, vi) = d.labels("bashcut.agent.terminal");
+            assert_eq!((en, vi), (json!("Open in Terminal"), json!("Mở trong Terminal")));
+            let (en, vi) = d.labels("bashcut.agent.signIn");
+            assert_eq!((en, vi), (json!("Sign in…"), json!("Đăng nhập…")));
+            assert!(!d.has("bashcut.agent.install"));
+            assert!(d.element("bashcut.agent.ready.agent").is_null());
+        } else {
+            assert_eq!(claude["actions"], json!(["install"]), "{agents}");
+            let (en, vi) = d.labels("bashcut.agent.install");
+            assert_eq!((en, vi), (json!("Install"), json!("Cài đặt")));
+            let (en, vi) = d.labels("bashcut.agent.ready.agent");
+            assert_eq!(en, json!("Claude Code not found: install it, or set BASHCUT_CLAUDE"));
+            assert_eq!(vi, json!("Claude Code chưa được cài: hãy cài đặt, hoặc đặt biến BASHCUT_CLAUDE"));
+            assert!(!d.has("bashcut.agent.terminal") && !d.has("bashcut.agent.signIn"));
+            d.click("bashcut.agent.install");
+            let (_, job, hint) = opened().pop().expect("Install opened a terminal");
+            assert_eq!(job, terminal::install_job(terminal::Os::current()));
+            assert!(hint.is_some_and(|h| h.contains("official installer")));
+        }
+        d.no_ui_error();
+        return;
+    }
+}
+
+/// AG2: a Claude Code that refuses a flag of the live session shows "Update Claude Code: run `claude
+/// update`" (both languages).
+#[test]
+fn an_outdated_claude_code_shows_the_update_line() {
+    let Some(fake) = fake_claude("an_outdated_claude_code_shows_the_update_line", "outdated", &[("FAKE_MODE", "outdated")]) else { return };
+    let mut d = fake.driver();
+    assert!(d.element("bashcut.agent.ready.update").is_null());
+    d.exec("bashcut.agent.send", json!({"text": "cut the intro"}));
+    d.agent_idle();
+    d.frames(2);
+    let (en, vi) = d.labels("bashcut.agent.ready.update");
+    assert_eq!((en, vi), (json!("Update Claude Code: run `claude update`"), json!("Hãy cập nhật Claude Code: chạy `claude update`")));
+    d.no_ui_error();
+}
+
+/// AG11: every `bashcut.agent.*` command reads in Vietnamese in the palette under vi (English under
+/// en, as MCP's command list keeps it).
+#[test]
+fn agent_palette_labels_are_vietnamese_under_vi() {
+    let mut d = Driver::demo();
+    let commands = filmcraft_ui_egui::bashcut_ui::agent::commands();
+    assert!(commands.len() >= 18, "{}", commands.len());
+    let label = |d: &mut Driver, id: &str| {
+        let found = d.exec("bashcut.palette.search", json!({"query": id, "limit": 50}));
+        let key = json!(format!("command:{id}"));
+        found.as_array().and_then(|a| a.iter().find(|r| r["key"] == key).cloned()).map(|r| r["label"].clone()).unwrap_or_default()
+    };
+    for c in &commands {
+        assert_eq!(label(&mut d, &c.id), json!(c.label), "en {}", c.id);
+    }
+    d.exec("bashcut.ui.setLanguage", json!({"language": "vi"}));
+    for c in &commands {
+        let vi = label(&mut d, &c.id);
+        assert!(vi.as_str().is_some_and(|l| !l.is_empty() && l != c.label), "{}: {vi} (English: {})", c.id, c.label);
+    }
+    assert_eq!(label(&mut d, "bashcut.agent.installKit"), json!("Cài bộ công cụ BashCutPro"));
+    assert_eq!(label(&mut d, "bashcut.agent.send"), json!("Gửi cho trợ lý"));
+    d.exec("bashcut.ui.setLanguage", json!({"language": null}));
+}
+
+/// The next launch after a session crashed with unsaved edits in `data`: one recovery candidate
+/// (as `dialog_buttons_ui.rs` makes it).
+fn session_after_crash(data: &Path) -> Session {
+    let mut crashed = Session::default();
+    crashed.execute("file.openDemoProject", json!({})).unwrap();
+    let mut cfg = filmcraft_engine::autosave::AutosaveConfig::new(data);
+    cfg.journal_debounce = Duration::from_millis(20);
+    crashed.start_autosave(cfg).unwrap();
+    crashed.execute("sequence.addEdit", json!({"seconds": 1.5})).unwrap();
+    let t0 = std::time::Instant::now();
+    loop {
+        crashed.poll_persistence();
+        if crashed.persistence.as_ref().unwrap().status.journaled_revision == crashed.revision {
+            break;
+        }
+        assert!(t0.elapsed() < Duration::from_secs(10), "timed out waiting for the journal");
+        std::thread::sleep(Duration::from_millis(10));
+    }
+    crashed.persistence.take().unwrap().simulate_crash();
+    let mut next = Session::default();
+    next.start_autosave(filmcraft_engine::autosave::AutosaveConfig::new(data)).unwrap();
+    assert_eq!(next.recovery_candidates().len(), 1);
+    next
+}
+
+impl Driver {
+    fn from_session(session: Session) -> Self {
+        let (tx, rx) = channel();
+        let app = FilmcraftApp::new(session).with_control(rx);
+        let harness = Harness::builder().with_size(egui::vec2(W, H)).with_max_steps(10_000).build_eframe(move |_cc| app);
+        let mut d = Driver { harness, tx };
+        d.frames(4);
+        d
+    }
+
+    /// `ui.click` at the centre of `id`'s rect.
+    fn click_at(&mut self, id: &str) -> Value {
+        let r = self.rect(id).unwrap_or_else(|| panic!("{id} not on screen"));
+        self.call("ui.click", json!({"x": r[0] + r[2] / 2.0, "y": r[1] + r[3] / 2.0}))
+    }
+}
+
+/// FX14: with Recover Unsaved Changes open, `ui.click` on a rail id answers `ok: false` naming the
+/// dialog and its ids; `recovery.later` by id still works and closes it, and the rail then opens.
+/// The same for Revert, answered with an x,y click inside it.
+#[test]
+fn a_click_behind_the_recovery_modal_names_it() {
+    let data = std::env::temp_dir().join(format!("bashcut-ui-modal-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&data);
+    std::fs::create_dir_all(&data).unwrap();
+    let mut d = Driver::from_session(session_after_crash(&data));
+    assert!(d.has("recovery.later"), "the prompt opens at start-up");
+    let r = d.call("ui.click", json!({"id": "bashcut.rail.agent"}));
+    assert_eq!(r["ok"], json!(false), "{r}");
+    let e = r["error"].as_str().unwrap_or_default();
+    assert!(e.contains("Recover Unsaved Changes") && e.contains("bashcut.rail.agent"), "{e}");
+    for id in ["recovery.recover", "recovery.discard", "recovery.later"] {
+        assert!(e.contains(id), "{id} listed: {e}");
+    }
+    assert!(!d.has("bashcut.panel.agent"), "nothing happened behind it");
+    d.click("recovery.later");
+    assert!(!d.has("recovery.later"), "Not Now closes it");
+    d.click("bashcut.rail.agent");
+    assert!(d.has("bashcut.panel.agent"), "the rail works again");
+
+    d.exec("file.openDemoProject", json!({}));
+    d.exec("file.saveAs", json!({"path": data.join("film.fcproj").to_string_lossy()}));
+    d.exec("sequence.addEdit", json!({"seconds": 2.5}));
+    d.ok("ui.menu.invoke", json!({"id": "file.revert"}));
+    d.frames(3);
+    assert!(d.has("revert.no"), "Revert asks first");
+    let r = d.call("ui.click", json!({"id": "bashcut.rail.plugins"}));
+    assert_eq!(r["ok"], json!(false), "{r}");
+    let e = r["error"].as_str().unwrap_or_default();
+    assert!(e.contains("Revert") && e.contains("revert.yes") && e.contains("revert.no"), "{e}");
+    let r = d.click_at("revert.no");
+    assert_eq!(r["ok"], json!(true), "an x,y click inside the dialog goes through: {r}");
+    d.frames(3);
+    assert!(!d.has("revert.no"), "No closes it");
+    d.no_ui_error();
+    drop(d);
     let _ = std::fs::remove_dir_all(&data);
 }
