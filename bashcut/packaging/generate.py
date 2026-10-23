@@ -120,6 +120,39 @@ SUBS = [
         1,
     ),
     ("macos/package.sh", 'echo "==> FilmCraft $VERSION for macOS', 'echo "==> BashCutPro $VERSION for macOS', 1),
+    # SG1: notarize with a notarytool keychain profile (`MACOS_NOTARY_PROFILE`, e.g. an App Store Connect API key
+    # stored by `xcrun notarytool store-credentials`) as well as upstream's APPLE_ID / APPLE_PASSWORD / APPLE_TEAM_ID
+    (
+        "macos/package.sh",
+        'elif [ -n "${APPLE_ID:-}" ] && [ -n "${APPLE_PASSWORD:-}" ] && [ -n "${APPLE_TEAM_ID:-}" ]; then\n'
+        "  NOTARIZE=1\n",
+        'elif [ -n "${MACOS_NOTARY_PROFILE:-}" ]; then\n'
+        "  NOTARIZE=1\n"
+        '  NOTARY_AUTH=(--keychain-profile "$MACOS_NOTARY_PROFILE")\n'
+        'elif [ -n "${APPLE_ID:-}" ] && [ -n "${APPLE_PASSWORD:-}" ] && [ -n "${APPLE_TEAM_ID:-}" ]; then\n'
+        "  NOTARIZE=1\n"
+        '  NOTARY_AUTH=(--apple-id "$APPLE_ID" --password "$APPLE_PASSWORD" --team-id "$APPLE_TEAM_ID")\n',
+        1,
+    ),
+    (
+        "macos/package.sh",
+        'xcrun notarytool submit "$file" --apple-id "$APPLE_ID" --password "$APPLE_PASSWORD" \\\n'
+        '    --team-id "$APPLE_TEAM_ID" --wait',
+        'xcrun notarytool submit "$file" "${NOTARY_AUTH[@]}" --wait',
+        1,
+    ),
+    (
+        "macos/package.sh",
+        'xcrun notarytool log "$id" --apple-id "$APPLE_ID" --password "$APPLE_PASSWORD" --team-id "$APPLE_TEAM_ID" || true',
+        'xcrun notarytool log "$id" "${NOTARY_AUTH[@]}" || true',
+        1,
+    ),
+    (
+        "macos/package.sh",
+        'warn "macOS: APPLE_ID / APPLE_PASSWORD / APPLE_TEAM_ID incomplete; signed but not notarized"',
+        'warn "macOS: no MACOS_NOTARY_PROFILE and APPLE_ID / APPLE_PASSWORD / APPLE_TEAM_ID incomplete; signed but not notarized"',
+        1,
+    ),
     # ---- Linux
     ("linux/package.sh", "-p filmcraft -p filmcraft-cli", BUILD, 2),
     (

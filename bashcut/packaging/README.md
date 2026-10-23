@@ -105,6 +105,45 @@ with `-Yes`, `-Skip…`):
 The in-app first-run screen (the same steps from the side panel) belongs to the UI owner; it can call these commands
 and `bashcut-doctor --json`.
 
+## Signed + notarized macOS build (SG1)
+
+The copy of `packaging/macos/package.sh` signs with a Developer ID identity and notarizes when these are set in the
+environment (never commit them; a local, gitignored `.local/signing.env` you `source` first is fine):
+
+```sh
+# example values: use your own identity and notarytool profile
+export MACOS_SIGN_IDENTITY="Developer ID Application: <Name> (<TEAMID>)"   # `security find-identity -v -p codesigning`
+export MACOS_NOTARY_PROFILE=bashcutpro-notary   # stored once: xcrun notarytool store-credentials (API key or Apple ID)
+export CARGO_INCREMENTAL=0
+packaging/macos/package.sh --arch aarch64       # or universal (needs `rustup target add x86_64-apple-darwin`)
+```
+
+`MACOS_NOTARY_PROFILE` (a `notarytool --keychain-profile`) is our addition in `generate.py` (SG1); upstream's
+`APPLE_ID` / `APPLE_PASSWORD` / `APPLE_TEAM_ID` still work when no profile is set (CI, `import-cert.sh`). With an
+identity the script signs every binary with the hardened runtime and a secure timestamp, notarizes and staples the
+app, signs, notarizes and staples the DMG, and notarizes the CLI zip (a bare Mach-O can't carry a ticket).
+
+The first codesign with a key in the login keychain opens "codesign wants to access key … in your keychain": the
+owner enters the login password at the machine and clicks **Always Allow** once (never type it from a script or an
+agent). Until then the run waits on that dialog without printing anything.
+
+Verify (all must pass):
+
+```sh
+APP=target/macos-package/BashCutPro.app; DMG=dist/release/bashcutpro-<v>-macos-<arch>.dmg
+codesign --verify --deep --strict --verbose=2 "$APP"
+codesign -dvv "$APP" "$APP/Contents/MacOS/"*            # flags=0x10000(runtime), Timestamp=, TeamIdentifier=
+spctl -a -vv -t exec "$APP"                              # accepted, source=Notarized Developer ID
+spctl -a -vv -t open --context context:primary-signature "$DMG"   # accepted, source=Notarized Developer ID
+xcrun stapler validate "$APP"; xcrun stapler validate "$DMG"
+xcrun notarytool history --keychain-profile "$MACOS_NOTARY_PROFILE"   # each submission Accepted
+xcrun notarytool log <id> --keychain-profile "$MACOS_NOTARY_PROFILE" # "issues": null
+```
+
+Then the Gatekeeper check a downloader sees: copy the DMG to a temp folder, add a quarantine attribute
+(`xattr -w com.apple.quarantine "0081;$(printf %x $(date +%s));Safari;" <copy>`), mount it, copy the app out, open it:
+no "cannot be opened" / "downloaded from the internet" warning that blocks it.
+
 ## Release checklist
 
 - Package on each OS (`packaging/<os>/package.sh`, `packaging/windows/package.ps1`), then `bashcut/scripts/smoke.sh` /
@@ -148,6 +187,11 @@ and `bashcut-doctor --json`.
   `bashcut-mcp --print` and `bashcut-doctor` find `Contents/MacOS/bashcutpro-cli`. Launched from the Finder the Agent
   section finds `claude` in `~/.local/bin` and the like ([guide](../guide/en/agent.md)); macOS then asks once for the
   project's folder (Desktop, Documents) and a new ad-hoc build asks again.
+- macOS release signing (SG1, see "Signed + notarized macOS build" above). First run 2026-10-23 on 01 (0.10.0,
+  aarch64 only: no x86_64 target installed and not enough disk for a universal build; no craft-fonts): DMG 42.4 MB,
+  CLI zip 18.0 MB; the app, DMG and CLI zip notarized Accepted with no issues, app and DMG stapled, `spctl` accepted
+  both (source=Notarized Developer ID). Opened from a quarantined DMG copy, macOS showed only the usual "downloaded
+  from the Internet … Apple checked it for malicious software and none was detected" Open prompt, then the app ran.
 - Codec patents: for a paid build prefer the OS encoders (VideoToolbox, Media Foundation) and get legal advice before
   selling.
 
