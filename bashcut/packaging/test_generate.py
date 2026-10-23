@@ -89,9 +89,39 @@ class GenerateTest(unittest.TestCase):
         for rel in ("linux/flatpak/%s.yml" % generate.APP_ID, "linux/flatpak/%s.bundle.yml" % generate.APP_ID):
             self.assertNotIn("FilmCraft", self.read(rel), rel)
 
-    @unittest.skip("test ticket: the Windows copy prints BashCutPro and portable.txt names %APPDATA%\\BashCutPro")
     def test_windows_copy_names_bashcutpro(self):
-        pass
+        # PK1 + PK4: what the Windows copy prints, its comments, portable.txt and the MSI's icon id name BashCutPro
+        generate.generate(ROOT, self.out)
+        ps1 = self.read("windows/package.ps1")
+        wxs = self.read("windows/filmcraft.wxs")
+        self.assertIn('Write-Output "BashCutPro $Version for Windows', ps1)
+        self.assertIn("Build, sign and package BashCutPro for Windows.", ps1)
+        self.assertIn("Delete this file to use %APPDATA%\\BashCutPro instead.", ps1)
+        self.assertIn("bashcutpro-<version>-windows-<arch>-portable.zip", ps1)
+        for text, rel in ((ps1, "package.ps1"), (wxs, "filmcraft.wxs")):
+            self.assertNotIn("FilmCraft", text, rel)
+        self.assertNotIn("FilmcraftIcon", wxs)
+        self.assertEqual(wxs.count('"BashCutProIcon.ico"'), 3)
+        # the app exe and its App Paths key keep upstream's name until the owner decides on the binary name
+        self.assertIn("App Paths\\filmcraft.exe", wxs)
+        self.assertIn("Copy-Item (Join-Path $Bin 'filmcraft.exe')", ps1)
+
+    def test_windows_zip_entries_use_forward_slashes(self):
+        # PK4: Compress-Archive on Windows PowerShell 5.1 writes zip entry names with backslashes
+        generate.generate(ROOT, self.out)
+        ps1 = self.read("windows/package.ps1")
+        self.assertNotIn("Compress-Archive -Path", ps1)
+        self.assertIn(".Replace('\\', '/')", ps1)
+        shell = shutil.which("pwsh") or shutil.which("powershell")
+        if not shell:
+            self.skipTest("no pwsh / powershell to parse the copy")
+        parse = (
+            "& { param($p) $e = $null; $null = [System.Management.Automation.Language.Parser]::ParseFile($p, [ref]$null, [ref]$e);"
+            " if ($e) { $e | ForEach-Object { Write-Error $_.Message }; exit 1 } }"
+        )
+        path = os.path.join(self.out, "windows", "package.ps1")
+        r = subprocess.run([shell, "-NoProfile", "-NonInteractive", "-Command", parse, path], capture_output=True, text=True)
+        self.assertEqual(r.returncode, 0, r.stderr)
 
     def test_linux_packages_use_our_app_id(self):
         # SB4: desktop file, metainfo, MIME file, icons and Flatpak are com.birchapps.bashcutpro, never FilmCraft's

@@ -76,3 +76,16 @@ holds a secret. Keep it that way.
 `test_generate.py`. Missing shellcheck / ruff / PowerShell print `SKIP` (`brew install shellcheck ruff`; on Windows
 `winget install koalaman.shellcheck` and `py -3 -m pip install --user ruff`). On Windows (Git Bash) it runs green
 with the Linux installer test in `test_generate.py` skipped (it needs Linux paths).
+
+### Line endings
+
+`bashcut/.gitattributes` keeps `*.sh` and `*.env` under `bashcut/` LF in every checkout (Git for Windows defaults to
+`core.autocrlf=true`; a CRLF script fails shellcheck with SC1017 and bash). A fresh clone on Windows gets LF. A
+checkout made before that file existed (44e1d3b4, 2026-10-23) keeps its CRLF copies, because Git does not rewrite
+files whose content did not change; `lint-scripts.sh` then fails with `CRLF line endings in …`. Fix it once, from the
+repo root in Git Bash, after committing any change to those files (it deletes and re-checks them out):
+
+    git ls-files -z -- 'bashcut/*.sh' 'bashcut/*.env' | xargs -0 rm -f --
+    git ls-files -z -- 'bashcut/*.sh' 'bashcut/*.env' | xargs -0 git checkout --
+
+Upstream's own scripts (`packaging/**/*.sh`) carry no attribute and stay as Git checks them out; we never lint them.

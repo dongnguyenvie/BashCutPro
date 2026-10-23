@@ -260,6 +260,44 @@ SUBS = [
         "  'next to filmcraft.exe. Delete this file to use %APPDATA%\\BashCutPro instead.'\n",
         1,
     ),
+    # PK4: Windows PowerShell 5.1's Compress-Archive (and ZipFile.CreateFromDirectory on .NET Framework) writes the
+    # zip entry names with backslashes; entries named with / unpack the same everywhere (pwsh 7, unzip, Explorer)
+    (
+        "windows/package.ps1",
+        "Compress-Archive -Path $Portable -DestinationPath $Zip\n",
+        "# BashCutPro: zip entry names with / on Windows PowerShell 5.1 too (Compress-Archive writes \\)\n"
+        "Add-Type -AssemblyName System.IO.Compression, System.IO.Compression.FileSystem\n"
+        "$ZipBase = (Get-Item -LiteralPath $Portable).Parent.FullName\n"
+        "$ZipFull = $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($Zip)\n"
+        "$Archive = [IO.Compression.ZipFile]::Open($ZipFull, [IO.Compression.ZipArchiveMode]::Create)\n"
+        "try {\n"
+        "  foreach ($f in Get-ChildItem -Recurse -File $Portable) {\n"
+        "    $Entry = $f.FullName.Substring($ZipBase.Length).TrimStart('\\').Replace('\\', '/')\n"
+        "    [void][IO.Compression.ZipFileExtensions]::CreateEntryFromFile($Archive, $f.FullName, $Entry, [IO.Compression.CompressionLevel]::Optimal)\n"
+        "  }\n"
+        "} finally { $Archive.Dispose() }\n",
+        1,
+    ),
+    # PK4: the Windows copy's comments and the MSI's icon id name BashCutPro (the other WiX ids, the App Paths key and
+    # the app exe filmcraft.exe wait for the owner's binary-name decision)
+    ("windows/package.ps1", "  Build, sign and package FilmCraft for Windows.\n", "  Build, sign and package BashCutPro for Windows.\n", 1),
+    (
+        "windows/package.ps1",
+        "    filmcraft-<version>-windows-<arch>.msi            per-machine installer (WiX v5)\n"
+        "    filmcraft-<version>-windows-<arch>-portable.zip   filmcraft.exe + filmcraft-cli.exe + portable.txt\n",
+        "    bashcutpro-<version>-windows-<arch>.msi            per-machine installer (WiX v5)\n"
+        "    bashcutpro-<version>-windows-<arch>-portable.zip   filmcraft.exe (the app), bashcutpro.exe,\n"
+        "      %s.exe, bashcut-setup.ps1, portable.txt\n" % ".exe, ".join(PRO_BINS),
+        1,
+    ),
+    (
+        "windows/package.ps1",
+        "# The marker that makes FilmCraft keep its data in .\\data next to the exe",
+        "# The marker that makes BashCutPro keep its data in .\\data next to the exe",
+        1,
+    ),
+    ("windows/filmcraft.wxs", "  FilmCraft MSI (WiX Toolset v5", "  BashCutPro MSI (WiX Toolset v5", 1),
+    ("windows/filmcraft.wxs", '"FilmcraftIcon.ico"', '"BashCutProIcon.ico"', 3),
     # SB5: the Linux copy names BashCutPro where it tells the user what it installs or builds
     ("linux/install.sh", "  echo 'Installs FilmCraft and", "  echo 'Installs BashCutPro and", 1),
     ("linux/install.sh", "printf 'Installed FilmCraft in ", "printf 'Installed BashCutPro in ", 1),

@@ -533,6 +533,7 @@ version = "0.10.0"
 dependencies = [
  "bashcut-batch",
  "bashcut-dirs",
+ "bashcut-winres",
  "ctrlc",
  "serde_json",
 ]
@@ -559,6 +560,7 @@ version = "0.10.0"
 dependencies = [
  "bashcut-dirs",
  "bashcut-manifest",
+ "bashcut-winres",
  "serde_json",
  "sha2",
 ]
@@ -578,6 +580,7 @@ version = "0.10.0"
 dependencies = [
  "bashcut-connect",
  "bashcut-dirs",
+ "bashcut-winres",
  "serde_json",
 ]
 
@@ -593,11 +596,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "bashcut-winres"
+version = "0.10.0"
+dependencies = [
+ "winresource",
+]
+
+[[package]]
 name = "bashcutpro-cli"
 version = "0.10.0"
 dependencies = [
  "bashcut-connect",
  "bashcut-dirs",
+ "bashcut-winres",
  "filmcraft-automation",
  "filmcraft-codecs",
  "filmcraft-engine",

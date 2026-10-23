@@ -19,3 +19,7 @@ bashcut-dirs = { path = "../../crates/bashcut-dirs" }
 bashcut-manifest = { path = "../../crates/bashcut-manifest" }
 serde_json = { workspace = true }
 sha2 = "0.10"
+
+# the icon and VERSIONINFO of the Windows exe (build.rs, PK4)
+[build-dependencies]
+bashcut-winres = { path = "../../crates/bashcut-winres" }
