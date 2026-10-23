@@ -45,6 +45,8 @@ Declared in `bashcut-plugin.json`, run by our own code paths only (not upstream 
 
 A hook runs the plugin's action (entry command for this OS + the action's `args`, plus `connect.project` with the saved
 project when the action `needs` it) in the plugin's folder with `BASHCUT_HOOK_EVENT` and `BASHCUT_HOOK_CONTEXT` (JSON)
-set, and answers with `bashcut-result/1`. Exit 0 = `ok`, 3 = `handoff` (reported), other = `failed`; a failed
-`required` hook stops the command. `timeoutSeconds` (default 300, max 3600) kills a stuck hook. `BASHCUT_HOOKS=off` or
+set, plus the plugin's settings env as its action runs get it (each setting's first `env` name; secrets from the OS key
+store; `BASHCUT_PLUGIN_HOST=1`; RC3), and answers with `bashcut-result/1`. Exit 0 = `ok`, 3 = `handoff` (reported),
+other = `failed` (the row carries stderr's tail); a failed `required` hook stops the command. `timeoutSeconds`
+(default 300, max 3600) stops a stuck hook: TERM to its process group, KILL after 1.5 s. `BASHCUT_HOOKS=off` or
 `hooks: false` turns them off. `bashcut.hooks.list {event?}` shows what is declared.

@@ -9,16 +9,18 @@
 //! Events and who fires them: `batch.beforeItem` / `batch.afterItem` (the batch runner, through `bashcut.hooks.run`),
 //! `import.after` (`bashcut.media.import`), `export.before` (`bashcut.profiles.apply`). A hook runs the plugin's
 //! action like any other run (the entry command + the action's `args`, plus `--project <file>` when the action needs
-//! the project), in the plugin's folder, with `BASHCUT_HOOK_EVENT` and `BASHCUT_HOOK_CONTEXT` (JSON) in its
-//! environment, and answers with `bashcut-result/1` on stdout. Exit 0 = ok, 3 = hand-off to the agent (reported, not
+//! the project), in the plugin's folder, with `BASHCUT_HOOK_EVENT` and `BASHCUT_HOOK_CONTEXT` (JSON) and the
+//! plugin's settings (secrets from the OS key store, as the host passes them to its runs; RC3, I2) in its
+//! environment, under the shared child supervisor (`bashcut_dirs::child`: TERM, then KILL on timeout), and answers with `bashcut-result/1` on stdout. Exit 0 = ok, 3 = hand-off to the agent (reported, not
 //! a failure), anything else = failed; a failed `required` hook stops the command that fired it. `BASHCUT_HOOKS=off`
 //! or `hooks: false` turns hooks off. Only plugins installed from the registry (`<data dir>/bashcut-plugins/`) run.
 
-use std::io::Read;
 use std::path::{Path, PathBuf};
-use std::process::{Command, Stdio};
-use std::time::{Duration, Instant};
+use std::process::Command;
+use std::time::Duration;
 
+use bashcut_dirs::child::{self, Opts};
+use bashcut_manifest::settings::{self, OsKeyStore};
 use bashcut_manifest::{Manifest, Os};
 use serde_json::{Value, json};
 
@@ -30,6 +32,8 @@ const MAX_PLUGINS: usize = 200;
 const DEFAULT_TIMEOUT: u64 = 300;
 const MAX_TIMEOUT: u64 = 3600;
 const MAX_OUTPUT: usize = 1 << 20;
+/// stderr kept for the row of a failed hook.
+const MAX_STDERR: usize = 2048;
 
 #[derive(Clone, Debug)]
 pub struct Hook {
@@ -43,6 +47,8 @@ pub struct Hook {
     pub project_args: Option<Vec<String>>,
     pub required: bool,
     pub timeout: Duration,
+    /// The plugin's manifest: its settings become the run's environment.
+    pub manifest: Manifest,
 }
 
 /// The plugins folder: `pluginsDir`, else `<data dir>/bashcut-plugins` (the session's data dir, as in `data.rs`).
@@ -89,6 +95,7 @@ pub fn discover(dir: &Path, event: &str) -> Vec<Hook> {
                 project_args,
                 required: h.required,
                 timeout: Duration::from_secs(secs),
+                manifest: m.clone(),
             });
         }
     }
@@ -110,42 +117,24 @@ pub fn run_hook(hook: &Hook, project: Option<&str>, context: &Value) -> Value {
         args.extend(pa.iter().map(|a| a.replace("{project}", project)));
     }
     let Some(program) = hook.argv.first() else { return row("failed", json!({"message": "no entry command"})) };
-    let child = Command::new(program)
-        .args(&args)
-        .current_dir(&hook.dir)
-        .env("BASHCUT_HOOK_EVENT", &hook.event)
-        .env("BASHCUT_HOOK_CONTEXT", context.to_string())
-        .stdin(Stdio::null())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::null())
-        .spawn();
-    let mut child = match child {
+    // the same environment the host gives the plugin's action runs
+    let values = hook.dir.parent().map(|d| settings::load(d, &hook.manifest)).unwrap_or_default();
+    let mut env = settings::env_for(&hook.manifest, &values, &OsKeyStore);
+    env.push(("BASHCUT_PLUGIN_HOST".into(), "1".into()));
+    let mut cmd = Command::new(program);
+    cmd.args(&args).current_dir(&hook.dir).envs(env).env("BASHCUT_HOOK_EVENT", &hook.event).env("BASHCUT_HOOK_CONTEXT", context.to_string());
+    let mut c = match child::spawn(cmd, &Opts { stdin: None, group: true, stderr: true }) {
         Ok(c) => c,
         Err(e) => return row("failed", json!({"message": format!("{program}: {e}")})),
     };
-    // read stdout on its own thread so a chatty plugin cannot fill the pipe and stall
-    let reader = child.stdout.take().map(|mut out| {
-        std::thread::spawn(move || {
-            let mut buf = Vec::new();
-            let _ = (&mut out).take(MAX_OUTPUT as u64).read_to_end(&mut buf);
-            buf
-        })
-    });
-    let start = Instant::now();
-    let status = loop {
-        match child.try_wait() {
-            Ok(Some(st)) => break Some(st),
-            Ok(None) if start.elapsed() >= hook.timeout => {
-                let _ = child.kill();
-                let _ = child.wait();
-                break None;
-            }
-            Ok(None) => std::thread::sleep(Duration::from_millis(50)),
-            Err(_) => break None,
-        }
-    };
-    // after a timeout a grandchild may still hold the pipe open: leave the reader thread behind instead of waiting
-    let stdout = if status.is_some() { reader.and_then(|r| r.join().ok()).unwrap_or_default() } else { Vec::new() };
+    // read the pipes on their own threads so a chatty plugin cannot fill one and stall
+    let out_rx = child::pump("bashcut-hook-stdout", c.stdout.take(), |out| child::read_lines(out, MAX_OUTPUT, 0, |_, _| {}).0);
+    let err_rx = child::pump("bashcut-hook-stderr", c.stderr.take(), |errs| child::tail(errs, MAX_STDERR));
+    let exit = child::supervise(&mut c, hook.timeout, None);
+    // after a timeout a grandchild may still hold the pipe open: collect waits a bounded time
+    let status = exit.status.filter(|_| exit.stop.is_none());
+    let stdout = if status.is_some() { child::collect(&out_rx, child::STDOUT_WAIT) } else { Vec::new() };
+    let stderr = String::from_utf8_lossy(&child::collect(&err_rx, child::STDERR_WAIT)).trim().to_string();
     let result = String::from_utf8_lossy(&stdout)
         .lines()
         .rev()
@@ -156,7 +145,7 @@ pub fn run_hook(hook: &Hook, project: Option<&str>, context: &Value) -> Value {
         None => row("failed", json!({"message": format!("timed out after {} s", hook.timeout.as_secs()), "result": result})),
         Some(0) => row("ok", json!({"message": message, "result": result})),
         Some(3) => row("handoff", json!({"message": message, "result": result})),
-        Some(code) => row("failed", json!({"exit": code, "message": message, "result": result})),
+        Some(code) => row("failed", json!({"exit": code, "message": message, "result": result, "stderr": stderr})),
     }
 }
 

@@ -3,9 +3,11 @@
 //! network crate); every call has a timeout and cannot read `--` options from the registry.
 
 use std::path::{Path, PathBuf};
-use std::process::{Command, Stdio};
+use std::process::Command;
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::time::{Duration, Instant};
+use std::time::Duration;
+
+use bashcut_dirs::child::{self, Opts};
 
 use serde::{Deserialize, Serialize};
 
@@ -203,43 +205,24 @@ fn swap_in(staged: &Path, dest: &Path) -> Result<()> {
 
 /// Run git with no prompt and a timeout; stdout on success, stderr's tail on failure.
 fn run_git(mut cmd: Command) -> Result<String> {
-    cmd.env("GIT_TERMINAL_PROMPT", "0").stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::piped());
-    let mut child = cmd.spawn().map_err(|e| Error(format!("cannot start git ({e}); install git and try again")))?;
-    let out = child.stdout.take();
-    let errs = child.stderr.take();
-    let read_out = std::thread::spawn(move || read_all(out, 1024 * 1024));
-    let read_err = std::thread::spawn(move || read_all(errs, 64 * 1024));
-    let start = Instant::now();
-    let status = loop {
-        match child.try_wait() {
-            Ok(Some(s)) => break s,
-            Ok(None) if start.elapsed() > GIT_TIMEOUT => {
-                let _ = child.kill();
-                let _ = child.wait();
-                return err("timed out");
-            }
-            Ok(None) => std::thread::sleep(Duration::from_millis(20)),
-            Err(e) => return Err(e.into()),
-        }
-    };
-    let stdout = read_out.join().unwrap_or_default();
-    let stderr = read_err.join().unwrap_or_default();
+    cmd.env("GIT_TERMINAL_PROMPT", "0");
+    let mut c = child::spawn(cmd, &Opts { stdin: None, group: false, stderr: true })
+        .map_err(|e| Error(format!("cannot start git ({e}); install git and try again")))?;
+    let read_out = child::pump("bashcut-git-stdout", c.stdout.take(), |r| child::read_lines(r, 1024 * 1024, 0, |_, _| {}).0);
+    let read_err = child::pump("bashcut-git-stderr", c.stderr.take(), |r| child::tail(r, 64 * 1024));
+    let exit = child::supervise(&mut c, GIT_TIMEOUT, None);
+    if exit.stop.is_some() {
+        return err("timed out");
+    }
+    let Some(status) = exit.status else { return err("git was lost") };
+    let stdout = String::from_utf8_lossy(&child::collect(&read_out, child::STDOUT_WAIT)).into_owned();
+    let stderr = String::from_utf8_lossy(&child::collect(&read_err, child::STDERR_WAIT)).into_owned();
     if status.success() {
         Ok(stdout)
     } else {
         let tail: String = stderr.trim().chars().rev().take(400).collect::<Vec<_>>().into_iter().rev().collect();
         err(if tail.is_empty() { format!("exit {status}") } else { tail })
     }
-}
-
-fn read_all<R: std::io::Read>(r: Option<R>, cap: u64) -> String {
-    let Some(r) = r else { return String::new() };
-    let mut buf = Vec::new();
-    let mut r = r.take(cap);
-    let _ = std::io::Read::read_to_end(&mut r, &mut buf);
-    // drain the rest so the child never blocks on a full pipe
-    let _ = std::io::copy(&mut r.into_inner(), &mut std::io::sink());
-    String::from_utf8_lossy(&buf).into_owned()
 }
 
 #[derive(Default)]

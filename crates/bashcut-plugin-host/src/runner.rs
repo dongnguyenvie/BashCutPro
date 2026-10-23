@@ -1,17 +1,19 @@
 //! Run one plugin action as a child process: stderr lines are progress, stdout holds one
 //! `bashcut-result/1` object (and, while it runs, `bashcut-view/1` lines that update the plugin's
 //! form), exit 3 is a hand-off to the agent. Cancellable, with a timeout and
-//! capped output. Every thread runs under `catch_unwind`, and the UI only polls a channel.
+//! capped output. Every thread runs under `catch_unwind`, and the UI only polls a channel. The
+//! process itself is supervised by [`bashcut_dirs::child`] (shared with agent turns and hooks).
 
 use std::io::Read;
 use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::path::PathBuf;
-use std::process::{Child, Command, Stdio};
+use std::process::Child;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{Receiver, Sender, channel};
 use std::time::{Duration, Instant};
 
+use bashcut_dirs::child::{self, Opts, Stop};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
@@ -23,8 +25,6 @@ pub const DEFAULT_MAX_STDOUT: usize = 4 * 1024 * 1024;
 /// Longest stderr line kept (the rest of the line is dropped).
 pub const MAX_LINE: usize = 4096;
 pub const HANDOFF_EXIT: i32 = 3;
-/// After Cancel, how long a plugin has to exit before it is killed.
-const GRACE: Duration = Duration::from_millis(1500);
 const TICK: Duration = Duration::from_millis(20);
 
 #[derive(Clone, Debug)]
@@ -126,15 +126,10 @@ impl Running {
     /// Start the process and its supervisor thread.
     pub fn start(spec: RunSpec) -> Result<Running> {
         let Some((program, args)) = spec.argv.split_first() else { return err("empty command line") };
-        let mut cmd = Command::new(program);
-        cmd.args(args).current_dir(&spec.dir).envs(spec.env.iter().map(|(k, v)| (k, v))).stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::piped());
-        #[cfg(unix)]
-        {
-            use std::os::unix::process::CommandExt;
-            // its own process group, so Cancel also stops what the plugin started (filmcraft-cli mcp)
-            cmd.process_group(0);
-        }
-        let child = cmd.spawn().map_err(|e| Error(format!("cannot start `{program}`: {e}")))?;
+        let mut cmd = std::process::Command::new(program);
+        cmd.args(args).current_dir(&spec.dir).envs(spec.env.iter().map(|(k, v)| (k, v)));
+        // its own process group, so Cancel also stops what the plugin started (filmcraft-cli mcp)
+        let child = child::spawn(cmd, &Opts { stdin: None, group: true, stderr: true }).map_err(|e| Error(format!("cannot start `{program}`: {e}")))?;
         let (tx, rx) = channel();
         let cancel = Arc::new(AtomicBool::new(false));
         let flag = cancel.clone();
@@ -211,68 +206,34 @@ impl Running {
 }
 
 fn supervise(mut child: Child, spec: &RunSpec, tx: &Sender<Event>, cancel: &AtomicBool) {
-    let (out_tx, out_rx) = channel();
-    if let Some(out) = child.stdout.take() {
-        let cap = spec.max_stdout;
-        let views = tx.clone();
-        let _ = std::thread::Builder::new().name("bashcut-plugin-stdout".into()).spawn(move || {
-            let r = catch_unwind(AssertUnwindSafe(|| {
-                read_stdout(out, cap, |line| {
-                    if let Some(v) = View::from_line(line) {
-                        let _ = views.send(Event::View(v));
-                    }
-                })
-            }));
-            let _ = out_tx.send(r.unwrap_or_default());
-        });
-    }
-    let (err_tx, err_rx) = channel::<()>();
-    if let Some(errs) = child.stderr.take() {
-        let tx = tx.clone();
-        let _ = std::thread::Builder::new().name("bashcut-plugin-stderr".into()).spawn(move || {
-            let _ = catch_unwind(AssertUnwindSafe(|| {
-                for_each_line(errs, |line| {
-                    let (fraction, message) = parse_progress(line);
-                    let _ = tx.send(Event::Progress { fraction, message });
-                })
-            }));
-            let _ = err_tx.send(());
-        });
-    }
-
-    let start = Instant::now();
-    let mut stop: Option<(End, Instant)> = None;
-    let status = loop {
-        match child.try_wait() {
-            Ok(Some(s)) => break Some(s),
-            Ok(None) => {}
-            Err(_) => break None,
-        }
-        if stop.is_none() {
-            if cancel.load(Ordering::Relaxed) {
-                terminate(&mut child, false);
-                stop = Some((End::Cancelled, Instant::now()));
-            } else if start.elapsed() > spec.timeout {
-                terminate(&mut child, true);
-                stop = Some((End::TimedOut, Instant::now()));
+    let cap = spec.max_stdout;
+    let views = tx.clone();
+    let out_rx = child::pump("bashcut-plugin-stdout", child.stdout.take(), move |out| {
+        read_stdout(out, cap, |line| {
+            if let Some(v) = View::from_line(line) {
+                let _ = views.send(Event::View(v));
             }
-        } else if let Some((_, since)) = stop
-            && since.elapsed() > GRACE
-        {
-            terminate(&mut child, true);
-        }
-        std::thread::sleep(TICK);
-    };
+        })
+    });
+    let progress = tx.clone();
+    let err_rx = child::pump("bashcut-plugin-stderr", child.stderr.take(), move |errs| {
+        for_each_line(errs, |line| {
+            let (fraction, message) = parse_progress(line);
+            let _ = progress.send(Event::Progress { fraction, message });
+        })
+    });
+
+    let exit = child::supervise(&mut child, spec.timeout, Some(cancel));
     // the readers end when the pipes close; a grandchild holding them open must not hang us
-    let (stdout, truncated) = out_rx.recv_timeout(Duration::from_secs(2)).unwrap_or_default();
-    let _ = err_rx.recv_timeout(Duration::from_millis(500));
+    let (stdout, truncated) = child::collect(&out_rx, child::STDOUT_WAIT);
+    child::collect(&err_rx, child::STDERR_WAIT);
 
     let text = String::from_utf8_lossy(&stdout);
     let result = parse_result(&text);
-    let exit_code = status.and_then(|s| s.code());
-    let (end, error) = match (stop, exit_code) {
-        (Some((End::TimedOut, _)), _) => (End::TimedOut, Some(format!("timed out after {} s", spec.timeout.as_secs()))),
-        (Some((end, _)), _) => (end, None),
+    let exit_code = exit.code();
+    let (end, error) = match (exit.stop, exit_code) {
+        (Some(Stop::TimedOut), _) => (End::TimedOut, Some(format!("timed out after {} s", spec.timeout.as_secs()))),
+        (Some(Stop::Cancelled), _) => (End::Cancelled, None),
         (None, Some(c)) if c == spec.handoff_exit => (End::HandOff, None),
         (None, Some(0)) if result.as_ref().is_some_and(|r| !r.ok) => (End::Failed, None),
         (None, Some(0)) => (End::Succeeded, None),
@@ -284,89 +245,26 @@ fn supervise(mut child: Child, spec: &RunSpec, tx: &Sender<Event>, cancel: &Atom
     let _ = tx.send(Event::Done(Outcome { end, exit_code, result, stdout_truncated: truncated, error }));
 }
 
-/// Stop the child (and on Unix its process group): TERM first, KILL when `hard`.
-fn terminate(child: &mut Child, hard: bool) {
-    #[cfg(unix)]
-    {
-        let sig = if hard { "-KILL" } else { "-TERM" };
-        let group = format!("-{}", child.id());
-        let ok = Command::new("kill").args([sig, "--", &group]).stdout(Stdio::null()).stderr(Stdio::null()).status().is_ok_and(|s| s.success());
-        if ok {
-            return;
-        }
-    }
-    if hard || cfg!(not(unix)) {
-        let _ = child.kill();
-    }
-}
-
 /// Read up to `cap` bytes, then keep draining (so the child never blocks) and report truncation;
 /// `on_line` gets each line as it arrives (lines longer than [`MAX_VIEW_LINE`] are skipped, not
 /// cut: half a view is no view).
-fn read_stdout<R: Read>(mut r: R, cap: usize, mut on_line: impl FnMut(&str)) -> (Vec<u8>, bool) {
-    let mut buf = Vec::new();
-    let mut line: Vec<u8> = Vec::new();
-    let mut too_long = false;
-    let mut chunk = [0u8; 8192];
-    let mut truncated = false;
-    loop {
-        let n = match r.read(&mut chunk) {
-            Ok(0) | Err(_) => break,
-            Ok(n) => n,
-        };
-        let got = chunk.get(..n).unwrap_or_default();
-        let take = n.min(cap.saturating_sub(buf.len()));
-        buf.extend_from_slice(got.get(..take).unwrap_or_default());
-        truncated |= take < n;
-        for &b in got {
-            if b == b'\n' {
-                if !too_long {
-                    on_line(&String::from_utf8_lossy(&line));
-                }
-                line.clear();
-                too_long = false;
-            } else if line.len() < MAX_VIEW_LINE {
-                line.push(b);
-            } else {
-                too_long = true;
-            }
+fn read_stdout<R: Read>(r: R, cap: usize, mut on_line: impl FnMut(&str)) -> (Vec<u8>, bool) {
+    child::read_lines(r, cap, MAX_VIEW_LINE, |line, cut| {
+        if !cut {
+            on_line(&String::from_utf8_lossy(line));
         }
-    }
-    if !line.is_empty() && !too_long {
-        on_line(&String::from_utf8_lossy(&line));
-    }
-    (buf, truncated)
+    })
 }
 
 /// Call `f` with each line (lossy UTF-8, at most [`MAX_LINE`] bytes, the rest dropped).
-fn for_each_line<R: Read>(mut r: R, mut f: impl FnMut(&str)) {
-    let mut line: Vec<u8> = Vec::new();
-    let mut chunk = [0u8; 4096];
-    loop {
-        let n = match r.read(&mut chunk) {
-            Ok(0) | Err(_) => break,
-            Ok(n) => n,
-        };
-        for &b in chunk.get(..n).unwrap_or_default() {
-            if b == b'\n' {
-                emit(&line, &mut f);
-                line.clear();
-            } else if line.len() < MAX_LINE {
-                line.push(b);
-            }
+fn for_each_line<R: Read>(r: R, mut f: impl FnMut(&str)) {
+    child::read_lines(r, 0, MAX_LINE, |line, _| {
+        let text = String::from_utf8_lossy(line);
+        let text = text.trim_end_matches('\r');
+        if !text.trim().is_empty() {
+            f(text);
         }
-    }
-    if !line.is_empty() {
-        emit(&line, &mut f);
-    }
-}
-
-fn emit(line: &[u8], f: &mut impl FnMut(&str)) {
-    let text = String::from_utf8_lossy(line);
-    let text = text.trim_end_matches('\r');
-    if !text.trim().is_empty() {
-        f(text);
-    }
+    });
 }
 
 /// A progress line: a JSON object (`progress` / `fraction` 0..1 or a percentage, `message` /
