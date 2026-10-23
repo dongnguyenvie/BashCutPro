@@ -336,3 +336,11 @@ Shows the version, community links and credits in a BashCutPro window.	Hiện ph
 BashCutPro Help…	Trợ giúp BashCutPro…
 BashCutPro could not start its window: {error}	BashCutPro không mở được cửa sổ: {error}
 Updating the graphics driver usually fixes this.	Cập nhật driver đồ họa thường sẽ khắc phục lỗi này.
+Open in Terminal	Mở trong Terminal
+Continue this conversation with {agent} in a terminal window.	Tiếp tục cuộc trò chuyện này với {agent} trong cửa sổ terminal.
+Sign in…	Đăng nhập…
+Open Claude Code in a terminal to sign in (type /login). BashCutPro never sees your login.	Mở Claude Code trong terminal để đăng nhập (gõ /login). BashCutPro không bao giờ thấy thông tin đăng nhập của bạn.
+Type /login and follow the steps in your browser, then close this window.	Gõ /login rồi làm theo các bước trong trình duyệt, xong thì đóng cửa sổ này.
+Open a terminal with the official Claude Code installer.	Mở terminal chạy trình cài đặt chính thức của Claude Code.
+Installing Claude Code with the official installer. When it finishes, run claude and type /login, then go back to BashCutPro.	Đang cài Claude Code bằng trình cài đặt chính thức. Cài xong, chạy claude và gõ /login, rồi quay lại BashCutPro.
+Could not open a terminal: {error}	Không mở được terminal: {error}

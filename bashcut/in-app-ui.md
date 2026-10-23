@@ -344,6 +344,22 @@ labels or subclips (§1 rule 1). A project opened in upstream FilmCraft still wo
 - **Commands**: `bashcut.agent.{send, stop, state, transcript, conversations, open, new, agents, use, gate, approve,
   change}`; automation ids `bashcut.agent.{input, send, stop, picker, conversations, new, transcript}`,
   `bashcut.gate.{approve, change, note}`.
+- **Terminal (AG5, `bashcut_ui/terminal.rs`)**: under the header, **Open in Terminal** (automation id
+  `bashcut.agent.terminal`; Claude Code and Codex when their program is found) opens the OS terminal in the turns'
+  folder (`bashcut_agent::session::turn_dir`: the project's, else `<data dir>/agent`, so `--resume` finds the session) running the panel's program plus its
+  resume arguments (`claude --resume <id>`; a session id other than `[A-Za-z0-9_-]` is dropped). **Sign in…**
+  (`bashcut.agent.signIn`, Claude Code only; `agent_panel::sign_in_button` for AG6's auth-failure line) runs `claude`
+  after the hint "Type /login…". **Install** (`bashcut.agent.install`) sits on the "Claude Code not found" line and runs
+  the official installer (`curl -fsSL https://claude.ai/install.sh | bash`; Windows `irm https://claude.ai/install.ps1 |
+  iex`), only on a click. The app never reads, stores or passes Claude credentials. Launchers, first that starts wins:
+  macOS `osascript` telling Terminal to `do script` (the shell line is `item 1 of argv`, not AppleScript source);
+  Windows `wt.exe -d . powershell.exe -NoLogo -NoExit -EncodedCommand <base64 UTF-16LE>`, else `cmd.exe /c start ""
+  powershell.exe …` (raw args); Linux `x-terminal-emulator -e sh -c`, `gnome-terminal --working-directory=… -- sh -c`,
+  `konsole --workdir … -e sh -c`, `xterm -e sh -c`, ending in `exec "$SHELL"` so the window stays. The folder is the
+  child's working directory (plus a single-quoted `cd` in POSIX lines); no project text is parsed by a shell unquoted.
+  Verified on 2026-10-23 against Claude Code 2.1.309 (`claude --help`: `-r, --resume [value]`; `/login` inside the
+  interactive UI). The terminal session gets no `--mcp-config` (the panel's temp config is private to
+  `bashcut-agent`); it uses the agent kit's `bashcutpro` server.
 - **Phase 1 adapters**: Claude Code (`claude -p --output-format stream-json --input-format stream-json`) and Codex
   (`codex exec --json -` with the prompt on stdin, `resume <thread>` for later turns, the MCP server passed as `-c
   mcp_servers.bashcutpro.*`; `codex`, or `BASHCUT_CODEX`; events `codex-json`, #37); others as plugins.
