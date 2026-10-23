@@ -391,6 +391,21 @@ labels or subclips (§1 rule 1). A project opened in upstream FilmCraft still wo
   Verified on 2026-10-23 against Claude Code 2.1.309 (`claude --help`: `-r, --resume [value]`; `/login` inside the
   interactive UI). The terminal session gets no `--mcp-config` (the panel's temp config is private to
   `bashcut-agent`); it uses the agent kit's `bashcutpro` server.
+- **Not signed in (AG6)**: `stream_json.rs` turns sign-in and account problems into `Event::Auth {category,
+  message}`, read from the event stream only (credential files are never looked at). Categories
+  (`stream_json::AUTH_ERRORS`): `authentication_failed` (needs `/login`), `oauth_org_not_allowed`, `billing_error`.
+  Checked on 2026-10-23 with Claude Code 2.1.309 on Windows and an empty `CLAUDE_CONFIG_DIR`: with no login `claude
+  -p` sends `system/init` (`apiKeySource: "none"`), then a synthetic `assistant` message (`model: "<synthetic>"`)
+  with top-level `"error": "authentication_failed"` and the text `Not logged in · Please run /login`, then a `result`
+  with `is_error: true`, `subtype: "success"`, `terminal_reason: "api_error"` and the same text; no `api_retry`.
+  Decoded: that `assistant` message, `system/api_retry` with one of the categories in `error` (a login rejected
+  mid-turn, per the docs), and a failed `result` whose `error` is a category or whose text says "Not logged in",
+  "Please run /login" or "Invalid API key" (Auth first, then the `Result`). The transcript keeps one
+  `Item::Auth` per problem (repeats fold, no generic error after it); `Transcript::auth_problem` is the last one
+  when no message was sent since. The panel then shows one readiness line, `bashcut.agent.ready.auth`: "Claude
+  Code is not signed in" or "Claude Code account problem: billing" / "…: this organization is not allowed", with
+  **Sign in…** (`sign_in_button`, moved off the terminal row while the line shows) and the agent's message as
+  selectable text (`bashcut.agent.ready.auth.message`). The next Send clears it.
 - **Phase 1 adapters**: Claude Code (`claude -p --output-format stream-json --input-format stream-json`) and Codex
   (`codex exec --json -` with the prompt on stdin, `resume <thread>` for later turns, the MCP server passed as `-c
   mcp_servers.bashcutpro.*`; `codex`, or `BASHCUT_CODEX`; events `codex-json`, #37); others as plugins.
