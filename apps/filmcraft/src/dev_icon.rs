@@ -43,7 +43,8 @@ pub fn ensure_dev_desktop_entry() {
 
 /// Install missing files; `Ok` whether anything was written or an entry already existed.
 fn ensure() -> Result<(), DevIconError> {
-    let file_name = format!("{}.desktop", crate::APP_ID);
+    let app_id = filmcraft_ui_egui::bashcut_brand::APP_ID;
+    let file_name = format!("{app_id}.desktop");
     let user_dir = user_data_dir()?;
     let exe = std::env::current_exe().map_err(DevIconError::Io)?;
     // Not `to_string_lossy`: a substituted U+FFFD would install an `Exec` that can never start
@@ -73,13 +74,13 @@ fn ensure() -> Result<(), DevIconError> {
         break; // a dev entry from another checkout: fall through and rewrite it
     }
     for size in ICON_SIZES {
-        let rel = std::path::Path::new("hicolor").join(format!("{size}x{size}")).join("apps").join(format!("{}.png", crate::APP_ID));
-        let dest = user_dir.join("icons").join(&rel);
+        let rel = std::path::Path::new("hicolor").join(format!("{size}x{size}")).join("apps");
+        let dest = user_dir.join("icons").join(&rel).join(format!("{app_id}.png"));
         if !dest.is_file()
             && let Some(parent) = dest.parent()
         {
             // The checkout this binary was built from; a missing icon only costs the icon.
-            let src = std::path::Path::new(ICON_DIR).join(&rel);
+            let src = std::path::Path::new(ICON_DIR).join(&rel).join(format!("{}.png", crate::APP_ID));
             if !src.is_file() {
                 log::warn!("dev desktop entry: icon {} not found; skipping it", src.display());
                 continue;
@@ -90,7 +91,7 @@ fn ensure() -> Result<(), DevIconError> {
     }
     let applications = user_dir.join("applications");
     std::fs::create_dir_all(&applications).map_err(DevIconError::Io)?;
-    let body = desktop_file_content(crate::APP_ID, filmcraft_ui_egui::bashcut_brand::NAME, exe);
+    let body = desktop_file_content(app_id, filmcraft_ui_egui::bashcut_brand::NAME, exe);
     std::fs::write(applications.join(&file_name), body).map_err(DevIconError::Io)?;
     Ok(())
 }

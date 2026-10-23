@@ -1930,3 +1930,29 @@ fn a_silent_agent_gets_the_quiet_hint_until_it_speaks() {
     assert!(d.harness.state().ui_error.is_none(), "{:?}", d.harness.state().ui_error);
     let _ = std::fs::remove_dir_all(&data);
 }
+
+/// CK1 (BR3): Help ▸ BashCutPro Help… reads in the UI language and `help.filmcraftHelp` opens
+/// our guide in it: `bashcut/guide/en`, or `bashcut/guide/vi` once our strings are Vietnamese.
+#[test]
+fn help_menu_names_bashcutpro_and_opens_the_guide_in_both_languages() {
+    let mut d = Driver::demo();
+    d.harness.state_mut().hooks.open_url = Some(Box::new(|_| Ok(())));
+    let help = |d: &mut Driver| {
+        let menus = d.ok("ui.menu.list", json!({}));
+        menus.as_array().and_then(|m| m.iter().find(|m| m["id"] == json!("help.filmcraftHelp")).cloned()).unwrap_or(Value::Null)
+    };
+    let en = help(&mut d);
+    assert_eq!(en["label"], json!("BashCutPro Help…"), "{en}");
+    assert_eq!(en["path"], json!(["Help"]));
+    let r = d.ok("ui.menu.invoke", json!({"id": "help.filmcraftHelp"}));
+    assert_eq!(r["url"], json!(filmcraft_ui_egui::bashcut_brand::GUIDE_URL));
+
+    d.exec("bashcut.ui.setLanguage", json!({"language": "vi"}));
+    let vi = help(&mut d);
+    assert_eq!(vi["label"], json!("Trợ giúp BashCutPro…"), "{vi}");
+    let r = d.ok("ui.menu.invoke", json!({"id": "help.filmcraftHelp"}));
+    assert_eq!(r["url"], json!(filmcraft_ui_egui::bashcut_brand::GUIDE_URL_VI));
+    assert!(r["url"].as_str().is_some_and(|u| u.ends_with("/bashcut/guide/vi")), "{r}");
+    d.exec("bashcut.ui.setLanguage", json!({"language": null}));
+    assert!(d.harness.state().ui_error.is_none(), "{:?}", d.harness.state().ui_error);
+}
