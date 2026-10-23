@@ -12,6 +12,7 @@ workspace = true
 
 [dependencies]
 log = { workspace = true }
+getrandom = "0.3"
 
 # SIGINT / SIGTERM cleanups (`signal`, AG1); the same crate as bashcut-batch's Ctrl+C (MIT OR Apache-2.0)
 [target.'cfg(unix)'.dependencies]

@@ -90,6 +90,17 @@ macro_rules! ui_first {
 }
 pub(crate) use ui_first;
 
+/// First line of upstream's `control_server::start`: the window makes its own session token (macro so the hook
+/// stays one line); with none (no randomness) upstream's env-only path runs.
+macro_rules! control_token_first {
+    ($port:expr, $ctx:expr) => {
+        if let Some(t) = filmcraft_ui_egui::bashcut_ui::control::launch_token() {
+            return start_with_token($port, $ctx, Some(t));
+        }
+    };
+}
+pub(crate) use control_token_first;
+
 #[cfg(test)]
 mod tests {
     use super::{branded, log_message};

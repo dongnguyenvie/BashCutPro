@@ -26,6 +26,7 @@ pub const MAX_LINE: usize = 4 * 1024 * 1024;
 pub const MAX_CONNECTIONS: usize = 16;
 
 pub fn start(port: u16, ctx: egui::Context) -> Receiver<ControlRequest> {
+    crate::bashcut_cli::control_token_first!(port, ctx); // BashCutPro: the window makes its own session token (bashcut/extending-upstream.md)
     start_with_token(port, ctx, std::env::var("FILMCRAFT_CONTROL_TOKEN").ok())
 }
 
