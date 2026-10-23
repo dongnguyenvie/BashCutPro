@@ -42,6 +42,13 @@ unaffected. CLI flags our tools use: unchanged (only the `run` help text grew). 
 `sonar-project.properties` are inert here (no CodeRabbit / SonarCloud on our repo). Churn numbers in
 `bashcut/extending-upstream.md` §3 refreshed (`--no-merges`, the method the table used). Time: about 40 min, most of
 it `cargo check` / tests on a warm `target/`.
+Shortcuts note (SC1, 2026-10-23): agent-kit's `commands.json` refresh (AK1) showed `markers.addRange` (⌃⇧M),
+`trim.toggleType` (⌃T) and `multicam.cutToCamera9` (⌃9) without a default key. Not this sync and not ours: upstream's
+`drop_control_collisions` (`crates/engine/src/shortcuts.rs`, since v0.5.0, `0b34c076`) drops a macOS-only ⌃ chord
+off macOS when a ⌘ chord lands on the same Ctrl key there (⌘⇧M `markers.goPrev`, ⌘T `graphics.newText`, ⌘9
+`timeline.toggleAllAudioTargets`; upstream test `default_keymaps_have_no_conflicts_on_any_platform`). The earlier
+catalogue came from a macOS build, AK1's from Windows. No bashcut binding takes those keys (ours: ⌘⇧P palette,
+⌘⌥⇧A Focus Agent). No change; the catalogue's provenance now names the build OS.
 
 **2026-10-20, first run of the tooling (#63).** `git fetch upstream --tags`; `upstream.sh merge --no-check` on
 `upstream-sync/2026-10-20`: the newest tag `v0.9.0` (`4a69a038`, 2026-10-17) is already inside our base and
