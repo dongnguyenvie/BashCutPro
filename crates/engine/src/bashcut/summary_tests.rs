@@ -116,6 +116,30 @@ fn error_codes_classify_engine_errors() {
     assert_eq!(tagged(""), None);
 }
 
+/// Every spec in bashcut/*.rs is built with `spec!` (no raw `CommandSpec` literal outside mod.rs), so its
+/// errors are typed.
 #[test]
-#[ignore = "test ticket: every spec in bashcut/*.rs is built with `spec!` (no raw `CommandSpec {` literal outside mod.rs), so its errors are typed"]
-fn every_bashcut_spec_uses_the_spec_macro() {}
+fn every_bashcut_spec_uses_the_spec_macro() {
+    let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src/bashcut");
+    let mut files: Vec<_> = std::fs::read_dir(&dir).unwrap().map(|e| e.unwrap().path()).collect();
+    files.sort();
+    let mut checked = 0;
+    let mut raw = Vec::new();
+    for f in &files {
+        let name = f.file_name().unwrap().to_string_lossy().into_owned();
+        if !name.ends_with(".rs") || name == "mod.rs" || name.ends_with("_tests.rs") || name == "tests.rs" {
+            continue;
+        }
+        checked += 1;
+        let text = std::fs::read_to_string(f).unwrap();
+        let squeezed: String = text.chars().filter(|c| !c.is_whitespace()).collect();
+        if squeezed.contains("CommandSpec{") {
+            raw.push(name);
+        }
+    }
+    assert!(checked >= 13, "{checked} feature files read from {}", dir.display());
+    assert!(raw.is_empty(), "raw `CommandSpec {{ … }}` literals (use `spec!`): {raw:?}");
+    // and the macro is what mod.rs's literal is in
+    let m = std::fs::read_to_string(dir.join("mod.rs")).unwrap();
+    assert!(m.contains("macro_rules! spec") && m.contains("crate::bashcut::errors::typed(RUN(s, p))"), "mod.rs's spec! types the errors");
+}
