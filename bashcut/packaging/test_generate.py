@@ -418,14 +418,40 @@ class GenerateTest(unittest.TestCase):
         self.assertIn("bashcut-batch", out)
         self.assertNotIn("\n", out.replace("\r\n", ""))
 
-    @unittest.skip("test ticket: fresh_credits bumps the mtime of contributors.json and people.toml in a fake root and returns the contributor count (FX20)")
+    def credits_root(self, json_text, people=True):
+        fake = os.path.join(self.tmp, "root")
+        os.makedirs(os.path.join(fake, "contributors"), exist_ok=True)
+        if json_text is not None:
+            with open(os.path.join(fake, "contributors", "contributors.json"), "w", encoding="utf-8") as fh:
+                fh.write(json_text)
+        if people:
+            with open(os.path.join(fake, "contributors", "people.toml"), "w", encoding="utf-8") as fh:
+                fh.write('[people.alice]\nname = "Alice"\n')
+        return fake
+
     def test_fresh_credits_forces_the_build_script_to_rerun(self):
-        pass
+        fake = self.credits_root('{"contributors": [{"login": "alice"}, {"login": "bob"}]}')
+        paths = [os.path.join(fake, "contributors", n) for n in ("contributors.json", "people.toml")]
+        for path in paths:
+            os.utime(path, (1_000_000_000, 1_000_000_000))
+        self.assertEqual(generate.fresh_credits(fake), 2)
+        for path in paths:
+            self.assertGreater(os.stat(path).st_mtime, 1_000_000_000 + 3600, path)
 
-    @unittest.skip("test ticket: fresh_credits fails with the path when contributors.json is missing, malformed or has no contributors, or people.toml is missing (FX20)")
     def test_fresh_credits_fails_without_contributors(self):
-        pass
-
+        json_path = os.path.join("contributors", "contributors.json")
+        for text in (None, "{not json", '["alice"]', '{"contributors": []}', '{"contributors": {"alice": 1}}', "{}"):
+            with self.subTest(text=text):
+                fake = self.credits_root(text)
+                with self.assertRaises(generate.Fail) as e:
+                    generate.fresh_credits(fake)
+                self.assertIn(os.path.join(fake, json_path), str(e.exception))
+                shutil.rmtree(fake)
+        fake = self.credits_root('{"contributors": [{"login": "alice"}]}', people=False)
+        with self.assertRaises(generate.Fail) as e:
+            generate.fresh_credits(fake)
+        self.assertIn(os.path.join(fake, "contributors", "people.toml"), str(e.exception))
+        self.assertIn("missing", str(e.exception))
 
 @unittest.skipIf(os.name == "nt" or not shutil.which("bash"), "bashcut-setup.sh runs on macOS / Linux / FreeBSD")
 class SetupScriptTest(unittest.TestCase):
