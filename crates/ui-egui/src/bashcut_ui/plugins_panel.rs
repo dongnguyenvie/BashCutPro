@@ -26,6 +26,8 @@ struct Drafts {
     secrets: BTreeMap<String, String>,
     /// Which secrets are stored, per plugin (asked once: the OS store is a process call).
     stored: BTreeMap<String, BTreeMap<String, bool>>,
+    /// `<plugin>/<setting>` → a save (`true`) or clear being written on a side thread (RC13).
+    writing: BTreeMap<String, (bool, plugins::Pending)>,
     /// The action whose form is open: `(plugin, action)`.
     open: Option<(String, String)>,
     /// `<plugin>/<action>/<param>` → value being edited.
@@ -425,24 +427,28 @@ fn settings_form(app: &mut FilmcraftApp, ui: &mut egui::Ui, ctx: &egui::Context,
         let title = if st.title_in(lang).is_empty() { st.id.clone() } else { st.title_in(lang).to_string() };
         if st.is_secret() {
             let stored = d.stored.get(&m.id).and_then(|x| x.get(&st.id)).copied().unwrap_or(false);
+            settle_secret(d, &m.id, &st.id, &k);
+            let busy = d.writing.get(&k).map(|(set, _)| *set);
+            if busy.is_some() {
+                ctx.request_repaint_after(std::time::Duration::from_millis(100));
+            }
             ui.horizontal(|ui| {
                 ui.label(title.as_str());
                 let text = d.secrets.entry(k.clone()).or_default();
                 let hint = if stored { s("stored") } else { s("not set") };
-                let r = ui.add(egui::TextEdit::singleline(text).password(true).hint_text(hint).desired_width(140.0));
+                let r = ui.add_enabled(busy.is_none(), egui::TextEdit::singleline(text).password(true).hint_text(hint).desired_width(140.0));
                 app.auto.add_response(&format!("bashcut.plugins.{}.secret.{}", m.id, st.id), &r, &title);
                 let value = text.clone();
-                if button(app, ui, &format!("bashcut.plugins.{}.secret.{}.save", m.id, st.id), s("Save"), !value.is_empty())
-                    && let Some(v) = run(app, ctx, d, "setSecret", json!({"plugin": m.id, "setting": st.id, "value": value}))
-                {
-                    d.secrets.remove(&k);
-                    remember_stored(d, &m.id, &v);
+                if let Some(set) = busy {
+                    ui.spinner();
+                    ui.label(egui::RichText::new(if set { s("Saving…") } else { s("Clearing…") }).color(t.text_dim));
+                    return;
                 }
-                if stored
-                    && button(app, ui, &format!("bashcut.plugins.{}.secret.{}.clear", m.id, st.id), s("Clear"), true)
-                    && let Some(v) = run(app, ctx, d, "setSecret", json!({"plugin": m.id, "setting": st.id}))
-                {
-                    remember_stored(d, &m.id, &v);
+                if button(app, ui, &format!("bashcut.plugins.{}.secret.{}.save", m.id, st.id), s("Save"), !value.is_empty()) {
+                    write_secret(app, ctx, d, &m.id, &st.id, Some(value));
+                }
+                if stored && button(app, ui, &format!("bashcut.plugins.{}.secret.{}.clear", m.id, st.id), s("Clear"), true) {
+                    write_secret(app, ctx, d, &m.id, &st.id, None);
                 }
             });
         } else {
@@ -470,9 +476,32 @@ fn settings_form(app: &mut FilmcraftApp, ui: &mut egui::Ui, ctx: &egui::Context,
     }
 }
 
-fn remember_stored(d: &mut Drafts, plugin: &str, v: &Value) {
-    if let Ok(map) = serde_json::from_value::<BTreeMap<String, bool>>(v.get("secrets").cloned().unwrap_or(Value::Null)) {
-        d.stored.insert(plugin.to_string(), map);
+/// Start storing (`Some`) or clearing a secret off the UI thread; the row shows it busy meanwhile.
+fn write_secret(app: &FilmcraftApp, ctx: &egui::Context, d: &mut Drafts, plugin: &str, setting: &str, value: Option<String>) {
+    let set = value.is_some();
+    match plugins::set_secret_async(app, ctx, plugin, setting, value) {
+        Ok(slot) => {
+            d.status = None;
+            d.writing.insert(format!("{plugin}/{setting}"), (set, slot));
+        }
+        Err(e) => d.status = Some((false, hints::friendly(&e))),
+    }
+}
+
+/// A finished background write: the row's stored flag follows it, a failure goes to the status line.
+fn settle_secret(d: &mut Drafts, plugin: &str, setting: &str, k: &str) {
+    let Some((set, slot)) = d.writing.get(k) else { return };
+    let set = *set;
+    let Some(r) = slot.lock().unwrap_or_else(std::sync::PoisonError::into_inner).take() else { return };
+    d.writing.remove(k);
+    match r {
+        Ok(()) => {
+            if set {
+                d.secrets.remove(k);
+            }
+            d.stored.entry(plugin.to_string()).or_default().insert(setting.to_string(), set);
+        }
+        Err(e) => d.status = Some((false, hints::friendly(&e))),
     }
 }
 

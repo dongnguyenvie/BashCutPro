@@ -251,10 +251,22 @@ decides something; don't change an old one, add a new one that supersedes it.
 - **Decided:** every child BashCutPro supervises (plugin action runs, the key-store tool, `git` for installs, agent
   turns, engine hooks) goes through `bashcut_dirs::child` (layer 0, so the engine may use it without a new upstream
   line). Cancel and timeout both stop softly first (TERM to the process group on Unix, KILL after 1.5 s); on Windows
-  both are a kill until job objects land. Plugin settings / secrets / run env live in `bashcut_manifest::settings`
+  both are a kill (a tree kill since RC13). Plugin settings / secrets / run env live in `bashcut_manifest::settings`
   (re-exported as the host's `settings`), so hooks get the same env as action runs, secrets included (the OS key store,
   as the app's host reads it). The app's host reads secrets through a cache warmed on a side thread
   (`bashcut_ui::plugins::CachedKeyStore`).
 - **Why:** three copies of the supervisor had drifted (hooks killed hard and dropped stderr, the plugin runner killed
   hard on timeout so a plugin could not stop its MCP child), the documented `check-key` hook could not see its key,
   and a locked keyring froze frames for up to 20 s.
+
+## 2026-10-23: Secret writes off the UI thread; Windows tree kill without job objects (RC13)
+
+- **Decided:** the Plugins section's secret Save / Clear write on a side thread (`plugins::set_secret_async`); the row
+  shows a spinner with "Saving…" / "Clearing…" and its field and buttons wait until the write settles (a failure goes
+  to the status line). The control channel's `bashcut.plugins.setSecret` stays synchronous (it answers with the
+  result). `CachedKeyStore`: writes win over reads in flight (a read fills only an empty key; a successful delete
+  caches `None`), so the warm thread cannot bring back a value deleted while it ran. On Windows
+  `bashcut_dirs::child::terminate` runs `taskkill /PID <pid> /T /F`, killing grandchildren too, then falls back to
+  `Child::kill`; Windows still has no soft stop.
+- **Why:** an unlock prompt froze the app on a click; job objects need `unsafe` FFI, which only `crates/platform`
+  may use (`AGENTS.md` §0.3), and `taskkill /T` gets the tree without it.

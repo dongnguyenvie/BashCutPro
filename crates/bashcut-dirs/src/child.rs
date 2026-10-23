@@ -4,7 +4,7 @@
 //! [`supervise`] (cancel and timeout both stop softly first: TERM, then KILL after [`GRACE`]),
 //! [`terminate`], and the capped pipe readers [`pump`] / [`read_lines`] / [`tail`].
 //!
-//! A fix here (Windows job objects, a pipe hang) lands in every runner at once. Nothing here panics:
+//! A fix here (a Windows tree kill, a pipe hang) lands in every runner at once. Nothing here panics:
 //! reader threads run under `catch_unwind`, and a grandchild that keeps a pipe open never hangs the
 //! caller ([`collect`] waits a bounded time).
 
@@ -115,13 +115,33 @@ pub fn supervise(child: &mut Child, timeout: Duration, cancel: Option<&AtomicBoo
 }
 
 /// Stop the child (and on Unix its process group): TERM first, KILL when `hard`. Without a group
-/// (or off Unix) a soft stop is a kill too, as there is no TERM to send.
+/// (or off Unix) a soft stop is a kill too, as there is no TERM to send. On Windows the kill takes
+/// the whole tree (`taskkill /T /F`), so grandchildren go too; a job object would need `unsafe`,
+/// which only `crates/platform` may use (RC13, `bashcut/decisions.md`).
 pub fn terminate(child: &mut Child, hard: bool) {
     #[cfg(unix)]
     {
         let sig = if hard { "-KILL" } else { "-TERM" };
         let group = format!("-{}", child.id());
         let ok = Command::new("kill").args([sig, "--", &group]).stdout(Stdio::null()).stderr(Stdio::null()).status().is_ok_and(|s| s.success());
+        if ok {
+            return;
+        }
+    }
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        /// No console window flashes up for the helper.
+        const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+        let pid = child.id().to_string();
+        let ok = Command::new("taskkill")
+            .args(["/PID", &pid, "/T", "/F"])
+            .creation_flags(CREATE_NO_WINDOW)
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .status()
+            .is_ok_and(|s| s.success());
         if ok {
             return;
         }
@@ -232,4 +252,8 @@ mod tests {
     #[test]
     #[ignore = "test ticket: a grandchild holding stdout open does not hang collect past STDOUT_WAIT"]
     fn grandchild_pipe_does_not_hang() {}
+
+    #[test]
+    #[ignore = "test ticket: on Windows terminate ends a grandchild too (cmd /c start /b ping -t), via taskkill /T"]
+    fn windows_terminate_kills_tree() {}
 }
