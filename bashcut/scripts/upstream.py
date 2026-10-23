@@ -482,6 +482,9 @@ def merge(args):
 
 
 def main(argv=None):
+    for stream in (sys.stdout, sys.stderr):  # Windows consoles default to cp1252; file names and hunks can be non-ASCII
+        if hasattr(stream, "reconfigure"):
+            stream.reconfigure(encoding="utf-8")
     ap = argparse.ArgumentParser(prog="upstream.sh", description=__doc__.split("\n\n")[0])
     sub = ap.add_subparsers(dest="cmd")
     fp = sub.add_parser("footprint", help="hunks we carry in upstream files, checked against UPSTREAM.md")
