@@ -92,15 +92,23 @@ pub fn with<R>(app: &FilmcraftApp, ctx: &egui::Context, f: impl FnOnce(&mut Agen
     f(&mut g)
 }
 
+/// The Agent section is on screen.
+fn shown(ctx: &egui::Context) -> bool {
+    let st = super::State::get(ctx);
+    st.rail && st.on_screen(super::AGENT)
+}
+
 /// Collect the agent's events (called by `layout` every frame); an idle live agent is closed while
-/// the Agent section is hidden (AG2: the next message resumes its session).
+/// the Agent section is hidden (AG2: the next message resumes its session), unless a client other
+/// than the panel drives it (AG3: `bashcut.agent.*` called while hidden; the idle close still applies).
 pub fn poll(ctx: &egui::Context) {
     let Some(h) = super::shared::existing::<Agent>(ctx, key()) else { return };
-    let st = super::State::get(ctx);
-    let shown = st.rail && st.on_screen(super::AGENT);
+    let shown = shown(ctx);
     let mut a = h.lock().unwrap_or_else(PoisonError::into_inner);
     let running = a.poll();
-    if !running && !shown {
+    if shown {
+        a.driven = false;
+    } else if !running && !a.driven {
         a.end_session();
     }
     drop(a);
@@ -155,7 +163,12 @@ pub fn invoke(app: &mut FilmcraftApp, ctx: &egui::Context, name: &str, params: &
         }));
     }
     let c = context(app);
-    let r = with(app, ctx, |a| a.command(name, params, &c)).map_err(|e| e.0);
+    let driven = !shown(ctx);
+    let r = with(app, ctx, |a| {
+        a.driven |= driven;
+        a.command(name, params, &c)
+    })
+    .map_err(|e| e.0);
     if r.is_ok() && matches!(name, "send" | "approve" | "change") {
         super::State::update(ctx, |st| st.show(super::AGENT));
         ctx.request_repaint();

@@ -48,6 +48,9 @@ struct View {
     project: Option<std::path::PathBuf>,
     /// While a turn runs: the agent's event count and when it last changed (egui time).
     heard: Option<(u64, f64)>,
+    /// Open in Terminal was clicked: the terminal's command and folder, opened once the in-app
+    /// agent has ended (AG3: one writer per session).
+    handoff: Option<(Vec<String>, std::path::PathBuf)>,
 }
 
 fn key() -> egui::Id {
@@ -158,7 +161,10 @@ pub fn draw(app: &mut FilmcraftApp, ui: &mut egui::Ui) {
     let quiet = v.heard.is_some_and(|(_, at)| now - at >= QUIET_HINT);
 
     header(app, ui, &ctx, &mut v, &snap, running);
-    readiness(app, ui, &ctx, &snap);
+    if let Some(job) = readiness(app, ui, &ctx, &snap) {
+        v.handoff = Some(job);
+    }
+    hand_off(app, ui, &ctx, &mut v);
     // the agent crate's messages are English; those with a catalog row show translated
     super::toast::status_line(app, ui, "bashcut.agent.status", v.status.as_deref().map(s), t.danger);
     if let Some(g) = v.gate.clone() {
@@ -235,8 +241,24 @@ fn missing_line(spec: &bashcut_agent::AgentSpec) -> String {
     }
 }
 
-/// One line per missing item, before the user presses Send.
-fn readiness(app: &mut FilmcraftApp, ui: &mut egui::Ui, ctx: &egui::Context, snap: &Snapshot) {
+/// Open in Terminal, once the in-app agent of this conversation has ended (stopping its turn, closing
+/// its process): the terminal then resumes the session alone.
+fn hand_off(app: &mut FilmcraftApp, ui: &mut egui::Ui, ctx: &egui::Context, v: &mut View) {
+    let Some((argv, cwd)) = v.handoff.clone() else { return };
+    if agent::with(app, ctx, bashcut_agent::Agent::release) {
+        v.handoff = None;
+        agent::with(app, ctx, bashcut_agent::Agent::continued_in_terminal);
+        open_terminal(app, &cwd, &Job::Program(argv), None);
+        return;
+    }
+    let line = s("Ending the in-app session before the terminal opens…");
+    let r = note(ui, line, NOTE, app.tokens.text_dim);
+    app.auto.add_response("bashcut.agent.handoff", &r, line);
+    ctx.request_repaint_after(std::time::Duration::from_millis(100));
+}
+
+/// One line per missing item, before the user presses Send; the Open in Terminal job when clicked.
+fn readiness(app: &mut FilmcraftApp, ui: &mut egui::Ui, ctx: &egui::Context, snap: &Snapshot) -> Option<(Vec<String>, std::path::PathBuf)> {
     let t = app.tokens;
     if let Some(line) = &snap.missing {
         ui.horizontal_wrapped(|ui| {
@@ -258,7 +280,7 @@ fn readiness(app: &mut FilmcraftApp, ui: &mut egui::Ui, ctx: &egui::Context, sna
     if let Some((category, message)) = &snap.auth {
         auth_line(app, ui, snap, category, message);
     }
-    terminal_row(app, ui, snap);
+    let handoff = terminal_row(app, ui, snap);
     if !hints::control_on() {
         let line = s("Control channel off: the agent cannot edit the open project.");
         let r = note(ui, line, NOTE, t.text_dim).on_hover_text(s(HOW_TO_TURN_ON));
@@ -277,6 +299,7 @@ fn readiness(app: &mut FilmcraftApp, ui: &mut egui::Ui, ctx: &egui::Context, sna
             }
         });
     }
+    handoff
 }
 
 /// "Claude Code is not signed in" or "… account problem: billing" (AG6).
@@ -316,20 +339,21 @@ fn hover_button(app: &mut FilmcraftApp, ui: &mut egui::Ui, id: &str, label: &str
     r.clicked()
 }
 
-/// Open in Terminal and Sign in, for an agent whose program was found (Claude Code, Codex).
-fn terminal_row(app: &mut FilmcraftApp, ui: &mut egui::Ui, snap: &Snapshot) {
-    let Some(argv) = &snap.resume else { return };
+/// Open in Terminal and Sign in, for an agent whose program was found (Claude Code, Codex); the
+/// terminal's command and folder when Open in Terminal was clicked ([`hand_off`] opens it).
+fn terminal_row(app: &mut FilmcraftApp, ui: &mut egui::Ui, snap: &Snapshot) -> Option<(Vec<String>, std::path::PathBuf)> {
+    let argv = snap.resume.as_ref()?;
     ui.horizontal_wrapped(|ui| {
         let tip = f("Continue this conversation with {agent} in a terminal window.", &[("agent", &snap.agent.1)]);
-        if hover_button(app, ui, "bashcut.agent.terminal", s("Open in Terminal"), &tip) {
-            open_terminal(app, &snap.cwd(), &Job::Program(argv.clone()), None);
-        }
+        let clicked = hover_button(app, ui, "bashcut.agent.terminal", s("Open in Terminal"), &tip);
         // the sign-in line has its own Sign in (AG6)
         if snap.agent.0 == "claude-code" && snap.auth.is_none() {
             let program = argv.first().cloned().unwrap_or_default();
             sign_in_button(app, ui, &program, snap.project.as_deref());
         }
-    });
+        clicked.then(|| (argv.clone(), snap.cwd()))
+    })
+    .inner
 }
 
 /// Sign in: `claude` in a terminal with a hint to type `/login` (AG6 shows it when auth fails).

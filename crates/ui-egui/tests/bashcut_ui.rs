@@ -1960,3 +1960,11 @@ fn help_menu_names_bashcutpro_and_opens_the_guide_in_both_languages() {
 #[test]
 #[ignore = "test ticket: a fake claude-code turn that prints an authentication_failed assistant line shows bashcut.agent.ready.auth ('Claude Code is not signed in', vi too) with bashcut.agent.signIn and the selectable message, no generic error; a new Send clears it"]
 fn a_sign_in_failure_shows_the_not_signed_in_line_with_sign_in() {}
+
+#[test]
+#[ignore = "test ticket: with the rail hidden, bashcut.agent.send over the control channel twice to a fake live agent uses one process (not closed after each turn); showing the Agent section then hiding it while idle closes it"]
+fn a_control_channel_client_keeps_the_hidden_agent_alive() {}
+
+#[test]
+#[ignore = "test ticket: clicking bashcut.agent.terminal while a fake live agent works shows bashcut.agent.handoff ('Ending the in-app session…', vi too), stops and closes it, then opens the terminal job and the transcript ends with 'Continued in Terminal.' (vi: 'Đã chuyển sang tiếp tục trong Terminal.')"]
+fn open_in_terminal_ends_the_live_agent_first() {}

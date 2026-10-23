@@ -368,12 +368,37 @@ labels or subclips (§1 rule 1). A project opened in upstream FilmCraft still wo
   `state` `pending` / `approved` / `changes`, other keys kept); the panel shows the first pending one as a card.
   Approve / Ask for changes (a note is required) writes `state` and `note` back and sends the answer as the next
   user message. The answer is written only when the turn can start.
-- **Stop**: a live agent gets **SIGINT** (not SIGTERM, which drops the turn with exit 143 and no result). Checked:
-  Claude Code then echoes `[Request interrupted by user]`, sends a `result` with subtype
-  `error_during_execution` (not shown: "Stopped." follows) and exits 0; the next message resumes the session in a
-  new process. Not exiting within 5 s kills its process group. Queued messages go back into the message box. A
-  per-message turn (Codex) ends its process group as before. The project stays as it is. (AG4: cancel through
-  the stream-json interrupt request, keeping the process.)
+- **Stop (AG3, checked with `claude` 2.1.309 on macOS)**: a live agent whose `system/init` `capabilities` has
+  `interrupt_receipt_v1` gets the stream-json **interrupt control request** on stdin and **keeps its process**:
+  `{"type":"control_request","request_id":"bashcut-stop-<n>","request":{"subtype":"interrupt","cancel_queued":true}}`
+  (`stream_json::interrupt_request`; `cancel_queued` only with `interrupt_cancel_queued_v1`). Checked during a
+  60 s foreground Bash call: the ack `{"type":"control_response","response":{"subtype":"success","request_id":…,
+  "response":{"still_queued":[],"cancelled":[]}}}` (`Event::Control`) arrives within milliseconds, then the tool
+  result "The user doesn't want to proceed…", the text `[Request interrupted by user for tool use]` and a `result`
+  with subtype `error_during_execution` (not shown); the process stays and the next message is answered in the
+  same session. Without `cancel_queued` a message written before the interrupt still runs after it; with it, it
+  never runs (no `isReplay` echo), so queued messages go back into the message box. The transcript says "Stopped."
+  (`Đã dừng.`) and status is Idle at that `result`, never at the ack: the `isReplay` echo of a message can come
+  only with the turn's first output, after the ack (seen in the app: a long reply with no tool call). **Fallback: SIGINT** (not
+  SIGTERM, which drops the turn with exit 143 and no result) when the capability is missing, when queued messages
+  wait and `cancel_queued` is not offered, when the ack is an error or does not come within 3 s
+  (`session::ACK_WAIT`), when no `result` follows within 5 s (`RESULT_WAIT`), and on a second Stop. Checked (AG2):
+  Claude Code then echoes `[Request interrupted by user]`, sends the same error `result` and exits 0; the next
+  message resumes the session in a new process; not exiting within 5 s kills its process group. A per-message turn
+  (Codex) ends its process group as before; Batch agent steps (`bashcut-batch`) run their own per-step process and
+  keep their stop. The project stays as it is.
+- **Sign-in problem in a live session (AG3 for AG6)**: after an `Event::Auth` the live process is closed at its
+  `result`, so the next message starts a new one with the login as it is then; its non-zero exit adds no generic
+  error under the sign-in line.
+- **One writer per session (AG3)**: Open in Terminal resumes the same session id, so the panel first ends its own
+  agent (`Agent::release`: Stop a running turn, close stdin, wait for the process to exit; "Ending the in-app
+  session before the terminal opens…", `bashcut.agent.handoff`), then opens the terminal and adds "Continued in
+  Terminal." (`Đã chuyển sang tiếp tục trong Terminal.`) when there was a session. A later Send in the panel resumes
+  the session again; closing the terminal first is the user's call.
+- **Hidden panel, driven over the control channel (AG3)**: a `bashcut.agent.*` command while the Agent section is
+  hidden marks the agent as driven (`Agent::driven`): the hidden panel no longer closes it after each turn, so a
+  control-channel or MCP client keeps one live process; `IDLE_CLOSE` still applies, and showing the section clears
+  the mark.
 - **Plugin hand-offs**: Runs ▸ Send to agent (`bashcut.plugins.sendToAgent`) sends the run's result and the
   plugin's `handoff.then` as the next message.
 - **Agent replies (UX8)** render minimal Markdown (`bashcut_ui/markdown.rs`): `#`/`##` headings, `-`/`1.` lists,

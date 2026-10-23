@@ -154,6 +154,22 @@ fn live_agent_keeps_one_process_for_three_messages() {}
 fn live_agent_restarts_with_resume_after_kill() {}
 
 #[test]
+#[ignore = "test ticket: a fake live agent with interrupt_receipt_v1 + interrupt_cancel_queued_v1 in system/init gets {type: control_request, request: {subtype: interrupt, cancel_queued: true}} on Stop mid tool call, answers control_response success + an error result: 'Stopped.', status Idle, same process (pid) answers the next message, queued messages go back to the message box"]
+fn live_agent_stop_keeps_the_process() {}
+
+#[test]
+#[ignore = "test ticket: Stop falls back to SIGINT (process ends, next message resumes) when init has no interrupt_receipt_v1, when the fake answers control_response error, when it never answers within 3 s, and when the ack comes but no result within 5 s; without interrupt_cancel_queued_v1 and a queued message it uses SIGINT at once"]
+fn live_agent_stop_falls_back_to_sigint() {}
+
+#[test]
+#[ignore = "test ticket: Agent::release stops a running live turn, closes the process and returns true only after it exited; continued_in_terminal adds 'Continued in Terminal.' only when the conversation has a session"]
+fn release_waits_for_the_live_agent_to_exit() {}
+
+#[test]
+#[ignore = "test ticket: after an Event::Auth turn the live process is closed at its result (next Send starts a new process), and a non-zero exit after it adds no Item::Error"]
+fn auth_failure_closes_the_live_agent_without_a_generic_error() {}
+
+#[test]
 fn claude_code_needs_the_bridge() {
     let mut agent = Agent::new(Vec::new());
     assert_eq!(agent.agent.id, "claude-code");

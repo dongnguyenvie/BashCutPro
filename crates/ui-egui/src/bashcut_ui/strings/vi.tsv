@@ -356,3 +356,5 @@ the agent ended unexpectedly	Trợ lý thoát bất ngờ
 {agent} account problem: billing	{agent} gặp vấn đề tài khoản: thanh toán
 {agent} account problem: this organization is not allowed	{agent} gặp vấn đề tài khoản: tổ chức này không được phép
 {agent} account problem: {category}	{agent} gặp vấn đề tài khoản: {category}
+Continued in Terminal.	Đã chuyển sang tiếp tục trong Terminal.
+Ending the in-app session before the terminal opens…	Đang đóng phiên trong ứng dụng trước khi mở Terminal…
