@@ -138,7 +138,7 @@ class GenerateTest(unittest.TestCase):
         paths = [l.split("path:", 1)[1].strip() for l in text.splitlines() if l.strip().startswith("path:")]
         self.assertEqual(os.path.realpath(os.path.join(flatpak, paths[0])), os.path.realpath(ROOT))
         self.assertEqual(os.path.realpath(os.path.join(flatpak, paths[1])), os.path.realpath(os.path.join(self.out, "linux")))
-        self.assertIn("      - %s\n" % os.path.relpath(os.path.realpath(os.path.join(ROOT, "packaging", "linux", "flatpak", "cargo-sources.json")), os.path.realpath(flatpak)), text)
+        self.assertIn("      - %s\n" % os.path.relpath(os.path.realpath(os.path.join(ROOT, "packaging", "linux", "flatpak", "cargo-sources.json")), os.path.realpath(flatpak)).replace(os.sep, "/"), text)
         for rel in set(w for w in text.split() if w.startswith("bashcut-packaging/linux/")):
             self.assertTrue(os.path.exists(os.path.join(self.out, rel[len("bashcut-packaging/"):].rstrip("/"))), rel)
         self.assertTrue(os.path.isdir(os.path.join(ROOT, "bashcut", "packaging", "share")))
@@ -153,6 +153,8 @@ class GenerateTest(unittest.TestCase):
 
     def test_the_copied_tarball_installer_installs_ours(self):
         # upstream's installer test, run on the copy (needs GNU realpath -m, so Linux)
+        if os.name == "nt":
+            self.skipTest("Linux installer test: Git Bash has realpath -m but not the Linux paths it installs to")
         generate.generate(ROOT, self.out)
         r = subprocess.run(["realpath", "-m", "/a/../b"], capture_output=True, text=True) if shutil.which("realpath") else None
         if not r or r.returncode != 0:

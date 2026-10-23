@@ -26,7 +26,10 @@ param(
     [string[]]$IsaOnly = @()
 )
 
-$ErrorActionPreference = "Continue"
+Set-StrictMode -Version Latest
+# Stop on any error, but every step below runs inside try/catch, so a failed step is a FAIL line and the next step
+# still runs (like smoke.sh); the summary and the exit code count them.
+$ErrorActionPreference = "Stop"
 $script:passes = 0
 $script:failures = 0
 function Pass([string]$m) { $script:passes++; Write-Output "PASS  $m" }
@@ -36,6 +39,7 @@ if (-not $IsaAllow) { $IsaAllow = Join-Path $PSScriptRoot "isa-allow.txt" }
 
 # ------------------------------------------------------------------------------------------------ ISA scan
 function Find-Disassembler {
+    $ErrorActionPreference = "Continue"  # rustc may write to stderr; that is not a failure here
     $c = Get-Command llvm-objdump -ErrorAction SilentlyContinue
     if ($c) { return @{ kind = "llvm"; path = $c.Source } }
     $sysroot = $null
@@ -66,6 +70,8 @@ function Test-X64([string]$bin) {
 function Invoke-IsaScan([string]$bin) {
     if (-not (Test-Path $bin -PathType Leaf)) { Fail "isa: $bin not found"; return }
     if (-not (Test-X64 $bin)) { Note "isa: $bin is not an x86-64 executable; skipped"; return }
+    # Windows PowerShell 5.1 turns stderr of a native tool into errors (`2>$null` included): judge the tools by output
+    $ErrorActionPreference = "Continue"
     $dis = Find-Disassembler
     if (-not $dis) { Fail "isa: no llvm-objdump or dumpbin to disassemble $bin (rustup component add llvm-tools)"; return }
     $patterns = @()
@@ -125,14 +131,16 @@ function Write-Summary([string]$what) {
     Write-Output ("smoke{0}: {1} passed, {2} failed (Windows {3}, {4})" -f $what, $script:passes, $script:failures, $env:PROCESSOR_ARCHITECTURE, (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mmZ"))
 }
 
+# `-File smoke.ps1 -IsaOnly a.exe,b.exe` hands over one string: split it
+$IsaOnly = @($IsaOnly | ForEach-Object { $_ -split ',' } | Where-Object { $_ })
 if ($IsaOnly.Count -gt 0) {
-    foreach ($b in $IsaOnly) { Invoke-IsaScan $b }
+    foreach ($b in $IsaOnly) { try { Invoke-IsaScan $b } catch { Fail "isa: $($b): $_" } }
     Write-Summary " (isa)"
     if ($script:failures -eq 0) { exit 0 } else { exit 1 }
 }
 
 # ------------------------------------------------------------------------------------------------ launch
-if (-not $App) { Write-Error "smoke: -App <path to the built app> is required"; exit 2 }
+if (-not $App) { [Console]::Error.WriteLine("smoke: -App <path to the built app> is required"); exit 2 }
 if (-not (Test-Path $App -PathType Leaf)) { Fail "launch: $App is not a file"; Write-Summary ""; exit 1 }
 $App = (Resolve-Path $App).Path
 if (-not $Cli) {
@@ -171,21 +179,23 @@ function Send-Request([string]$json, [int]$seconds = 30) {
 }
 
 Write-Output "smoke: $App on port $Port (cli: $Cli, out: $Out)"
-$proc = Start-Process -FilePath $App -ArgumentList @("--control", "$Port", "--control-input-only") -PassThru `
-    -RedirectStandardOutput (Join-Path $Out "app.log") -RedirectStandardError (Join-Path $Out "app.err.log")
-
+$proc = $null
 $ready = $false
-$deadline = (Get-Date).AddSeconds($Timeout)
-while ((Get-Date) -lt $deadline) {
-    if ($proc.HasExited) { break }
-    $r = Send-Request '{"id":1,"method":"ui.inspect"}' 5
-    if ($r -match '"ok":\s*true') { $ready = $true; break }
-    Start-Sleep -Milliseconds 500
-}
+try {
+    $proc = Start-Process -FilePath $App -ArgumentList @("--control", "$Port", "--control-input-only") -PassThru `
+        -RedirectStandardOutput (Join-Path $Out "app.log") -RedirectStandardError (Join-Path $Out "app.err.log")
+    $deadline = (Get-Date).AddSeconds($Timeout)
+    while ((Get-Date) -lt $deadline) {
+        if ($proc.HasExited) { break }
+        $r = Send-Request '{"id":1,"method":"ui.inspect"}' 5
+        if ($r -match '"ok":\s*true') { $ready = $true; break }
+        Start-Sleep -Milliseconds 500
+    }
+} catch { Note "launch: $_" }
 if (-not $ready) {
     Fail "launch: no answer on the control port within $Timeout s (log: $Out\app.log)"
     Get-Content (Join-Path $Out "app.err.log") -Tail 20 -ErrorAction SilentlyContinue | ForEach-Object { Note $_ }
-    if (-not $proc.HasExited) { Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue }
+    if ($proc -and -not $proc.HasExited) { Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue }
     Write-Summary ""
     exit 1
 }
@@ -193,28 +203,32 @@ Pass "launch: the app answers ui.inspect (pid $($proc.Id))"
 
 # ------------------------------------------------------------------------------------------------ window
 $shot = Join-Path $Out "smoke.png"
-Remove-Item $shot -ErrorAction SilentlyContinue
-$shotJson = ConvertTo-Json -Compress @{ id = 2; method = "ui.screenshot"; params = @{ path = $shot } }
-$r = Send-Request $shotJson 30
-$isPng = $false
-if (Test-Path $shot) {
-    $b = [IO.File]::ReadAllBytes($shot)
-    $isPng = ($b.Length -gt 8 -and $b[0] -eq 0x89 -and $b[1] -eq 0x50 -and $b[2] -eq 0x4E -and $b[3] -eq 0x47)
-}
-if ($isPng) { Pass "screenshot: $shot" } else { Fail "screenshot: no PNG written ($r)" }
+try {
+    Remove-Item $shot -ErrorAction SilentlyContinue
+    $shotJson = ConvertTo-Json -Compress @{ id = 2; method = "ui.screenshot"; params = @{ path = $shot } }
+    $r = Send-Request $shotJson 30
+    $isPng = $false
+    if (Test-Path $shot) {
+        $b = [IO.File]::ReadAllBytes($shot)
+        $isPng = ($b.Length -gt 8 -and $b[0] -eq 0x89 -and $b[1] -eq 0x50 -and $b[2] -eq 0x4E -and $b[3] -eq 0x47)
+    }
+    if ($isPng) { Pass "screenshot: $shot" } else { Fail "screenshot: no PNG written ($r)" }
+} catch { Fail "screenshot: $_" }
 
-$title = ""
-for ($i = 0; $i -lt 20 -and -not $title; $i++) {
-    $proc.Refresh()
-    $title = $proc.MainWindowTitle
-    if (-not $title) { Start-Sleep -Milliseconds 250 }
-}
-if ($title) {
-    if ($title -like "*$ExpectTitle*") { Pass "title: `"$title`"" } else { Fail "title: `"$title`" does not say $ExpectTitle" }
-} else {
-    $els = Send-Request '{"id":3,"method":"ui.elements"}' 30
-    if ($els -like "*$ExpectTitle*") { Pass "title: no window title; the UI shows $ExpectTitle" } else { Fail "title: no window title and the UI does not show $ExpectTitle" }
-}
+try {
+    $title = ""
+    for ($i = 0; $i -lt 20 -and -not $title; $i++) {
+        $proc.Refresh()
+        $title = $proc.MainWindowTitle
+        if (-not $title) { Start-Sleep -Milliseconds 250 }
+    }
+    if ($title) {
+        if ($title -like "*$ExpectTitle*") { Pass "title: `"$title`"" } else { Fail "title: `"$title`" does not say $ExpectTitle" }
+    } else {
+        $els = Send-Request '{"id":3,"method":"ui.elements"}' 30
+        if ($els -like "*$ExpectTitle*") { Pass "title: no window title; the UI shows $ExpectTitle" } else { Fail "title: no window title and the UI does not show $ExpectTitle" }
+    }
+} catch { Fail "title: $_" }
 
 # ------------------------------------------------------------------------------------------------ CLI and MCP
 # Run a program with a time limit; stdout goes to $outFile. Returns the exit code (124 = timed out).
@@ -231,28 +245,32 @@ function Invoke-Limited([string]$exe, [string[]]$argv, [string]$outFile, [string
 if (-not $Cli -or -not (Test-Path $Cli)) {
     Fail "cli: filmcraft-cli not found (pass -Cli)"
 } else {
-    $razor = Join-Path $Out "cli-razor.txt"
-    $code = Invoke-Limited $Cli @("commands", "razor") $razor
-    if ($code -eq 0 -and (Select-String -Path $razor -Pattern "razor" -Quiet)) {
-        Pass "cli: commands razor ($((Get-Content $razor).Count) line(s))"
-    } else {
-        Fail "cli: commands razor failed (exit $code, $razor)"
-    }
-    $mcpIn = Join-Path $Out "mcp-in.jsonl"
-    $mcpOut = Join-Path $Out "mcp-out.jsonl"
-    $lines = @(
-        '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"smoke","version":"1"}}}',
-        '{"jsonrpc":"2.0","method":"notifications/initialized"}',
-        '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"command_list","arguments":{}}}'
-    )
-    [IO.File]::WriteAllText($mcpIn, (($lines -join "`n") + "`n"))
-    Invoke-Limited $Cli @("--demo", "mcp") $mcpOut $mcpIn 60 | Out-Null
-    $reply = Get-Content $mcpOut -ErrorAction SilentlyContinue | Where-Object { $_ -match '"id":\s*2' } | Select-Object -First 1
-    if ($reply -and $reply -match 'file\.newProject' -and $reply -notmatch '"isError":\s*true') {
-        Pass "mcp: command_list answers"
-    } else {
-        Fail "mcp: command_list gave no command list ($mcpOut)"
-    }
+    try {
+        $razor = Join-Path $Out "cli-razor.txt"
+        $code = Invoke-Limited $Cli @("commands", "razor") $razor
+        if ($code -eq 0 -and (Select-String -Path $razor -Pattern "razor" -Quiet)) {
+            Pass "cli: commands razor ($(@(Get-Content $razor).Count) line(s))"
+        } else {
+            Fail "cli: commands razor failed (exit $code, $razor)"
+        }
+    } catch { Fail "cli: commands razor: $_" }
+    try {
+        $mcpIn = Join-Path $Out "mcp-in.jsonl"
+        $mcpOut = Join-Path $Out "mcp-out.jsonl"
+        $lines = @(
+            '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"smoke","version":"1"}}}',
+            '{"jsonrpc":"2.0","method":"notifications/initialized"}',
+            '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"command_list","arguments":{}}}'
+        )
+        [IO.File]::WriteAllText($mcpIn, (($lines -join "`n") + "`n"))
+        Invoke-Limited $Cli @("--demo", "mcp") $mcpOut $mcpIn 60 | Out-Null
+        $reply = Get-Content $mcpOut -ErrorAction SilentlyContinue | Where-Object { $_ -match '"id":\s*2' } | Select-Object -First 1
+        if ($reply -and $reply -match 'file\.newProject' -and $reply -notmatch '"isError":\s*true') {
+            Pass "mcp: command_list answers"
+        } else {
+            Fail "mcp: command_list gave no command list ($mcpOut)"
+        }
+    } catch { Fail "mcp: command_list: $_" }
 }
 
 # ------------------------------------------------------------------------------------------------ quit
@@ -266,8 +284,9 @@ if ($proc.WaitForExit(15000)) {
 
 # ------------------------------------------------------------------------------------------------ ISA
 if (-not $NoIsa) {
-    Invoke-IsaScan $App
-    if ($Cli -and (Test-Path $Cli)) { Invoke-IsaScan $Cli }
+    foreach ($b in @($App, $Cli)) {
+        if ($b -and (Test-Path $b)) { try { Invoke-IsaScan $b } catch { Fail "isa: $($b): $_" } }
+    }
 }
 
 Write-Summary ""
