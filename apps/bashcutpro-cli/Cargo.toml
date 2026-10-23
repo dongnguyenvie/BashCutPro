@@ -29,6 +29,7 @@ whisper = ["filmcraft-engine/whisper", "filmcraft-engine/speech-download"]
 
 # Mirrors apps/filmcraft-cli/Cargo.toml [dependencies] plus our `bashcut-*` crates; build.rs fails if upstream's list changes.
 [dependencies]
+bashcut-brand = { path = "../../crates/bashcut-brand" }
 bashcut-connect = { path = "../../crates/bashcut-connect" }
 bashcut-dirs = { path = "../../crates/bashcut-dirs" }
 filmcraft-engine = { workspace = true }

@@ -192,37 +192,10 @@ macro_rules! engine_commands {
 }
 pub(crate) use engine_commands;
 
-/// BR6: the `engine.commands` list of the control channel ([`engine_commands`]) names BashCutPro, as
-/// `bashcutpro-cli`'s `mcp_brand::brand_commands` does for MCP and the CLI (BR5): "FilmCraft" → [`NAME`] in each
-/// command's `label`, `menu` and `params`, `filmcraft-cli ` → `bashcutpro-cli ` in `params`. English, like the rest
-/// of the catalog agents read; ids, shortcuts and anything that is not a list of commands stay as they are.
-pub fn commands(mut list: serde_json::Value) -> serde_json::Value {
-    use serde_json::Value;
-    fn rename(v: &mut Value) {
-        if let Some(s) = v.as_str().filter(|s| s.contains("FilmCraft")) {
-            *v = Value::from(s.replace("FilmCraft", NAME));
-        }
-    }
-    let Some(items) = list.as_array_mut() else { return list };
-    let is_command = |c: &Value| ["id", "label", "params"].iter().all(|k| c.get(k).is_some_and(Value::is_string));
-    if !items.iter().all(is_command) {
-        return list;
-    }
-    for c in items.iter_mut().filter_map(Value::as_object_mut) {
-        if let Some(label) = c.get_mut("label") {
-            rename(label);
-        }
-        for m in c.get_mut("menu").and_then(Value::as_array_mut).into_iter().flatten() {
-            rename(m);
-        }
-        if let Some(params) = c.get_mut("params") {
-            rename(params);
-            if let Some(p) = params.as_str().filter(|p| p.contains("filmcraft-cli ")) {
-                *params = Value::from(p.replace("filmcraft-cli ", "bashcutpro-cli "));
-            }
-        }
-    }
-    list
+/// BR6: the `engine.commands` list of the control channel ([`engine_commands`]) names BashCutPro by the same rule
+/// `bashcutpro-cli` uses for MCP and the CLI (BR5): one function, [`::bashcut_brand::branded_commands`] (RC14).
+pub fn commands(list: serde_json::Value) -> serde_json::Value {
+    ::bashcut_brand::branded_commands(list)
 }
 
 /// What a build shows for `english` in `lang`: the branded text, else the translation (what

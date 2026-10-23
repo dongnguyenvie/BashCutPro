@@ -335,3 +335,13 @@ decides something; don't change an old one, add a new one that supersedes it.
   `ui.focus {}` sends only `ViewportCommand::Focus`, which leaves a minimised window minimised on Windows, so a
   one-line hook (`bashcut_ui::control::restore`) sends `Minimized(false)` first; the error's advice then works on
   every OS.
+
+## 2026-10-23: one command-catalog branding rule, crate `bashcut-brand` (RC14)
+
+- **Decided:** the "FilmCraft" → BashCutPro rule for a `command.list` result (labels, menus, params,
+  `filmcraft-cli ` → `bashcutpro-cli `) lives once in `crates/bashcut-brand` (layer 0, deps serde_json only).
+  `bashcutpro-cli`'s `mcp_brand` re-exports `brand_commands` / `branded_commands` and uses its `rename_str`;
+  ui-egui's `bashcut_brand::commands` (control channel `engine.commands`, BR6) calls it through one recorded
+  `crates/ui-egui/Cargo.toml` dependency line. Behaviour unchanged.
+- **Why:** BR5 and BR6 had two copies that could drift. A new crate rather than `bashcut-dirs` (no serde, "data
+  folder" scope) or `bashcut-manifest` (plugin manifests; ui-egui has no direct line to it either).

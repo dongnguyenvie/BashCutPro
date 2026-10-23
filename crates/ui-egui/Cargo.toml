@@ -41,6 +41,7 @@ bashcut-plugin-host = { path = "../bashcut-plugin-host" } # BashCutPro: plugin h
 bashcut-agent = { path = "../bashcut-agent" } # BashCutPro: agent sessions for the Agent section (bashcut/extending-upstream.md)
 bashcut-batch = { path = "../bashcut-batch" } # BashCutPro: batch runner for the Batch section (bashcut/extending-upstream.md)
 bashcut-dirs = { path = "../bashcut-dirs" } # BashCutPro: atomic prefs files and clip for the side panel (bashcut/extending-upstream.md)
+bashcut-brand = { path = "../bashcut-brand" } # BashCutPro: one command-catalog branding rule with bashcutpro-cli (bashcut/extending-upstream.md)
 
 # Thread/process CPU clocks for frame-job profiling (safe wrappers; see frames.rs).
 [target.'cfg(unix)'.dependencies]
