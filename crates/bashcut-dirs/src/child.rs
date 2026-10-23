@@ -326,11 +326,19 @@ mod tests {
         terminate(&mut c, true);
     }
 
-    /// AG1: a file the app opened through std (close-on-exec) is not open in a spawned child.
+    /// [`our_files_are_not_inherited`]'s child: set, the scenario runs (in a process of its own).
+    #[cfg(unix)]
+    const FD_CHILD_ENV: &str = "BASHCUT_TEST_FD_CHILD";
+
+    /// The scenario half. Alone in its process, so no other test thread is mid-`spawn` (macOS makes
+    /// std's pipes close-on-exec with a second call, a window in which a fork inherits them).
     #[cfg(unix)]
     #[test]
-    fn our_files_are_not_inherited() {
+    fn fd_inherit_child() {
         use std::os::fd::AsRawFd;
+        if std::env::var_os(FD_CHILD_ENV).is_none() {
+            return;
+        }
         let path = std::env::temp_dir().join(format!("bashcut-child-fd-{}", std::process::id()));
         let held = std::fs::File::create(&path).unwrap();
         let fd = held.as_raw_fd().to_string();
@@ -342,6 +350,20 @@ mod tests {
         assert_eq!(String::from_utf8_lossy(&out), "open\nclosed\n", "fd {fd} leaked into the child");
         drop(held);
         let _ = std::fs::remove_file(&path);
+    }
+
+    /// AG1: a file the app opened through std (close-on-exec) is not open in a spawned child.
+    /// FX35: run in a process of its own ([`fd_inherit_child`]): beside the other tests' spawns
+    /// the check flaked (fd 11 "leaked") when run in one `cargo test` with other crates.
+    #[cfg(unix)]
+    #[test]
+    fn our_files_are_not_inherited() {
+        let out = Command::new(std::env::current_exe().unwrap())
+            .args(["--exact", "child::tests::fd_inherit_child", "--test-threads=1", "--nocapture"])
+            .env(FD_CHILD_ENV, "1")
+            .output()
+            .unwrap();
+        assert!(out.status.success(), "{}{}", String::from_utf8_lossy(&out.stdout), String::from_utf8_lossy(&out.stderr));
     }
 
     /// The pids of `pid`'s children (PowerShell's CIM query: no `unsafe`, no extra crate).
