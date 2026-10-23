@@ -10,7 +10,7 @@
 //! - a pipeline's own `argv` with `{prompt}`, `{session}`, `{mcpConfig}`.
 //!
 //! With the kit (`--kit`, `$BASHCUT_KIT`, #204), Claude Code also gets `--plugin-dir <kit>` and may use
-//! [`KIT_TOOLS`] (the kit's skills, its Python scripts, ffmpeg) besides the MCP tools; every agent's
+//! [`kit_tools`] (the kit's skills, its Python scripts, ffmpeg) besides the MCP tools; every agent's
 //! prompt says where the kit's skills and scripts are. A step's `allowedTools` adds to the list.
 //!
 //! The MCP server the agent gets is `bashcut-mcp --headless --project <item> --roots <item folder,
@@ -18,8 +18,8 @@
 //! --project <item>`.
 
 use crate::pipeline::{AgentStep, CommandLine, Vars};
+use crate::{process, python};
 use serde_json::{Value, json};
-use std::io::{Read, Seek, SeekFrom};
 use std::path::{Path, PathBuf};
 
 /// The MCP server name in the agent's config (Claude Code tool names: `mcp__bashcutpro__*`).
@@ -27,8 +27,12 @@ pub const SERVER: &str = "bashcutpro";
 /// What a Claude Code agent with the kit may use besides the MCP tools: the kit's skills, reading
 /// and writing its files (the prompt keeps writes in the item folder and the outputs), the kit's
 /// Python scripts and ffmpeg / ffprobe for measuring.
-pub const KIT_TOOLS: &[&str] =
-    &["Skill", "Read", "Glob", "Grep", "Write", "Edit", "Bash(python3:*)", "Bash(python:*)", "Bash(py:*)", "Bash(ffmpeg:*)", "Bash(ffprobe:*)"];
+/// The interpreters come from [`python::AGENT_PYTHONS`], so a new one is one edit.
+pub fn kit_tools() -> Vec<String> {
+    let files = ["Skill", "Read", "Glob", "Grep", "Write", "Edit"].map(str::to_string);
+    let programs = python::AGENT_PYTHONS.iter().chain(&["ffmpeg", "ffprobe"]).map(|p| format!("Bash({p}:*)"));
+    files.into_iter().chain(programs).collect()
+}
 /// Event logs above this are read from their end only.
 const MAX_LOG: u64 = 16 << 20;
 /// Findings listed in a fix prompt.
@@ -112,7 +116,7 @@ pub fn argv(l: &Launch) -> Vec<String> {
             ];
             let kit = kit(l.step, l.vars);
             if kit.is_some() {
-                v.extend(KIT_TOOLS.iter().map(|t| t.to_string()));
+                v.extend(kit_tools());
             }
             v.extend(l.step.allowed_tools.iter().cloned());
             if let Some(k) = kit {
@@ -222,25 +226,12 @@ pub fn read_round(log: &Path) -> Round {
             _ => {}
         }
     }
-    r.message = cap(&r.message, 600);
+    r.message = process::cap(&r.message, 600);
     r
 }
 
 fn read_log(path: &Path) -> String {
-    let Ok(mut f) = std::fs::File::open(path) else { return String::new() };
-    let len = f.metadata().map(|m| m.len()).unwrap_or(0);
-    if len > MAX_LOG && f.seek(SeekFrom::Start(len - MAX_LOG)).is_err() {
-        return String::new();
-    }
-    let mut buf = Vec::new();
-    if f.take(MAX_LOG).read_to_end(&mut buf).is_err() {
-        return String::new();
-    }
-    String::from_utf8_lossy(&buf).into_owned()
-}
-
-fn cap(s: &str, max: usize) -> String {
-    if s.chars().count() <= max { s.to_string() } else { s.chars().take(max).collect::<String>() + "…" }
+    process::tail_raw(path, MAX_LOG)
 }
 
 /// The kit folder this step's agent gets, if any.
@@ -283,7 +274,7 @@ pub fn fix_prompt(step: &AgentStep, vars: &Vars, review: &Value) -> String {
         let check = f["check"].as_str().unwrap_or("check");
         let message = f["message"].as_str().unwrap_or_default();
         let fix = f["fix"].as_str().map(|x| format!(" (fix: {x})")).unwrap_or_default();
-        lines.push(format!("- [{check}]{}{at}: {}{fix}", in_sequence(f), cap(message, 200)));
+        lines.push(format!("- [{check}]{}{at}: {}{fix}", in_sequence(f), process::cap(message, 200)));
     }
     if all.len() > MAX_FINDINGS {
         lines.push(format!("- … and {} more", all.len() - MAX_FINDINGS));
@@ -301,7 +292,7 @@ pub fn fix_prompt(step: &AgentStep, vars: &Vars, review: &Value) -> String {
 /// ` in sequence "name" (item N)` for a finding from a review of several sequences.
 fn in_sequence(f: &Value) -> String {
     match (f["sequenceName"].as_str(), f["sequence"].as_u64()) {
-        (Some(name), Some(id)) => format!(" in sequence \"{}\" (item {id})", cap(name, 80)),
+        (Some(name), Some(id)) => format!(" in sequence \"{}\" (item {id})", process::cap(name, 80)),
         (None, Some(id)) => format!(" in sequence item {id}"),
         _ => String::new(),
     }
@@ -329,7 +320,7 @@ pub fn blocking_labels(review: &Value, max: usize) -> Vec<String> {
         .filter_map(|f| {
             let check = f["check"].as_str()?;
             Some(match f["sequenceName"].as_str() {
-                Some(name) => format!("{}: {check}", cap(name, 80)),
+                Some(name) => format!("{}: {check}", process::cap(name, 80)),
                 None => check.to_string(),
             })
         })

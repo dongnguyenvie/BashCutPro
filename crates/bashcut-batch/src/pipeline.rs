@@ -186,7 +186,7 @@ pub struct AgentStep {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub fix_rounds: Option<u32>,
     /// Give the agent the kit (`--kit`, `$BASHCUT_KIT`): Claude Code gets it as `--plugin-dir` and may
-    /// run its scripts ([`crate::agent::KIT_TOOLS`]); every agent is told where it is (default true, #204).
+    /// run its scripts ([`crate::agent::kit_tools`]); every agent is told where it is (default true, #204).
     #[serde(default = "yes")]
     pub kit: bool,
     /// More tools the agent may use (Claude Code `--allowedTools` entries such as `"Bash(ffmpeg:*)"`).

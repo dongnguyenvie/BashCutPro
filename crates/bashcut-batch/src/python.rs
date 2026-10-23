@@ -5,6 +5,10 @@
 use std::process::{Command, Stdio};
 use std::sync::OnceLock;
 
+/// What an agent step's kit scripts may run with, in probe order ([`agent_python`]); the agent's
+/// allow rules (`crate::agent::kit_tools`) are built from it.
+pub const AGENT_PYTHONS: &[&str] = &["python3", "python", "py"];
+
 /// `argv` with a leading `python3` swapped for an interpreter that runs, on Windows only.
 pub fn resolve(argv: Vec<String>) -> Vec<String> {
     if !cfg!(windows) || !argv.first().is_some_and(|p| is_python3(p)) {
@@ -25,7 +29,7 @@ pub fn agent_python() -> String {
         return "python3".into();
     }
     static FOUND: OnceLock<String> = OnceLock::new();
-    FOUND.get_or_init(|| ["python3", "python", "py"].into_iter().find(|p| runs(&[p.to_string()])).unwrap_or("python3").to_string()).clone()
+    FOUND.get_or_init(|| AGENT_PYTHONS.iter().copied().find(|p| runs(&[p.to_string()])).unwrap_or("python3").to_string()).clone()
 }
 
 fn is_python3(program: &str) -> bool {

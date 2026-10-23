@@ -1,105 +1,26 @@
 //! The batch runner against a fake `filmcraft-cli` (`tests/support/fake_cli.rs`): parallel items,
 //! failures with skip and stop, cancel, resume after a kill (tripwire), error categories.
 
-use bashcut_batch::{Category, ItemState, Job, Options, Pipeline, SCHEMA, Status, run};
+use bashcut_batch::{Category, ItemState, Job, Pipeline, Status, run};
 use serde_json::{Value, json};
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::time::{Duration, Instant};
 
-const FAKE: &str = env!("CARGO_BIN_EXE_bashcut-batch-fake-cli");
+mod support;
 
-/// A scratch folder with `clips/<name>.mp4` files.
-struct Bench {
-    dir: PathBuf,
-}
+use support::{Bench, FAKE, max_concurrent, max_overlap};
 
-impl Bench {
-    fn new(tag: &str, clips: &[&str]) -> Bench {
-        let dir = std::env::temp_dir().join(format!("bashcut-batch-{tag}-{}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&dir);
-        std::fs::create_dir_all(dir.join("clips")).unwrap();
-        for c in clips {
-            std::fs::write(dir.join("clips").join(format!("{c}.mp4")), b"media").unwrap();
-        }
-        Bench { dir }
-    }
-
-    fn pipeline(&self, extra: Value) -> Pipeline {
-        let mut v = json!({"schema": SCHEMA, "name": "test", "inputs": ["clips"], "projectsFolder": "out"});
-        if let (Some(m), Value::Object(e)) = (v.as_object_mut(), extra) {
-            m.extend(e);
-        }
-        Pipeline::parse(&v.to_string(), &self.dir).unwrap()
-    }
-
-    fn opts(&self) -> Options {
-        let mut o = Options::new(FAKE);
-        o.poll = Duration::from_millis(10);
-        // the machine's real RAM and cores must not change these tests (governor: tests/governor.rs)
-        o.probe = std::sync::Arc::new(bashcut_batch::FakeProbe::roomy());
-        o.env.push(("FAKE_CLI_LOG".into(), self.log().to_string_lossy().into_owned()));
-        o
-    }
-
-    fn log(&self) -> PathBuf {
-        self.dir.join("fake-cli.log")
-    }
-
-    fn out(&self, rel: &str) -> PathBuf {
-        self.dir.join("out").join(rel)
-    }
-
-    fn read(&self, rel: &str) -> String {
-        std::fs::read_to_string(self.out(rel)).unwrap_or_default()
-    }
-}
-
-impl Drop for Bench {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.dir);
-    }
+fn bench(tag: &str, clips: &[&str]) -> Bench {
+    Bench::new(&format!("bashcut-batch-{tag}"), clips.iter().map(|c| c.to_string()))
 }
 
 fn item<'a>(book: &'a bashcut_batch::Book, name: &str) -> &'a ItemState {
     book.items.iter().find(|i| i.name == name).unwrap()
 }
 
-/// The most fake-cli processes that ran at the same time, from the log.
-fn max_concurrent(log: &Path) -> i32 {
-    max_overlap(log, "start", "end")
-}
-
-/// The most `start` … `end` stretches of the log (by kind) that overlapped.
-fn max_overlap(log: &Path, start: &str, end: &str) -> i32 {
-    let text = std::fs::read_to_string(log).unwrap_or_default();
-    let mut events: Vec<(u128, i32)> = text
-        .lines()
-        .filter_map(|l| {
-            let mut w = l.split_whitespace();
-            let kind = w.next()?;
-            let t: u128 = w.next()?.parse().ok()?;
-            // at the same millisecond an end comes before a start
-            if kind == start {
-                Some((t, 1))
-            } else if kind == end {
-                Some((t, -1))
-            } else {
-                None
-            }
-        })
-        .collect();
-    events.sort();
-    let (mut now, mut max) = (0, 0);
-    for (_, d) in events {
-        now += d;
-        max = max.max(now);
-    }
-    max
-}
-
 #[test]
 fn parallel_items_each_get_a_project_and_exports() {
-    let b = Bench::new("parallel", &["a", "b", "c", "d"]);
+    let b = bench("parallel", &["a", "b", "c", "d"]);
     let p = b.pipeline(json!({
         "concurrency": 2,
         "steps": [
@@ -134,7 +55,7 @@ fn parallel_items_each_get_a_project_and_exports() {
 
 #[test]
 fn profile_outputs_export_through_the_engine_command() {
-    let b = Bench::new("profile", &["a"]);
+    let b = bench("profile", &["a"]);
     let p = b.pipeline(json!({"outputs": [{"name": "{name}-tiktok.mp4", "profile": "tiktok"}]}));
     let job = Job::create(&p, Some("profile")).unwrap();
     assert_eq!(run(&job, &b.opts()).unwrap().status, Status::Done);
@@ -146,7 +67,7 @@ fn profile_outputs_export_through_the_engine_command() {
 
 #[test]
 fn plugin_steps_get_the_cli_and_plugins_placeholders() {
-    let b = Bench::new("vars", &["a"]);
+    let b = bench("vars", &["a"]);
     // the "plugin" is the fake CLI ({cli}) running a script from the plugins folder ({plugins})
     let plugins = b.dir.join("data").join("bashcut-plugins");
     std::fs::create_dir_all(&plugins).unwrap();
@@ -161,7 +82,7 @@ fn plugin_steps_get_the_cli_and_plugins_placeholders() {
 
 #[test]
 fn a_failing_item_is_skipped_and_the_others_finish() {
-    let b = Bench::new("skip", &["a", "b", "c"]);
+    let b = bench("skip", &["a", "b", "c"]);
     let p = b.pipeline(json!({
         "steps": [{"command": "fake.failIf", "params": {"name": "{name}", "fail": "b"}}],
         "outputs": [{"name": "{name}.mp4"}]
@@ -183,7 +104,7 @@ fn a_failing_item_is_skipped_and_the_others_finish() {
 
 #[test]
 fn stop_on_failure_leaves_the_rest_not_run_and_a_new_run_finishes_them() {
-    let b = Bench::new("stop", &["a", "b", "c"]);
+    let b = bench("stop", &["a", "b", "c"]);
     let p = b.pipeline(json!({
         "onFailure": "stop",
         "steps": [{"command": "fake.failIf", "params": {"name": "{name}", "fail": "b"}}]
@@ -206,7 +127,7 @@ fn stop_on_failure_leaves_the_rest_not_run_and_a_new_run_finishes_them() {
 
 #[test]
 fn cancel_kills_the_running_step_and_starts_nothing_new() {
-    let b = Bench::new("cancel", &["a", "b"]);
+    let b = bench("cancel", &["a", "b"]);
     let p = b.pipeline(json!({"steps": [{"command": "fake.sleep", "params": {"ms": 5000}}]}));
     let job = Job::create(&p, Some("cancel")).unwrap();
     let canceller = {
@@ -232,7 +153,7 @@ fn cancel_kills_the_running_step_and_starts_nothing_new() {
 
 #[test]
 fn resume_after_a_kill_trips_the_running_step_instead_of_rerunning_it() {
-    let b = Bench::new("trip", &["a", "b"]);
+    let b = bench("trip", &["a", "b"]);
     let p = b.pipeline(json!({"steps": [{"command": "captions.auto"}], "outputs": [{"name": "{name}.mp4"}]}));
     let job = Job::create(&p, Some("trip")).unwrap();
     // As if the machine went down while a's step-1 ran: create done, step-1 running, a stale lock.
@@ -275,7 +196,7 @@ fn resume_after_a_kill_trips_the_running_step_instead_of_rerunning_it() {
 
 #[test]
 fn a_second_runner_on_the_same_job_is_refused() {
-    let b = Bench::new("lock", &["a"]);
+    let b = bench("lock", &["a"]);
     let job = Job::create(&b.pipeline(json!({})), Some("lock")).unwrap();
     // a live process that is not us holds the lock
     let script = b.dir.join("sleep.jsonl");
@@ -290,7 +211,7 @@ fn a_second_runner_on_the_same_job_is_refused() {
 
 /// One clip through `extra`, returning its item.
 fn one(tag: &str, extra: Value, cli: Option<&str>) -> (ItemState, Duration) {
-    let b = Bench::new(tag, &["x"]);
+    let b = bench(tag, &["x"]);
     let job = Job::create(&b.pipeline(extra), Some(tag)).unwrap();
     let mut opts = b.opts();
     if let Some(c) = cli {
@@ -334,7 +255,7 @@ fn failures_carry_a_category() {
 
 #[test]
 fn input_projects_and_template_projects_are_copied() {
-    let b = Bench::new("copy", &[]);
+    let b = bench("copy", &[]);
     std::fs::create_dir_all(b.dir.join("proj")).unwrap();
     std::fs::write(b.dir.join("proj/p.fcproj"), "orig\n").unwrap();
     let p = b.pipeline(json!({"inputs": ["proj/p.fcproj"], "steps": [{"command": "x.y"}]}));
@@ -343,7 +264,7 @@ fn input_projects_and_template_projects_are_copied() {
     assert_eq!(b.read("p.fcproj"), "orig\nx.y\n");
     assert_eq!(std::fs::read_to_string(b.dir.join("proj/p.fcproj")).unwrap(), "orig\n", "the input is untouched");
 
-    let b = Bench::new("template", &["a"]);
+    let b = bench("template", &["a"]);
     std::fs::write(b.dir.join("tpl.fcproj"), "tpl\n").unwrap();
     let p = b.pipeline(json!({"template": {"project": "tpl.fcproj"}, "steps": [{"command": "x.y"}]}));
     let job = Job::create(&p, Some("tpl")).unwrap();
@@ -353,7 +274,7 @@ fn input_projects_and_template_projects_are_copied() {
 
 #[test]
 fn an_existing_project_or_job_id_is_refused() {
-    let b = Bench::new("exists", &["a"]);
+    let b = bench("exists", &["a"]);
     let p = b.pipeline(json!({}));
     std::fs::create_dir_all(b.dir.join("out")).unwrap();
     std::fs::write(b.out("a.fcproj"), "mine").unwrap();
@@ -382,7 +303,7 @@ fn agent_pipeline_with(b: &Bench, mode: &str, extra: Value, more: Value) -> Pipe
 
 #[test]
 fn an_agent_step_is_reviewed_and_fixed_in_a_resumed_round() {
-    let b = Bench::new("agent-ok", &["a"]);
+    let b = bench("agent-ok", &["a"]);
     let job = Job::create(&agent_pipeline(&b, "ok", json!({})), Some("agent")).unwrap();
     let summary = run(&job, &b.opts()).unwrap();
     assert_eq!(summary.status, Status::Done, "{summary:?}");
@@ -405,7 +326,7 @@ fn an_agent_step_is_reviewed_and_fixed_in_a_resumed_round() {
 
 #[test]
 fn a_clean_first_round_needs_no_fix_round() {
-    let b = Bench::new("agent-first", &["a"]);
+    let b = bench("agent-first", &["a"]);
     let job = Job::create(&agent_pipeline(&b, "fixfirst", json!({})), Some("agent")).unwrap();
     assert_eq!(run(&job, &b.opts()).unwrap().status, Status::Done);
     let book = job.book().unwrap();
@@ -414,7 +335,7 @@ fn a_clean_first_round_needs_no_fix_round() {
 
 #[test]
 fn an_agent_out_of_turns_still_exports_its_last_save_and_needs_attention() {
-    let b = Bench::new("agent-loop", &["a"]);
+    let b = bench("agent-loop", &["a"]);
     let job = Job::create(&agent_pipeline_with(&b, "loop", json!({"maxTurns": 3}), json!({"outputs": [{"name": "{name}.mp4"}]})), Some("agent")).unwrap();
     let summary = run(&job, &b.opts()).unwrap();
     assert_eq!(summary.status, Status::NeedsAttention, "{summary:?}");
@@ -450,7 +371,7 @@ fn an_agent_out_of_turns_still_exports_its_last_save_and_needs_attention() {
 
 #[test]
 fn an_agent_past_max_minutes_is_stopped() {
-    let b = Bench::new("agent-sleep", &["a"]);
+    let b = bench("agent-sleep", &["a"]);
     let job = Job::create(&agent_pipeline(&b, "sleep", json!({"maxMinutes": 0.02})), Some("agent")).unwrap();
     let start = Instant::now();
     run(&job, &b.opts()).unwrap();
@@ -461,7 +382,7 @@ fn an_agent_past_max_minutes_is_stopped() {
 
 #[test]
 fn findings_left_after_the_fix_rounds_end_needs_fix() {
-    let b = Bench::new("agent-stubborn", &["a"]);
+    let b = bench("agent-stubborn", &["a"]);
     let job = Job::create(&agent_pipeline(&b, "stubborn", json!({"fixRounds": 1})), Some("agent")).unwrap();
     let summary = run(&job, &b.opts()).unwrap();
     assert_eq!(summary.status, Status::NeedsFix, "{summary:?}");
@@ -480,7 +401,7 @@ fn findings_left_after_the_fix_rounds_end_needs_fix() {
 #[test]
 fn every_sequence_the_agent_made_is_reviewed_and_fixed() {
     // #195: the agent cuts three clips and leaves the clean one active; the gate reviews all three
-    let b = Bench::new("agent-clips", &["a"]);
+    let b = bench("agent-clips", &["a"]);
     let job = Job::create(&agent_pipeline(&b, "clips", json!({})), Some("agent")).unwrap();
     let summary = run(&job, &b.opts()).unwrap();
     assert_eq!(summary.status, Status::Done, "{summary:?}");
@@ -501,7 +422,7 @@ fn every_sequence_the_agent_made_is_reviewed_and_fixed() {
 
 #[test]
 fn findings_left_in_any_sequence_end_needs_fix_and_survive_a_retry() {
-    let b = Bench::new("agent-clips-stubborn", &["a"]);
+    let b = bench("agent-clips-stubborn", &["a"]);
     let job = Job::create(&agent_pipeline(&b, "clipsstubborn", json!({"fixRounds": 1})), Some("agent")).unwrap();
     let summary = run(&job, &b.opts()).unwrap();
     assert_eq!(summary.status, Status::NeedsFix, "{summary:?}");
@@ -526,7 +447,7 @@ fn findings_left_in_any_sequence_end_needs_fix_and_survive_a_retry() {
 #[test]
 fn the_kit_reaches_agent_and_plugin_steps() {
     // #204: `--kit` is `{kit}`, `BASHCUT_KIT` and a line of the agent's prompt
-    let b = Bench::new("kit", &["a"]);
+    let b = bench("kit", &["a"]);
     let kit = b.dir.join("kit");
     std::fs::create_dir_all(kit.join("skills")).unwrap();
     let mut p = agent_pipeline(&b, "fixfirst", json!({"review": false}));
@@ -549,7 +470,7 @@ fn the_kit_reaches_agent_and_plugin_steps() {
     assert_eq!(project.matches(&format!("python-env:{python}\n")).count(), 2, "{project}");
     assert_eq!(project.matches("python-in-prompt\n").count(), 1, "the agent's prompt only: {project}");
     // without a kit, a step that needs one says how to give it
-    let b = Bench::new("nokit", &["a"]);
+    let b = bench("nokit", &["a"]);
     let p = b.pipeline(json!({"steps": [{"plugin": {"argv": ["python3", "{kit}/skills/captions-text/captions_fit.py", "apply"]}}]}));
     let summary = run(&Job::create(&p, Some("nokit")).unwrap(), &b.opts()).unwrap();
     assert_eq!(summary.status, Status::Failed, "{summary:?}");
@@ -561,7 +482,7 @@ fn the_kit_reaches_agent_and_plugin_steps() {
 
 #[test]
 fn agent_steps_respect_agent_concurrency() {
-    let b = Bench::new("agent-cap", &["a", "b", "c"]);
+    let b = bench("agent-cap", &["a", "b", "c"]);
     let mut p = agent_pipeline(&b, "fixfirst", json!({"review": false}));
     if let Some(a) = p.steps[0].agent.as_mut() {
         a.argv.extend(["--sleep-ms".to_string(), "300".to_string()]);
@@ -579,7 +500,7 @@ fn agent_steps_respect_agent_concurrency() {
 #[test]
 fn transcribe_steps_use_the_settings_speech_model_when_downloaded() {
     // filmcraft-cli does not read preferences.json: the runner passes the Settings model (#172)
-    let b = Bench::new("speech", &["a"]);
+    let b = bench("speech", &["a"]);
     let data = b.dir.join("data");
     std::fs::create_dir_all(&data).unwrap();
     std::fs::write(data.join("preferences.json"), r#"{"mediaAnalysis": {"whisperModel": "whisper-small"}}"#).unwrap();

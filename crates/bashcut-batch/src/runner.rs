@@ -11,6 +11,7 @@ use crate::book::{self, AgentUsage, Book, Category, ErrorInfo, Job, Status, Step
 use crate::governor::{self, KeepAwake, Meter, Probe, SystemProbe};
 use crate::pipeline::{self, AgentStep, CommandLine, OnFailure, Pipeline, StepKind, Vars};
 use crate::process::{self, Ended, Spec};
+use bashcut_dirs::fs::write_atomic;
 use serde::Serialize;
 use serde_json::Value;
 use std::io::Write;
@@ -624,14 +625,13 @@ fn create(sh: &Shared, idx: usize, s: usize, ctx: &Ctx) -> Result<(), ErrorInfo>
 /// `maxMinutes` covers the whole step, `maxTurns` each round; at most `agentConcurrency` agent steps
 /// run at once. Usage and transcripts go into the step's `agent`, the last review into `review`.
 fn agent_step(sh: &Shared, idx: usize, s: usize, ctx: &Ctx, key: &str, a: &AgentStep) -> Result<Vec<String>, ErrorInfo> {
-    let io = |e: std::io::Error, p: &Path| ErrorInfo::new(Category::Io, format!("{}: {e}", p.display()));
     let Some(_slot) = AgentSlot::take(sh) else { return Err(ErrorInfo::new(Category::Cancelled, format!("{key}: cancelled"))) };
     let start = Instant::now();
     let limit = a.max_duration();
     let roots = vec![ctx.dir.clone(), sh.pipeline.outputs_dir()];
     let (program, args) = agent::mcp_server(&cli(sh), sh.opts.mcp.as_deref(), &ctx.project, &roots);
     let config = ctx.dir.join(format!("{key}.mcp.json"));
-    std::fs::write(&config, agent::mcp_config(&program, &args).to_string()).map_err(|e| io(e, &config))?;
+    write_atomic(&config, agent::mcp_config(&program, &args).to_string().as_bytes()).map_err(|e| ErrorInfo::new(Category::Io, e.to_string()))?;
     let mut usage = AgentUsage { agent: if a.argv.is_empty() { a.agent_name().to_string() } else { "custom".into() }, ..AgentUsage::default() };
     let mut prompt = agent::first_prompt(a, &ctx.vars);
     let rounds = a.fix_rounds();
@@ -733,7 +733,7 @@ fn start_sequences(sh: &Shared, idx: usize, s: usize, ctx: &Ctx, key: &str) -> R
     }
     let list = agent::sequences(&inspect_step(sh, idx, s, ctx, &format!("{key}.inspect"))?);
     let text = serde_json::to_string(&list).map_err(|e| ErrorInfo::new(Category::Io, format!("{}: {e}", path.display())))?;
-    std::fs::write(&path, text).map_err(|e| ErrorInfo::new(Category::Io, format!("{}: {e}", path.display())))?;
+    write_atomic(&path, text.as_bytes()).map_err(|e| ErrorInfo::new(Category::Io, e.to_string()))?;
     Ok(list)
 }
 
@@ -785,7 +785,7 @@ fn write_script(ctx: &Ctx, key: &str, lines: &[CommandLine]) -> Result<PathBuf, 
         text.push('\n');
     }
     let path = ctx.dir.join(format!("{key}.jsonl"));
-    std::fs::write(&path, text).map_err(|e| ErrorInfo::new(Category::Io, format!("{}: {e}", path.display())))?;
+    write_atomic(&path, text.as_bytes()).map_err(|e| ErrorInfo::new(Category::Io, e.to_string()))?;
     Ok(path)
 }
 
@@ -837,9 +837,7 @@ fn outcome(ended: Ended, log: &Path, what: &str) -> Result<(), ErrorInfo> {
     let detail = reported_error(&out).or_else(|| err.lines().rev().find(|l| !l.trim().is_empty()).map(str::to_string)).unwrap_or_default();
     let status = code.map(|c| format!("exit {c}")).unwrap_or_else(|| "killed by a signal".into());
     let mut message = if detail.is_empty() { format!("{what}: {status}") } else { format!("{what}: {detail} ({status})") };
-    if message.chars().count() > MAX_MESSAGE {
-        message = message.chars().take(MAX_MESSAGE).collect::<String>() + "…";
-    }
+    message = process::cap(&message, MAX_MESSAGE);
     // after the cut, so the next step is always shown
     if let Some(next) = speech_next_step(&detail) {
         message = format!("{message}. {next}");

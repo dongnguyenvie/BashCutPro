@@ -107,7 +107,7 @@ Issue #60. `{"agent": {"skill", "brief", "agent"?, "argv"?, "maxTurns"?, "maxMin
    without `skills/` is a usage error) gives every agent step, unless it says `"kit": false`:
    - Claude Code: `--plugin-dir <kit>` (the `bcp:*` skills, no install needed) and, besides `mcp__bashcutpro`,
      `Skill`, `Read`, `Glob`, `Grep`, `Write`, `Edit`, `Bash(python3:*)`, `Bash(python:*)`, `Bash(ffmpeg:*)`,
-     `Bash(ffprobe:*)` (`agent::KIT_TOOLS`); the prompt still keeps writes in the item folder and the outputs;
+     `Bash(ffprobe:*)` (`agent::kit_tools`); the prompt still keeps writes in the item folder and the outputs;
    - every agent (Codex too): a prompt line naming `<kit>/skills/<name>/SKILL.md` and how to run its scripts, and
      `BASHCUT_KIT` in its environment;
    - every agent and plugin step: `BASHCUT_PYTHON` (`{python}`, one word such as `python` on Windows), named in the
