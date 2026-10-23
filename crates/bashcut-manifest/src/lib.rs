@@ -756,6 +756,63 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "test ticket: a codex-json agent section (mcpConfig with {mcpCommand}/{mcpArgs}, prompt [\"-\"], timeoutSecs) parses; timeoutSecs over 24 h and unknown events fail"]
-    fn codex_agent_plugins_are_checked() {}
+    fn codex_agent_plugins_are_checked() {
+        let mut v: Value = serde_json::from_str(&sample()).unwrap();
+        v["kind"] = json!("agent");
+        v["agent"] = json!({"args": ["exec", "--json"], "mcpConfig": ["-c", "mcp_servers.bashcut.command={mcpCommand}", "-c", "mcp_servers.bashcut.args={mcpArgs}"],
+            "prompt": ["-"], "events": "codex-json", "timeoutSecs": 3600});
+        let m = Manifest::parse(&v.to_string()).unwrap();
+        let a = m.agent.as_ref().unwrap();
+        assert_eq!((a.events.as_str(), a.prompt.as_slice(), a.timeout_secs, a.mcp_config.len()), (CODEX_JSON, &["-".to_string()][..], 3600, 4));
+        assert!(a.resume.is_empty(), "no resume: every turn starts fresh");
+        let mut b = v.clone();
+        b["agent"]["mcpConfig"] = json!(["--mcp-args", "{mcpArgs}"]);
+        assert!(Manifest::parse(&b.to_string()).is_ok(), "{{mcpArgs}} alone names the server");
+        b["agent"]["timeoutSecs"] = json!(MAX_AGENT_TIMEOUT);
+        assert!(Manifest::parse(&b.to_string()).is_ok(), "24 h is allowed");
+        b["agent"]["timeoutSecs"] = json!(MAX_AGENT_TIMEOUT + 1);
+        assert!(Manifest::parse(&b.to_string()).is_err(), "over 24 h");
+        b["agent"]["timeoutSecs"] = json!(-1);
+        assert!(Manifest::parse(&b.to_string()).is_err(), "negative");
+        let mut b = v.clone();
+        b["agent"]["events"] = json!("codex-jsonl");
+        assert!(Manifest::parse(&b.to_string()).is_err(), "unknown events");
+        b["agent"]["events"] = json!("");
+        assert!(Manifest::parse(&b.to_string()).is_ok(), "empty: the default format");
+        let mut b = v.clone();
+        b["agent"]["prompt"] = json!(vec!["-"; MAX_ARGS + 1]);
+        assert!(Manifest::parse(&b.to_string()).is_err(), "prompt args are capped");
+    }
+
+    #[test]
+    fn hooks_and_os_entries() {
+        let mut v: Value = serde_json::from_str(&sample()).unwrap();
+        v["hooks"] = json!([{"event": "export.before", "action": "go", "required": true, "timeoutSeconds": 120}, {"event": "project.saved", "action": "ping"}]);
+        let m = Manifest::parse(&v.to_string()).unwrap();
+        assert_eq!(m.hooks.len(), 2);
+        assert_eq!(m.hooks[0], Hook { event: "export.before".into(), action: "go".into(), required: true, timeout_seconds: Some(120) });
+        assert_eq!((m.hooks[1].required, m.hooks[1].timeout_seconds), (false, None), "defaults");
+        let hook = json!({"event": "project.saved", "action": "ping"});
+        v["hooks"] = json!(vec![hook.clone(); MAX_HOOKS]);
+        assert!(Manifest::parse(&v.to_string()).is_ok(), "{MAX_HOOKS} hooks");
+        v["hooks"] = json!(vec![hook; MAX_HOOKS + 1]);
+        assert!(Manifest::parse(&v.to_string()).unwrap_err().0.contains("too many hooks"));
+
+        // entry_for: the OS override, else `command`; an empty override falls back too
+        let mut v: Value = serde_json::from_str(&sample()).unwrap();
+        v["entry"]["macos"] = json!([]);
+        v["entry"]["linux"] = json!(["./run.sh"]);
+        let m = Manifest::parse(&v.to_string()).unwrap();
+        assert_eq!(m.entry_for(Os::Macos), ["python3", "plugin.py"], "empty override");
+        assert_eq!(m.entry_for(Os::Windows), ["py", "-3", "plugin.py"]);
+        assert_eq!(m.entry_for(Os::Linux), ["./run.sh"]);
+
+        // supports: an empty list means everywhere; other Unixes read as linux
+        assert!(Os::ALL.iter().all(|os| m.supports(*os)));
+        let only = |p: &[&str]| p.iter().map(|s| s.to_string()).collect::<Vec<_>>();
+        assert!(supports(&only(&["macos", "linux"]), Os::Linux));
+        assert!(supports(&only(&["linux"]), Os::from_name("freebsd")));
+        assert!(!supports(&only(&["macos", "linux"]), Os::Windows));
+        assert!(!supports(&only(&["Windows"]), Os::Windows), "names are exact");
+    }
 }

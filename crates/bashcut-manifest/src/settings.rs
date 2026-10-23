@@ -240,7 +240,15 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
+    #[cfg(unix)]
     #[test]
-    #[ignore = "test ticket: tool_with kills a key-store tool that outlives its timeout (unix `sleep 5`, 100 ms) and returns an error"]
-    fn key_store_tool_times_out() {}
+    fn key_store_tool_times_out() {
+        let start = std::time::Instant::now();
+        let e = tool_with("sleep", &["5"], None, Duration::from_millis(100)).unwrap_err();
+        assert!(e.0.contains("key store (sleep)") && e.0.contains("no answer"), "{e}");
+        assert!(start.elapsed() < child::GRACE, "stopped softly (TERM), not waited out: {:?}", start.elapsed());
+        // a tool that answers in time: its stdout without the line break, and its exit
+        assert_eq!(tool_with("sh", &["-c", "cat; echo; exit 1"], Some("sk-1"), Duration::from_secs(10)), Ok((false, "sk-1".to_string())));
+        assert!(tool_with("/nonexistent/bashcut-key-tool", &[], None, Duration::from_secs(1)).unwrap_err().0.contains("key store"));
+    }
 }
