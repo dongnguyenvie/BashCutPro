@@ -194,7 +194,7 @@ Fewer tags	Bớt thẻ
 1 clip selected	Đã chọn 1 clip
 Applied {look} to 1 clip	Đã áp {look} cho 1 clip
 Add files to run the batch.	Thêm tệp để chạy batch.
-Batches need the bashcutpro engine next to the app. Reinstall BashCutPro, or in a source build run `cargo build -p bashcutpro-cli`.	Batch cần bộ máy bashcutpro nằm cạnh ứng dụng. Hãy cài lại BashCutPro, hoặc nếu build từ mã nguồn thì chạy `cargo build -p bashcutpro-cli`.
+Batches need the bashcutpro engine next to the app. Reinstall BashCutPro, or in a source build run `cargo xtask dev` (builds the app and the engine together).	Batch cần bộ máy bashcutpro nằm cạnh ứng dụng. Hãy cài lại BashCutPro, hoặc nếu build từ mã nguồn thì chạy `cargo xtask dev` (dựng ứng dụng cùng bộ máy).
 {name} is already in {folder} from an earlier batch. Choose another Projects folder, or move it away.	{name} đã có trong {folder} từ một lần chạy trước. Hãy chọn thư mục Dự án khác, hoặc chuyển tệp đó đi chỗ khác.
 Open	Mở
 Mark done	Đánh dấu xong

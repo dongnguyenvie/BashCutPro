@@ -78,7 +78,7 @@ Treat anything above ~20 as "will conflict with any edit".
 | 47 | `apps/filmcraft/src/main.rs` | one hook (app icon); nothing new |
 | 43 | `crates/project/src/lib.rs` | project schema; never add fields; build projects with commands |
 | 41 | `crates/ui-egui/src/panels/effect_controls.rs` | never touch |
-| 40 | `xtask/src/main.rs` | one inserted line in `layer_of` |
+| 40 | `xtask/src/main.rs` | one inserted line in `layer_of`, one in `main` (`cargo xtask dev`) |
 | 40 | `crates/render/src/lib.rs` | never touch; word-caption styles (#49) try the no-hook route first |
 | 37 / 37 | `panels/monitor.rs`, `panels/dialogs.rs` | never touch (dialogs: one hook, our About tab) |
 | 36 | `crates/edit/src/lib.rs` | call through commands, not edit functions, where possible |

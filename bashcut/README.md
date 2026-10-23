@@ -24,6 +24,20 @@ and its own docs (`CLAUDE.md`, `AGENTS.md`, `docs/`) still apply in full.
 | [guide/](guide/README.md) | the user guide for Pro features, for non-technical users (English and Vietnamese) |
 | [bench/](bench/2026-10-20-rescore.md) | quality bench scorecards (#58), one file per run: numbers and small contact sheets only, no footage |
 
+## Quick start (developers)
+
+```sh
+cargo xtask dev -- --control 9876                      # build app + engine tools (debug), open the app
+cargo xtask dev --release --features whisper -- --control 9876
+```
+
+`cargo xtask dev` (DV1, `xtask/src/bashcut.rs`) runs one `cargo build` of `filmcraft`, `bashcutpro-cli`
+(`bashcutpro` / `bcpro`), `bashcut-mcp`, `bashcut-batch-cli` (`bashcut-batch`) and `bashcut-doctor` in the same
+profile, then starts `target/<profile>/filmcraft` with the args after `--` and returns its exit code. A bare feature
+(`--features whisper`) is turned on in every one of those packages that has it. Use it instead of
+`cargo run -p filmcraft`, which rebuilds only the app: agents, plugins, Batch and doctor then find a missing or stale
+engine next to it. `CARGO_TARGET_DIR` is respected. There is no `cargo dev` alias: `.cargo/config.toml` is upstream's.
+
 ## What BashCutPro is
 
 - A fork of **FilmCraft** (pure-Rust, Premiere-parity NLE, MIT / Apache-2.0):
