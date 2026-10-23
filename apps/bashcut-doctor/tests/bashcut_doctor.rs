@@ -3,8 +3,8 @@
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
-use bashcut_doctor::env::{parse_df_free, parse_meminfo_total};
-use bashcut_doctor::{Env, Level, Options, Output, REQUIRED_COMMANDS, Report, meets, parse_version, run_checks, updates};
+use bashcut_doctor::env::{RUN_TIMEOUT, parse_df_free, parse_meminfo_total};
+use bashcut_doctor::{Env, Level, Options, Output, REQUIRED_COMMANDS, RealEnv, Report, cli_program, meets, parse_version, run_checks, updates};
 
 const GB: u64 = 1 << 30;
 
@@ -16,6 +16,8 @@ struct Fake {
     hashes: BTreeMap<PathBuf, String>,
     free: Option<u64>,
     ram: Option<u64>,
+    /// `linux` when unset.
+    os: Option<&'static str>,
 }
 
 impl Fake {
@@ -84,7 +86,7 @@ impl Env for Fake {
         self.ram
     }
     fn os(&self) -> &str {
-        "linux"
+        self.os.unwrap_or("linux")
     }
 }
 
@@ -128,16 +130,24 @@ fn missing_cli_fails_with_a_fix() {
 
 #[test]
 fn pro_name_first_and_filmcraft_cli_still_works() {
-    // only bashcutpro installed (#154)
+    // only bashcutpro installed (#154): the lookup finds it on the fake's PATH (DR1)
+    let dir = std::env::temp_dir().join(format!("bashcut-doctor-pro-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    let pro = dir.join(format!("bashcutpro{}", std::env::consts::EXE_SUFFIX));
+    std::fs::write(&pro, b"").unwrap();
+    let pro = pro.to_string_lossy().into_owned();
     let mut f = Fake::healthy();
+    f.vars.insert("PATH".into(), dir.to_string_lossy().into_owned());
     let old: Vec<(String, Output)> = std::mem::take(&mut f.programs).into_iter().collect();
     for (k, v) in old {
-        f.programs.insert(k.replace("filmcraft-cli", "bashcutpro"), v);
+        f.programs.insert(k.replace("filmcraft-cli", &pro), v);
     }
     let r = run_checks(&f, &Options::default());
     assert_eq!(level(&r, "cli"), Level::Ok);
-    assert!(r.findings.iter().any(|x| x.id == "cli" && x.message.contains("(bashcutpro)")), "{:?}", r.findings);
+    assert!(r.findings.iter().any(|x| x.id == "cli" && x.message.ends_with(&format!("({pro})"))), "{:?}", r.findings);
     assert_eq!(level(&r, "cli.commands"), Level::Ok);
+    let _ = std::fs::remove_dir_all(&dir);
     // only filmcraft-cli: the healthy machine as it was
     let r = run_checks(&Fake::healthy(), &Options::default());
     assert!(r.findings.iter().any(|x| x.id == "cli" && x.message.contains("(filmcraft-cli)")), "{:?}", r.findings);
@@ -285,9 +295,95 @@ fn kit_installed_as_claude_plugin_or_by_setup_is_found() {
 }
 
 #[test]
-#[ignore = "test ticket: BASHCUT_FILMCRAFT_CLI names the engine; with no variable and a temp dir holding only `bcpro` as the fake's PATH, cli_program is <dir>/bcpro (engine::lookup, DR1); no variable and no PATH gives filmcraft-cli"]
-fn shared_engine_lookup_honours_bcpro_and_bashcut_filmcraft_cli() {}
+fn shared_engine_lookup_honours_bcpro_and_bashcut_filmcraft_cli() {
+    let cli = |f: &Fake| cli_program(f, &Options::default());
+    let finding = |f: &Fake| run_checks(f, &Options::default()).findings.into_iter().find(|x| x.id == "cli").map(|x| (x.level, x.message));
+    // the older variable batch and bashcut-mcp used
+    let mut f = Fake::healthy();
+    f.vars.insert("BASHCUT_FILMCRAFT_CLI".into(), "/opt/bc/engine".into());
+    f.program("/opt/bc/engine --version", 0, "bashcutpro 0.9.0\n");
+    assert_eq!(cli(&f), "/opt/bc/engine");
+    assert_eq!(finding(&f), Some((Level::Ok, "bashcutpro 0.9.0 (/opt/bc/engine)".into())));
+    // BASHCUTPRO_CLI wins; an empty one counts as unset
+    f.vars.insert("BASHCUTPRO_CLI".into(), "/opt/pro".into());
+    assert_eq!(cli(&f), "/opt/pro");
+    f.vars.insert("BASHCUTPRO_CLI".into(), String::new());
+    assert_eq!(cli(&f), "/opt/bc/engine");
+
+    // no variable, and the fake's PATH holds only `bcpro` (the macOS bundle's name)
+    let dir = std::env::temp_dir().join(format!("bashcut-doctor-bcpro-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    let bcpro = dir.join(format!("bcpro{}", std::env::consts::EXE_SUFFIX));
+    std::fs::write(&bcpro, b"").unwrap();
+    let mut f = Fake::healthy();
+    f.vars.insert("PATH".into(), dir.to_string_lossy().into_owned());
+    let program = bcpro.to_string_lossy().into_owned();
+    assert_eq!(cli(&f), program);
+    f.program(&format!("{program} --version"), 0, "bashcutpro 0.9.0\n");
+    let (level, message) = finding(&f).unwrap();
+    assert_eq!(level, Level::Ok);
+    assert!(message.ends_with(&format!("({program})")) && message.contains("bcpro"), "{message}");
+    let _ = std::fs::remove_dir_all(&dir);
+
+    // nothing names or holds an engine
+    assert_eq!(cli(&Fake::default()), "filmcraft-cli");
+}
 
 #[test]
-#[ignore = "test ticket: RealEnv::run stops a probe that hangs (unix `sleep 60`, or one that reads stdin) after RUN_TIMEOUT with code None, keeps stdout under its cap, and stdin is null (DR1)"]
-fn real_run_times_out_with_null_stdin() {}
+fn an_invalid_manifest_warns_under_its_folder_name() {
+    let mut f = Fake::healthy();
+    f.file("data/bashcut-plugins/broken/bashcut-plugin.json", br#"{"schema":"bashcut-plugin/1","id":"../evil id","version":"x"}"#);
+    f.file("data/bashcut-plugins/we!rd.name/bashcut-plugin.json", b"{");
+    let r = run_checks(&f, &Options::default());
+    assert_eq!(level(&r, "plugin.broken"), Level::Warn, "{}", r.to_text());
+    assert_eq!(level(&r, "plugin.werdname"), Level::Warn, "only letters, digits, - and _ of the folder name");
+    assert!(r.findings.iter().any(|x| x.id == "plugin.broken" && x.fix.as_deref().is_some_and(|fix| fix.contains("reinstall"))));
+    assert!(!r.findings.iter().any(|x| x.id.contains("evil")), "{}", r.to_text());
+    assert_eq!(level(&r, "plugin.bashcut.translate-captions"), Level::Ok, "the good plugin is still checked");
+    assert_eq!(r.exit_code(), 0, "a bad plugin does not stop a run");
+}
+
+#[test]
+fn other_unixes_use_the_linux_entry() {
+    let mut f = Fake::healthy();
+    f.file(
+        "data/bashcut-plugins/tc/bashcut-plugin.json",
+        br#"{"schema":"bashcut-plugin/1","id":"bashcut.translate-captions","version":"0.1.0","runtime":{"type":"python","version":">=3.9"},"entry":{"command":["python3","plugin.py"],"linux":["python3.11","plugin.py"],"windows":["py","-3","plugin.py"]}}"#,
+    );
+    f.program("python3.11 --version", 0, "Python 3.11.4\n");
+    f.program("py -3 --version", 0, "Python 3.13.0\n");
+    let msg =
+        |f: &Fake| run_checks(f, &Options::default()).findings.into_iter().find(|x| x.id == "plugin.bashcut.translate-captions").map(|x| (x.level, x.message));
+    for os in ["linux", "freebsd", "openbsd"] {
+        f.os = Some(os);
+        assert_eq!(msg(&f), Some((Level::Ok, "bashcut.translate-captions 0.1.0, Python 3.11.4".into())), "{os}");
+    }
+    f.os = Some("windows");
+    assert!(msg(&f).is_some_and(|(_, m)| m.ends_with("Python 3.13.0")), "the -3 flag is kept for py");
+    // macOS has no key: the plain command
+    f.os = Some("macos");
+    assert!(msg(&f).is_some_and(|(_, m)| m.ends_with("Python 3.12.1")));
+}
+
+#[test]
+fn real_run_times_out_with_null_stdin() {
+    use std::time::{Duration, Instant};
+    // a program that reads stdin ends at once: stdin is null, not the test's
+    let (reader, args): (&str, &[&str]) = if cfg!(windows) { ("findstr", &["x"]) } else { ("cat", &[]) };
+    let t = Instant::now();
+    let out = RealEnv.run(reader, args).expect("starts");
+    assert!(out.code.is_some(), "{out:?}");
+    assert!(t.elapsed() < Duration::from_secs(10), "waited on stdin");
+    assert!(RealEnv.run("bashcut-doctor-no-such-program", &[]).is_none());
+
+    // one that hangs is stopped after RUN_TIMEOUT, with no exit code
+    let (sleeper, args): (&str, &[&str]) = if cfg!(windows) { ("ping", &["-n", "120", "127.0.0.1"]) } else { ("sleep", &["120"]) };
+    let t = Instant::now();
+    let out = RealEnv.run(sleeper, args).expect("starts");
+    let took = t.elapsed();
+    assert_eq!(out.code, None, "{out:?}");
+    assert!(!out.ok());
+    assert!(out.stderr.contains("stopped after"), "{}", out.stderr);
+    assert!(took >= RUN_TIMEOUT && took < RUN_TIMEOUT + Duration::from_secs(20), "{took:?}");
+}

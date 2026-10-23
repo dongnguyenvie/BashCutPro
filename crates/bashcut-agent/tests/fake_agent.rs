@@ -1,7 +1,7 @@
 //! The agent session against a scripted fake agent (a Python script speaking Claude Code's
 //! stream-json): a turn's events reach the transcript, the next turn resumes the session, gates are
 //! answered and sent, a failing agent shows its error, Stop ends a hanging one, and conversations are
-//! kept next to the project. Skipped when `python3` is missing.
+//! kept next to the project. Skipped when neither `python3` nor `python` runs.
 
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -33,9 +33,9 @@ print("not json", flush=True)
 out({"type": "result", "subtype": "success", "is_error": False, "result": "done", "session_id": session, "num_turns": 1})
 "#;
 
+/// `python3`, else `python` (Windows installs only the latter; its `python3` is a store stub that fails).
 fn python() -> Option<String> {
-    let ok = Command::new("python3").arg("--version").output().map(|o| o.status.success()).unwrap_or(false);
-    ok.then(|| "python3".to_string())
+    ["python3", "python"].into_iter().find(|p| Command::new(p).arg("--version").output().map(|o| o.status.success()).unwrap_or(false)).map(str::to_string)
 }
 
 fn setup(name: &str) -> Option<(PathBuf, AgentSpec, Context)> {
@@ -206,5 +206,42 @@ fn codex_turns_resume_and_show_tool_calls() {
     run(&mut agent);
     assert!(agent.conversation.transcript.items.iter().any(|i| matches!(i, Item::Error { message } if message == "quota reached")));
     assert!(matches!(agent.status, Status::Failed { .. }));
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn codex_json_agent_plugin_runs_a_turn() {
+    let Some((dir, spec, ctx)) = setup("plugin") else { return };
+    let py = spec.argv[0].clone();
+    let data = dir.join("data");
+    let folder = bashcut_plugin_host::plugins_dir(&data).join("test.codex");
+    std::fs::create_dir_all(&folder).unwrap();
+    std::fs::write(folder.join("codex.py"), FAKE_CODEX).unwrap();
+    let manifest = serde_json::json!({
+        "schema": "bashcut-plugin/1", "id": "test.codex", "name": "Fake Codex", "version": "0.1.0", "summary": "test agent",
+        "kind": "agent",
+        "entry": {"command": [py, folder.join("codex.py").to_string_lossy()]},
+        "settings": [{"id": "model", "title": "Model", "type": "string", "default": "m1", "env": ["FAKE_MODEL"]}],
+        "agent": {"events": "codex-json", "resume": ["resume", "{session}"], "prompt": ["-"], "timeoutSecs": 30}
+    });
+    std::fs::write(folder.join("bashcut-plugin.json"), manifest.to_string()).unwrap();
+    // only saved values reach the env (a default the user never saved is the plugin's to apply)
+    std::fs::write(folder.join("settings.json"), r#"{"model":"m2"}"#).unwrap();
+    let host = bashcut_plugin_host::Host::new(Some(data), std::sync::Arc::new(bashcut_plugin_host::settings::MemoryStore::default()));
+    let launches = host.agents();
+    assert_eq!(launches.len(), 1, "{:?}", host.installed().iter().map(|p| &p.error).collect::<Vec<_>>());
+    let spec = AgentSpec::from(launches[0].clone());
+    assert_eq!((spec.id.as_str(), spec.name.as_str(), spec.events.as_str(), spec.timeout_secs), ("test.codex", "Fake Codex", "codex-json", 30));
+    assert!(spec.env.iter().any(|(k, v)| k == "FAKE_MODEL" && v == "m2"), "{:?}", spec.env);
+
+    let mut agent = Agent::new(vec![AgentSpec::claude_code(None), spec]);
+    agent.use_agent("test.codex").unwrap();
+    agent.send("cut the intro", &ctx).unwrap();
+    run(&mut agent);
+    assert_eq!(agent.status, Status::Idle, "{:?}", agent.conversation.transcript.items);
+    assert_eq!(agent.conversation.agent, "test.codex");
+    assert_eq!(agent.conversation.session, "th-1");
+    assert!(agent.conversation.transcript.items.iter().any(|i| matches!(i, Item::Tool { output: Some(o), .. } if o == "ok")));
+    assert!(agent.conversation.transcript.last_answer().unwrap().contains("cut the intro"));
     let _ = std::fs::remove_dir_all(&dir);
 }

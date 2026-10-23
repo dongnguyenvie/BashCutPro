@@ -100,7 +100,7 @@ decides something; don't change an old one, add a new one that supersedes it.
   bins `include!` the result. Command ids, JSON fields, MCP tool names and `FILMCRAFT_*` vars are unchanged.
 - **Why this layout:** the crate always exists, so `Cargo.lock` is stable and `cargo build` works on a fresh clone
   without a script; the generated source lives in `target/` only (nothing to gitignore); upstream's crate stays
-  byte-identical and keeps its own tests (the copy has none).
+  byte-identical and keeps its own tests (the copy carries them too: the `bashcutpro` bin runs its tests since T5, for `src/bridge_default.rs`).
 - **Loud failure:** `build.rs` fails the build when an anchor string, the file list, the `mod` lines, the crate
   attribute or upstream's `[dependencies]` change, naming what to update.
 - **Lookups:** our tools try `bashcutpro`, then `bcpro` (the only name inside the macOS app bundle, #187), then

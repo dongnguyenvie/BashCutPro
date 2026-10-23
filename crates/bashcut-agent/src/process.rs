@@ -336,12 +336,75 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "test ticket: a new bridge gets its own MCP config file and the session removes the stale one"]
-    fn mcp_config_is_named_by_bridge_and_rewritten_on_change() {}
+    fn mcp_config_is_named_by_bridge_and_rewritten_on_change() {
+        use crate::session::{Agent, Context};
+        let (a, b) = ("127.0.0.1:47001", "127.0.0.1:47002");
+        assert_eq!(mcp_config_path("cli", a), mcp_config_path("cli", a));
+        assert_ne!(mcp_config_path("cli", a), mcp_config_path("cli", b));
+        assert_ne!(mcp_config_path("cli", a), mcp_config_path("other-cli", a));
+        // a turn of the test binary itself (it refuses the arguments and exits at once)
+        let exe = std::env::current_exe().unwrap().to_string_lossy().into_owned();
+        let spec =
+            AgentSpec { id: "t".into(), argv: vec![exe, "--list".into()], mcp_args: vec!["--mcp-config".into(), "{config}".into()], ..AgentSpec::default() };
+        let mut agent = Agent::new(vec![spec]);
+        let turn = |agent: &mut Agent, bridge: &str| {
+            let ctx = Context { cli: Some("cli".into()), bridge: Some(bridge.into()), ..Context::default() };
+            agent.send("hi", &ctx).unwrap();
+            let end = std::time::Instant::now() + Duration::from_secs(20);
+            while agent.poll() {
+                assert!(std::time::Instant::now() < end, "the turn did not end");
+                std::thread::sleep(Duration::from_millis(20));
+            }
+        };
+        turn(&mut agent, a);
+        let first = mcp_config_path("cli", a);
+        let text = std::fs::read_to_string(&first).unwrap();
+        assert!(text.contains(a) && text.contains("\"cli\""), "{text}");
+        turn(&mut agent, a);
+        assert!(first.is_file(), "the same bridge keeps its file");
+        turn(&mut agent, b);
+        let second = mcp_config_path("cli", b);
+        assert!(second.is_file() && std::fs::read_to_string(&second).unwrap().contains(b));
+        assert!(!first.exists(), "the stale config is removed");
+        agent.shutdown();
+        assert!(!second.exists(), "shutdown removes the config");
+    }
 
     #[test]
-    #[ignore = "test ticket: AgentSpec::from(AgentLaunch) keeps prompt args and events, maps timeout 0 to the default and caps it at 24 h"]
-    fn agent_launch_becomes_a_spec() {}
+    fn agent_launch_becomes_a_spec() {
+        let launch = bashcut_manifest::AgentLaunch {
+            id: "bashcut.codex-agent".into(),
+            name: "Codex agent".into(),
+            argv: vec!["/p/codex".into(), "exec".into(), "--json".into()],
+            mcp_args: vec!["-c".into(), "mcp_servers.filmcraft.command={mcpCommand}".into()],
+            resume_args: vec!["resume".into(), "{session}".into()],
+            prompt_args: vec!["-".into()],
+            events: codex_json::FORMAT.into(),
+            env: vec![("BASHCUT_PLUGIN_HOST".into(), "1".into())],
+            timeout_secs: 0,
+        };
+        let spec = AgentSpec::from(launch.clone());
+        assert_eq!(spec.id, launch.id);
+        assert_eq!(spec.name, launch.name);
+        assert_eq!(spec.argv, launch.argv);
+        assert_eq!(spec.mcp_args, launch.mcp_args);
+        assert_eq!(spec.resume_args, launch.resume_args);
+        assert_eq!(spec.prompt_args, ["-"]);
+        assert_eq!(spec.events, codex_json::FORMAT);
+        assert_eq!(spec.env, launch.env);
+        assert_eq!(spec.timeout_secs, AgentSpec::default().timeout_secs, "0 is the default");
+        assert!(spec.check().is_ok());
+        let capped = AgentSpec::from(bashcut_manifest::AgentLaunch { timeout_secs: u64::MAX, ..launch.clone() });
+        assert_eq!(capped.timeout_secs, 24 * 60 * 60);
+        assert_eq!(AgentSpec::from(bashcut_manifest::AgentLaunch { timeout_secs: 90, ..launch.clone() }).timeout_secs, 90);
+        // no events: Claude Code's stream-json
+        assert_eq!(AgentSpec::from(bashcut_manifest::AgentLaunch { events: String::new(), ..launch }).events, stream_json::FORMAT);
+        // the serde forms match: a launch reads back as a spec
+        let v = serde_json::to_value(bashcut_manifest::AgentLaunch { id: "x".into(), prompt_args: vec!["-".into()], timeout_secs: 5, ..Default::default() })
+            .unwrap();
+        let back: AgentSpec = serde_json::from_value(v).unwrap();
+        assert_eq!((back.id.as_str(), back.prompt_args.as_slice(), back.timeout_secs), ("x", ["-".to_string()].as_slice(), 5));
+    }
 
     #[test]
     fn lines_are_split_and_capped() {

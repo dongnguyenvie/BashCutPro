@@ -154,4 +154,22 @@ mod tests {
         }
         assert!(p.started.len() <= MAX_STARTED);
     }
+
+    #[test]
+    fn a_large_tool_call_input_is_truncated() {
+        let mut p = Parser::default();
+        let call = |id: &str, args: &str| {
+            format!(
+                r#"{{"type":"item.started","item":{{"id":"{id}","type":"mcp_tool_call","server":"filmcraft","tool":"command_execute","arguments":{{"text":"{args}"}}}}}}"#
+            )
+        };
+        let big = p.parse_line(&call("big", &"y".repeat(9 * 1024)));
+        assert!(matches!(&big[..], [Event::ToolUse { input, .. }] if *input == json!({"truncated": true})), "{big:?}");
+        let small = p.parse_line(&call("small", "short"));
+        assert!(matches!(&small[..], [Event::ToolUse { input, .. }] if input["text"] == "short"), "{small:?}");
+        // file changes are capped the same way
+        let changes =
+            format!(r#"{{"type":"item.completed","item":{{"id":"f","type":"file_change","changes":["{}"],"status":"completed"}}}}"#, "z".repeat(9 * 1024));
+        assert!(matches!(&p.parse_line(&changes)[0], Event::ToolUse { input, .. } if input["truncated"] == true));
+    }
 }

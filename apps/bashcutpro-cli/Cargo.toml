@@ -11,10 +11,10 @@ build = "build.rs"
 [lints]
 workspace = true
 
+# Tests on: `src/bridge_default.rs` has unit tests (T5); upstream's copied tests run with them.
 [[bin]]
 name = "bashcutpro"
 path = "src/main.rs"
-test = false
 
 # The short alias: the same program under a second name (#154).
 [[bin]]
