@@ -579,6 +579,8 @@ dependencies = [
 name = "bashcutpro-cli"
 version = "0.10.0"
 dependencies = [
+ "bashcut-connect",
+ "bashcut-dirs",
  "filmcraft-automation",
  "filmcraft-codecs",
  "filmcraft-engine",

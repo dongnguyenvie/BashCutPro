@@ -3,6 +3,19 @@
 Newest first. Each entry: what was decided, why, and what it rules out. Add an entry when the owner
 decides something; don't change an old one, add a new one that supersedes it.
 
+## 2026-10-23: `bashcutpro --bridge` defaults to the open BashCutPro (CC2)
+
+- **Decided:** `bashcutpro`/`bcpro` add `--bridge <address>` from `<data dir>/bashcut/automation.json` (CC1; read with
+  `bashcut_dirs::data_dir` + `bashcut_connect::automation::live`: live pid, loopback, port answers within 300 ms) when the subcommand talks to
+  the bridge (`commands`, `describe`, `exec`, `run`, `inspect`, `import`, `export`, `mcp`), no `--bridge` is given,
+  none of `--project`/`--demo`/`--save`/`--save-as`/`--data-dir` is (they mean the headless engine) and
+  `BASHCUT_BRIDGE` is not `off`. A note on stderr names the address. No window found: headless, as before.
+- **Where:** `apps/bashcutpro-cli/src/bridge_default.rs`; one `build.rs` anchor routes upstream's argument list
+  through it. The subcommand list lives in `build.rs` (`BRIDGED` + `NOT_BRIDGED` = `render`), which fails the build
+  when upstream's `match cmd` arms that use `Backend::open(` / `"--bridge"` no longer match it.
+- **Rules out:** a default bridge for `render` (headless only) and for callers that name a project; our own tools
+  that want the headless engine pass `--project`/`--data-dir` or set `BASHCUT_BRIDGE=off`.
+
 ## 2026-10-23: Doctor uses the shared engine lookup; its model check stays on the plugins' cache (RCB)
 
 - **Decided (RC2):** `bashcut-doctor` picks the engine like batch and the UI: `--cli`, else `bashcut_dirs::engine`
@@ -16,6 +29,7 @@ decides something; don't change an old one, add a new one that supersedes it.
   the plugins' downloader (`bashcut_models.py`) caches what `models.json` lists, `models` holds the engine's
   speech/voice models. Pointing the check at `models` would report every plugin model missing. Named
   `bashcut_doctor::PLUGIN_MODELS_DIR` so the difference is visible.
+
 
 ## 2026-10-23: Control channel on by default (CC1)
 

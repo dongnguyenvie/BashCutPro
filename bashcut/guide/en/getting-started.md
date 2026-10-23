@@ -6,6 +6,8 @@ Install BashCutPro from its package for your system (macOS `.app`, Windows insta
 Every package also carries the command line `bashcutpro` (short name `bcpro`; it runs the editor's engine
 `filmcraft-cli`, which sits beside it) and three helper programs: `bashcut-doctor` (checks your setup), `bashcut-batch`
 (runs batches) and `bashcut-mcp` (lets an AI agent reach the open window), plus a first-run setup script.
+While BashCutPro is open, `bashcutpro exec …` (and `run`, `inspect`, `mcp`, …) works on the open window; add
+`--project`, or set `BASHCUT_BRIDGE=off`, to use the engine without the window.
 
 ### No package yet? Build it from source
 
