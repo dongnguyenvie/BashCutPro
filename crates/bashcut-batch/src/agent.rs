@@ -554,6 +554,30 @@ mod tests {
     }
 
     #[test]
+    fn claude_uses_only_the_items_server_and_never_waits_on_a_permission_prompt() {
+        let cfg = PathBuf::from("/c.json");
+        let mut kit = vars();
+        kit.0.push(("kit", "/k".into()));
+        for (s, v, session) in [(step(json!({"skill": "x"})), vars(), None), (step(json!({"skill": "x", "agent": "claude"})), kit, Some("abc"))] {
+            let a = argv(&Launch { step: &s, vars: &v, prompt: "go", session, mcp_config: &cfg });
+            assert_eq!(a.iter().filter(|x| *x == "--strict-mcp-config").count(), 1, "{a:?}");
+            assert!(a.windows(2).any(|w| w[0] == "--permission-prompts" && w[1] == "none"), "{a:?}");
+            assert!(a.windows(2).any(|w| w[0] == "--mcp-config" && w[1] == "/c.json"), "{a:?}");
+        }
+        // codex has its own flags; a step's own argv is used as written
+        let codex = argv(&Launch { step: &step(json!({"skill": "x", "agent": "codex"})), vars: &vars(), prompt: "go", session: None, mcp_config: &cfg });
+        assert!(!codex.iter().any(|x| x == "--strict-mcp-config" || x == "--permission-prompts"), "{codex:?}");
+        let own = argv(&Launch {
+            step: &step(json!({"skill": "x", "argv": ["my-agent", "{prompt}"]})),
+            vars: &vars(),
+            prompt: "go",
+            session: None,
+            mcp_config: &cfg,
+        });
+        assert_eq!(own, vec!["my-agent", "go"]);
+    }
+
+    #[test]
     fn the_kit_is_a_plugin_dir_with_its_tools_and_named_in_the_prompt() {
         let s = step(json!({"skill": "captions-text", "allowedTools": ["Bash(sox:*)"]}));
         let mut v = vars();
