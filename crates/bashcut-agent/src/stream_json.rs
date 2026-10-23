@@ -8,7 +8,7 @@ use serde_json::{Value, json};
 use crate::clip;
 
 /// The event format name in agent specs and plugin manifests.
-pub const FORMAT: &str = "claude-stream-json";
+pub const FORMAT: &str = bashcut_manifest::CLAUDE_STREAM_JSON;
 /// Longest text kept from one block.
 pub const MAX_TEXT: usize = 32 * 1024;
 /// Longest tool input kept (as JSON text).
@@ -43,6 +43,15 @@ pub enum Event {
     },
     /// Something we show but do not model (an unparsable line, an agent error message).
     Notice(String),
+}
+
+/// The stateless [`crate::format::Decode`]r of this format.
+pub struct Parser;
+
+impl crate::format::Decode for Parser {
+    fn parse_line(&mut self, line: &str) -> Vec<Event> {
+        parse_line(line)
+    }
 }
 
 /// The events of one stdout line (an assistant message can hold several blocks).

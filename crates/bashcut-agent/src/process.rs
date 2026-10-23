@@ -15,6 +15,7 @@ use bashcut_dirs::child::{self, Opts, Stop};
 use serde::{Deserialize, Serialize};
 
 use crate::codex_json;
+use crate::format::{self, Decode};
 use crate::stream_json::{self, Event};
 use crate::{Error, Result, err};
 
@@ -40,8 +41,8 @@ pub struct AgentSpec {
     pub resume_args: Vec<String>,
     /// Arguments after everything else (Codex: `-`, the prompt comes from stdin).
     pub prompt_args: Vec<String>,
-    /// Event format of stdout: [`stream_json::FORMAT`] or [`codex_json::FORMAT`]; it also sets how
-    /// the message is written to stdin.
+    /// Event format of stdout, a [`format::FORMATS`] name; it also sets how the message is written
+    /// to stdin.
     pub events: String,
     /// Extra environment.
     pub env: Vec<(String, String)>,
@@ -102,15 +103,7 @@ impl AgentSpec {
         if self.argv.is_empty() || self.argv.len() > 128 {
             return err(format!("agent `{}` has no command", self.id));
         }
-        if self.events != stream_json::FORMAT && self.events != codex_json::FORMAT {
-            return err(format!(
-                "agent `{}`: event format `{}` is not supported (use {} or {})",
-                self.id,
-                self.events,
-                stream_json::FORMAT,
-                codex_json::FORMAT
-            ));
-        }
+        format::find(&self.events).map_err(|e| Error(format!("agent `{}`: {}", self.id, e.0)))?;
         Ok(())
     }
 
@@ -136,6 +129,25 @@ impl AgentSpec {
     }
 }
 
+/// An agent plugin as the host lists it (RC6): the same fields, a timeout of 0 meaning the default and
+/// the rest capped at [`bashcut_manifest::MAX_AGENT_TIMEOUT`].
+impl From<bashcut_manifest::AgentLaunch> for AgentSpec {
+    fn from(a: bashcut_manifest::AgentLaunch) -> Self {
+        let d = AgentSpec::default();
+        AgentSpec {
+            id: a.id,
+            name: a.name,
+            argv: a.argv,
+            mcp_args: a.mcp_args,
+            resume_args: a.resume_args,
+            prompt_args: a.prompt_args,
+            events: if a.events.is_empty() { d.events } else { a.events },
+            env: a.env,
+            timeout_secs: if a.timeout_secs == 0 { d.timeout_secs } else { a.timeout_secs.min(bashcut_manifest::MAX_AGENT_TIMEOUT) },
+        }
+    }
+}
+
 /// The `filmcraft` server of an MCP config written by [`write_mcp_config`]: its command as a quoted
 /// string and its arguments as an array (JSON strings and arrays of strings are valid TOML too).
 fn mcp_server(config: &Path) -> Result<(String, String)> {
@@ -146,30 +158,6 @@ fn mcp_server(config: &Path) -> Result<(String, String)> {
     let args: Vec<&str> =
         server.get("args").and_then(serde_json::Value::as_array).map(|a| a.iter().filter_map(serde_json::Value::as_str).collect()).unwrap_or_default();
     Ok((serde_json::json!(command).to_string(), serde_json::json!(args).to_string()))
-}
-
-/// Reads an agent's stdout in its event format.
-enum Decoder {
-    Claude,
-    Codex(codex_json::Parser),
-}
-
-impl Decoder {
-    fn new(events: &str) -> Decoder {
-        if events == codex_json::FORMAT { Decoder::Codex(codex_json::Parser::default()) } else { Decoder::Claude }
-    }
-
-    fn parse_line(&mut self, line: &str) -> Vec<Event> {
-        match self {
-            Decoder::Claude => stream_json::parse_line(line),
-            Decoder::Codex(p) => p.parse_line(line),
-        }
-    }
-}
-
-/// The message as the agent reads it on stdin.
-fn input(events: &str, message: &str) -> String {
-    if events == codex_json::FORMAT { message.to_string() } else { format!("{}\n", stream_json::user_message(message)) }
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -199,17 +187,18 @@ impl Turn {
     /// Start `argv` in `cwd` and send `message`; stdout is read as `events` (an [`AgentSpec::events`]).
     pub fn start(argv: &[String], cwd: &Path, env: &[(String, String)], message: &str, events: &str, timeout: Duration) -> Result<Turn> {
         let Some((program, args)) = argv.split_first() else { return err("empty agent command") };
+        let format = format::find(events)?;
         let mut cmd = Command::new(program);
         cmd.args(args).current_dir(cwd).envs(env.iter().map(|(k, v)| (k, v)));
         // one message, then EOF: the agent answers it and exits; its own process group, so Stop
         // also ends the MCP server it started
-        let opts = Opts { stdin: Some(input(events, message)), group: true, stderr: true };
+        let opts = Opts { stdin: Some((format.input)(message)), group: true, stderr: true };
         let child = child::spawn(cmd, &opts).map_err(|e| Error(format!("cannot start `{program}`: {e}")))?;
         let (tx, rx) = channel();
         let stop = Arc::new(AtomicBool::new(false));
         let flag = stop.clone();
         let done = tx.clone();
-        let decoder = Decoder::new(events);
+        let decoder = (format.decoder)();
         std::thread::Builder::new()
             .name("bashcut-agent-turn".into())
             .spawn(move || {
@@ -250,7 +239,7 @@ impl Turn {
     }
 }
 
-fn supervise(mut child: Child, mut decoder: Decoder, timeout: Duration, tx: &Sender<TurnEvent>, stop: &AtomicBool) {
+fn supervise(mut child: Child, mut decoder: Box<dyn Decode>, timeout: Duration, tx: &Sender<TurnEvent>, stop: &AtomicBool) {
     let events = tx.clone();
     let out_done = child::pump("bashcut-agent-stdout", child.stdout.take(), move |out| {
         for_each_line(out, |line, cut| {
@@ -341,6 +330,7 @@ mod tests {
         assert!(argv.windows(2).any(|w| w == ["-c", r#"mcp_servers.filmcraft.command="/apps/filmcraft-cli""#]), "{argv:?}");
         assert!(argv.windows(2).any(|w| w == ["-c", r#"mcp_servers.filmcraft.args=["mcp","--bridge","127.0.0.1:9876"]"#]), "{argv:?}");
         assert_eq!(&argv[argv.len() - 3..], ["resume", "th-1", "-"]);
+        let input = |f: &str, m: &str| format::find(f).map(|f| (f.input)(m)).unwrap();
         assert_eq!(input(codex_json::FORMAT, "cut it"), "cut it");
         assert!(input(stream_json::FORMAT, "cut it").ends_with("}\n"));
     }
@@ -348,6 +338,10 @@ mod tests {
     #[test]
     #[ignore = "test ticket: a new bridge gets its own MCP config file and the session removes the stale one"]
     fn mcp_config_is_named_by_bridge_and_rewritten_on_change() {}
+
+    #[test]
+    #[ignore = "test ticket: AgentSpec::from(AgentLaunch) keeps prompt args and events, maps timeout 0 to the default and caps it at 24 h"]
+    fn agent_launch_becomes_a_spec() {}
 
     #[test]
     fn lines_are_split_and_capped() {

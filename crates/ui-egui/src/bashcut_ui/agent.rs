@@ -23,16 +23,8 @@ fn key() -> egui::Id {
 fn agents(app: &FilmcraftApp, ctx: &egui::Context) -> Vec<AgentSpec> {
     let mut v = vec![AgentSpec::claude_code(std::env::var("BASHCUT_CLAUDE").ok()), AgentSpec::codex(std::env::var("BASHCUT_CODEX").ok())];
     let launches = plugins::with(app, ctx, |h| h.agents());
-    v.extend(launches.into_iter().map(|a| AgentSpec {
-        id: a.id,
-        name: a.name,
-        argv: a.argv,
-        mcp_args: a.mcp_args,
-        resume_args: a.resume_args,
-        events: a.events,
-        env: a.env,
-        ..AgentSpec::default()
-    }));
+    // same fields (RC6); `AgentSpec::check` turns an unknown event format into the turn's error
+    v.extend(launches.into_iter().map(AgentSpec::from));
     v
 }
 
@@ -99,7 +91,7 @@ pub fn invoke(app: &mut FilmcraftApp, ctx: &egui::Context, name: &str, params: &
                 }
                 a.agents = list;
             }
-            json!(a.agents.iter().map(|s| json!({"id": s.id, "name": s.name})).collect::<Vec<_>>())
+            json!(a.agents.iter().map(|s| json!({"id": s.id, "name": s.name, "events": s.events})).collect::<Vec<_>>())
         }));
     }
     let c = context(app);
