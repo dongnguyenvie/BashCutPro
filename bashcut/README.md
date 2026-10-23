@@ -17,7 +17,7 @@ and its own docs (`CLAUDE.md`, `AGENTS.md`, `docs/`) still apply in full.
 | [batch.md](batch.md) | `bashcut-batch`: headless parallel pipelines, one project per input, resumable job book (#45) |
 | [brand/](brand/README.md) | BashCutPro's app icon, mark and wordmarks, and the scripts that render them |
 | [commands.md](commands.md), [commands.json](commands.json) | FilmCraft's live command catalogue (`command_list`) and the ids that matter for agents |
-| [bashcut-commands.md](bashcut-commands.md) | Our own `bashcut.*` engine commands (id, label, params), generated from `bashcutpro commands bashcut --json` |
+| [bashcut-commands.md](bashcut-commands.md) | Our own `bashcut.*` engine commands (id, label, params), generated from `bashcutpro-cli commands bashcut --json` |
 | [skill-needs.md](skill-needs.md) | what each BashCut skill needs, need by need: available, compose, plugin, or new engine command |
 | [plugin-host.md](plugin-host.md) | `bashcut-plugin-host`: running plugins from the app (approved) |
 | [in-app-ui.md](in-app-ui.md) | in-app UI (rail, side panel, agent, plugins, runs), where its code lives, and every upstream hook line (accepted) |
@@ -32,7 +32,7 @@ cargo xtask dev --release --features whisper -- --control 9876
 ```
 
 `cargo xtask dev` (DV1, `xtask/src/bashcut.rs`) runs one `cargo build` of `filmcraft`, `bashcutpro-cli`
-(`bashcutpro` / `bcpro`), `bashcut-mcp`, `bashcut-batch-cli` (`bashcut-batch`) and `bashcut-doctor` in the same
+(`bashcutpro-cli` / `bcpro`), `bashcut-mcp`, `bashcut-batch-cli` (`bashcut-batch`) and `bashcut-doctor` in the same
 profile, then starts `target/<profile>/filmcraft` with the args after `--` and returns its exit code. A bare feature
 (`--features whisper`) is turned on in every one of those packages that has it. Use it instead of
 `cargo run -p filmcraft`, which rebuilds only the app: agents, plugins, Batch and doctor then find a missing or stale
@@ -67,7 +67,7 @@ engine next to it. `CARGO_TARGET_DIR` is respected. There is no `cargo dev` alia
    rewritten against FilmCraft command ids.
 3. **Plugins live outside the app.** FilmCraft has no plugin system (gap G11 in `docs/gaps.md` is about
    VST3 / AU / OpenFX; Preferences ▸ Plugins is a stub). A plugin is a separate process that:
-   - reads state through MCP (`bashcutpro mcp`, headless or `--bridge`) or the control channel
+   - reads state through MCP (`bashcutpro-cli mcp`, headless or `--bridge`) or the control channel
      (`filmcraft --control <port>`, `docs/control-protocol.md`);
    - does its work outside (AI image generation, Vietnamese TTS, caption translation, producing
      `.fcgt` graphics templates, `.cube` LUTs, wav / srt files…);
@@ -84,9 +84,9 @@ engine next to it. `CARGO_TARGET_DIR` is respected. There is no `cargo dev` alia
 
 | Surface | Use |
 |---|---|
-| MCP: `bashcutpro mcp` | every engine command, project / sequence inspection, frame render; `--bridge` drives the open app |
+| MCP: `bashcutpro-cli mcp` | every engine command, project / sequence inspection, frame render; `--bridge` drives the open app |
 | Control channel: `filmcraft --control <port>` | JSON lines: `engine.execute`, UI state, screenshots, clicks |
-| CLI | `bashcutpro export --preset …` (`bashcutpro`, alias `bcpro`: upstream's CLI built under our name by `apps/bashcutpro-cli`, SB2; consumers find it with `bashcut_dirs::engine`, #154) |
+| CLI | `bashcutpro-cli export --preset …` (`bashcutpro-cli`, alias `bcpro`: upstream's CLI built under our name by `apps/bashcutpro-cli`, SB2; consumers find it with `bashcut_dirs::engine`, #154) |
 | `.fcproj` | UTF-8 JSON with a schema version (`docs/project-files.md`) |
 | Data files | effect presets JSON, export presets, `.fcgt` templates (`graphics.template.install`), `.cube` / `.3dl` LUTs, SRT / VTT / SCC / TTML captions, label presets |
 | Web build | `window.filmcraft` (`docs/web.md`) |

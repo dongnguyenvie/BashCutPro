@@ -398,7 +398,7 @@ fn cli_param(params: &Value, last: Option<&str>) -> Result<String, String> {
         .or_else(|| last.map(str::to_string))
         .or_else(plugins::cli_path)
         .ok_or_else(|| {
-            s("Batches need the bashcutpro engine next to the app. Reinstall BashCutPro, or in a source build run `cargo xtask dev` (builds the app and the engine together).").to_string()
+            s("Batches need the bashcutpro-cli engine next to the app. Reinstall BashCutPro, or in a source build run `cargo xtask dev` (builds the app and the engine together).").to_string()
         })
 }
 

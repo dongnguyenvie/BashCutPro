@@ -32,7 +32,7 @@ and upstream calls into ours through a recorded hook line (`bashcut/extending-up
 | `brand/packaging.env` | brand variables + re-exec into the packaging copy (sourced by upstream `packaging/env.sh`) | sourced | macOS, Linux, FreeBSD |
 | `brand/generate.py` | writes the brand SVGs (needs `fontTools`, an authoring tool: outputs are committed) | `python3 bashcut/brand/generate.py` | all |
 | `brand/render.sh` | renders PNG / .icns from the SVGs (needs resvg or rsvg-convert) | `bashcut/brand/render.sh` | macOS, Linux |
-| `apps/bashcutpro-cli/build.rs` | `bashcutpro` source from upstream's CLI with our name (SB2) | `cargo build -p bashcutpro-cli` | all |
+| `apps/bashcutpro-cli/build.rs` | `bashcutpro-cli` source from upstream's CLI with our name (SB2) | `cargo build -p bashcutpro-cli` | all |
 | `xtask/src/bashcut.rs` | layer table of our crates for `cargo xtask layers` | `cargo xtask layers` | all |
 
 ## Every environment variable

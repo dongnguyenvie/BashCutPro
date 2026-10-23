@@ -37,10 +37,10 @@ bashcut-mcp --project trip.fcproj   # headless on this project when no window is
 bashcut-mcp --print                 # what it would do, as JSON
 ```
 
-1. **Bridge** (`bashcutpro mcp --bridge <address>`): `--bridge` / `BASHCUTPRO_BRIDGE`, else the published window.
+1. **Bridge** (`bashcutpro-cli mcp --bridge <address>`): `--bridge` / `BASHCUTPRO_BRIDGE`, else the published window.
    The window's project decides where the agent may write. A different `--project` gives a note: the agent edits the
    window.
-2. **Headless** (`bashcutpro mcp --project P`): when no window answers, or with `--headless`. Refused when the
+2. **Headless** (`bashcutpro-cli mcp --project P`): when no window answers, or with `--headless`. Refused when the
    window has `P` open. While it runs, `bashcut-mcp` holds `<P>.bashcut/engine.lock` (the project's sidecar folder,
    `{"pid", "mode"}`), so a second headless engine on `P` is refused. A lock whose process is gone is taken over.
 3. **Write guard**: `bashcut-mcp` relays MCP stdio and checks each `tools/call`. A command that writes (its id says

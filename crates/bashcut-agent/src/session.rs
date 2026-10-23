@@ -37,7 +37,7 @@ pub struct Context {
     pub project: Option<PathBuf>,
     /// One line about the project, sequence, selection and playhead, sent before the message.
     pub line: String,
-    /// The engine next to the app (`bashcutpro`, else `filmcraft-cli`).
+    /// The engine next to the app (`bashcutpro-cli`, else `bcpro` or `filmcraft-cli`).
     pub cli: Option<String>,
     /// `127.0.0.1:<control port>` when the app serves one.
     pub bridge: Option<String>,
@@ -186,7 +186,7 @@ impl Agent {
                     path
                 }
             }),
-            (None, _) => return err("neither bashcutpro nor filmcraft-cli was found next to the app: install BashCutPro again"),
+            (None, _) => return err("the BashCutPro engine (bashcutpro-cli) was not found next to the app: install BashCutPro again"),
             (_, None) => return err("this agent needs the app's control channel: start BashCutPro with --control <port>"),
         };
         self.mcp_config = mcp.clone();

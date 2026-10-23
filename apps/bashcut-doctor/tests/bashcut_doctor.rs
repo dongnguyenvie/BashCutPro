@@ -26,10 +26,10 @@ impl Fake {
         let mut f = Fake { free: Some(200 * GB), ram: Some(32 * GB), ..Default::default() };
         f.vars.insert("FILMCRAFT_DATA_DIR".into(), "data".into());
         f.vars.insert("BASHCUTPRO_KIT_DIR".into(), "kit".into());
-        f.program("filmcraft-cli --version", 0, "filmcraft-cli 0.9.0\n");
+        f.program("bashcutpro-cli --version", 0, "bashcutpro-cli 0.9.0\n");
         let ids: Vec<String> = REQUIRED_COMMANDS.iter().map(|id| format!("{{\"id\":\"{id}\"}}")).collect();
-        f.program("filmcraft-cli commands bashcut --json", 0, &format!("[{}]", ids.join(",")));
-        f.program("filmcraft-cli exec transcript.models", 0, &speech(true, true));
+        f.program("bashcutpro-cli commands bashcut --json", 0, &format!("[{}]", ids.join(",")));
+        f.program("bashcutpro-cli exec transcript.models", 0, &speech(true, true));
         f.program("python3 --version", 0, "Python 3.12.1\n");
         f.program("claude --version", 0, "2.1.0 (Claude Code)\n");
         f.file("kit/.claude-plugin/plugin.json", br#"{"name":"bcp","version":"0.3.0"}"#);
@@ -120,7 +120,7 @@ fn a_healthy_machine_passes() {
 #[test]
 fn missing_cli_fails_with_a_fix() {
     let mut f = Fake::healthy();
-    f.programs.retain(|k, _| !k.starts_with("filmcraft-cli"));
+    f.programs.retain(|k, _| !k.starts_with("bashcutpro-cli"));
     let r = run_checks(&f, &Options::default());
     assert_eq!(level(&r, "cli"), Level::Fail);
     assert!(r.findings.iter().any(|x| x.id == "cli" && x.fix.as_deref().is_some_and(|fix| fix.contains("bcp:setup"))));
@@ -130,53 +130,65 @@ fn missing_cli_fails_with_a_fix() {
 
 #[test]
 fn pro_name_first_and_filmcraft_cli_still_works() {
-    // only bashcutpro installed (#154): the lookup finds it on the fake's PATH (DR1)
-    let dir = std::env::temp_dir().join(format!("bashcut-doctor-pro-{}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&dir);
-    std::fs::create_dir_all(&dir).unwrap();
-    let pro = dir.join(format!("bashcutpro{}", std::env::consts::EXE_SUFFIX));
-    std::fs::write(&pro, b"").unwrap();
-    let pro = pro.to_string_lossy().into_owned();
-    let mut f = Fake::healthy();
-    f.vars.insert("PATH".into(), dir.to_string_lossy().into_owned());
-    let old: Vec<(String, Output)> = std::mem::take(&mut f.programs).into_iter().collect();
-    for (k, v) in old {
-        f.programs.insert(k.replace("filmcraft-cli", &pro), v);
+    // a folder on the fake's PATH holding `names`; the healthy programs re-keyed to `found` there (DR1)
+    let on_path = |tag: &str, names: &[&str], found: &str| {
+        let dir = std::env::temp_dir().join(format!("bashcut-doctor-{tag}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        for n in names {
+            std::fs::write(dir.join(format!("{n}{}", std::env::consts::EXE_SUFFIX)), b"").unwrap();
+        }
+        let found = dir.join(format!("{found}{}", std::env::consts::EXE_SUFFIX)).to_string_lossy().into_owned();
+        let mut f = Fake::healthy();
+        f.vars.insert("PATH".into(), dir.to_string_lossy().into_owned());
+        let old: Vec<(String, Output)> = std::mem::take(&mut f.programs).into_iter().collect();
+        for (k, v) in old {
+            f.programs.insert(k.replace("bashcutpro-cli", &found), v);
+        }
+        (f, dir, found)
+    };
+    // bashcutpro-cli wins over filmcraft-cli in the same folder (#154, NM1)
+    for (tag, names, want) in [("pro", &["filmcraft-cli", "bashcutpro-cli"][..], "bashcutpro-cli"), ("old", &["filmcraft-cli"][..], "filmcraft-cli")] {
+        let (f, dir, found) = on_path(tag, names, want);
+        let r = run_checks(&f, &Options::default());
+        assert_eq!(level(&r, "cli"), Level::Ok);
+        assert!(r.findings.iter().any(|x| x.id == "cli" && x.message.ends_with(&format!("({found})"))), "{:?}", r.findings);
+        assert_eq!(level(&r, "cli.commands"), Level::Ok);
+        let _ = std::fs::remove_dir_all(&dir);
     }
-    let r = run_checks(&f, &Options::default());
-    assert_eq!(level(&r, "cli"), Level::Ok);
-    assert!(r.findings.iter().any(|x| x.id == "cli" && x.message.ends_with(&format!("({pro})"))), "{:?}", r.findings);
-    assert_eq!(level(&r, "cli.commands"), Level::Ok);
+    // the Linux GUI `bashcutpro` is not the engine: nothing found, the fallback name
+    let (f, dir, _) = on_path("gui", &["bashcutpro"], "bashcutpro");
+    assert_eq!(cli_program(&f, &Options::default()), "bashcutpro-cli");
     let _ = std::fs::remove_dir_all(&dir);
-    // only filmcraft-cli: the healthy machine as it was
+    // nothing on PATH: the healthy machine runs the fallback `bashcutpro-cli`
     let r = run_checks(&Fake::healthy(), &Options::default());
-    assert!(r.findings.iter().any(|x| x.id == "cli" && x.message.contains("(filmcraft-cli)")), "{:?}", r.findings);
+    assert!(r.findings.iter().any(|x| x.id == "cli" && x.message.contains("(bashcutpro-cli)")), "{:?}", r.findings);
     // FILMCRAFT_CLI names it when BASHCUTPRO_CLI does not
     let mut f = Fake::healthy();
     f.vars.insert("FILMCRAFT_CLI".into(), "filmcraft-cli".into());
-    f.program("bashcutpro --version", 0, "filmcraft-cli 0.9.0\n");
+    f.program("filmcraft-cli --version", 0, "filmcraft-cli 0.9.0\n");
     assert!(run_checks(&f, &Options::default()).findings.iter().any(|x| x.id == "cli" && x.message.contains("(filmcraft-cli)")));
 }
 
 #[test]
 fn speech_to_text_missing_or_not_downloaded_warns() {
     let mut f = Fake::healthy();
-    f.program("filmcraft-cli exec transcript.models", 0, &speech(false, false));
+    f.program("bashcutpro-cli exec transcript.models", 0, &speech(false, false));
     let r = run_checks(&f, &Options::default());
     assert_eq!(level(&r, "speech"), Level::Warn);
     assert!(r.findings.iter().any(|x| x.id == "speech" && x.fix.as_deref().is_some_and(|fix| fix.contains("--features whisper"))));
-    f.program("filmcraft-cli exec transcript.models", 0, &speech(true, false));
+    f.program("bashcutpro-cli exec transcript.models", 0, &speech(true, false));
     let r = run_checks(&f, &Options::default());
     assert_eq!(level(&r, "speech"), Level::Warn);
     assert!(r.findings.iter().any(|x| x.id == "speech" && x.fix.as_deref().is_some_and(|fix| fix.contains("transcript.downloadModel"))));
-    f.programs.remove("filmcraft-cli exec transcript.models");
+    f.programs.remove("bashcutpro-cli exec transcript.models");
     assert_eq!(level(&run_checks(&f, &Options::default()), "speech"), Level::Info, "an old CLI is not blamed");
 }
 
 #[test]
 fn an_old_build_without_our_commands_fails() {
     let mut f = Fake::healthy();
-    f.program("filmcraft-cli commands bashcut --json", 0, r#"[{"id":"bashcut.profiles.list"}]"#);
+    f.program("bashcutpro-cli commands bashcut --json", 0, r#"[{"id":"bashcut.profiles.list"}]"#);
     let r = run_checks(&f, &Options::default());
     assert_eq!(level(&r, "cli.commands"), Level::Fail);
 }
@@ -230,7 +242,7 @@ fn hostile_files_do_not_crash() {
     f.file("data/bashcut-plugins/models.json", br#"{"models":[{"id":"../../x","files":[{"path":"../../etc/passwd"}]},{"id":"m2","files":"no"},7]}"#);
     f.file("data/bashcut-plugins/bad/bashcut-plugin.json", b"{");
     f.file("data/bashcut-plugins/odd/bashcut-plugin.json", br#"{"schema":"bashcut-plugin/1","runtime":{"type":"python"},"entry":{"command":[]}}"#);
-    f.program("filmcraft-cli commands bashcut --json", 0, "not json");
+    f.program("bashcutpro-cli commands bashcut --json", 0, "not json");
     let r = run_checks(&f, &Options::default());
     assert!(!r.findings.iter().any(|x| x.id.contains("..")), "{}", r.to_text());
     assert_eq!(level(&r, "cli.commands"), Level::Warn);
@@ -258,7 +270,7 @@ fn updates_are_reported_not_installed() {
 #[test]
 fn version_helpers() {
     assert_eq!(parse_version("Python 3.12.1"), Some((3, 12, 1)));
-    assert_eq!(parse_version("filmcraft-cli 0.9.0"), Some((0, 9, 0)));
+    assert_eq!(parse_version("bashcutpro-cli 0.9.0"), Some((0, 9, 0)));
     assert_eq!(parse_version("v1.2"), Some((1, 2, 0)));
     assert_eq!(parse_version("no digits"), None);
     assert!(meets((3, 9, 0), ">=3.9"));
@@ -301,9 +313,9 @@ fn shared_engine_lookup_honours_bcpro_and_bashcut_filmcraft_cli() {
     // the older variable batch and bashcut-mcp used
     let mut f = Fake::healthy();
     f.vars.insert("BASHCUT_FILMCRAFT_CLI".into(), "/opt/bc/engine".into());
-    f.program("/opt/bc/engine --version", 0, "bashcutpro 0.9.0\n");
+    f.program("/opt/bc/engine --version", 0, "bashcutpro-cli 0.9.0\n");
     assert_eq!(cli(&f), "/opt/bc/engine");
-    assert_eq!(finding(&f), Some((Level::Ok, "bashcutpro 0.9.0 (/opt/bc/engine)".into())));
+    assert_eq!(finding(&f), Some((Level::Ok, "bashcutpro-cli 0.9.0 (/opt/bc/engine)".into())));
     // BASHCUTPRO_CLI wins; an empty one counts as unset
     f.vars.insert("BASHCUTPRO_CLI".into(), "/opt/pro".into());
     assert_eq!(cli(&f), "/opt/pro");
@@ -320,14 +332,14 @@ fn shared_engine_lookup_honours_bcpro_and_bashcut_filmcraft_cli() {
     f.vars.insert("PATH".into(), dir.to_string_lossy().into_owned());
     let program = bcpro.to_string_lossy().into_owned();
     assert_eq!(cli(&f), program);
-    f.program(&format!("{program} --version"), 0, "bashcutpro 0.9.0\n");
+    f.program(&format!("{program} --version"), 0, "bashcutpro-cli 0.9.0\n");
     let (level, message) = finding(&f).unwrap();
     assert_eq!(level, Level::Ok);
     assert!(message.ends_with(&format!("({program})")) && message.contains("bcpro"), "{message}");
     let _ = std::fs::remove_dir_all(&dir);
 
     // nothing names or holds an engine
-    assert_eq!(cli(&Fake::default()), "filmcraft-cli");
+    assert_eq!(cli(&Fake::default()), "bashcutpro-cli");
 }
 
 #[test]

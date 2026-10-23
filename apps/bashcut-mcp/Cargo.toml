@@ -1,6 +1,6 @@
 [package]
 name = "bashcut-mcp"
-description = "bashcut-mcp: start the engine's MCP server (bashcutpro mcp) for an agent, bridged to the open BashCutPro window when there is one"
+description = "bashcut-mcp: start the engine's MCP server (bashcutpro-cli mcp) for an agent, bridged to the open BashCutPro window when there is one"
 version.workspace = true
 edition.workspace = true
 license.workspace = true

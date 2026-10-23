@@ -18,8 +18,8 @@ was launched and answered:
    Accessibility permission), Linux through `xdotool` / `wmctrl`, Windows through the process's main window title. When
    no title can be read, the UI's elements (`ui.elements`) must show the name.
 4. `filmcraft-cli commands razor` lists the razor commands; `filmcraft-cli --demo mcp` answers `tools/call command_list`.
-   Without `--cli` / `-Cli` the CLI is `filmcraft-cli`, `bashcutpro` or `bcpro` next to the app (in that order), else on
-   PATH; `cargo build --release -p filmcraft -p bashcutpro-cli` gives `bashcutpro`. Both run with `BASHCUT_BRIDGE=off`, so
+   Without `--cli` / `-Cli` the CLI is `bashcutpro-cli`, `bcpro` or `filmcraft-cli` next to the app (in that order), else on
+   PATH; `cargo build --release -p filmcraft -p bashcutpro-cli` gives `bashcutpro-cli`. Both run with `BASHCUT_BRIDGE=off`, so
    they test the headless engine even when another BashCutPro is open.
 5. `app.quit` (control method: no save prompt); the process must exit within 15 s.
 6. Instruction-set scan of the app and CLI when they are x86-64: no `ymm` (AVX / AVX2) or `zmm` / opmask (AVX-512)

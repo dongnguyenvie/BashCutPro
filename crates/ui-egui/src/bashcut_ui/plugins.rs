@@ -221,7 +221,7 @@ pub fn bridge_address() -> Option<String> {
     .clone()
 }
 
-/// The engine next to the running app, `bashcutpro` first, else `filmcraft-cli` (#154); passed to
+/// The engine next to the running app, `bashcutpro-cli` first, else `bcpro` or `filmcraft-cli` (#154); passed to
 /// plugins as `--cli`, to batches and to agents.
 pub fn cli_path() -> Option<String> {
     bashcut_batch::cli::beside_self().map(|p| p.to_string_lossy().into_owned())

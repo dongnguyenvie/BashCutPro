@@ -1,4 +1,4 @@
-//! `bashcut-mcp`: start `bashcutpro mcp` (or `filmcraft-cli mcp`) for an agent (#51, `bashcut/agent-connect.md`).
+//! `bashcut-mcp`: start `bashcutpro-cli mcp` (or `filmcraft-cli mcp`) for an agent (#51, `bashcut/agent-connect.md`).
 //!
 //! - When the BashCutPro window runs its control channel it publishes
 //!   `<data dir>/bashcut/automation.json`; if that process is alive and the port answers, the agent
@@ -20,7 +20,7 @@ use std::process::{Command, ExitCode, Stdio};
 use std::time::Duration;
 
 const HELP: &str = "\
-bashcut-mcp: the engine's MCP server (bashcutpro mcp) for an agent, bridged to the open
+bashcut-mcp: the engine's MCP server (bashcutpro-cli mcp) for an agent, bridged to the open
 BashCutPro window when there is one, headless otherwise
 
 USAGE
@@ -34,7 +34,7 @@ USAGE
   --headless     never bridge; refused when the window has this project open
   --bridge ADDR  bridge to this control address (also BASHCUTPRO_BRIDGE)
   --cli PATH     the engine (default: $BASHCUTPRO_CLI, $BASHCUT_FILMCRAFT_CLI or $FILMCRAFT_CLI,
-                 else bashcutpro, bcpro or filmcraft-cli next to this program, else the same on PATH)
+                 else bashcutpro-cli, bcpro or filmcraft-cli next to this program, else the same on PATH)
   --data-dir DIR BashCutPro data dir (default: BASHCUTPRO_DATA_DIR, FILMCRAFT_DATA_DIR or the platform's)
   --roots LIST   more folders the agent may write to (path-list separator: ':' Unix, ';' Windows);
                  BASHCUTPRO_ROOTS adds to them

@@ -3,10 +3,10 @@
 ## 1. Install
 
 Install BashCutPro from its package for your system (macOS `.app`, Windows installer or portable zip, Linux package).
-Every package also carries the command line `bashcutpro` (short name `bcpro`; it runs the editor's engine
-`filmcraft-cli`, which sits beside it) and three helper programs: `bashcut-doctor` (checks your setup), `bashcut-batch`
+Every package also carries the command line `bashcutpro-cli` (short name `bcpro`; it is the editor's engine, the
+same one the app uses) and three helper programs: `bashcut-doctor` (checks your setup), `bashcut-batch`
 (runs batches) and `bashcut-mcp` (lets an AI agent reach the open window), plus a first-run setup script.
-While BashCutPro is open, `bashcutpro exec …` (and `run`, `inspect`, `mcp`, …) works on the open window; add
+While BashCutPro is open, `bashcutpro-cli exec …` (and `run`, `inspect`, `mcp`, …) works on the open window; add
 `--project`, or set `BASHCUT_BRIDGE=off`, to use the engine without the window.
 
 ### No package yet? Build it from source
@@ -24,13 +24,13 @@ the same.
 4. Build the app and its command-line tools, with speech to text:
 
    ```sh
-   cargo build -p filmcraft -p filmcraft-cli -p bashcutpro-cli -p bashcut-doctor -p bashcut-batch-cli -p bashcut-mcp \
-     --features filmcraft/whisper,filmcraft-cli/whisper
+   cargo build -p filmcraft -p bashcutpro-cli -p bashcut-doctor -p bashcut-batch-cli -p bashcut-mcp \
+     --features filmcraft/whisper,bashcutpro-cli/whisper
    ```
 
 5. Make the tools reachable in this terminal: `export PATH="$PWD/target/debug:$PATH"` (add that line, with the full
-   path, to `~/.zshrc` to keep it). `bashcutpro --version` then answers `filmcraft-cli 0.9.0`, which is the engine
-   it runs.
+   path, to `~/.zshrc` to keep it). `bashcutpro-cli --version` (or `bcpro --version`) then answers
+   `bashcutpro-cli` and the version number.
 
 From a source build, the first-run setup below is `bash bashcut/packaging/share/bashcut-setup.sh`, and you open the app
 with `target/debug/filmcraft --control 9876`.
@@ -59,10 +59,10 @@ when Claude Code or Codex is on the computer, and ends with a health check (`bas
 every step, or `--skip-looks`, `--skip-profiles`, `--skip-kit`, `--skip-doctor` to leave one out.
 
 **The speech model.** Captions, the batch presets and the agent's rough cut start by turning speech into text, which
-needs a speech model on this computer. Download it once: `bashcutpro exec transcript.downloadModel` gets
+needs a speech model on this computer. Download it once: `bashcutpro-cli exec transcript.downloadModel` gets
 **whisper-base** (about 290 MB), the default. `bashcut-doctor` then shows `[ok] speech`. Until then, transcribing stops
 with *the speech model `whisper-base` is not downloaded*. The smaller **whisper-tiny** (about 150 MB:
-`bashcutpro exec transcript.downloadModel model=whisper-tiny`) is faster but less accurate. To make it the one used,
+`bashcutpro-cli exec transcript.downloadModel model=whisper-tiny`) is faster but less accurate. To make it the one used,
 choose it in **Settings ▸ Media Analysis & Transcription ▸ Speech model**.
 
 ## 3. Open the app
