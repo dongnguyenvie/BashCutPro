@@ -3179,3 +3179,79 @@ fn looks_stars_and_batch_save_fit_a_narrow_panel() {
     assert!(d.harness.state().ui_error.is_none(), "{:?}", d.harness.state().ui_error);
     let _ = std::fs::remove_dir_all(&data);
 }
+
+/// FX30: at the narrowest panel (and at 340 px), in English and Vietnamese, every widget of
+/// Plugins (a card with settings, a parameter and a failed run), Library, Agent and Runs that is
+/// on screen lies inside its panel: no non-wrapping row of a long note or label widens the
+/// content and pushes the buttons below it out (failed before for Plugins' rows).
+#[test]
+fn plugins_library_agent_and_runs_fit_a_narrow_panel() {
+    if !has_python() {
+        eprintln!("python not found: skipped");
+        return;
+    }
+    let data = std::env::temp_dir().join(format!("bashcut-ui-fx30-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&data);
+    let plugin = data.join("bashcut-plugins").join("test.runs");
+    std::fs::create_dir_all(&plugin).unwrap();
+    std::fs::write(plugin.join("plugin.py"), RUNS_PLUGIN).unwrap();
+    let manifest = json!({
+        "schema": "bashcut-plugin/1", "id": "test.runs", "name": "Runs", "version": "0.1.0",
+        "summary": "A test plugin with a summary long enough to need several lines in a narrow panel",
+        "entry": {"command": ["python3", "plugin.py"], "windows": ["py", "-3", "plugin.py"]}, "output": "bashcut-result/1",
+        "settings": [
+            {"id": "apiKey", "type": "secret", "title": "API key of the service", "env": ["TEST_SECRET_KEY"]},
+            {"id": "voice", "type": "string", "title": "Voice used for every line", "env": ["TEST_VOICE"]}
+        ],
+        "actions": [{
+            "id": "fail", "title": "Fail", "args": ["fail"], "needs": "none",
+            "params": [{"id": "word", "flag": "--word", "type": "string", "title": "A word to say", "optional": true}]
+        }]
+    });
+    std::fs::write(plugin.join("bashcut-plugin.json"), manifest.to_string()).unwrap();
+
+    let mut d = Driver::with_data(&data, |_| {});
+    let job = d.exec("bashcut.plugins.run", json!({"plugin": "test.runs", "action": "fail"}))["job"].as_u64().unwrap();
+    d.wait_job(job);
+    let shots = std::env::var_os("BASHCUT_UI_SHOTS").map(std::path::PathBuf::from);
+    let sections = [
+        ("plugins", &["bashcut.plugins."][..]),
+        ("library", &["bashcut.library."][..]),
+        ("agent", &["bashcut.agent.", "bashcut.gate."][..]),
+        ("runs", &["bashcut.runs."][..]),
+    ];
+    for (lang, width) in [("en", 340.0), ("vi", 340.0), ("en", 240.0), ("vi", 240.0)] {
+        d.exec("bashcut.ui.setLanguage", json!({"language": lang}));
+        for (section, prefixes) in sections {
+            d.click(&format!("bashcut.rail.{section}"));
+            d.exec("bashcut.ui.setWidth", json!({"width": width}));
+            d.frames(4);
+            if section == "plugins" {
+                d.click("bashcut.plugins.test.runs");
+                d.frames(4);
+            }
+            if let Some(dir) = &shots {
+                std::fs::create_dir_all(dir).unwrap();
+                d.harness.render().unwrap().save(dir.join(format!("fx30-{section}-{lang}-{width}.png"))).unwrap();
+            }
+            let panel = edges(&mut d, &format!("bashcut.panel.{section}")).unwrap_or_else(|| panic!("{lang} {width}: {section} panel"));
+            let mut seen = 0;
+            for prefix in prefixes {
+                let all = d.ok("ui.elements", json!({"prefix": prefix}));
+                for e in all.as_array().expect("elements") {
+                    let id = e["id"].as_str().unwrap_or_default();
+                    let Some(r) = edges(&mut d, id) else { continue };
+                    if r[1] < panel[1] || r[3] > panel[3] {
+                        continue; // scrolled out of view
+                    }
+                    seen += 1;
+                    assert!(r[0] >= panel[0] - 1.0 && r[2] <= panel[2] + 1.0, "{lang} {width}: {id} {r:?} inside the {section} panel {panel:?}");
+                }
+            }
+            assert!(seen >= 2, "{lang} {width}: {seen} widgets of {section} on screen");
+        }
+    }
+    d.exec("bashcut.ui.setLanguage", json!({"language": null}));
+    assert!(d.harness.state().ui_error.is_none(), "{:?}", d.harness.state().ui_error);
+    let _ = std::fs::remove_dir_all(&data);
+}

@@ -357,6 +357,8 @@ fn card(
             }
             ui.vertical(|ui| {
                 ui.horizontal_wrapped(|ui| {
+                    // a wrapped ☆ follows the name on the next line without a gap row
+                    ui.spacing_mut().item_spacing.y = 0.0;
                     ui.label(egui::RichText::new(look.name).strong().color(t.text));
                     let fav = p.favourites.iter().any(|f| f == look.id);
                     let star = ui.small_button(if fav { "★" } else { "☆" });

@@ -506,7 +506,7 @@ fn mine_row(app: &mut FilmcraftApp, ui: &mut egui::Ui, ctx: &egui::Context, p: &
     let item_id = text(item, "id");
     let id = format!("bashcut.library.mine.{item_id}");
     let r = egui::Frame::new().inner_margin(egui::Margin::same(4)).corner_radius(t.radius_sm).fill(t.panel_bg).show(ui, |ui| {
-        ui.horizontal(|ui| {
+        ui.horizontal_wrapped(|ui| {
             ui.label(egui::RichText::new(text(item, "title")).strong().color(t.text));
             note(ui, mine_kind_label(&text(item, "kind")), META, t.text_faint);
             let fav = item.get("favourite").and_then(Value::as_bool).unwrap_or(false);

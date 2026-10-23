@@ -570,9 +570,49 @@ mod tests {
 
     use super::*;
 
+    /// [`live_start_has_no_console_window`]'s child: set, the test reads the probe's output there.
+    #[cfg(windows)]
+    const NO_WINDOW_ENV: &str = "BASHCUT_TEST_LIVE_NO_WINDOW_OUT";
+
+    /// The child half: started without a console (as the GUI app runs), it starts a PowerShell
+    /// probe of `GetConsoleWindow` through [`Live::start`], which writes the answer to the file.
+    #[cfg(windows)]
     #[test]
-    #[ignore = "test ticket: Live::start child has no console window on Windows (spawn from a DETACHED_PROCESS test child, GetConsoleWindow 0, like child::tests::windows_spawn_opens_no_console_window); FX21 follow-up"]
-    fn live_start_has_no_console_window() {}
+    fn live_no_window_child() {
+        let Some(out_file) = std::env::var_os(NO_WINDOW_ENV) else { return };
+        let out_file = out_file.to_string_lossy().replace('\'', "''");
+        let probe = format!(
+            "$s='[DllImport(\"kernel32.dll\")] public static extern System.IntPtr GetConsoleWindow();';              $k=Add-Type -MemberDefinition $s -Name C -Namespace W -PassThru;              [string]$k::GetConsoleWindow() | Set-Content -Path '{out_file}'"
+        );
+        let argv: Vec<String> = ["powershell", "-NoProfile", "-NonInteractive", "-Command", probe.as_str()].iter().map(|s| s.to_string()).collect();
+        let cwd = std::env::temp_dir();
+        let mut live = Live::start(&argv, &cwd, &[], stream_json::FORMAT).unwrap();
+        live.close_and_wait(Duration::from_secs(60));
+        assert!(live.is_finished(), "the probe never ended");
+    }
+
+    /// FX22: from a process without a console (the windows-subsystem app), the console program
+    /// [`Live::start`] starts gets no console window of its own (`GetConsoleWindow` is 0).
+    #[cfg(windows)]
+    #[test]
+    fn live_start_has_no_console_window() {
+        use std::os::windows::process::CommandExt;
+        const DETACHED_PROCESS: u32 = 0x0000_0008;
+        let out_file = std::env::temp_dir().join(format!("bashcut-live-no-window-{}.txt", std::process::id()));
+        let _ = std::fs::remove_file(&out_file);
+        let status = Command::new(std::env::current_exe().unwrap())
+            .args(["--exact", "process::tests::live_no_window_child", "--test-threads=1"])
+            .env(NO_WINDOW_ENV, &out_file)
+            .creation_flags(DETACHED_PROCESS)
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .status()
+            .unwrap();
+        assert!(status.success(), "the child half failed");
+        let out = std::fs::read_to_string(&out_file).unwrap();
+        let _ = std::fs::remove_file(&out_file);
+        assert_eq!(out.trim(), "0", "Live::start's child got a console window");
+    }
 
     #[test]
     fn command_line_adds_mcp_and_resume() {
