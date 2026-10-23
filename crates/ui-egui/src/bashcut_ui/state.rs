@@ -267,7 +267,7 @@ mod tests {
 
     #[test]
     fn hostile_values_are_sanitized() {
-        let mut st: State = serde_json::from_str(r#"{"width":1e30,"open":"nope","popped":["x",RUNS,RUNS],"language":"verylonglang"}"#).unwrap();
+        let mut st: State = serde_json::from_str(r#"{"width":1e30,"open":"nope","popped":["x","runs","runs"],"language":"verylonglang"}"#).unwrap();
         st.sanitize(KNOWN);
         assert_eq!(st.width, MAX_WIDTH);
         assert_eq!(st.open, None);

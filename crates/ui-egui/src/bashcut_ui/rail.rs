@@ -154,3 +154,69 @@ pub fn show(app: &mut FilmcraftApp, ui: &mut egui::Ui, rect: Rect, st: &mut Stat
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use std::collections::BTreeMap;
+    use std::time::{Duration, Instant};
+
+    use serde_json::json;
+
+    use super::*;
+
+    /// An app saving into a fresh data dir with plugin `test.fails`, whose `go` runs about a second,
+    /// then exits 4.
+    fn app_with_failing_plugin(name: &str) -> (FilmcraftApp, std::path::PathBuf) {
+        let data = std::env::temp_dir().join(format!("bashcut-rail-{name}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&data);
+        let plugin = data.join("bashcut-plugins").join("test.fails");
+        std::fs::create_dir_all(&plugin).unwrap();
+        let manifest = json!({
+            "schema": "bashcut-plugin/1", "id": "test.fails", "name": "Fails", "version": "0.1.0", "summary": "test plugin",
+            "entry": {"command": ["sh", "-c", "sleep 1; exit 4"], "windows": ["powershell", "-NoProfile", "-Command", "Start-Sleep -Milliseconds 1000; exit 4"]},
+            "output": "bashcut-result/1",
+            "actions": [{"id": "go", "title": "Go", "args": [], "needs": "none"}]
+        });
+        std::fs::write(plugin.join("bashcut-plugin.json"), manifest.to_string()).unwrap();
+        let mut session = filmcraft_engine::Session::default();
+        session.start_autosave(filmcraft_engine::autosave::AutosaveConfig::new(&data)).unwrap();
+        (FilmcraftApp::new(session), data)
+    }
+
+    #[test]
+    fn runs_badge_failed_until_seen_and_busy_while_running() {
+        let ctx = egui::Context::default();
+        let mut st = State::default();
+        assert_eq!(runs_badge(&ctx, &mut st, false), None, "no host yet");
+
+        let (app, data) = app_with_failing_plugin("runs");
+        let host = plugins::host(&app, &ctx);
+        let job = super::super::shared::lock(&host).run("test.fails", "go", &BTreeMap::new(), &plugins::run_context(), None).unwrap();
+        assert_eq!(runs_badge(&ctx, &mut st, false), Some(Badge::Busy), "running");
+        let until = Instant::now() + Duration::from_secs(60);
+        while super::super::shared::lock(&host).job(job).is_some_and(|j| j.state.is_running()) && Instant::now() < until {
+            super::super::shared::lock(&host).poll();
+            std::thread::sleep(Duration::from_millis(20));
+        }
+        assert_eq!(super::super::shared::lock(&host).job(job).map(|j| j.state), Some(JobState::Failed));
+
+        assert_eq!(runs_badge(&ctx, &mut st, false), Some(Badge::Failed), "failed, not seen");
+        assert_eq!(runs_badge(&ctx, &mut st, false), Some(Badge::Failed), "stays until seen");
+        assert_eq!(runs_badge(&ctx, &mut st, true), None, "on screen: seen");
+        assert_eq!(runs_badge(&ctx, &mut st, false), None, "seen stays seen");
+        let _ = std::fs::remove_dir_all(&data);
+    }
+
+    #[test]
+    fn batch_badge_shows_while_a_batch_runs() {
+        let ctx = egui::Context::default();
+        let mut st = State::default();
+        assert_eq!(batch_badge(&ctx, &mut st, false), None);
+        batch::lock(&batch::shared(&ctx)).fake_running(true);
+        assert_eq!(batch_badge(&ctx, &mut st, false), Some(Badge::Busy));
+        // the rail hides it while Batch is on screen; the badge itself does not depend on that
+        assert_eq!(batch_badge(&ctx, &mut st, true), Some(Badge::Busy));
+        batch::lock(&batch::shared(&ctx)).fake_running(false);
+        assert_eq!(batch_badge(&ctx, &mut st, false), None);
+    }
+}
