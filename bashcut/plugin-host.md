@@ -63,8 +63,9 @@ Agent plugins (#35): a manifest with `"kind": "agent"` carries an `agent` sectio
 `timeoutSecs` (0: 2 h; at most 24 h). `Host::agents()` lists them as `AgentLaunch`es (`bashcut-manifest`, serde-compatible
 subset of `bashcut_agent::AgentSpec`, converted with `AgentSpec::from`, RC6) with the plugin's settings as env; the
 Agent section offers them next to Claude Code ([in-app-ui.md](in-app-ui.md) §6). A Codex-style plugin:
-`"agent": {"args": ["exec", "--json"], "mcpConfig": ["-c", "mcp_servers.filmcraft.command={mcpCommand}", "-c",
-"mcp_servers.filmcraft.args={mcpArgs}"], "resume": ["resume", "{session}"], "prompt": ["-"], "events": "codex-json"}`.
+`"agent": {"args": ["exec", "--json"], "mcpConfig": ["-c", "mcp_servers.bashcutpro.command={mcpCommand}", "-c",
+"mcp_servers.bashcutpro.args={mcpArgs}"], "resume": ["resume", "{session}"], "prompt": ["-"], "events": "codex-json"}`. The config behind `{config}` names the
+server `bashcutpro` (Claude Code tools `mcp__bashcutpro__*`, AG7); use the same name in `-c` overrides.
 
 ### Data folder in the child's environment (FX9)
 

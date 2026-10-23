@@ -120,7 +120,7 @@ mod tests {
         let mut t = Transcript::default();
         t.apply(&Event::Text("a".into()));
         t.apply(&Event::Text("b".into()));
-        t.apply(&Event::ToolUse { id: "1".into(), name: "mcp__filmcraft__command_execute".into(), input: json!({"command": "edit.razor"}) });
+        t.apply(&Event::ToolUse { id: "1".into(), name: "mcp__bashcutpro__command_execute".into(), input: json!({"command": "edit.razor"}) });
         t.apply(&Event::ToolResult { id: "1".into(), text: "done".into(), is_error: false });
         t.apply(&Event::ToolResult { id: "nope".into(), text: "x".into(), is_error: true });
         t.apply(&Event::Result { ok: false, text: String::new(), session: "s".into(), cost_usd: None, turns: None });
@@ -129,7 +129,7 @@ mod tests {
         assert!(matches!(&t.items[1], Item::Tool { output: Some(o), .. } if o == "done"));
         assert_eq!(t.items[1].tool_key().as_deref(), Some("edit.razor"));
         assert!(matches!(&t.items[2], Item::Error { .. }));
-        let other = Item::Tool { id: String::new(), name: "mcp__filmcraft__doc_inspect".into(), input: json!({}), output: None, is_error: false };
+        let other = Item::Tool { id: String::new(), name: "mcp__bashcutpro__doc_inspect".into(), input: json!({}), output: None, is_error: false };
         assert_eq!(other.tool_key().as_deref(), Some("doc_inspect"));
         assert_eq!(t.last_answer(), Some("a\n\nb"));
     }

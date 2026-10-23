@@ -144,7 +144,7 @@ mod tests {
         let init = parse_line(r#"{"type":"system","subtype":"init","session_id":"s1","model":"m","tools":[]}"#);
         assert_eq!(init, vec![Event::Init { session: "s1".into(), model: "m".into() }]);
         let a = parse_line(
-            r#"{"type":"assistant","message":{"content":[{"type":"text","text":"Cutting."},{"type":"tool_use","id":"t1","name":"mcp__filmcraft__command_execute","input":{"command":"edit.razor"}}]}}"#,
+            r#"{"type":"assistant","message":{"content":[{"type":"text","text":"Cutting."},{"type":"tool_use","id":"t1","name":"mcp__bashcutpro__command_execute","input":{"command":"edit.razor"}}]}}"#,
         );
         assert_eq!(a.len(), 2);
         assert!(matches!(&a[1], Event::ToolUse { name, input, .. } if name.ends_with("command_execute") && input["command"] == "edit.razor"));

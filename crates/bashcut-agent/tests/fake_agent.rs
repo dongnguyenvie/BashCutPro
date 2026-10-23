@@ -27,7 +27,7 @@ if "please hang" in text:
     time.sleep(60)
 out({"type": "assistant", "message": {"content": [
     {"type": "text", "text": ("resumed " + resumed + ": " if resumed else "") + "echo " + text},
-    {"type": "tool_use", "id": "t1", "name": "mcp__filmcraft__command_execute", "input": {"command": "edit.razor"}}]}})
+    {"type": "tool_use", "id": "t1", "name": "mcp__bashcutpro__command_execute", "input": {"command": "edit.razor"}}]}})
 out({"type": "user", "message": {"content": [{"type": "tool_result", "tool_use_id": "t1", "content": "ok"}]}})
 print("not json", flush=True)
 out({"type": "result", "subtype": "success", "is_error": False, "result": "done", "session_id": session, "num_turns": 1})

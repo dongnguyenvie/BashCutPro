@@ -24,6 +24,18 @@ pub const MAX_LINE: usize = 1024 * 1024;
 /// stderr kept for the error message of a failed turn.
 const MAX_STDERR: usize = 8 * 1024;
 
+/// The name of the app's MCP server in the agent's config: Claude Code's tools are `mcp__bashcutpro__*`,
+/// the same name the agent kit's `bcp` plugin and `/bcp:setup` use.
+pub const SERVER: &str = "bashcutpro";
+
+/// What Claude Code may use without asking (in print mode nobody answers a prompt, so anything else
+/// that needs one is denied): the app's MCP tools and the engine's command line, which the kit's
+/// skills run to check the engine (`/bcp:setup`: `bashcutpro commands razor`).
+pub fn allowed_tools() -> Vec<String> {
+    let cli = ["bashcutpro-cli", "bcpro", "bashcutpro"].map(|p| format!("Bash({p} *)"));
+    std::iter::once(format!("mcp__{SERVER}")).chain(cli).collect()
+}
+
 /// How to start an agent.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(default, rename_all = "camelCase")]
@@ -67,22 +79,24 @@ impl Default for AgentSpec {
 }
 
 impl AgentSpec {
-    /// Claude Code in print mode with stream-json in and out, FilmCraft's MCP tools allowed.
-    /// `program` overrides `claude` (from `BASHCUT_CLAUDE` in the app).
+    /// Claude Code in print mode with stream-json in and out, the app's MCP server ([`SERVER`]) as the
+    /// only one (`--strict-mcp-config`: the agent kit's plugin brings its own copy of the same tools,
+    /// and a checkout's `.mcp.json` another; skills and plugins still load) and [`allowed_tools`]
+    /// allowed without a prompt. `program` overrides `claude` (from `BASHCUT_CLAUDE` in the app).
     pub fn claude_code(program: Option<String>) -> Self {
         let program = program.filter(|p| !p.trim().is_empty()).unwrap_or_else(|| "claude".into());
-        let argv = [&program, "-p", "--output-format", "stream-json", "--input-format", "stream-json", "--verbose", "--allowedTools", "mcp__filmcraft"];
+        let argv = [&program, "-p", "--output-format", "stream-json", "--input-format", "stream-json", "--verbose", "--allowedTools"];
         AgentSpec {
             id: "claude-code".into(),
             name: "Claude Code".into(),
-            argv: argv.iter().map(|s| s.to_string()).collect(),
-            mcp_args: vec!["--mcp-config".into(), "{config}".into()],
+            argv: argv.iter().map(|s| s.to_string()).chain(allowed_tools()).collect(),
+            mcp_args: vec!["--mcp-config".into(), "{config}".into(), "--strict-mcp-config".into()],
             resume_args: vec!["--resume".into(), "{session}".into()],
             ..AgentSpec::default()
         }
     }
 
-    /// Codex in exec mode with JSON events, FilmCraft's MCP server passed as `-c` overrides (Codex
+    /// Codex in exec mode with JSON events, the app's MCP server ([`SERVER`]) passed as `-c` overrides (Codex
     /// keeps MCP servers in its own config), the prompt on stdin. `program` overrides `codex` (from
     /// `BASHCUT_CODEX` in the app).
     pub fn codex(program: Option<String>) -> Self {
@@ -91,7 +105,7 @@ impl AgentSpec {
             id: "codex".into(),
             name: "Codex".into(),
             argv: vec![program, "exec".into(), "--json".into(), "--skip-git-repo-check".into()],
-            mcp_args: vec!["-c".into(), "mcp_servers.filmcraft.command={mcpCommand}".into(), "-c".into(), "mcp_servers.filmcraft.args={mcpArgs}".into()],
+            mcp_args: vec!["-c".into(), "mcp_servers.bashcutpro.command={mcpCommand}".into(), "-c".into(), "mcp_servers.bashcutpro.args={mcpArgs}".into()],
             resume_args: vec!["resume".into(), "{session}".into()],
             prompt_args: vec!["-".into()],
             events: codex_json::FORMAT.into(),
@@ -148,12 +162,12 @@ impl From<bashcut_manifest::AgentLaunch> for AgentSpec {
     }
 }
 
-/// The `filmcraft` server of an MCP config written by [`write_mcp_config`]: its command as a quoted
+/// The [`SERVER`] server of an MCP config written by [`write_mcp_config`]: its command as a quoted
 /// string and its arguments as an array (JSON strings and arrays of strings are valid TOML too).
 fn mcp_server(config: &Path) -> Result<(String, String)> {
     let text = crate::read_capped(config, 64 * 1024)?;
     let v: serde_json::Value = serde_json::from_str(&text).map_err(|e| Error(format!("{}: {e}", config.display())))?;
-    let server = v.get("mcpServers").and_then(|s| s.get("filmcraft")).ok_or_else(|| Error(format!("{}: no filmcraft server", config.display())))?;
+    let server = v.get("mcpServers").and_then(|s| s.get(SERVER)).ok_or_else(|| Error(format!("{}: no {SERVER} server", config.display())))?;
     let command = server.get("command").and_then(serde_json::Value::as_str).ok_or_else(|| Error(format!("{}: no command", config.display())))?;
     let args: Vec<&str> =
         server.get("args").and_then(serde_json::Value::as_array).map(|a| a.iter().filter_map(serde_json::Value::as_str).collect()).unwrap_or_default();
@@ -292,10 +306,10 @@ pub fn mcp_config_path(cli: &str, bridge: &str) -> PathBuf {
     std::env::temp_dir().join(format!("bashcut-agent-mcp-{}-{:016x}.json", std::process::id(), h.finish()))
 }
 
-/// A temporary MCP config for this app: `<engine> mcp --bridge <address>` (`bashcutpro-cli`, `bcpro` or `filmcraft-cli`) as server `filmcraft`.
+/// A temporary MCP config for this app: `<engine> mcp --bridge <address>` (`bashcutpro-cli`, `bcpro` or `filmcraft-cli`) as server [`SERVER`].
 /// Written to the temp dir (it holds no secret) at [`mcp_config_path`] and removed by the caller when the session ends.
 pub fn write_mcp_config(cli: &str, bridge: &str) -> Result<PathBuf> {
-    let v = serde_json::json!({"mcpServers": {"filmcraft": {"command": cli, "args": ["mcp", "--bridge", bridge]}}});
+    let v = serde_json::json!({"mcpServers": {SERVER: {"command": cli, "args": ["mcp", "--bridge", bridge]}}});
     let path = mcp_config_path(cli, bridge);
     crate::write_atomic(&path, &v.to_string())?;
     Ok(path)
@@ -327,8 +341,8 @@ mod tests {
         let argv = spec.command_line(Some(&cfg), Some("th-1")).unwrap();
         let _ = std::fs::remove_file(&cfg);
         assert_eq!(&argv[..4], ["/opt/codex", "exec", "--json", "--skip-git-repo-check"]);
-        assert!(argv.windows(2).any(|w| w == ["-c", r#"mcp_servers.filmcraft.command="/apps/filmcraft-cli""#]), "{argv:?}");
-        assert!(argv.windows(2).any(|w| w == ["-c", r#"mcp_servers.filmcraft.args=["mcp","--bridge","127.0.0.1:9876"]"#]), "{argv:?}");
+        assert!(argv.windows(2).any(|w| w == ["-c", r#"mcp_servers.bashcutpro.command="/apps/filmcraft-cli""#]), "{argv:?}");
+        assert!(argv.windows(2).any(|w| w == ["-c", r#"mcp_servers.bashcutpro.args=["mcp","--bridge","127.0.0.1:9876"]"#]), "{argv:?}");
         assert_eq!(&argv[argv.len() - 3..], ["resume", "th-1", "-"]);
         let input = |f: &str, m: &str| format::find(f).map(|f| (f.input)(m)).unwrap();
         assert_eq!(input(codex_json::FORMAT, "cut it"), "cut it");
@@ -376,7 +390,7 @@ mod tests {
             id: "bashcut.codex-agent".into(),
             name: "Codex agent".into(),
             argv: vec!["/p/codex".into(), "exec".into(), "--json".into()],
-            mcp_args: vec!["-c".into(), "mcp_servers.filmcraft.command={mcpCommand}".into()],
+            mcp_args: vec!["-c".into(), "mcp_servers.bashcutpro.command={mcpCommand}".into()],
             resume_args: vec!["resume".into(), "{session}".into()],
             prompt_args: vec!["-".into()],
             events: codex_json::FORMAT.into(),
@@ -405,6 +419,18 @@ mod tests {
         let back: AgentSpec = serde_json::from_value(v).unwrap();
         assert_eq!((back.id.as_str(), back.prompt_args.as_slice(), back.timeout_secs), ("x", ["-".to_string()].as_slice(), 5));
     }
+
+    #[test]
+    #[ignore = "test ticket: Claude Code argv allows mcp__bashcutpro and the engine CLI, has --strict-mcp-config, never filmcraft"]
+    fn claude_code_allows_the_bashcutpro_server_only() {}
+
+    #[test]
+    #[ignore = "test ticket: write_mcp_config writes server key bashcutpro and mcp_server reads it back"]
+    fn mcp_config_names_the_server_bashcutpro() {}
+
+    #[test]
+    #[ignore = "test ticket: Codex -c overrides use mcp_servers.bashcutpro.*"]
+    fn codex_overrides_name_the_server_bashcutpro() {}
 
     #[test]
     fn lines_are_split_and_capped() {

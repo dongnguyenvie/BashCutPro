@@ -2,7 +2,8 @@
 //! back from its event stream. The runner (`runner.rs`) does the rounds, the review and the caps.
 //!
 //! - **claude** (default): `claude -p <prompt> --output-format stream-json --verbose --max-turns N
-//!   --mcp-config <file> --allowedTools mcp__bashcutpro`, fix rounds with `--resume <session>`. The
+//!   --mcp-config <file> --strict-mcp-config --permission-prompts none --allowedTools
+//!   mcp__bashcutpro`, fix rounds with `--resume <session>`. The
 //!   last `result` event has the session, turns, tokens, cost and whether the turn limit was hit.
 //! - **codex**: `codex exec --json --skip-git-repo-check -c mcp_servers.bashcutpro.command=… <prompt>`,
 //!   fix rounds with `codex exec resume <thread> …`; usage from `turn.completed` events. No turn
@@ -125,6 +126,11 @@ fn claude_argv(l: &Launch, mcp_config: String) -> Vec<String> {
         l.step.max_turns().to_string(),
         "--mcp-config".into(),
         mcp_config,
+        // the item's server only (the kit's plugin brings a second copy), and nobody answers a
+        // permission prompt in a batch: deny at once instead of waiting
+        "--strict-mcp-config".into(),
+        "--permission-prompts".into(),
+        "none".into(),
         "--allowedTools".into(),
         format!("mcp__{SERVER}"),
     ];
