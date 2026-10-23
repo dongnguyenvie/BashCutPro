@@ -24,6 +24,10 @@ const GB: u64 = 1 << 30;
 const MAX_MANIFEST: usize = 4 << 20;
 const MAX_PLUGINS: usize = 200;
 const MAX_MODEL_FILES: usize = 2_000;
+/// The plugins' model cache, `<data dir>/bashcut-models/<model id>/`: where `bashcut_models.py` (bashcutpro-plugins)
+/// downloads what `models.json` lists. Not `bashcut_dirs::models_dir` (`<data dir>/models`), which holds the
+/// engine's own speech and voice models (RCB, `bashcut/decisions.md`).
+pub const PLUGIN_MODELS_DIR: &str = "bashcut-models";
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Level {
@@ -150,14 +154,13 @@ pub fn meets(version: (u64, u64, u64), requirement: &str) -> bool {
     }
 }
 
-/// The engine program (#154): `--cli`, `BASHCUTPRO_CLI` or `FILMCRAFT_CLI`, else `bashcutpro` when it
-/// starts, else `filmcraft-cli`.
+/// The engine program (#154, RC2): `--cli`, else the shared lookup (`bashcut_dirs::engine`, the one
+/// batch and the UI use): its variables (`BASHCUTPRO_CLI`, `BASHCUT_FILMCRAFT_CLI`, `FILMCRAFT_CLI`),
+/// then [`Env::find_engine`] (next to the doctor, else `bashcutpro` / `bcpro` / `filmcraft-cli` on
+/// `PATH`), else `filmcraft-cli`. Whether it starts is [`check_cli`]'s `--version` probe, a separate step.
 pub fn cli_program(env: &dyn Env, opts: &Options) -> String {
-    let named = opts.cli.clone().or_else(|| env.var("BASHCUTPRO_CLI")).or_else(|| env.var("FILMCRAFT_CLI"));
-    named.unwrap_or_else(|| {
-        let pro = env.run("bashcutpro", &["--version"]).is_some_and(|o| o.ok());
-        if pro { "bashcutpro" } else { "filmcraft-cli" }.to_string()
-    })
+    let named = opts.cli.clone().or_else(|| bashcut_dirs::engine::ENV.iter().find_map(|k| env.var(k)));
+    named.or_else(|| env.find_engine()).unwrap_or_else(|| "filmcraft-cli".to_string())
 }
 
 /// Every check, in a fixed order.
@@ -366,7 +369,7 @@ fn check_models(env: &dyn Env, opts: &Options, data: Option<&Path>, r: &mut Repo
         r.findings.push(Finding::new("models", Level::Info, format!("no model manifest at {}", manifest_path.display())));
         return;
     };
-    let cache = env.var("BASHCUT_MODELS_DIR").map(PathBuf::from).or_else(|| data.map(|d| d.join("bashcut-models")));
+    let cache = env.var("BASHCUT_MODELS_DIR").map(PathBuf::from).or_else(|| data.map(|d| d.join(PLUGIN_MODELS_DIR)));
     let Some(cache) = cache else { return };
     let models = manifest.get("models").and_then(Value::as_array).cloned().unwrap_or_default();
     let mut budget = MAX_MODEL_FILES;
