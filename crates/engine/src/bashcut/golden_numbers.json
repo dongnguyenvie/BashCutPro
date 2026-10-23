@@ -1,0 +1,495 @@
+{
+  "beats": {
+    "beats": [
+      1.505,
+      2.006,
+      2.508,
+      2.998,
+      3.5,
+      4.001,
+      4.502,
+      5.004,
+      5.505,
+      6.006,
+      6.508,
+      6.998,
+      7.5,
+      8.001,
+      8.502,
+      9.004,
+      9.505,
+      10.006,
+      10.508,
+      10.998,
+      11.5,
+      12.001,
+      12.502
+    ],
+    "bpm": 119.86,
+    "changed": null,
+    "clip": 7,
+    "confidence": 0.964,
+    "downbeats": [
+      2.998,
+      5.004,
+      6.998,
+      9.004,
+      10.998
+    ],
+    "found": true,
+    "markers": 0,
+    "truncated": false,
+    "units": {
+      "tempo": "BPM",
+      "time": "sequence seconds"
+    }
+  },
+  "captions": {
+    "after": {
+      "atOrUnder": 50.0,
+      "cues": 2,
+      "medianCps": 12.8,
+      "over25": 0.0
+    },
+    "before": {
+      "atOrUnder": 0.0,
+      "cues": 2,
+      "medianCps": 19.0,
+      "over25": 0.0
+    },
+    "captions": 2,
+    "cues": [
+      {
+        "end": 614485872000,
+        "speaker": null,
+        "start": 0,
+        "text": "So, here is the\nthing podcasts."
+      },
+      {
+        "end": 1642160520000,
+        "speaker": null,
+        "start": 635675040000,
+        "text": "Most people cut it."
+      }
+    ],
+    "left": [
+      {
+        "at": 0.0,
+        "cps": 12.8,
+        "text": "So, here is the\nthing podcasts."
+      }
+    ]
+  },
+  "demoSummary": {
+    "duration": 26.777,
+    "fps": 23.976,
+    "markers": 4,
+    "name": "Main Edit",
+    "playhead": 4.254,
+    "sequence": 21,
+    "size": [
+      1920,
+      1080
+    ],
+    "tracks": [
+      {
+        "clips": [
+          {
+            "end": 4.963,
+            "id": 29,
+            "in": 0.959,
+            "item": 5,
+            "link": 28,
+            "name": "Ocean_Sunset.mp4",
+            "start": 0.0
+          },
+          {
+            "end": 9.426,
+            "id": 32,
+            "in": 1.96,
+            "item": 6,
+            "link": 31,
+            "name": "Aurora_Timelapse.mp4",
+            "start": 4.963
+          },
+          {
+            "end": 13.388,
+            "id": 35,
+            "in": 0.459,
+            "item": 7,
+            "link": 34,
+            "name": "City_Night_Drive.mp4",
+            "start": 9.426
+          },
+          {
+            "effects": [
+              "Lumetri Color"
+            ],
+            "end": 18.352,
+            "id": 38,
+            "in": 2.961,
+            "item": 8,
+            "link": 37,
+            "name": "Desert_Dunes.mp4",
+            "start": 13.388
+          },
+          {
+            "end": 21.313,
+            "id": 41,
+            "in": 0.959,
+            "item": 9,
+            "link": 40,
+            "name": "Misty_Forest.mp4",
+            "start": 18.352
+          },
+          {
+            "end": 26.777,
+            "id": 44,
+            "in": 1.96,
+            "item": 10,
+            "link": 43,
+            "name": "Neon_Loop.mov",
+            "start": 21.313
+          }
+        ],
+        "id": 15,
+        "track": "V1"
+      },
+      {
+        "clips": [
+          {
+            "effects": [
+              "Drop Shadow"
+            ],
+            "end": 9.927,
+            "id": 46,
+            "item": 9,
+            "label": "Mango",
+            "name": "Misty_Forest.mp4",
+            "start": 5.964
+          }
+        ],
+        "id": 16,
+        "track": "V2"
+      },
+      {
+        "id": 17,
+        "track": "V3"
+      },
+      {
+        "clips": [
+          {
+            "end": 4.963,
+            "id": 30,
+            "in": 0.959,
+            "item": 5,
+            "link": 28,
+            "name": "Ocean_Sunset.mp4",
+            "start": 0.0
+          },
+          {
+            "end": 9.426,
+            "id": 33,
+            "in": 1.96,
+            "item": 6,
+            "link": 31,
+            "name": "Aurora_Timelapse.mp4",
+            "start": 4.963
+          },
+          {
+            "end": 13.388,
+            "id": 36,
+            "in": 0.459,
+            "item": 7,
+            "link": 34,
+            "name": "City_Night_Drive.mp4",
+            "start": 9.426
+          },
+          {
+            "end": 18.352,
+            "id": 39,
+            "in": 2.961,
+            "item": 8,
+            "link": 37,
+            "name": "Desert_Dunes.mp4",
+            "start": 13.388
+          },
+          {
+            "end": 21.313,
+            "id": 42,
+            "in": 0.959,
+            "item": 9,
+            "link": 40,
+            "name": "Misty_Forest.mp4",
+            "start": 18.352
+          },
+          {
+            "end": 26.777,
+            "id": 45,
+            "in": 1.96,
+            "item": 10,
+            "link": 43,
+            "name": "Neon_Loop.mov",
+            "start": 21.313
+          }
+        ],
+        "id": 18,
+        "track": "A1"
+      },
+      {
+        "clips": [
+          {
+            "end": 26.777,
+            "id": 47,
+            "item": 11,
+            "name": "Ambient_Score.wav",
+            "start": 0.0
+          }
+        ],
+        "id": 19,
+        "track": "A2"
+      },
+      {
+        "id": 20,
+        "track": "A3"
+      }
+    ],
+    "units": "seconds"
+  },
+  "loudness": {
+    "clip": 7,
+    "clippedSamples": 0,
+    "end": 13.013,
+    "integratedLufs": -25.48,
+    "loudnessRangeLu": 1.25,
+    "maxMomentaryLufs": -21.71,
+    "maxShortTermLufs": -25.69,
+    "samplePeakDbfs": -1.24,
+    "scope": "clip",
+    "shortTerm": [
+      -29.49,
+      -28.03,
+      -25.69,
+      -26.94,
+      -25.69,
+      -26.94,
+      -25.69,
+      -26.94,
+      -25.69,
+      -26.94,
+      -25.69,
+      -26.94
+    ],
+    "shortTermNote": "entry i = the 3 s window ending at start + i + 1 seconds",
+    "silent": false,
+    "start": 1.001,
+    "truePeakDbtp": -1.24,
+    "truncated": false,
+    "units": {
+      "loudness": "LUFS",
+      "peak": "dBTP (true) / dBFS (sample)",
+      "range": "LU",
+      "time": "seconds"
+    }
+  },
+  "picture": {
+    "counts": {
+      "black": 2,
+      "flash": 0,
+      "frozen": 2,
+      "longStill": 0
+    },
+    "end": 13.013,
+    "findings": [
+      {
+        "end": 3.25,
+        "kind": "frozen",
+        "seconds": 3.25,
+        "start": 0.0,
+        "value": 0.0
+      },
+      {
+        "end": 5.25,
+        "kind": "black",
+        "seconds": 2.0,
+        "start": 3.25,
+        "value": 0.0
+      },
+      {
+        "end": 8.25,
+        "kind": "frozen",
+        "seconds": 3.0,
+        "start": 5.25,
+        "value": 0.0
+      },
+      {
+        "end": 13.013,
+        "kind": "black",
+        "seconds": 4.763,
+        "start": 8.25,
+        "value": 0.0
+      }
+    ],
+    "frames": 53,
+    "start": 0.0,
+    "stepSeconds": 0.25,
+    "units": {
+      "time": "seconds",
+      "value": "luma 0…1 (black: brightest mean; frozen / still: largest change; flash: jump)"
+    },
+    "unrendered": 0
+  },
+  "review": {
+    "blocking": 1,
+    "end": 26.777,
+    "findings": [
+      {
+        "category": "sound",
+        "check": "loudness",
+        "end": 26.777,
+        "fix": "export with loudnessLufs (the profile does it), or level the voice first (bcp:audio-mix)",
+        "limit": -14.0,
+        "measured": -24.61,
+        "message": "integrated loudness -24.6 LUFS, target -14.0 ± 2",
+        "severity": "blocking",
+        "start": 0.0,
+        "unit": "LUFS"
+      },
+      {
+        "category": "picture",
+        "check": "black",
+        "end": 0.6,
+        "fix": "fine for a fade; else trim it",
+        "limit": null,
+        "measured": 0.0,
+        "message": "black at the start or end",
+        "severity": "info",
+        "start": 0.0,
+        "unit": "luma 0…1"
+      }
+    ],
+    "info": 1,
+    "markers": 0,
+    "measured": {
+      "captions": {
+        "captions": 0,
+        "safeAreaBoxes": 0
+      },
+      "edit": {
+        "cutEdgesChecked": 2,
+        "gaps": 0,
+        "offline": 0
+      },
+      "picture": {
+        "frames": 134,
+        "unrendered": 0
+      },
+      "sound": {
+        "clippedSamples": 0,
+        "integratedLufs": -24.61,
+        "loudnessRangeLu": 8.09,
+        "maxMomentaryLufs": -18.07,
+        "maxShortTermLufs": -20.86,
+        "samplePeakDbfs": -6.97,
+        "silent": false,
+        "truePeakDbtp": -6.9,
+        "truncated": false
+      }
+    },
+    "ok": false,
+    "profile": null,
+    "scores": {
+      "captions": 100,
+      "edit": 100,
+      "picture": 98,
+      "sound": 75
+    },
+    "skipped": [
+      {
+        "check": "sound.musicOverSpeech",
+        "why": "needs voice and music stems: bcp:audio-mix loudness.py --speech"
+      },
+      {
+        "check": "captions.contrast",
+        "why": "needs the rendered caption boxes: render_frame at phone size"
+      },
+      {
+        "check": "captions.safeArea",
+        "why": "pass a `profile` (bashcut.profiles.list): its safe area is the limit"
+      }
+    ],
+    "start": 0.0,
+    "units": {
+      "loudness": "LUFS",
+      "peak": "dBTP",
+      "time": "seconds"
+    },
+    "verdict": "needsFix",
+    "warnings": 0
+  },
+  "summary": {
+    "duration": 13.013,
+    "fps": 23.976,
+    "name": "bashcut",
+    "playhead": 0.0,
+    "selection": [
+      13
+    ],
+    "sequence": 5,
+    "size": [
+      320,
+      180
+    ],
+    "tracks": [
+      {
+        "clips": [
+          {
+            "end": 3.003,
+            "id": 9,
+            "item": 8,
+            "name": "Color Matte",
+            "start": 0.0
+          },
+          {
+            "end": 5.005,
+            "id": 11,
+            "item": 10,
+            "name": "Black Video",
+            "start": 3.003
+          },
+          {
+            "end": 8.008,
+            "id": 13,
+            "item": 12,
+            "name": "Color Matte",
+            "start": 5.005
+          }
+        ],
+        "id": 1,
+        "track": "V1"
+      },
+      {
+        "id": 2,
+        "track": "V2"
+      },
+      {
+        "clips": [
+          {
+            "end": 13.013,
+            "id": 7,
+            "item": 6,
+            "name": "click.wav",
+            "start": 1.001
+          }
+        ],
+        "id": 3,
+        "track": "A1"
+      },
+      {
+        "id": 4,
+        "track": "A2"
+      }
+    ],
+    "units": "seconds"
+  }
+}

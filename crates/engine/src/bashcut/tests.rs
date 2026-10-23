@@ -159,5 +159,84 @@ fn hostile_params_are_errors_not_crashes() {
 }
 
 #[test]
-#[ignore = "test ticket: bashcut/bashcut-commands.md lists exactly the ids of crate::bashcut::commands(), in order"]
-fn bashcut_commands_doc_matches_the_engine() {}
+fn bashcut_commands_doc_matches_the_engine() {
+    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../bashcut/bashcut-commands.md");
+    let doc = std::fs::read_to_string(&path).unwrap();
+    // table rows: | `bashcut.x.y` | Label | Params |
+    let listed: Vec<&str> = doc.lines().filter_map(|l| l.strip_prefix("| `")?.split('`').next()).filter(|id| id.starts_with("bashcut.")).collect();
+    let engine: Vec<&str> = super::commands().iter().map(|c| c.id).collect();
+    assert_eq!(listed, engine, "bashcut/bashcut-commands.md is out of date: regenerate it (see its header)");
+    assert!(doc.contains(&format!("Our own engine commands ({})", engine.len())), "the count in the doc's first line");
+}
+
+/// The results whose numbers `data::round_to` / `data::secs` round (summary, beats, loudness, picture checks,
+/// review, readable captions) on fixed inputs: a click track and a black stretch, and the demo project with a
+/// transcript.
+fn golden_outputs() -> Value {
+    let mut s = session();
+    let (x, _) = bashcut_analysis::beats::click_track(SR, 120.0, 12.0);
+    let c = place_audio(&mut s, "click", &x, 1.0);
+    place_generator(&mut s, "file.newColorMatte", json!({"color": "#a0a0a0", "seconds": 3.0}), 0.0);
+    place_generator(&mut s, "file.newBlackVideo", json!({"seconds": 2.0}), 3.0);
+    place_generator(&mut s, "file.newColorMatte", json!({"color": "#6080c0", "seconds": 3.0}), 5.0);
+    let beats = s.execute("bashcut.audio.beats", json!({"clip": c.0})).unwrap();
+    let loudness = s.execute("bashcut.audio.loudness", json!({"clip": c.0, "series": true})).unwrap();
+    let picture = s.execute("bashcut.review.pictureChecks", json!({"samplesPerSecond": 4})).unwrap();
+    let summary = s.execute("bashcut.timeline.summary", json!({})).unwrap();
+
+    let mut d = Session::default();
+    d.execute("file.openDemoProject", json!({})).unwrap();
+    let q = d.active_sequence().unwrap();
+    let a = &q.audio_tracks[0].items[0];
+    let (item, sin) = (a.item, a.source_in);
+    let words = [
+        ("So,", 0.0, 0.37),
+        ("here", 0.54, 0.66),
+        ("is", 0.66, 0.8),
+        ("the", 0.8, 0.9),
+        ("thing", 0.9, 1.04),
+        ("podcasts.", 1.04, 2.35),
+        ("Um,", 2.52, 2.78),
+        ("most", 2.93, 3.12),
+        ("people", 3.12, 3.38),
+        ("cut", 3.38, 3.58),
+        ("it.", 3.58, 3.7),
+    ];
+    let ws: Vec<Value> = words
+        .iter()
+        .map(|(t, a, b)| json!({"text": t, "start": (sin + filmcraft_time::Tick::from_seconds_f64(*a)).0, "end": (sin + filmcraft_time::Tick::from_seconds_f64(*b)).0}))
+        .collect();
+    d.execute("transcript.set", json!({"item": item.0, "transcript": {"language": "en", "words": ws}})).unwrap();
+    let captions = d.execute("bashcut.captions.create", json!({"maxChars": 20, "maxCps": 4, "dryRun": true})).unwrap();
+    let review = d.execute("bashcut.review.run", json!({"writeMarkers": false})).unwrap();
+    let demo_summary = d.execute("bashcut.timeline.summary", json!({})).unwrap();
+    json!({"beats": beats, "loudness": loudness, "picture": picture, "summary": summary, "captions": captions, "review": review, "demoSummary": demo_summary})
+}
+
+/// Every number in `v` with its JSON path, in key order.
+fn numbers(v: &Value, path: String, out: &mut Vec<(String, f64)>) {
+    match v {
+        Value::Number(n) => out.push((path, n.as_f64().unwrap())),
+        Value::Array(a) => a.iter().enumerate().for_each(|(i, x)| numbers(x, format!("{path}[{i}]"), out)),
+        Value::Object(o) => o.iter().for_each(|(k, x)| numbers(x, format!("{path}.{k}"), out)),
+        _ => {}
+    }
+}
+
+/// The one rounding rule (`data::round_to`, #275) changed no reported number: `golden_numbers.json` holds
+/// [`golden_outputs`] as the engine gave it at 272dcc32, the commit before #275. Only numbers are compared, so
+/// reworded messages do not break it; an intended change to a number re-records the file.
+#[test]
+fn reported_numbers_match_the_golden_numbers_from_before_the_rounding_rule() {
+    let golden: Value = serde_json::from_str(include_str!("golden_numbers.json")).unwrap();
+    let (mut want, mut got) = (Vec::new(), Vec::new());
+    numbers(&golden, String::new(), &mut want);
+    numbers(&golden_outputs(), String::new(), &mut got);
+    assert!(want.len() > 200, "{} golden numbers", want.len());
+    let paths = |v: &[(String, f64)]| v.iter().map(|(p, _)| p.clone()).collect::<Vec<_>>();
+    assert_eq!(paths(&got), paths(&want), "the same numbers are reported");
+    // parsing the file may be one ulp off; a rounding change moves a number by far more
+    let drift: Vec<String> =
+        want.iter().zip(&got).filter(|((_, w), (_, g))| (w - g).abs() > 1e-9 * w.abs().max(1.0)).map(|((p, w), (_, g))| format!("{p}: {w} -> {g}")).collect();
+    assert!(drift.is_empty(), "numbers drifted from golden_numbers.json:\n{}", drift.join("\n"));
+}

@@ -119,7 +119,7 @@ fn plugins_come_from_the_sessions_data_dir() {
     let data = tmp_dir("bashcut-hooks-data-dir");
     let plugin = data.join("bashcut-plugins").join("p");
     std::fs::create_dir_all(&plugin).unwrap();
-    let manifest = json!({"schema": "bashcut-plugin/1", "id": "t.p", "entry": {"command": ["x"]},
+    let manifest = json!({"schema": "bashcut-plugin/1", "id": "t.p", "version": "0.1.0", "entry": {"command": ["x"]},
         "actions": [{"id": "a", "args": ["a"]}], "hooks": [{"event": "import.after", "action": "a"}]});
     std::fs::write(plugin.join("bashcut-plugin.json"), manifest.to_string()).unwrap();
     let mut s = Session::default();
@@ -129,9 +129,109 @@ fn plugins_come_from_the_sessions_data_dir() {
 }
 
 #[test]
-#[ignore = "test ticket: a hook gets its plugin's settings env (settings.json value under the setting's env name, BASHCUT_PLUGIN_HOST=1) like an action run"]
-fn hook_gets_the_plugins_settings_env() {}
+fn plugins_dir_defaults_to_the_sessions_data_dir() {
+    let data = tmp_dir("bashcut-hooks-default-dir");
+    let mut s = Session::default();
+    s.export_presets.set_dir(&data);
+    let v = s.execute("bashcut.hooks.list", json!({})).unwrap();
+    assert_eq!(v["dir"].as_str().map(std::path::PathBuf::from), Some(data.join("bashcut-plugins")), "{v}");
+    assert_eq!(v["hooks"], json!([]), "no plugins folder yet: no hooks, no error");
+    // an empty pluginsDir is the default too
+    let v = s.execute("bashcut.hooks.list", json!({"pluginsDir": ""})).unwrap();
+    assert_eq!(v["dir"].as_str().map(std::path::PathBuf::from), Some(data.join("bashcut-plugins")));
+}
 
 #[test]
-#[ignore = "test ticket: a timed-out hook gets TERM first (unix trap writes a marker), then KILL after the grace; a failed row carries stderr's tail"]
-fn hook_timeout_is_soft_first_and_failed_rows_keep_stderr() {}
+fn discover_skips_an_invalid_manifest_and_keeps_the_connect_project_default() {
+    let root = tmp_dir("bashcut-hooks-discover");
+    // refused by the host's reader: no schema
+    std::fs::create_dir_all(root.join("a-noschema")).unwrap();
+    let noschema =
+        json!({"id": "t.noschema", "entry": {"command": ["x"]}, "actions": [{"id": "a", "args": []}], "hooks": [{"event": "export.before", "action": "a"}]});
+    std::fs::write(root.join("a-noschema").join("bashcut-plugin.json"), noschema.to_string()).unwrap();
+    // no connect section: a project action gets `--project {project}`
+    std::fs::create_dir_all(root.join("b-plain")).unwrap();
+    let plain = json!({"schema": "bashcut-plugin/1", "id": "t.plain", "version": "0.1.0", "entry": {"command": ["tool", "--flag"]},
+        "actions": [{"id": "a", "args": ["run"], "needs": "project"}], "hooks": [{"event": "export.before", "action": "a"}]});
+    std::fs::write(root.join("b-plain").join("bashcut-plugin.json"), plain.to_string()).unwrap();
+    // a folder without a manifest is no plugin
+    std::fs::create_dir_all(root.join("c-empty")).unwrap();
+    plugin(&root, "d-custom", "t.custom", json!({"command": ["x"]}), json!([{"event": "export.before", "action": "act"}]), "project");
+
+    let hooks = discover(&root, "export.before");
+    let ids: Vec<&str> = hooks.iter().map(|h| h.plugin.as_str()).collect();
+    assert_eq!(ids, ["t.plain", "t.custom"], "the invalid manifest declares no hooks");
+    assert_eq!(hooks[0].argv, ["tool", "--flag", "run"]);
+    assert_eq!(hooks[0].project_args.as_deref(), Some(&["--project".to_string(), "{project}".to_string()][..]));
+    assert_eq!(hooks[0].timeout.as_secs(), 300, "the default timeout");
+    assert_eq!(hooks[1].project_args.as_deref(), Some(&["--project".to_string(), "{project}".to_string()][..]), "the manifest's own connect.project");
+    // the project path fills {project}; without one the hook is skipped
+    assert_eq!(run_hook(&hooks[0], None, &json!({}))["status"], "skipped");
+}
+
+#[test]
+fn hook_gets_the_plugins_settings_env() {
+    if !cfg!(unix) {
+        return;
+    }
+    let root = tmp_dir("bashcut-hooks-settings");
+    let dir = root.join("t.env");
+    std::fs::create_dir_all(&dir).unwrap();
+    let m = json!({"schema": "bashcut-plugin/1", "id": "t.env", "version": "0.1.0",
+        "entry": {"command": ["sh", "-c", "printf '%s|%s|%s|%s' \"$S_SERVICE\" \"$S_N\" \"$BASHCUT_PLUGIN_HOST\" \"$BASHCUT_HOOK_EVENT\" > env.out"]},
+        "settings": [
+            {"id": "service", "type": "enum", "choices": ["a", "b"], "default": "a", "env": ["S_SERVICE"]},
+            {"id": "n", "type": "integer", "env": ["S_N"]},
+            {"id": "plain", "type": "string"}
+        ],
+        "actions": [{"id": "act", "args": []}], "hooks": [{"event": "import.after", "action": "act"}]});
+    std::fs::write(dir.join("bashcut-plugin.json"), m.to_string()).unwrap();
+    std::fs::write(dir.join("settings.json"), r#"{"service":"b","n":7,"plain":"x"}"#).unwrap();
+    let hooks = discover(&root, "import.after");
+    let row = run_hook(&hooks[0], None, &json!({}));
+    assert_eq!(row["status"], "ok", "{row}");
+    let out = std::fs::read_to_string(dir.join("env.out")).unwrap();
+    assert_eq!(out, "b|7|1|import.after", "settings under their env names, like an action run");
+}
+
+#[test]
+fn hook_timeout_is_soft_first_and_failed_rows_keep_stderr() {
+    if !cfg!(unix) {
+        return;
+    }
+    let root = tmp_dir("bashcut-hooks-soft");
+    // TERM is trapped (a marker), so only the KILL after the grace ends it
+    plugin(
+        &root,
+        "stubborn",
+        "test.stubborn",
+        shell("trap 'echo term > term.marker' TERM; echo starting >&2; while :; do sleep 0.1; done", "exit 1"),
+        json!([{"event": "batch.afterItem", "action": "act", "timeoutSeconds": 1}]),
+        "none",
+    );
+    let hooks = discover(&root, "batch.afterItem");
+    let t0 = std::time::Instant::now();
+    let row = run_hook(&hooks[0], None, &json!({}));
+    let took = t0.elapsed();
+    assert_eq!(row["status"], "failed", "{row}");
+    assert!(row["message"].as_str().unwrap().contains("timed out after 1 s"), "{row}");
+    assert!(root.join("stubborn").join("term.marker").is_file(), "TERM came first");
+    assert!(took >= std::time::Duration::from_secs(1) + bashcut_dirs::child::GRACE / 2, "KILL waited for the grace: {took:?}");
+    assert!(took.as_secs() < 10, "{took:?}");
+
+    // a failed row carries the tail of stderr (at most 2 KiB)
+    plugin(
+        &root,
+        "noisy",
+        "test.noisy",
+        shell("i=0; while [ $i -lt 400 ]; do echo \"line $i of the noise\" >&2; i=$((i+1)); done; echo last words >&2; exit 2", "exit 2"),
+        json!([{"event": "batch.beforeItem", "action": "act"}]),
+        "none",
+    );
+    let hooks = discover(&root, "batch.beforeItem");
+    let row = run_hook(&hooks[0], None, &json!({}));
+    assert_eq!((row["status"].as_str(), row["exit"].as_i64()), (Some("failed"), Some(2)), "{row}");
+    let stderr = row["stderr"].as_str().unwrap();
+    assert!(stderr.ends_with("last words"), "the tail is kept: {stderr}");
+    assert!(stderr.len() <= 2048 && !stderr.contains("line 0 of"), "capped to the tail: {} bytes", stderr.len());
+}

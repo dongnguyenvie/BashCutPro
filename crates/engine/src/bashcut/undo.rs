@@ -14,14 +14,16 @@ use crate::Session;
 
 pub(crate) struct UndoGroup {
     project: Arc<Project>,
-    undo_len: usize,
+    /// The undo entries before the group (whole-project `Arc`s: cheap), put back by [`UndoGroup::cancel`] even
+    /// when a step replaced the history.
+    undo: Vec<(String, Arc<Project>)>,
     limit: usize,
 }
 
 impl UndoGroup {
     /// Start a group: no step folds into an edit made before it, and none is pushed out of the history.
     pub(crate) fn start(s: &mut Session) -> UndoGroup {
-        let g = UndoGroup { project: s.project.clone(), undo_len: s.history.undo.len(), limit: s.history.limit };
+        let g = UndoGroup { project: s.project.clone(), undo: s.history.undo.clone(), limit: s.history.limit };
         s.history.merge_key = None;
         s.history.limit = usize::MAX;
         g
@@ -31,24 +33,28 @@ impl UndoGroup {
     /// caller restores the rest of the session).
     pub(crate) fn cancel(self, s: &mut Session) {
         s.project = self.project;
-        s.history.undo.truncate(self.undo_len);
+        s.history.undo = self.undo;
         s.history.merge_key = None;
         s.history.limit = self.limit;
     }
 
     /// End the group: the entries its steps pushed become one labelled `label`. Returns whether there is one.
     pub(crate) fn finish(self, s: &mut Session, label: &str) -> bool {
+        // a step replaced the history (a project was opened or made): every reset sets the limit back from the
+        // usize::MAX of `start`. The new history stays and there is nothing to fold into: an entry holding the
+        // project from before would undo the open.
+        let reset = s.history.limit != usize::MAX;
         s.history.limit = self.limit;
         s.history.merge_key = None;
-        let pushed = s.history.undo.len().saturating_sub(self.undo_len);
-        if s.history.undo.len() < self.undo_len {
-            // a step reset the history (a project was opened): nothing to fold into
-            return pushed > 0;
+        if reset {
+            return false;
         }
+        let undo_len = self.undo.len();
+        let pushed = s.history.undo.len().saturating_sub(undo_len);
         if pushed == 0 && Arc::ptr_eq(&s.project, &self.project) {
             return false;
         }
-        s.history.undo.truncate(self.undo_len);
+        s.history.undo.truncate(undo_len);
         s.history.undo.push((label.to_string(), self.project));
         let over = s.history.undo.len().saturating_sub(s.history.limit.max(1));
         if over > 0 {

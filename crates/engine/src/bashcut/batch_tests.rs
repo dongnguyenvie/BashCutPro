@@ -134,5 +134,36 @@ fn hostile_batches_are_refused_without_changes() {
 }
 
 #[test]
-#[ignore = "test ticket: a batch whose step opens a project (history reset) reports undoSteps 0 and keeps the new history; a failing atomic batch restores project, state, undo and redo"]
-fn batch_undo_fold_after_history_reset() {}
+fn batch_undo_fold_after_history_reset() {
+    let entries = |s: &Session| s.history.undo.iter().map(|u| u.0.clone()).collect::<Vec<_>>();
+    // a step opens a project (history reset): nothing to fold into, the new history stays
+    let (mut s, item) = session();
+    s.execute("timeline.place", place(item, 0.0)["params"].clone()).unwrap();
+    assert!(s.history.undo.len() >= 2);
+    let v = s.execute("bashcut.batch", json!({"commands": [place(item, 4.0), {"id": "file.openDemoProject"}]})).unwrap();
+    assert_eq!(v["undoSteps"], 0, "{v}");
+    assert!(s.history.undo.is_empty(), "the opened project's history: {:?}", entries(&s));
+    assert_eq!(s.history.limit, 200, "the limit the group lifted is back");
+    // the same from a session with no undo history yet
+    let mut fresh = Session::default();
+    let v = fresh.execute("bashcut.batch", json!({"commands": [{"id": "file.openDemoProject"}]})).unwrap();
+    assert_eq!(v["undoSteps"], 0, "{v}");
+    assert!(fresh.history.undo.is_empty(), "no entry back to the empty project: {:?}", entries(&fresh));
+    // a failing atomic batch after the reset puts back project, state, undo and redo
+    let (mut s, item) = session();
+    s.execute("timeline.place", place(item, 0.0)["params"].clone()).unwrap();
+    s.execute("timeline.place", place(item, 4.0)["params"].clone()).unwrap();
+    s.execute("edit.undo", json!({})).unwrap();
+    let (project, state) = (s.project.clone(), serde_json::to_value(&s.state).unwrap());
+    let (undo, redo) = (entries(&s), s.history.redo.iter().map(|u| u.0.clone()).collect::<Vec<_>>());
+    assert_eq!(redo.len(), 1);
+    let e = s.execute("bashcut.batch", json!({"commands": [{"id": "file.openDemoProject"}, place(999_999, 1.0)]})).unwrap_err();
+    assert!(e.to_string().contains("step 2 of 2"), "{e}");
+    assert!(Arc::ptr_eq(&s.project, &project), "the project from before the batch");
+    assert_eq!(serde_json::to_value(&s.state).unwrap(), state);
+    assert_eq!(entries(&s), undo, "the undo history from before the batch");
+    assert_eq!(s.history.redo.iter().map(|u| u.0.clone()).collect::<Vec<_>>(), redo);
+    assert_eq!(s.history.limit, 200);
+    s.execute("edit.redo", json!({})).unwrap();
+    assert_eq!(clips(&s), 2);
+}
