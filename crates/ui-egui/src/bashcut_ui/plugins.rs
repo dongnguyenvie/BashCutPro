@@ -99,7 +99,7 @@ pub fn invoke(app: &mut FilmcraftApp, ctx: &egui::Context, name: &str, params: &
         let (plugin, action) = (s("plugin"), s("action"));
         let view = with(app, ctx, |h| h.plugin(&plugin).and_then(|p| p.manifest.as_ref()).and_then(|m| m.action(&action)).is_some_and(|a| a.view));
         if view {
-            super::State::update(ctx, |st| st.show("plugins"));
+            super::State::update(ctx, |st| st.show(super::PLUGINS));
         }
     }
     r

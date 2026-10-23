@@ -334,7 +334,7 @@ fn last_run(app: &mut FilmcraftApp, ui: &mut egui::Ui, ctx: &egui::Context, d: &
             let r = ui.link(egui::RichText::new(s("Open in Runs")).size(11.0));
             app.auto.add_response(&format!("{id}.runs"), &r, s("Open in Runs"));
             if r.clicked() {
-                super::State::update(ctx, |st| st.show("runs"));
+                super::State::update(ctx, |st| st.show(super::RUNS));
             }
         }
         let running = job.is_some_and(|j| j.state.is_running());

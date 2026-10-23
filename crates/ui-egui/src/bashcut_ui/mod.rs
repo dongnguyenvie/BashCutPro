@@ -61,8 +61,13 @@ pub struct Section {
     pub shortcut: Option<&'static str>,
 }
 
-/// Section ids used outside [`SECTIONS`] (`bashcut.ui.focusAgent`, the toasts' Runs check).
+/// Section ids: the `id` of each [`SECTIONS`] row; code that opens or checks a section names it
+/// by one of these, never by a string literal.
 pub const AGENT: &str = "agent";
+pub const BATCH: &str = "batch";
+pub const LOOKS: &str = "looks";
+pub const LIBRARY: &str = "library";
+pub const PLUGINS: &str = "plugins";
 pub const RUNS: &str = "runs";
 
 /// The rail, top to bottom (`bashcut/in-app-ui.md` §1).
@@ -77,7 +82,7 @@ pub const SECTIONS: &[Section] = &[
         shortcut: Some("bashcut.ui.focusAgent"),
     },
     Section {
-        id: "batch",
+        id: BATCH,
         title: "Batch",
         icon: Icon::ListView,
         blurb: "Run steps on many files at once, watch them and fix the ones that fail.",
@@ -86,7 +91,7 @@ pub const SECTIONS: &[Section] = &[
         shortcut: None,
     },
     Section {
-        id: "looks",
+        id: LOOKS,
         title: "Looks",
         icon: Icon::Sparkle,
         blurb: "Curated looks with a purpose each: preview, apply to the selection, favourite.",
@@ -95,7 +100,7 @@ pub const SECTIONS: &[Section] = &[
         shortcut: None,
     },
     Section {
-        id: "library",
+        id: LIBRARY,
         title: "Library",
         icon: Icon::Folder,
         blurb: "Your saved pieces and open media online, with the licence shown before download.",
@@ -104,7 +109,7 @@ pub const SECTIONS: &[Section] = &[
         shortcut: None,
     },
     Section {
-        id: "plugins",
+        id: PLUGINS,
         title: "Plugins",
         icon: Icon::Grid,
         blurb: "Installed plugins, their settings and actions.",

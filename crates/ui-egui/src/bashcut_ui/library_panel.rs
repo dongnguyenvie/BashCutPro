@@ -363,7 +363,7 @@ pub fn draw(app: &mut FilmcraftApp, ui: &mut egui::Ui) {
         let name = if p.online { s("Online Resources") } else { s("Library") };
         note(ui, f("Install the {plugin} plugin to use this tab.", &[("plugin", name)]), NOTE, t.text_dim);
         if small_button(app, ui, "bashcut.library.install", s("Open Plugins"), true) {
-            super::State::update(&ctx, |st| st.show("plugins"));
+            super::State::update(&ctx, |st| st.show(super::PLUGINS));
         }
         put(&ctx, p);
         return;
@@ -575,7 +575,7 @@ pub fn invoke(app: &mut FilmcraftApp, ctx: &egui::Context, name: &str, params: &
                 p.mine_kind = str_param("kind").unwrap_or_default();
                 p.mine_query = query;
             }
-            super::State::update(ctx, |st| st.show("library"));
+            super::State::update(ctx, |st| st.show(super::LIBRARY));
             search(app, ctx, &mut p).map(|job| json!({"job": job}))
         }
         "results" => {

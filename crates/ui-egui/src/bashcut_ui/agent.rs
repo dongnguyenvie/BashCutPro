@@ -105,7 +105,7 @@ pub fn invoke(app: &mut FilmcraftApp, ctx: &egui::Context, name: &str, params: &
     let c = context(app);
     let r = with(app, ctx, |a| a.command(name, params, &c)).map_err(|e| e.0);
     if r.is_ok() && matches!(name, "send" | "approve" | "change") {
-        super::State::update(ctx, |st| st.show("agent"));
+        super::State::update(ctx, |st| st.show(super::AGENT));
         ctx.request_repaint();
     }
     r
