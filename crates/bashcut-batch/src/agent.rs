@@ -80,54 +80,85 @@ pub fn argv(l: &Launch) -> Vec<String> {
         vars.0.push(("mcpConfig", mcp_config));
         return l.step.argv.iter().map(|a| vars.expand(a)).collect();
     }
-    match l.step.agent_name() {
-        "codex" => {
-            let (program, args) = read_server(l.mcp_config);
-            let toml_args = format!("[{}]", args.iter().map(|a| toml_string(a.as_str())).collect::<Vec<_>>().join(", "));
-            let mut v: Vec<String> = vec!["codex".into(), "exec".into()];
-            if let Some(s) = l.session {
-                v.extend(["resume".to_string(), s.to_string()]);
-            }
-            v.extend([
-                "--json".to_string(),
-                "--skip-git-repo-check".into(),
-                "-c".into(),
-                format!("mcp_servers.{SERVER}.command={}", toml_string(&program)),
-                "-c".into(),
-                format!("mcp_servers.{SERVER}.args={toml_args}"),
-                l.prompt.to_string(),
-            ]);
-            v
-        }
-        _ => {
-            let mut v: Vec<String> = vec![
-                "claude".into(),
-                "-p".into(),
-                l.prompt.to_string(),
-                "--output-format".into(),
-                "stream-json".into(),
-                "--verbose".into(),
-                "--max-turns".into(),
-                l.step.max_turns().to_string(),
-                "--mcp-config".into(),
-                mcp_config,
-                "--allowedTools".into(),
-                format!("mcp__{SERVER}"),
-            ];
-            let kit = kit(l.step, l.vars);
-            if kit.is_some() {
-                v.extend(kit_tools());
-            }
-            v.extend(l.step.allowed_tools.iter().cloned());
-            if let Some(k) = kit {
-                v.extend(["--plugin-dir".to_string(), k.to_string()]);
-            }
-            if let Some(s) = l.session {
-                v.extend(["--resume".to_string(), s.to_string()]);
-            }
-            v
-        }
+    let adapter = adapter(l.step.agent_name()).unwrap_or(&CLAUDE);
+    (adapter.argv)(l, mcp_config)
+}
+
+/// One agent the runner knows how to start and read. A new agent is one row in [`ADAPTERS`] plus
+/// its `argv` and `read_event` fns.
+pub struct AgentAdapter {
+    /// The pipeline's `agent` value.
+    pub name: &'static str,
+    /// The round's command line, given the launch and the `--mcp-config` path.
+    argv: fn(&Launch, String) -> Vec<String>,
+    /// Reads one event of its stream (`type`, the event) into the round; false when it is not one of its events.
+    read_event: fn(&mut Round, &str, &Value) -> bool,
+}
+
+const CLAUDE: AgentAdapter = AgentAdapter { name: "claude", argv: claude_argv, read_event: claude_event };
+
+/// Every agent, in the order error messages name them.
+pub const ADAPTERS: &[AgentAdapter] = &[CLAUDE, AgentAdapter { name: "codex", argv: codex_argv, read_event: codex_event }];
+
+/// The agent a step gets when it names none (Claude Code).
+pub const DEFAULT_AGENT: &str = CLAUDE.name;
+
+/// The adapter called `name`.
+pub fn adapter(name: &str) -> Option<&'static AgentAdapter> {
+    ADAPTERS.iter().find(|a| a.name == name)
+}
+
+/// The agents a pipeline may name.
+pub fn names() -> Vec<&'static str> {
+    ADAPTERS.iter().map(|a| a.name).collect()
+}
+
+fn claude_argv(l: &Launch, mcp_config: String) -> Vec<String> {
+    let mut v: Vec<String> = vec![
+        "claude".into(),
+        "-p".into(),
+        l.prompt.to_string(),
+        "--output-format".into(),
+        "stream-json".into(),
+        "--verbose".into(),
+        "--max-turns".into(),
+        l.step.max_turns().to_string(),
+        "--mcp-config".into(),
+        mcp_config,
+        "--allowedTools".into(),
+        format!("mcp__{SERVER}"),
+    ];
+    let kit = kit(l.step, l.vars);
+    if kit.is_some() {
+        v.extend(kit_tools());
     }
+    v.extend(l.step.allowed_tools.iter().cloned());
+    if let Some(k) = kit {
+        v.extend(["--plugin-dir".to_string(), k.to_string()]);
+    }
+    if let Some(s) = l.session {
+        v.extend(["--resume".to_string(), s.to_string()]);
+    }
+    v
+}
+
+fn codex_argv(l: &Launch, _mcp_config: String) -> Vec<String> {
+    let (program, args) = read_server(l.mcp_config);
+    let toml_args = format!("[{}]", args.iter().map(|a| toml_string(a.as_str())).collect::<Vec<_>>().join(", "));
+    let mut v: Vec<String> = vec!["codex".into(), "exec".into()];
+    if let Some(s) = l.session {
+        v.extend(["resume".to_string(), s.to_string()]);
+    }
+    v.extend([
+        "--json".to_string(),
+        "--skip-git-repo-check".into(),
+        "-c".into(),
+        format!("mcp_servers.{SERVER}.command={}", toml_string(&program)),
+        "-c".into(),
+        format!("mcp_servers.{SERVER}.args={toml_args}"),
+        l.prompt.to_string(),
+    ]);
+    v
 }
 
 /// (program, args) back from a config written by [`mcp_config`].
@@ -177,57 +208,78 @@ pub fn read_round(log: &Path) -> Round {
     let mut r = Round::default();
     for line in read_log(log).lines() {
         let Ok(v) = serde_json::from_str::<Value>(line.trim()) else { continue };
-        let num = |x: &Value| x.as_u64().unwrap_or(0);
-        match v.get("type").and_then(Value::as_str).unwrap_or_default() {
-            // Claude Code
-            "system" => {
-                if let Some(s) = v.get("session_id").and_then(Value::as_str) {
-                    r.session = Some(s.to_string());
-                }
+        let kind = v.get("type").and_then(Value::as_str).unwrap_or_default();
+        // A custom argv may print either stream, so every adapter reads every line.
+        for adapter in ADAPTERS {
+            if (adapter.read_event)(&mut r, kind, &v) {
+                break;
             }
-            "result" => {
-                if let Some(s) = v.get("session_id").and_then(Value::as_str) {
-                    r.session = Some(s.to_string());
-                }
-                r.turns = r.turns.saturating_add(num(&v["num_turns"]));
-                let u = &v["usage"];
-                r.input_tokens = r
-                    .input_tokens
-                    .saturating_add(num(&u["input_tokens"]))
-                    .saturating_add(num(&u["cache_creation_input_tokens"]))
-                    .saturating_add(num(&u["cache_read_input_tokens"]));
-                r.output_tokens = r.output_tokens.saturating_add(num(&u["output_tokens"]));
-                if let Some(c) = v["total_cost_usd"].as_f64().filter(|c| c.is_finite() && *c >= 0.0) {
-                    r.cost_usd += c;
-                }
-                let subtype = v["subtype"].as_str().unwrap_or_default();
-                r.hit_turn_limit |= subtype == "error_max_turns";
-                r.failed |= v["is_error"].as_bool().unwrap_or(false) || (subtype.starts_with("error") && subtype != "error_max_turns");
-                if let Some(t) = v["result"].as_str() {
-                    r.message = t.to_string();
-                }
-            }
-            // Codex
-            "thread.started" => {
-                if let Some(s) = v.get("thread_id").and_then(Value::as_str) {
-                    r.session = Some(s.to_string());
-                }
-            }
-            "turn.completed" => {
-                r.turns = r.turns.saturating_add(1);
-                let u = &v["usage"];
-                r.input_tokens = r.input_tokens.saturating_add(num(&u["input_tokens"]));
-                r.output_tokens = r.output_tokens.saturating_add(num(&u["output_tokens"]));
-            }
-            "turn.failed" | "error" => {
-                r.failed = true;
-                r.message = v["error"]["message"].as_str().or_else(|| v["message"].as_str()).unwrap_or("the agent reported an error").to_string();
-            }
-            _ => {}
         }
     }
     r.message = process::cap(&r.message, 600);
     r
+}
+
+fn num(x: &Value) -> u64 {
+    x.as_u64().unwrap_or(0)
+}
+
+/// Claude Code stream-json: `system` (session) and `result` (usage, limits, last words).
+fn claude_event(r: &mut Round, kind: &str, v: &Value) -> bool {
+    match kind {
+        "system" => {
+            if let Some(s) = v.get("session_id").and_then(Value::as_str) {
+                r.session = Some(s.to_string());
+            }
+        }
+        "result" => {
+            if let Some(s) = v.get("session_id").and_then(Value::as_str) {
+                r.session = Some(s.to_string());
+            }
+            r.turns = r.turns.saturating_add(num(&v["num_turns"]));
+            let u = &v["usage"];
+            r.input_tokens = r
+                .input_tokens
+                .saturating_add(num(&u["input_tokens"]))
+                .saturating_add(num(&u["cache_creation_input_tokens"]))
+                .saturating_add(num(&u["cache_read_input_tokens"]));
+            r.output_tokens = r.output_tokens.saturating_add(num(&u["output_tokens"]));
+            if let Some(c) = v["total_cost_usd"].as_f64().filter(|c| c.is_finite() && *c >= 0.0) {
+                r.cost_usd += c;
+            }
+            let subtype = v["subtype"].as_str().unwrap_or_default();
+            r.hit_turn_limit |= subtype == "error_max_turns";
+            r.failed |= v["is_error"].as_bool().unwrap_or(false) || (subtype.starts_with("error") && subtype != "error_max_turns");
+            if let Some(t) = v["result"].as_str() {
+                r.message = t.to_string();
+            }
+        }
+        _ => return false,
+    }
+    true
+}
+
+/// Codex `--json`: `thread.started` (session), `turn.completed` (usage), `turn.failed` / `error`.
+fn codex_event(r: &mut Round, kind: &str, v: &Value) -> bool {
+    match kind {
+        "thread.started" => {
+            if let Some(s) = v.get("thread_id").and_then(Value::as_str) {
+                r.session = Some(s.to_string());
+            }
+        }
+        "turn.completed" => {
+            r.turns = r.turns.saturating_add(1);
+            let u = &v["usage"];
+            r.input_tokens = r.input_tokens.saturating_add(num(&u["input_tokens"]));
+            r.output_tokens = r.output_tokens.saturating_add(num(&u["output_tokens"]));
+        }
+        "turn.failed" | "error" => {
+            r.failed = true;
+            r.message = v["error"]["message"].as_str().or_else(|| v["message"].as_str()).unwrap_or("the agent reported an error").to_string();
+        }
+        _ => return false,
+    }
+    true
 }
 
 fn read_log(path: &Path) -> String {
@@ -636,4 +688,8 @@ mod tests {
         assert_eq!(summary["sequences"].as_array().map(Vec::len), Some(3));
         assert_eq!(summary["findings"][1]["sequenceName"], "clip-3");
     }
+
+    #[test]
+    #[ignore = "test ticket: every ADAPTERS row: names() lists it, adapter(name) finds it, its argv starts with its program, read_round of a mixed claude+codex log sums both"]
+    fn every_adapter_row_is_named_found_and_read() {}
 }

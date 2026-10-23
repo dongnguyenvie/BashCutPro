@@ -200,13 +200,11 @@ pub const DEFAULT_MAX_TURNS: u32 = 120;
 pub const DEFAULT_MAX_MINUTES: f64 = 30.0;
 pub const DEFAULT_FIX_ROUNDS: u32 = 2;
 pub const MAX_FIX_ROUNDS: u32 = 5;
-/// Agents the runner knows how to start and read.
-pub const AGENTS: &[&str] = &["claude", "codex"];
 
 impl AgentStep {
     fn check(&self) -> Result<(), String> {
-        if self.agent.as_deref().is_some_and(|a| !AGENTS.contains(&a)) {
-            return Err(format!("agent must be one of {}", AGENTS.join(", ")));
+        if self.agent.as_deref().is_some_and(|a| crate::agent::adapter(a).is_none()) {
+            return Err(format!("agent must be one of {}", crate::agent::names().join(", ")));
         }
         if self.max_turns.is_some_and(|t| t == 0 || t > 1000) {
             return Err("maxTurns must be 1 to 1000".into());
@@ -222,7 +220,7 @@ impl AgentStep {
 
     /// The adapter: `claude` unless set.
     pub fn agent_name(&self) -> &str {
-        self.agent.as_deref().unwrap_or("claude")
+        self.agent.as_deref().unwrap_or(crate::agent::DEFAULT_AGENT)
     }
 
     pub fn max_turns(&self) -> u32 {
@@ -239,7 +237,8 @@ impl AgentStep {
     }
 }
 
-/// What a step does, borrowed from a validated [`Step`].
+/// What a step does, borrowed from a validated [`Step`]. A new kind is a field on [`Step`], a row in
+/// [`STEP_KINDS`], its arms in the `impl` below and its run fn in the runner (`runner::run_step`).
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum StepKind<'a> {
     Command(&'a str, Option<&'a Value>),
@@ -248,25 +247,67 @@ pub enum StepKind<'a> {
     Agent(&'a AgentStep),
 }
 
+/// One step kind: its field name in the pipeline file and how a [`Step`] is read as it.
+pub struct StepKindRow {
+    pub name: &'static str,
+    pub of: for<'a> fn(&'a Step) -> Option<StepKind<'a>>,
+}
+
+/// Every step kind, in the order error messages name them.
+pub const STEP_KINDS: &[StepKindRow] = &[
+    StepKindRow { name: "command", of: |s| s.command.as_deref().map(|id| StepKind::Command(id, s.params.as_ref())) },
+    StepKindRow { name: "commands", of: |s| (!s.commands.is_empty()).then_some(StepKind::Commands(&s.commands)) },
+    StepKindRow { name: "plugin", of: |s| s.plugin.as_ref().map(StepKind::Plugin) },
+    StepKindRow { name: "agent", of: |s| s.agent.as_ref().map(StepKind::Agent) },
+];
+
+impl StepKind<'_> {
+    /// A short label for the job book.
+    pub fn describe(&self) -> String {
+        match self {
+            StepKind::Command(id, _) => id.to_string(),
+            StepKind::Commands(c) => format!("{} commands", c.len()),
+            StepKind::Plugin(p) => format!("plugin {}", p.argv.first().map(String::as_str).unwrap_or("?")),
+            StepKind::Agent(a) => format!("agent: {}", a.skill),
+        }
+    }
+
+    /// An empty command id, program or skill.
+    fn is_blank(&self) -> bool {
+        match self {
+            StepKind::Command(id, _) => id.trim().is_empty(),
+            StepKind::Commands(c) => c.iter().any(|c| c.id.trim().is_empty()),
+            StepKind::Plugin(p) => p.argv.first().is_none_or(|a| a.trim().is_empty()),
+            StepKind::Agent(a) => a.skill.trim().is_empty() || a.argv.first().is_some_and(|a| a.trim().is_empty()),
+        }
+    }
+
+    /// The kind's own checks beyond [`Self::is_blank`].
+    fn check(&self) -> Result<(), String> {
+        match self {
+            StepKind::Agent(a) => a.check(),
+            StepKind::Command(..) | StepKind::Commands(_) | StepKind::Plugin(_) => Ok(()),
+        }
+    }
+
+    /// The engine commands this step runs `(id, params)`; empty for steps that are not engine commands.
+    pub fn engine_commands(&self) -> Vec<(&str, Option<&Value>)> {
+        match self {
+            StepKind::Command(id, params) => vec![(*id, *params)],
+            StepKind::Commands(lines) => lines.iter().map(|l| (l.id.as_str(), Some(&l.params))).collect(),
+            StepKind::Plugin(_) | StepKind::Agent(_) => Vec::new(),
+        }
+    }
+}
+
 impl Step {
     pub fn kind(&self) -> Result<StepKind<'_>, String> {
-        let mut kinds = Vec::new();
-        if let Some(id) = &self.command {
-            kinds.push(StepKind::Command(id, self.params.as_ref()));
-        }
-        if !self.commands.is_empty() {
-            kinds.push(StepKind::Commands(&self.commands));
-        }
-        if let Some(p) = &self.plugin {
-            kinds.push(StepKind::Plugin(p));
-        }
-        if let Some(a) = &self.agent {
-            kinds.push(StepKind::Agent(a));
-        }
+        let kinds: Vec<StepKind<'_>> = STEP_KINDS.iter().filter_map(|k| (k.of)(self)).collect();
+        let names = || STEP_KINDS.iter().map(|k| k.name).collect::<Vec<_>>().join(", ");
         match kinds.as_slice() {
             [k] => Ok(*k),
-            [] => Err("a step needs one of command, commands, plugin, agent".into()),
-            _ => Err("a step has more than one of command, commands, plugin, agent".into()),
+            [] => Err(format!("a step needs one of {}", names())),
+            _ => Err(format!("a step has more than one of {}", names())),
         }
     }
 
@@ -280,13 +321,7 @@ impl Step {
         if let Some(l) = self.label.as_ref().filter(|l| !l.trim().is_empty()) {
             return l.clone();
         }
-        match self.kind() {
-            Ok(StepKind::Command(id, _)) => id.to_string(),
-            Ok(StepKind::Commands(c)) => format!("{} commands", c.len()),
-            Ok(StepKind::Plugin(p)) => format!("plugin {}", p.argv.first().map(String::as_str).unwrap_or("?")),
-            Ok(StepKind::Agent(a)) => format!("agent: {}", a.skill),
-            Err(_) => "invalid step".into(),
-        }
+        self.kind().map(|k| k.describe()).unwrap_or_else(|_| "invalid step".into())
     }
 }
 
@@ -367,18 +402,10 @@ impl Pipeline {
             if let Some(missing) = s.missing() {
                 return Err(format!("pipeline: step {}: fill in {}", i + 1, missing.join(", ")));
             }
-            let bad = match kind {
-                StepKind::Command(id, _) => id.trim().is_empty(),
-                StepKind::Commands(c) => c.iter().any(|c| c.id.trim().is_empty()),
-                StepKind::Plugin(p) => p.argv.first().is_none_or(|a| a.trim().is_empty()),
-                StepKind::Agent(a) => a.skill.trim().is_empty() || a.argv.first().is_some_and(|a| a.trim().is_empty()),
-            };
-            if bad {
+            if kind.is_blank() {
                 return Err(format!("pipeline: step {}: empty command id, program or skill", i + 1));
             }
-            if let StepKind::Agent(a) = kind {
-                a.check().map_err(|e| format!("pipeline: step {}: {e}", i + 1))?;
-            }
+            kind.check().map_err(|e| format!("pipeline: step {}: {e}", i + 1))?;
         }
         self.resources.validate()?;
         if self.template.as_ref().is_some_and(|t| t.project.is_some() && !t.commands.is_empty()) {
@@ -674,4 +701,8 @@ mod tests {
         let e = Pipeline::parse(&incomplete, Path::new("/")).unwrap_err();
         assert_eq!(e, "pipeline: step 1: fill in answer");
     }
+
+    #[test]
+    #[ignore = "test ticket: each STEP_KINDS row reads its own field; none / two kinds give the errors naming every kind; engine_commands of command and commands steps"]
+    fn every_step_kind_row_reads_its_field() {}
 }
