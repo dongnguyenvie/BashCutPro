@@ -387,3 +387,13 @@ fn real_run_times_out_with_null_stdin() {
     assert!(out.stderr.contains("stopped after"), "{}", out.stderr);
     assert!(took >= RUN_TIMEOUT && took < RUN_TIMEOUT + Duration::from_secs(20), "{took:?}");
 }
+
+/// `--version` prints `bashcut-doctor <version>` and exits 0 without running checks (PK3).
+#[test]
+fn version_prints_name_and_exits() {
+    for flag in ["--version", "-V"] {
+        let out = std::process::Command::new(env!("CARGO_BIN_EXE_bashcut-doctor")).arg(flag).output().unwrap();
+        assert!(out.status.success(), "{flag}: {out:?}");
+        assert_eq!(String::from_utf8_lossy(&out.stdout), format!("bashcut-doctor {}\n", env!("CARGO_PKG_VERSION")));
+    }
+}

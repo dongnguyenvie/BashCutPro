@@ -11,6 +11,12 @@ scripts for them.
 | first-run setup `bashcut-setup.sh` / `.ps1` | `Contents/Resources/bashcut/`; CLI zip | install folder; portable zip | `/usr/share/bashcutpro/` (FreeBSD: `share/bashcutpro/`) |
 | speech-to-text (`--features whisper` for `filmcraft` and `bashcutpro-cli`, #146; candle on the CPU) | app and CLI | app and CLI | app and CLI |
 
+`bcpro` is a relative symlink to `bashcutpro` wherever the package can hold one (deb, rpm, tarball, AppImage,
+Flatpak, macOS CLI zip; PK3), not a second ~36 MB copy. The macOS app keeps a real `bcpro` (its only engine name) and
+Windows keeps `bcpro.exe` as a copy (MSI and zip carry no symlinks; a `.cmd` shim would change Ctrl+C and exit-code
+behaviour). Linux docs install to `/usr/share/doc/bashcutpro` (Debian policy), and `bashcut-doctor --version` /
+`bashcut-mcp --version` print `<name> <version>` and exit 0.
+
 The batch presets and the kit's caption skills start by transcribing. The Whisper models are not packaged: they
 download on first use (`bashcutpro exec transcript.downloadModel`, or Text panel > Transcribe); until then
 `bashcut-doctor` warns and a batch step that transcribes fails with that command as its next step.

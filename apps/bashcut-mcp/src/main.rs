@@ -40,6 +40,7 @@ USAGE
                  BASHCUTPRO_ROOTS adds to them
   --no-guard     pass requests through unchecked
   --print        print the decision (mode, command line, roots) as JSON and exit
+  --version      print `bashcut-mcp <version>` and exit
 
 EXIT STATUS
   the MCP server's · 2 usage error or refused (project open elsewhere)
@@ -101,6 +102,10 @@ fn main() -> ExitCode {
     let a = Args::parse(std::env::args_os().skip(1).map(|s| s.to_string_lossy().into_owned()));
     if a.flag("--help") || a.flag("-h") {
         let _ = write!(std::io::stdout(), "{HELP}");
+        return ExitCode::SUCCESS;
+    }
+    if a.flag("--version") || a.bad.iter().any(|b| b == "-V") {
+        let _ = writeln!(std::io::stdout(), "bashcut-mcp {}", env!("CARGO_PKG_VERSION"));
         return ExitCode::SUCCESS;
     }
     if let Some(bad) = a.bad.first() {
