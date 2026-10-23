@@ -2428,6 +2428,7 @@ version = "0.10.0"
 dependencies = [
  "bashcut-agent",
  "bashcut-batch",
+ "bashcut-dirs",
  "bashcut-plugin-host",
  "cpu-time",
  "craft-ui",

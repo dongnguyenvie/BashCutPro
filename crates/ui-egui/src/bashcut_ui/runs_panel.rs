@@ -60,11 +60,10 @@ fn state_color(st: JobState, t: &crate::theme::Tokens) -> egui::Color32 {
     }
 }
 
+/// `text` cut to [`MAX_ERROR`] characters (not bytes, so non-Latin errors keep their length) with `…`.
 fn clip(text: &str) -> String {
-    match text.char_indices().nth(MAX_ERROR) {
-        Some((i, _)) => format!("{}…", &text[..i]),
-        None => text.to_string(),
-    }
+    let max = text.char_indices().nth(MAX_ERROR).map_or(text.len(), |(i, _)| i);
+    bashcut_dirs::fs::clip(text, max, "…")
 }
 
 /// The full error of a run that broke, one part per line: the plugin's `error.code: message`,

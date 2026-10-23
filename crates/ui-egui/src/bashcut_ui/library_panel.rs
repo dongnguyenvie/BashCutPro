@@ -132,26 +132,15 @@ fn load(p: &mut Panel, dir: Option<&Path>) {
     }
     p.loaded = true;
     let Some(dir) = dir else { return };
-    let path = file(dir);
-    if !std::fs::metadata(&path).is_ok_and(|m| m.len() <= MAX_FILE) {
-        return;
-    }
-    let v: Value = std::fs::read_to_string(&path).ok().and_then(|t| serde_json::from_str(&t).ok()).unwrap_or(Value::Null);
+    let Some(text) = super::prefs::read(&file(dir), MAX_FILE) else { return };
+    let v: Value = serde_json::from_str(&text).unwrap_or(Value::Null);
     p.credits = v.get("credits").and_then(Value::as_bool).unwrap_or(false);
     p.saved = Some(json!({"credits": p.credits}).to_string());
 }
 
 fn save(p: &mut Panel, dir: Option<&Path>) {
     let Some(dir) = dir else { return };
-    let text = json!({"credits": p.credits}).to_string();
-    if p.saved.as_deref() == Some(text.as_str()) {
-        return;
-    }
-    let path = file(dir);
-    if let Err(e) = path.parent().map_or(Ok(()), std::fs::create_dir_all).and_then(|()| std::fs::write(&path, &text)) {
-        log::warn!("bashcut library {}: {e}", path.display());
-    }
-    p.saved = Some(text);
+    super::prefs::save_if_changed(&file(dir), json!({"credits": p.credits}).to_string(), &mut p.saved, "bashcut library");
 }
 
 /// A Mine row's kind tag: the kind's translated label, or the raw id for a kind the app doesn't know.

@@ -447,11 +447,7 @@ pub fn file(data_dir: &Path) -> PathBuf {
 
 fn load_recent(dir: Option<&Path>) -> Vec<String> {
     let Some(dir) = dir else { return Vec::new() };
-    let path = file(dir);
-    if !std::fs::metadata(&path).is_ok_and(|m| m.len() <= MAX_FILE) {
-        return Vec::new();
-    }
-    let Ok(text) = std::fs::read_to_string(&path) else { return Vec::new() };
+    let Some(text) = super::prefs::read(&file(dir), MAX_FILE) else { return Vec::new() };
     let v: Value = serde_json::from_str(&text).unwrap_or(Value::Null);
     let list = v.get("recent").and_then(Value::as_array).cloned().unwrap_or_default();
     list.iter().filter_map(Value::as_str).filter(|k| k.len() <= 512).take(MAX_RECENT).map(str::to_string).collect()
@@ -459,12 +455,8 @@ fn load_recent(dir: Option<&Path>) -> Vec<String> {
 
 fn save_recent(dir: Option<&Path>, recent: &[String]) {
     let Some(dir) = dir else { return };
-    let path = file(dir);
     let text = serde_json::to_string_pretty(&json!({"recent": recent})).unwrap_or_default();
-    let written = path.parent().map_or(Ok(()), std::fs::create_dir_all).and_then(|()| std::fs::write(&path, text));
-    if let Err(e) = written {
-        log::warn!("bashcut palette {}: {e}", path.display());
-    }
+    super::prefs::write(&file(dir), &text, "bashcut palette");
 }
 
 /// Move `key` to the front of the recent list.

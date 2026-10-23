@@ -95,11 +95,7 @@ fn load(p: &mut Panel, dir: Option<&Path>) {
     }
     p.loaded = true;
     let Some(dir) = dir else { return };
-    let path = file(dir);
-    if !std::fs::metadata(&path).is_ok_and(|m| m.len() <= MAX_FILE) {
-        return;
-    }
-    let Ok(text) = std::fs::read_to_string(&path) else { return };
+    let Some(text) = super::prefs::read(&file(dir), MAX_FILE) else { return };
     let v: Value = serde_json::from_str(&text).unwrap_or(Value::Null);
     if let Some(a) = v.get("favourites").and_then(Value::as_array) {
         p.favourites = a.iter().filter_map(Value::as_str).filter(|id| looks::find(id).is_some()).take(64).map(str::to_string).collect();
@@ -113,16 +109,7 @@ fn load(p: &mut Panel, dir: Option<&Path>) {
 
 fn save(p: &mut Panel, dir: Option<&Path>) {
     let Some(dir) = dir else { return };
-    let text = prefs(p).to_string();
-    if p.saved.as_deref() == Some(text.as_str()) {
-        return;
-    }
-    let path = file(dir);
-    let written = path.parent().map_or(Ok(()), std::fs::create_dir_all).and_then(|()| std::fs::write(&path, &text));
-    if let Err(e) = written {
-        log::warn!("bashcut looks {}: {e}", path.display());
-    }
-    p.saved = Some(text);
+    super::prefs::save_if_changed(&file(dir), prefs(p).to_string(), &mut p.saved, "bashcut looks");
 }
 
 /// Grab the program frame at the playhead for previews; `false` when there is none.
