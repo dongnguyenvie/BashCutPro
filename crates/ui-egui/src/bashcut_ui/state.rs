@@ -85,11 +85,11 @@ pub fn file(data_dir: &Path) -> PathBuf {
 impl State {
     /// This frame's state.
     pub fn get(ctx: &egui::Context) -> State {
-        ctx.data_mut(|d| d.get_temp_mut_or_default::<State>(key()).clone())
+        super::shared::temp::<State>(ctx, key())
     }
 
     pub fn put(self, ctx: &egui::Context) {
-        ctx.data_mut(|d| d.insert_temp(key(), self));
+        super::shared::put_temp(ctx, key(), self);
     }
 
     /// Change the state in place and return what `f` returns.

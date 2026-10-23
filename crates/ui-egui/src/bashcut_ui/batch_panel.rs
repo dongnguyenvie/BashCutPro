@@ -100,7 +100,7 @@ fn heading(app: &FilmcraftApp, ui: &mut egui::Ui, text: &str) {
 
 pub fn draw(app: &mut FilmcraftApp, ui: &mut egui::Ui) {
     let ctx = ui.ctx().clone();
-    let mut v = ctx.data_mut(|d| d.get_temp_mut_or_default::<View>(key()).clone());
+    let mut v = super::shared::temp::<View>(&ctx, key());
     let shared = batch::shared(&ctx);
     let (draft, book, running, error, memory, recent) = {
         let g = batch::lock(&shared);
@@ -145,7 +145,7 @@ pub fn draw(app: &mut FilmcraftApp, ui: &mut egui::Ui) {
             }
         }
     }
-    ctx.data_mut(|d| d.insert_temp(key(), v));
+    super::shared::put_temp(&ctx, key(), v);
 }
 
 /// "Start from: [preset / recent ▾]": load a saved preset or open a recent job, before anything else.

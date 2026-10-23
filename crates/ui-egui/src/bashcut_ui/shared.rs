@@ -24,6 +24,16 @@ pub fn lock<T>(h: &Arc<Mutex<T>>) -> MutexGuard<'_, T> {
     h.lock().unwrap_or_else(PoisonError::into_inner)
 }
 
+/// A copy of the per-frame value under `id` (a panel's view state), default the first time.
+pub fn temp<T: Clone + Default + Send + Sync + 'static>(ctx: &egui::Context, id: egui::Id) -> T {
+    ctx.data_mut(|d| d.get_temp_mut_or_default::<T>(id).clone())
+}
+
+/// Store the per-frame value under `id` for the next [`temp`].
+pub fn put_temp<T: Clone + Send + Sync + 'static>(ctx: &egui::Context, id: egui::Id, v: T) {
+    ctx.data_mut(|d| d.insert_temp(id, v));
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -38,5 +48,14 @@ mod tests {
         assert!(Arc::ptr_eq(&a, &b), "the second call finds the first");
         *lock(&a) += 1;
         assert_eq!(existing::<u32>(&ctx, id).map(|h| *lock(&h)), Some(8));
+    }
+
+    #[test]
+    fn temp_defaults_then_keeps_what_was_put() {
+        let ctx = egui::Context::default();
+        let id = egui::Id::new("bashcut.test.temp");
+        assert_eq!(temp::<String>(&ctx, id), "");
+        put_temp(&ctx, id, "kept".to_string());
+        assert_eq!(temp::<String>(&ctx, id), "kept");
     }
 }

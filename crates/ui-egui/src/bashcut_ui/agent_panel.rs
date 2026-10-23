@@ -70,7 +70,7 @@ fn call(app: &mut FilmcraftApp, ctx: &egui::Context, v: &mut View, name: &str, p
 pub fn draw(app: &mut FilmcraftApp, ui: &mut egui::Ui) {
     let ctx = ui.ctx().clone();
     let t = app.tokens;
-    let mut v = ctx.data_mut(|d| d.get_temp_mut_or_default::<View>(key()).clone());
+    let mut v = super::shared::temp::<View>(&ctx, key());
     let c = agent::context(app);
     let now = ctx.input(|i| i.time);
     if v.project != c.project {
@@ -132,7 +132,7 @@ pub fn draw(app: &mut FilmcraftApp, ui: &mut egui::Ui) {
     if running {
         ctx.request_repaint_after(std::time::Duration::from_millis(100));
     }
-    ctx.data_mut(|d| d.insert_temp(key(), v));
+    super::shared::put_temp(&ctx, key(), v);
 }
 
 /// "Claude Code not found: install it, or set BASHCUT_CLAUDE" (an agent plugin: install its program).

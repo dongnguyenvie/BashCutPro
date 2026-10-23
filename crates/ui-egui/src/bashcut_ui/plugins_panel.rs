@@ -150,7 +150,7 @@ fn key() -> egui::Id {
 }
 
 fn drafts(ctx: &egui::Context) -> Drafts {
-    ctx.data_mut(|d| d.get_temp_mut_or_default::<Drafts>(key()).clone())
+    super::shared::temp::<Drafts>(ctx, key())
 }
 
 /// Manifest prose as plain text: the panel draws no markdown, so code spans lose their backticks.
@@ -272,7 +272,7 @@ pub fn draw(app: &mut FilmcraftApp, ui: &mut egui::Ui) {
     if running {
         ctx.request_repaint_after(std::time::Duration::from_millis(200));
     }
-    ctx.data_mut(|data| data.insert_temp(key(), d));
+    super::shared::put_temp(&ctx, key(), d);
 }
 
 fn registry_row(app: &mut FilmcraftApp, ui: &mut egui::Ui, ctx: &egui::Context, d: &mut Drafts, snap: &Snapshot, e: &Entry, can_install: bool) {

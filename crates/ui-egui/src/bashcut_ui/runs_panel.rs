@@ -142,7 +142,7 @@ enum Act {
 pub fn draw(app: &mut FilmcraftApp, ui: &mut egui::Ui) {
     let ctx = ui.ctx().clone();
     let t = app.tokens;
-    let mut v = ctx.data_mut(|d| d.get_temp_mut_or_default::<View>(key()).clone());
+    let mut v = super::shared::temp::<View>(&ctx, key());
     let jobs: Vec<Job> = plugins::with(app, &ctx, |h| h.jobs().iter().rev().cloned().collect());
     let call = |app: &mut FilmcraftApp, v: &mut View, name: &str, params: serde_json::Value| match plugins::invoke(app, &ctx, name, &params) {
         Ok(_) => v.status = None,
@@ -187,7 +187,7 @@ pub fn draw(app: &mut FilmcraftApp, ui: &mut egui::Ui) {
     v.logs.retain(|id| jobs.iter().any(|j| j.id == *id));
     // scrolled to once (or gone from the list)
     v.focus = None;
-    ctx.data_mut(|d| d.insert_temp(key(), v));
+    super::shared::put_temp(&ctx, key(), v);
 }
 
 /// "Batch: n of m · Open Batch" while a batch runs (its rows live in the Batch section); returns
