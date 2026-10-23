@@ -959,6 +959,32 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "test ticket: slash_word finds the / word at the caret (start, after a space, not mid-word, not a path) and slash_matches ranks prefix (incl. after the bcp: namespace) before substring, skills first, capped at SLASH_ROWS"]
-    fn slash_word_and_matches() {}
+    fn slash_word_and_matches() {
+        assert_eq!(slash_word("/se", 3), Some((0, "se")));
+        assert_eq!(slash_word("/", 1), Some((0, "")));
+        assert_eq!(slash_word("cut it /bc", 10), Some((7, "bc")));
+        assert_eq!(slash_word("a\n/x", 4), Some((2, "x")));
+        // not mid-word, not a path, not at a caret before more text
+        assert_eq!(slash_word("a/b", 3), None);
+        assert_eq!(slash_word("/a/b", 4), None);
+        assert_eq!(slash_word("/sex", 3), None, "the caret is inside the word");
+        assert_eq!(slash_word("/se rest", 3), Some((0, "se")), "a space after the caret ends the word");
+        assert_eq!(slash_word("/se", 99), None);
+        assert_eq!(slash_word("plain", 5), None);
+        // multi-byte text before the word
+        assert_eq!(slash_word("cắt /se", "cắt /se".len()), Some(("cắt ".len(), "se")));
+
+        let c = |name: &str, skill: bool| SlashCommand { name: name.to_string(), skill };
+        let cmds = vec![c("compact", false), c("resume-setup", true), c("setup", false), c("bcp:setup", true), c("bcp:review", true), c("Setup-all", false)];
+        let names = |q: &str| slash_matches(&cmds, q).into_iter().map(|c| c.name.as_str()).collect::<Vec<_>>();
+        // prefix (incl. after the namespace) before substring; skills before commands; case ignored
+        assert_eq!(names("se"), ["bcp:setup", "setup", "Setup-all", "resume-setup"]);
+        assert_eq!(names("SETUP"), ["bcp:setup", "setup", "Setup-all", "resume-setup"]);
+        assert_eq!(names("bcp"), ["bcp:setup", "bcp:review"]);
+        assert_eq!(names("zzz"), Vec::<&str>::new());
+        assert_eq!(names("")[0], "resume-setup", "empty query: skills first, in the agent's order");
+        // capped
+        let many: Vec<SlashCommand> = (0..SLASH_ROWS + 5).map(|i| c(&format!("cmd{i}"), false)).collect();
+        assert_eq!(slash_matches(&many, "cmd").len(), SLASH_ROWS);
+    }
 }

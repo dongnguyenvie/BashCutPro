@@ -1309,7 +1309,7 @@ print(json.dumps({'ok': True, 'data': {'path': '/out/toast.wav'}}))
     let shown = toasts(&mut d, 1);
     assert_eq!(shown.len(), 1, "{shown:?}");
     assert_eq!(shown[0].0, format!("bashcut.toast.{good}"));
-    assert!(shown[0].1.starts_with('✓') && shown[0].1.ends_with("finished"), "{shown:?}");
+    assert!(shown[0].1.ends_with("finished"), "{shown:?}");
     d.frames(5);
     assert_eq!(toasts(&mut d, 1).len(), 1, "once per run");
     d.click(&format!("bashcut.toast.{good}.dismiss"));
@@ -1321,7 +1321,7 @@ print(json.dumps({'ok': True, 'data': {'path': '/out/toast.wav'}}))
     let bad = run(&mut d, "bad");
     let shown = toasts(&mut d, 1);
     assert_eq!(shown.len(), 1, "{shown:?}");
-    assert!(shown[0].1.starts_with('✕') && shown[0].1.ends_with("bị lỗi"), "{shown:?}");
+    assert!(shown[0].1.ends_with("bị lỗi"), "{shown:?}");
     assert!(d.has(&format!("bashcut.toast.{bad}.show")));
     d.click(&format!("bashcut.toast.{bad}.show"));
     d.frames(2);
@@ -2099,6 +2099,7 @@ fn runs_rows_stay_clear_of_the_section_scroll_bar() {
 /// `can_use_tool` request) and waits for the answer; `long` first answers with 60 lines (the
 /// transcript scrolls) and makes `please ask`'s command a long one; `no kit` leaves `bcp` out of the
 /// init's plugins.
+/// The init lists the slash commands `bcp:setup`, `bcp:review` (skills), `compact` and the terminal-only `doctor`.
 /// `FAKE_MODE` (comma separated): `receipt` / `cancel-queued` announce `interrupt_receipt_v1` /
 /// `interrupt_cancel_queued_v1`; `slow-stop` / `slow-cancel` answer the interrupt / a cancel after a
 /// pause; `outdated` refuses a flag like an old Claude Code. Every start, control request, answer,
@@ -2177,7 +2178,8 @@ def turn(m):
     text = text_of(m)
     note("take", text=text, uuid=m.get("uuid", ""))
     plugins = [] if "no kit" in text else [{"name": "bcp", "path": "/kit", "source": "bcp@bashcutpro-agent-kit"}]
-    out({"type": "system", "subtype": "init", "session_id": session, "model": "fake", "capabilities": caps, "plugins": plugins})
+    out({"type": "system", "subtype": "init", "session_id": session, "model": "fake", "capabilities": caps, "plugins": plugins,
+         "slash_commands": ["bcp:setup", "bcp:review", "compact", "doctor"], "skills": ["bcp:setup", "bcp:review"], "terminal_slash_commands": ["doctor"]})
     out({"type": "user", "isReplay": True, "uuid": m.get("uuid", ""), "message": m["message"]})
     if "please sign in" in text:
         line = "Not logged in · Please run /login"
@@ -2328,6 +2330,23 @@ fn fake_claude(test: &str, case: &str, env: &[(&str, &str)]) -> Option<Fake> {
 }
 
 impl Driver {
+    /// The text in the Agent message box.
+    fn message(&mut self) -> String {
+        egui_kittest::kittest::NodeT::accesskit_node(&self.harness.get_by_role(egui::accesskit::Role::MultilineTextInput))
+            .value()
+            .unwrap_or_default()
+            .to_string()
+    }
+
+    /// Empty the Agent message box with Backspace (the caret is at its end).
+    fn clear_message(&mut self) {
+        for _ in 0..self.message().chars().count() {
+            self.ok("ui.key", json!({"key": "Backspace"}));
+        }
+        self.frames(2);
+        assert_eq!(self.message(), "");
+    }
+
     fn agent_state(&mut self) -> Value {
         self.exec("bashcut.agent.state", json!({}))
     }
@@ -2534,7 +2553,7 @@ fn queued_messages_are_numbered_and_cancel_with_x() {
     d.frames(3);
     for (i, q) in ["q1", "q2", "q3"].iter().enumerate() {
         assert_eq!(d.element(&format!("bashcut.agent.queued.{i}"))["label"], json!(q));
-        assert_eq!(d.element(&format!("bashcut.agent.queued.{i}.cancel"))["label"], json!("✕"));
+        assert_eq!(d.element(&format!("bashcut.agent.queued.{i}.cancel"))["label"], json!("Remove this message from the queue"));
         assert!(d.harness.query_by_label(&format!("You · queued {}", i + 1)).is_some(), "queued {}", i + 1);
     }
     d.exec("bashcut.ui.setLanguage", json!({"language": "vi"}));
@@ -2615,7 +2634,7 @@ fn terminal_sign_in_and_install_follow_whether_claude_is_found() {
         let agents = d.exec("bashcut.agent.agents", json!({}));
         let claude = agents.as_array().and_then(|a| a.iter().find(|a| a["id"] == json!("claude-code")).cloned()).unwrap_or_default();
         if fake.case == "found" {
-            assert_eq!(claude["actions"], json!(["terminal", "signIn"]), "{agents}");
+            assert_eq!(claude["actions"], json!(["terminal", "signIn", "installKit"]), "{agents}");
             let (en, vi) = d.labels("bashcut.agent.terminal");
             assert_eq!((en, vi), (json!("Open in Terminal"), json!("Mở trong Terminal")));
             let (en, vi) = d.labels("bashcut.agent.signIn");
@@ -2785,8 +2804,38 @@ fn control_channel_commands_name_no_filmcraft() {
 /// FX24: the queued-message, dismiss and remove buttons are painted icons with a non-empty tooltip
 /// label, not a ✕ font glyph (an empty box without CRAFT_FONTS_DIR).
 #[test]
-#[ignore = "test ticket: queued/dismiss/remove close buttons register a non-empty label and no ✕ text"]
-fn close_buttons_are_icons_with_a_label() {}
+fn close_buttons_are_icons_with_a_label() {
+    let mode = [("FAKE_MODE", "receipt,cancel-queued")];
+    let Some(fake) = fake_claude("close_buttons_are_icons_with_a_label", "fx24", &mode) else { return };
+    let mut d = fake.driver();
+    d.exec("bashcut.agent.send", json!({"text": "hold first"}));
+    d.exec("bashcut.agent.send", json!({"text": "second"}));
+    let id = "bashcut.agent.queued.0.cancel";
+    let (en, vi) = {
+        d.wait(|d| d.element(id), |e| !e.is_null());
+        d.labels(id)
+    };
+    assert_eq!((en, vi), (json!("Remove this message from the queue"), json!("Bỏ tin nhắn này khỏi hàng chờ")));
+    // the label is the tooltip, and no ✕ glyph is drawn as text
+    let e = d.element(id);
+    assert!(!e.is_null() && !e["label"].as_str().unwrap_or_default().contains('✕'), "{e}");
+    let shown = d.ok("ui.elements", json!({"prefix": "bashcut.agent"}));
+    assert!(!shown.to_string().contains('✕'), "no ✕ text in the Agent section: {shown}");
+    d.call("engine.execute", json!({"command": "bashcut.agent.stop", "params": {}}));
+    d.exec("bashcut.ui.closePanel", json!({}));
+
+    // the Batch remove buttons and the Runs/Plugins dismiss buttons: every close icon on screen has a label
+    d.click("bashcut.rail.batch");
+    d.frames(2);
+    let all = d.ok("ui.elements", json!({"prefix": "bashcut."}));
+    for e in all.as_array().into_iter().flatten() {
+        let eid = e["id"].as_str().unwrap_or_default();
+        if eid.ends_with(".remove") || eid.ends_with(".dismiss") || eid.ends_with(".cancel") || eid.ends_with(".delete") {
+            assert!(e["label"].as_str().is_some_and(|l| !l.trim().is_empty() && !l.contains('✕')), "{eid} has no label: {e}");
+        }
+    }
+    d.no_ui_error();
+}
 
 /// AG12: with a fake Claude Code whose `system/init` lists `bcp:setup`, `bcp:review` and `compact`
 /// (skills: the two `bcp:` ones), typing `/se` in the message box shows `/bcp:setup` first
@@ -2794,8 +2843,104 @@ fn close_buttons_are_icons_with_a_label() {}
 /// closes, a click on a row inserts it; before the first init the list says "Start a message to
 /// load skills" (`bashcut.agent.slash.hint`); Codex shows no list; English and Vietnamese.
 #[test]
-#[ignore = "test ticket: AG12 / list in the Agent message box (fake init with 3 commands, /se -> bcp:setup first, Enter/Tab/click insert, Esc, hint before init, Codex none; en+vi)"]
-fn agent_slash_list_suggests_skills() {}
+fn agent_slash_list_suggests_skills() {
+    let Some(fake) = fake_claude("agent_slash_list_suggests_skills", "ag12", &[]) else { return };
+    let mut d = fake.driver();
+    let ready = |d: &mut Driver| {
+        d.click("bashcut.agent.input");
+        d.ok("ui.type", json!({"text": "/"}));
+        d.frames(3);
+    };
+    // before the first init the list says a message loads the skills
+    ready(&mut d);
+    let (en, vi) = d.labels("bashcut.agent.slash.hint");
+    assert_eq!((en, vi), (json!("Start a message to load skills"), json!("Gửi một tin nhắn để tải danh sách kỹ năng")));
+    assert!(!d.has("bashcut.agent.slash.0"), "no rows yet");
+    d.ok("ui.key", json!({"key": "Escape"}));
+    d.frames(2);
+    assert!(!d.has("bashcut.agent.slash.hint"), "Esc closes it");
+    d.ok("ui.key", json!({"key": "Backspace"}));
+    d.frames(2);
+
+    // one turn: the init lists the commands
+    d.exec("bashcut.agent.send", json!({"text": "hello"}));
+    d.agent_said("echo hello");
+    d.agent_idle();
+    d.frames(3);
+
+    // '/se' -> /bcp:setup first (prefix after the namespace), then nothing else: bcp:review and compact do not match
+    ready(&mut d);
+    d.ok("ui.type", json!({"text": "se"}));
+    d.frames(3);
+    let first = d.wait_element("bashcut.agent.slash.0", |e| !e.is_null());
+    assert_eq!(first["label"], json!("/bcp:setup"), "{first}");
+    assert!(!d.has("bashcut.agent.slash.1"), "only one match for /se");
+    let (en, vi) = d.labels("bashcut.agent.slash.0");
+    assert_eq!((en, vi), (json!("/bcp:setup"), json!("/bcp:setup")), "names are not translated");
+
+    // Enter inserts without sending
+    d.ok("ui.key", json!({"key": "Enter"}));
+    d.frames(3);
+    assert!(!d.has("bashcut.agent.slash.0"), "closed after the insert");
+    assert_eq!(d.agent_state()["status"]["state"], json!("idle"), "Enter did not send");
+    assert_eq!(d.agent_items().iter().filter(|i| i["type"] == json!("user")).count(), 1, "still only 'hello'");
+    assert_eq!(d.message().trim_end(), "/bcp:setup");
+
+    // clear the box: '/' lists skills first in the agent's order (compact is a command, doctor is terminal-only)
+    d.clear_message();
+    d.ok("ui.type", json!({"text": "/"}));
+    d.frames(3);
+    let labels: Vec<Value> = (0..4).map(|i| d.element(&format!("bashcut.agent.slash.{i}"))["label"].clone()).collect();
+    assert_eq!(labels, vec![json!("/bcp:setup"), json!("/bcp:review"), json!("/compact"), Value::Null], "{labels:?}");
+    // arrows move the pick, Tab inserts the picked one
+    d.ok("ui.key", json!({"key": "Down"}));
+    d.frames(2);
+    d.ok("ui.key", json!({"key": "Tab"}));
+    d.frames(3);
+    assert_eq!(d.message().trim_end(), "/bcp:review");
+    // Up from the first wraps to the last
+    d.clear_message();
+    d.ok("ui.type", json!({"text": "/"}));
+    d.frames(3);
+    d.ok("ui.key", json!({"key": "Up"}));
+    d.frames(2);
+    d.ok("ui.key", json!({"key": "Enter"}));
+    d.frames(3);
+    assert_eq!(d.message().trim_end(), "/compact");
+
+    // Esc closes it; a click on a row inserts it
+    d.clear_message();
+    d.ok("ui.type", json!({"text": "/rev"}));
+    d.frames(3);
+    assert!(d.has("bashcut.agent.slash.0"));
+    d.ok("ui.key", json!({"key": "Escape"}));
+    d.frames(3);
+    assert!(!d.has("bashcut.agent.slash.0"), "Esc closed it");
+    d.ok("ui.key", json!({"key": "Backspace"}));
+    d.ok("ui.type", json!({"text": "v"}));
+    d.frames(3);
+    d.click("bashcut.agent.slash.0");
+    assert_eq!(d.message().trim_end(), "/bcp:review");
+    assert_eq!(d.agent_items().iter().filter(|i| i["type"] == json!("user")).count(), 1, "a click does not send");
+
+    // the row kind and the footer note in Vietnamese
+    d.clear_message();
+    d.ok("ui.type", json!({"text": "/"}));
+    d.exec("bashcut.ui.setLanguage", json!({"language": "vi"}));
+    d.frames(3);
+    assert!(d.has("bashcut.agent.slash.0"), "still open in vi");
+    d.exec("bashcut.ui.setLanguage", json!({"language": null}));
+
+    // Codex has no list
+    d.clear_message();
+    d.exec("bashcut.agent.use", json!({"agent": "codex"}));
+    assert_eq!(d.agent_state()["agent"]["id"], json!("codex"));
+    d.click("bashcut.agent.input");
+    d.ok("ui.type", json!({"text": "/"}));
+    d.frames(3);
+    assert!(!d.has("bashcut.agent.slash.0") && !d.has("bashcut.agent.slash.hint"), "Codex has no slash list");
+    d.no_ui_error();
+}
 
 /// FX25: at the narrowest panel, at scale 1.0 and 1.5, in English and Vietnamese, each queued
 /// message's ✕ lies inside the transcript clear of its scroll bar (a wider line above it no longer
@@ -2850,7 +2995,7 @@ fn narrow_agent_panel_keeps_queued_x_and_checkbox_in_place() {
 /// only the not-found line (with Install), not the old "not signed in" line too.
 #[test]
 fn a_missing_claude_code_hides_the_old_not_signed_in_line() {
-    let Some(fake) = fake_claude("a_missing_claude_code_hides_the_old_not_signed_in_line", "auth", &[]) else { return };
+    let Some(fake) = fake_claude("a_missing_claude_code_hides_the_old_not_signed_in_line", "auth-missing", &[]) else { return };
     let mut d = fake.driver();
     d.exec("bashcut.agent.send", json!({"text": "please sign in"}));
     d.agent_idle();
