@@ -26,6 +26,9 @@ liệu, Tải về) khi dự án nằm ở đó: bấm **Cho phép**. Khi chưa 
 5. **Dừng** (Stop) kết thúc lượt của trợ lý trong vài giây, kể cả khi đang chạy một công cụ lâu; bản ghi hiện
    "Đã dừng.", dự án giữ nguyên như lúc đó, và tin nhắn tiếp theo tiếp tục trong cùng cuộc trò chuyện. Những tin
    bạn xếp hàng mà trợ lý chưa bắt đầu sẽ quay lại ô nhập tin.
+6. Bạn vẫn gõ tiếp được khi trợ lý đang làm: mỗi tin nhắn chờ dưới bản ghi với nhãn **Bạn · đang chờ 1**, **2**, …
+   theo đúng thứ tự trợ lý sẽ nhận. Bấm **✕** ở một tin để bỏ nó; trợ lý sẽ không trả lời tin đó. Tin trợ lý đã nhận
+   rồi thì vẫn được trả lời (muốn ngừng thì bấm **Dừng**).
 
 **Mới** (New) bắt đầu cuộc trò chuyện mới; các cuộc trước được liệt kê và mở lại được.
 

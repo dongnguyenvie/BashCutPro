@@ -38,8 +38,10 @@ pub enum Event {
         plugins: Vec<String>,
     },
     /// The agent took the next message from stdin (Claude Code's `isReplay` echo): a queued message
-    /// is now being worked on.
-    Picked,
+    /// is now being worked on. `uuid` is the echoed message's (ours when we wrote one, AG4; may be empty).
+    Picked {
+        uuid: String,
+    },
     /// Assistant text.
     Text(String),
     ToolUse {
@@ -61,10 +63,12 @@ pub enum Event {
         turns: Option<u64>,
     },
     /// The agent answered one of our control requests (`control_response`): `ok` is subtype
-    /// `success` (AG3: the interrupt's receipt).
+    /// `success` (AG3: the interrupt's receipt); `cancelled` is the answer's `cancelled: true` (AG4:
+    /// `cancel_async_message` withdrew the message).
     Control {
         request: String,
         ok: bool,
+        cancelled: bool,
     },
     /// Something we show but do not model (an unparsable line, an agent error message).
     Notice(String),
@@ -124,7 +128,7 @@ pub fn parse_line(line: &str) -> Vec<Event> {
                 plugins: plugins(v.get("plugins")),
             }]
         }
-        "user" if v.get("isReplay").and_then(Value::as_bool) == Some(true) => vec![Event::Picked],
+        "user" if v.get("isReplay").and_then(Value::as_bool) == Some(true) => vec![Event::Picked { uuid: clip(&text(&v, "uuid"), 64) }],
         "system" if v.get("subtype").and_then(Value::as_str) == Some("api_retry") => match auth_error(&v) {
             Some(category) => vec![Event::Auth { category: category.into(), message: String::new() }],
             None => Vec::new(),
@@ -175,7 +179,8 @@ pub fn parse_line(line: &str) -> Vec<Event> {
         "control_response" => {
             let r = v.get("response");
             let field = |k: &str| r.and_then(|r| r.get(k)).and_then(Value::as_str).unwrap_or_default();
-            vec![Event::Control { request: clip(field("request_id"), 128), ok: field("subtype") == "success" }]
+            let cancelled = r.and_then(|r| r.get("response")).and_then(|r| r.get("cancelled")).and_then(Value::as_bool) == Some(true);
+            vec![Event::Control { request: clip(field("request_id"), 128), ok: field("subtype") == "success", cancelled }]
         }
         "error" => vec![Event::Notice(clip(&v.get("error").map(|e| content_text(Some(e))).unwrap_or_else(|| text(&v, "message")), 2048))],
         _ => Vec::new(),
@@ -222,6 +227,20 @@ pub(crate) fn capped_input(v: Option<&Value>) -> Value {
 /// One user message as a stream-json input line (no trailing newline).
 pub fn user_message(text: &str) -> String {
     json!({"type": "user", "message": {"role": "user", "content": [{"type": "text", "text": text}]}}).to_string()
+}
+
+/// [`user_message`] carrying `uuid` (AG4): Claude Code echoes it in the `isReplay` line, and
+/// [`cancel_request`] withdraws the message by it while it waits. No trailing newline.
+pub fn user_message_with_uuid(text: &str, uuid: &str) -> String {
+    json!({"type": "user", "uuid": uuid, "message": {"role": "user", "content": [{"type": "text", "text": text}]}}).to_string()
+}
+
+/// The stream-json `cancel_async_message` control request (AG4, checked with Claude Code 2.1.309):
+/// drops the message written with `uuid` if the agent has not taken it yet; the answer's
+/// `{"cancelled": true}` says it never runs, `false` that it was taken already (or never seen). No
+/// trailing newline.
+pub fn cancel_request(id: &str, uuid: &str) -> String {
+    json!({"type": "control_request", "request_id": id, "request": {"subtype": "cancel_async_message", "message_uuid": uuid}}).to_string()
 }
 
 /// The stream-json interrupt control request (AG3, checked with Claude Code 2.1.309): the running
@@ -288,6 +307,10 @@ mod tests {
     #[test]
     #[ignore = "test ticket: control_response success/error parsed to Event::Control with its request_id; interrupt_request shape with and without cancel_queued"]
     fn control_response_and_interrupt_request() {}
+
+    #[test]
+    #[ignore = "test ticket: isReplay echo keeps its uuid in Event::Picked; control_response {cancelled:true} sets Control.cancelled; user_message_with_uuid and cancel_request shapes"]
+    fn queued_message_uuid_and_cancel_request() {}
 
     #[test]
     fn user_message_round_trips() {

@@ -170,6 +170,14 @@ fn release_waits_for_the_live_agent_to_exit() {}
 fn auth_failure_closes_the_live_agent_without_a_generic_error() {}
 
 #[test]
+#[ignore = "test ticket: a fake live agent with interrupt_cancel_queued_v1 gets 3 messages during a long turn, each user line with a uuid; ✕ on the second (Agent::cancel(1)) writes cancel_async_message with its uuid, the fake answers {cancelled: true}: only messages 1 and 3 reach the transcript and get results; a {cancelled: false} answer keeps it queued until its isReplay echo"]
+fn a_queued_message_is_withdrawn_with_cancel_async_message() {}
+
+#[test]
+#[ignore = "test ticket: a fake live agent without interrupt_cancel_queued_v1: messages sent mid-turn are not written to stdin until the turn's result (one per turn, in order); cancel(1) of 3 drops it at once, only 1 and 3 are answered; Stop puts the held ones back in the message box"]
+fn without_cancel_queued_messages_are_held_in_the_app() {}
+
+#[test]
 fn claude_code_needs_the_bridge() {
     let mut agent = Agent::new(Vec::new());
     assert_eq!(agent.agent.id, "claude-code");

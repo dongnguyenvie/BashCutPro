@@ -27,6 +27,9 @@ nothing.
 5. **Stop** ends its turn within a few seconds, also in the middle of a long tool call; the transcript says
    "Stopped.", your project stays as it is, and your next message goes on in the same conversation. Messages you
    queued and it had not started go back into the message box.
+6. You can keep typing while the agent works: each message waits under the transcript as **You · queued 1**, **2**,
+   … in the order the agent gets them. Click **✕** on one to remove it; the agent never answers it. One the agent
+   has already picked up stays and is answered (use **Stop** for that).
 
 **New** starts a new conversation; earlier ones are listed and can be opened again.
 

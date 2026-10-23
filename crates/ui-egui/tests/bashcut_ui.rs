@@ -1972,3 +1972,7 @@ fn open_in_terminal_ends_the_live_agent_first() {}
 #[test]
 #[ignore = "test ticket: a fake claude-code live turn whose system/init plugins lack bcp shows bashcut.agent.ready.kit ('BashCutPro skills are not installed', vi too) with bashcut.agent.installKit and the commands; with a bcp plugin, or before any init, the line is absent"]
 fn a_session_without_the_bcp_plugin_shows_the_kit_line() {}
+
+#[test]
+#[ignore = "test ticket: with a fake live agent working, three Sends show 'You · queued 1..3' (vi: 'Bạn · đang chờ 1..3') with bashcut.agent.queued.<n>.cancel; clicking the second's ✕ shows 'Removing…' then removes it, and only 1 and 3 join the transcript"]
+fn queued_messages_are_numbered_and_cancel_with_x() {}

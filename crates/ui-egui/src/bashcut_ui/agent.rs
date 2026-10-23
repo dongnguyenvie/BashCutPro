@@ -185,6 +185,7 @@ pub fn commands() -> Vec<CommandInfo> {
     [
         ("send", "Send to Agent"),
         ("stop", "Stop Agent"),
+        ("cancel", "Remove Queued Agent Message"),
         ("state", "Agent State"),
         ("transcript", "Agent Transcript"),
         ("conversations", "Agent Conversations"),
