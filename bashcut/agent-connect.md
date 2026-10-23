@@ -33,7 +33,11 @@ Unsaved edits are not saved on the way out. They stay in the recovery journal (`
 (2026-10-23, `cargo xtask dev -- --control PORT` with a throwaway `BASHCUTPRO_DATA_DIR`): two `file.newBin`, then
 `kill -TERM`. The exit code was 130, `automation.json` was gone, `snapshot.fcproj` (revision 4) was kept, and
 the next launch's `file.recoveryList` listed that session. Edits made inside the journal's 1 s debounce before
-the signal are lost, as they were before AG1.
+the signal are kept too (FX12, `bashcut_ui::recovery`): the signal thread asks the window to write the journal now
+(`Persistence::flush`, engine API) and waits at most 3 s for it, so a window that does not answer still exits.
+Proof on macOS (2026-10-23, same setup): three `file.newBin` 1.5 s apart, a fourth named `LastSecondBin`, then
+`kill -TERM` at once. Exit 130, the window was gone within the second, `snapshot.fcproj` held `LastSecondBin`
+(revision 6), and the next launch's `file.recoveryList` listed it at revision 6.
 
 Two windows (FX7, `decisions.md`): the first one started keeps the file. The other checks every 3 s and claims the
 file once it is missing, malformed, or names a process that is gone or whose address no longer answers. When the

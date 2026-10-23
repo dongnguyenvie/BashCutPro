@@ -406,6 +406,15 @@ APP_SUBS = [
     ("linux/test_install.py", 'for name in ("filmcraft", "bashcutpro-cli"):\n            (self.bundle', 'for name in ("bashcutpro", "bashcutpro-cli"):\n            (self.bundle', 1),
     ("linux/test_install.py", 'for name in ("filmcraft", "bashcutpro-cli"):\n                self.assertTrue', 'for name in ("bashcutpro", "bashcutpro-cli"):\n                self.assertTrue', 1),
     ("linux/test_install.py", 'bin/filmcraft"', 'bin/bashcutpro"', 3),
+    # FX12: the bundle's docs folder is share/doc/bashcutpro (PK3), so the fixture and the check use it too
+    ("linux/test_install.py", "doc/filmcraft/LICENSE-MIT", "doc/bashcutpro/LICENSE-MIT", 3),
+    # FX12: the tarball test stages what package.sh installs, the Pro tools included (they are not optional there)
+    (
+        "linux/test_install.py",
+        'for name in ("filmcraft", "bashcutpro-cli"):\n            binary = binaries',
+        'for name in ("filmcraft", "bashcutpro-cli", %s):\n            binary = binaries' % ", ".join('"%s"' % b for b in TOOLS),
+        1,
+    ),
     # ---- FreeBSD: the Linux copy's freedesktop files (our app id, Exec=bashcutpro) and the same names
     ("freebsd/package.sh", 'LINUX="$ROOT/packaging/linux"\nAPP_ID=ai.storyteller.filmcraft\n', 'LINUX="$BASHCUT_PACKAGING/linux"\nAPP_ID=%s\n' % "com.birchapps.bashcutpro", 1),
     ("freebsd/package.sh", 'cp -R "$BRAND_ICON_DIR/hicolor" ', 'cp -R "$LINUX/icons/hicolor" ', 1),

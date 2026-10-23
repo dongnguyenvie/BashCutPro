@@ -271,7 +271,9 @@ class GenerateTest(unittest.TestCase):
         r = subprocess.run(["realpath", "-m", "/a/../b"], capture_output=True, text=True) if shutil.which("realpath") else None
         if not r or r.returncode != 0:
             self.skipTest("no GNU realpath -m")
-        r = subprocess.run([sys.executable, os.path.join(self.out, "linux", "test_install.py")], capture_output=True, text=True)
+        # the copy's package.sh runs as packaging.env re-executes it (FX12: it stopped at env.sh without these)
+        env = {**os.environ, "BASHCUT_BRANDED": "1", "BASHCUT_ROOT": ROOT, "BASHCUT_PACKAGING": self.out}
+        r = subprocess.run([sys.executable, os.path.join(self.out, "linux", "test_install.py")], capture_output=True, text=True, env=env)
         self.assertEqual(r.returncode, 0, r.stderr)
 
     def test_the_app_keeps_its_executable_and_ships_the_engine_cli(self):
@@ -318,7 +320,7 @@ class GenerateTest(unittest.TestCase):
         linux = self.read("linux/package.sh")
         self.assertIn('copy_docs "$STAGE/usr/share/doc/bashcutpro"\n', linux)
         self.assertIn('copy_docs "$STAGE/share/doc/bashcutpro"\n', self.read("freebsd/package.sh"))
-        for rel in ("linux/package.sh", "freebsd/package.sh", "linux/flatpak/%s.bundle.yml" % generate.APP_ID):
+        for rel in ("linux/package.sh", "freebsd/package.sh", "linux/flatpak/%s.bundle.yml" % generate.APP_ID, "linux/test_install.py"):
             self.assertNotIn("doc/filmcraft", self.read(rel), rel)
         # the metainfo's first paragraph is a sentence, not a fragment
         meta = xml.dom.minidom.parseString(self.read("linux/%s.metainfo.xml.in" % generate.APP_ID).replace("@VERSION@", "1").replace("@DATE@", "2026-01-01"))
