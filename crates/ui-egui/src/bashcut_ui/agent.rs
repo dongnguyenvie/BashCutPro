@@ -92,10 +92,18 @@ pub fn with<R>(app: &FilmcraftApp, ctx: &egui::Context, f: impl FnOnce(&mut Agen
     f(&mut g)
 }
 
-/// Collect the running turn's events (called by `layout` every frame).
+/// Collect the agent's events (called by `layout` every frame); an idle live agent is closed while
+/// the Agent section is hidden (AG2: the next message resumes its session).
 pub fn poll(ctx: &egui::Context) {
     let Some(h) = super::shared::existing::<Agent>(ctx, key()) else { return };
-    let running = h.lock().unwrap_or_else(PoisonError::into_inner).poll();
+    let st = super::State::get(ctx);
+    let shown = st.rail && st.on_screen(super::AGENT);
+    let mut a = h.lock().unwrap_or_else(PoisonError::into_inner);
+    let running = a.poll();
+    if !running && !shown {
+        a.end_session();
+    }
+    drop(a);
     if running {
         ctx.request_repaint_after(Duration::from_millis(100));
     }

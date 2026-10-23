@@ -1,15 +1,18 @@
-//! One agent turn as a child process: the message goes to stdin (one stream-json line, or plain text
-//! for Codex), stdout is read line by line into [`Event`]s, and the turn ends when the process exits
-//! (or is stopped or times out). The next turn starts a new process that resumes the agent's session.
+//! Agent child processes. A [`Live`] session (a format whose row says `live`, Claude Code's
+//! stream-json) keeps one process per conversation: each message is one more stdin line, the end of
+//! a turn is the `result` event, and stdin stays open until the session ends (AG2). A [`Turn`]
+//! (Codex) is one process per message: the message goes to stdin, then EOF, and the turn ends when
+//! the process exits (or is stopped or times out); the next turn resumes the agent's session.
 
 use std::io::Read;
+use std::io::Write;
 use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::path::{Path, PathBuf};
-use std::process::{Child, Command};
+use std::process::{Child, Command, Stdio};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{Receiver, Sender, TryRecvError, channel};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use bashcut_dirs::child::{self, Opts, Stop};
 use serde::{Deserialize, Serialize};
@@ -23,6 +26,13 @@ use crate::{Error, Result, err};
 pub const MAX_LINE: usize = 1024 * 1024;
 /// stderr kept for the error message of a failed turn.
 const MAX_STDERR: usize = 8 * 1024;
+/// A closing [`Live`] session gets this long to exit after its stdin closed, then SIGINT.
+const CLOSE_WAIT: Duration = Duration::from_secs(2);
+/// After SIGINT, how long a live agent has to exit before its process group is killed.
+const STOP_WAIT: Duration = Duration::from_secs(5);
+/// After the kill, how long to wait for the exit before giving up on the child.
+const KILL_WAIT: Duration = Duration::from_secs(5);
+const TICK: Duration = Duration::from_millis(20);
 
 /// The name of the app's MCP server in the agent's config: Claude Code's tools are `mcp__bashcutpro__*`,
 /// the same name the agent kit's `bcp` plugin and `/bcp:setup` use.
@@ -87,13 +97,14 @@ impl Default for AgentSpec {
 }
 
 impl AgentSpec {
-    /// Claude Code in print mode with stream-json in and out, the app's MCP server ([`SERVER`]) as the
+    /// Claude Code in print mode with stream-json in and out (a [`Live`] session; `--replay-user-messages`
+    /// echoes each message when Claude takes it, which ends its "queued" mark), the app's MCP server ([`SERVER`]) as the
     /// only one (`--strict-mcp-config`: the agent kit's plugin brings its own copy of the same tools,
     /// and a checkout's `.mcp.json` another; skills and plugins still load) and [`allowed_tools`]
     /// allowed without a prompt. `program` overrides `claude` (from `BASHCUT_CLAUDE` in the app).
     pub fn claude_code(program: Option<String>) -> Self {
         let program = program.filter(|p| !p.trim().is_empty()).unwrap_or_else(|| "claude".into());
-        let argv = [&program, "-p", "--output-format", "stream-json", "--input-format", "stream-json", "--verbose", "--allowedTools"];
+        let argv = [&program, "-p", "--output-format", "stream-json", "--input-format", "stream-json", "--verbose", "--replay-user-messages", "--allowedTools"];
         AgentSpec {
             id: "claude-code".into(),
             name: "Claude Code".into(),
@@ -238,27 +249,232 @@ impl Turn {
 
     /// Events since the last call; never blocks.
     pub fn poll(&mut self) -> Vec<TurnEvent> {
-        let mut out = Vec::new();
-        loop {
-            match self.rx.try_recv() {
-                Ok(e) => {
-                    if matches!(e, TurnEvent::Ended(_)) {
-                        self.finished = true;
-                    }
-                    out.push(e);
+        drain(&self.rx, &mut self.finished)
+    }
+}
+
+/// The events waiting in `rx`; the last is [`TurnEvent::Ended`] once the supervisor is done (one is
+/// made up if its thread vanished without sending it).
+fn drain(rx: &Receiver<TurnEvent>, finished: &mut bool) -> Vec<TurnEvent> {
+    let mut out = Vec::new();
+    loop {
+        match rx.try_recv() {
+            Ok(e) => {
+                if matches!(e, TurnEvent::Ended(_)) {
+                    *finished = true;
                 }
-                Err(TryRecvError::Empty) => break,
-                Err(TryRecvError::Disconnected) => {
-                    if !self.finished {
-                        self.finished = true;
-                        out.push(TurnEvent::Ended(TurnEnd::Failed("the agent ended unexpectedly".into())));
-                    }
+                out.push(e);
+            }
+            Err(TryRecvError::Empty) => break,
+            Err(TryRecvError::Disconnected) => {
+                if !*finished {
+                    *finished = true;
+                    out.push(TurnEvent::Ended(TurnEnd::Failed("the agent ended unexpectedly".into())));
+                }
+                break;
+            }
+        }
+    }
+    out
+}
+
+/// What the UI thread asks of a [`Live`] session's supervisor.
+#[derive(Default)]
+struct Ctl {
+    /// SIGINT the agent (Stop, or a turn that took too long): Claude Code ends the turn with a
+    /// `result` and exits; the next message restarts it with `--resume`.
+    interrupt: AtomicBool,
+    /// The session ends: stdin is closed; SIGINT after [`CLOSE_WAIT`], kill after [`STOP_WAIT`].
+    close: AtomicBool,
+}
+
+/// One agent process kept for a conversation (AG2): messages are written to its stdin as they are
+/// sent (also while it works: the agent reads them when it is ready), events come back until it
+/// exits. Ends with [`TurnEvent::Ended`]: `Done` when it exited 0 or we closed it, `Stopped` after
+/// [`Live::interrupt`], `Failed` otherwise. Dropping it closes it.
+pub struct Live {
+    /// Lines for the stdin writer thread; `None` once closed (the writer then drops stdin: EOF).
+    input: Option<Sender<String>>,
+    encode: fn(&str) -> String,
+    rx: Receiver<TurnEvent>,
+    ctl: Arc<Ctl>,
+    finished: bool,
+}
+
+impl Live {
+    /// Start `argv` in `cwd` with stdin kept open; stdout is read as `events`, a [`format::FORMATS`]
+    /// row that is `live`.
+    pub fn start(argv: &[String], cwd: &Path, env: &[(String, String)], events: &str) -> Result<Live> {
+        let Some((program, args)) = argv.split_first() else { return err("empty agent command") };
+        let format = format::find(events)?;
+        if !format.live {
+            return err(format!("event format `{events}` has no live session"));
+        }
+        let mut cmd = Command::new(program);
+        cmd.args(args).current_dir(cwd).envs(env.iter().map(|(k, v)| (k, v)));
+        cmd.stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::piped());
+        // its own process group, so the final kill also ends the MCP server it started
+        #[cfg(unix)]
+        {
+            use std::os::unix::process::CommandExt;
+            cmd.process_group(0);
+        }
+        let mut child = cmd.spawn().map_err(|e| Error(format!("cannot start `{program}`: {e}")))?;
+        let Some(mut stdin) = child.stdin.take() else {
+            child::terminate(&mut child, true);
+            let _ = child.wait();
+            return err("cannot write to the agent");
+        };
+        let (input, lines) = channel::<String>();
+        // a full pipe (an agent not reading) blocks this thread, never the UI
+        let writer = std::thread::Builder::new().name("bashcut-agent-stdin".into()).spawn(move || {
+            for line in lines {
+                if let Err(e) = stdin.write_all(line.as_bytes()).and_then(|()| stdin.flush()) {
+                    log::warn!("bashcut agent stdin: {e}");
                     break;
                 }
             }
+        });
+        if let Err(e) = writer {
+            child::terminate(&mut child, true);
+            let _ = child.wait();
+            return err(format!("cannot start the agent thread: {e}"));
         }
-        out
+        let (tx, rx) = channel();
+        let ctl = Arc::new(Ctl::default());
+        let flags = ctl.clone();
+        let done = tx.clone();
+        let decoder = (format.decoder)();
+        std::thread::Builder::new()
+            .name("bashcut-agent-session".into())
+            .spawn(move || {
+                if catch_unwind(AssertUnwindSafe(|| supervise_live(child, decoder, &tx, &flags))).is_err() {
+                    let _ = done.send(TurnEvent::Ended(TurnEnd::Failed("agent host thread failed".into())));
+                }
+            })
+            .map_err(|e| Error(format!("cannot start the agent thread: {e}")))?;
+        Ok(Live { input: Some(input), encode: format.input, rx, ctl, finished: false })
     }
+
+    /// Write `message` as the agent's next input line.
+    pub fn send(&self, message: &str) -> Result<()> {
+        match &self.input {
+            Some(i) if !self.finished => i.send((self.encode)(message)).map_err(|_| Error("the agent has ended".into())),
+            _ => err("the agent has ended"),
+        }
+    }
+
+    /// Stop the running turn (SIGINT; the process then exits).
+    pub fn interrupt(&self) {
+        self.ctl.interrupt.store(true, Ordering::Relaxed);
+    }
+
+    /// End the session: close stdin, SIGINT after [`CLOSE_WAIT`], kill after [`STOP_WAIT`]. Never blocks.
+    pub fn close(&mut self) {
+        self.input = None;
+        self.ctl.close.store(true, Ordering::Relaxed);
+    }
+
+    /// [`Live::close`], then wait up to `wait` for the process to end (app exit).
+    pub fn close_and_wait(&mut self, wait: Duration) {
+        self.close();
+        let end = Instant::now() + wait;
+        while !self.finished {
+            let left = end.saturating_duration_since(Instant::now());
+            match self.rx.recv_timeout(left) {
+                Ok(TurnEvent::Ended(_)) => self.finished = true,
+                Ok(_) => {}
+                Err(_) => break,
+            }
+        }
+    }
+
+    /// The process has ended (its [`TurnEvent::Ended`] was polled).
+    pub fn is_finished(&self) -> bool {
+        self.finished
+    }
+
+    /// Events since the last call; never blocks.
+    pub fn poll(&mut self) -> Vec<TurnEvent> {
+        drain(&self.rx, &mut self.finished)
+    }
+}
+
+impl Drop for Live {
+    fn drop(&mut self) {
+        self.close();
+    }
+}
+
+/// SIGINT to the agent itself (not its group: it ends its MCP server); off Unix a kill of the tree.
+fn interrupt(child: &mut Child) {
+    #[cfg(unix)]
+    {
+        let pid = child.id().to_string();
+        let ok = Command::new("kill").args(["-INT", "--", &pid]).stdout(Stdio::null()).stderr(Stdio::null()).status().is_ok_and(|s| s.success());
+        if ok {
+            return;
+        }
+    }
+    child::terminate(child, cfg!(not(unix)));
+}
+
+fn supervise_live(mut child: Child, mut decoder: Box<dyn Decode>, tx: &Sender<TurnEvent>, ctl: &Ctl) {
+    let events = tx.clone();
+    let out_done = child::pump("bashcut-agent-stdout", child.stdout.take(), move |out| {
+        for_each_line(out, |line, cut| {
+            if cut {
+                let _ = events.send(TurnEvent::Agent(Event::Notice("skipped an event larger than 1 MB".into())));
+                return;
+            }
+            for e in decoder.parse_line(line) {
+                let _ = events.send(TurnEvent::Agent(e));
+            }
+        })
+    });
+    let err_rx = child::pump("bashcut-agent-stderr", child.stderr.take(), |errs| String::from_utf8_lossy(&child::tail(errs, MAX_STDERR)).trim().to_string());
+
+    let mut closing: Option<Instant> = None;
+    let mut interrupted: Option<Instant> = None;
+    let mut killed: Option<Instant> = None;
+    let status = loop {
+        match child.try_wait() {
+            Ok(Some(s)) => break Some(s),
+            Ok(None) => {}
+            Err(_) => break None,
+        }
+        let now = Instant::now();
+        if closing.is_none() && ctl.close.load(Ordering::Relaxed) {
+            closing = Some(now);
+        }
+        let ask = ctl.interrupt.load(Ordering::Relaxed) || closing.is_some_and(|c| now.duration_since(c) > CLOSE_WAIT);
+        if interrupted.is_none() && ask {
+            interrupt(&mut child);
+            interrupted = Some(now);
+        }
+        if killed.is_none() && interrupted.is_some_and(|i| now.duration_since(i) > STOP_WAIT) {
+            child::terminate(&mut child, true);
+            killed = Some(now);
+        }
+        if killed.is_some_and(|k| now.duration_since(k) > KILL_WAIT) {
+            break None;
+        }
+        std::thread::sleep(TICK);
+    };
+    child::collect(&out_done, child::STDOUT_WAIT);
+    let stderr = child::collect(&err_rx, child::STDERR_WAIT);
+    let code = status.and_then(|s| s.code());
+    let end = if closing.is_some() {
+        TurnEnd::Done
+    } else if interrupted.is_some() {
+        TurnEnd::Stopped
+    } else if code == Some(0) {
+        TurnEnd::Done
+    } else {
+        let what = code.map_or_else(|| "the agent was killed".to_string(), |c| format!("the agent exited with status {c}"));
+        TurnEnd::Failed(if stderr.is_empty() { what } else { format!("{what}: {}", crate::clip(&stderr, 2048)) })
+    };
+    let _ = tx.send(TurnEvent::Ended(end));
 }
 
 fn supervise(mut child: Child, mut decoder: Box<dyn Decode>, timeout: Duration, tx: &Sender<TurnEvent>, stop: &AtomicBool) {

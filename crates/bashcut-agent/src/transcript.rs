@@ -67,8 +67,8 @@ impl Transcript {
         self.items.push(item);
     }
 
-    /// Add what `e` shows. `Init` and `Result` change the conversation, not the transcript, except a
-    /// failed result, which shows as an error.
+    /// Add what `e` shows. `Init`, `Picked` and `Result` change the conversation, not the transcript,
+    /// except a failed result, which shows as an error.
     pub fn apply(&mut self, e: &Event) {
         match e {
             Event::Text(t) => {
@@ -97,7 +97,7 @@ impl Transcript {
                 self.push(Item::Error { message });
             }
             Event::Notice(m) => self.push(Item::Notice { message: m.clone() }),
-            Event::Init { .. } | Event::Result { .. } => {}
+            Event::Init { .. } | Event::Result { .. } | Event::Picked => {}
         }
     }
 

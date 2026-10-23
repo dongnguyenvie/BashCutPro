@@ -16,14 +16,18 @@ pub struct Format {
     pub name: &'static str,
     /// The message as the agent reads it on stdin.
     pub input: fn(&str) -> String,
-    /// A fresh decoder for one turn's stdout.
+    /// A fresh decoder for one process's stdout.
     pub decoder: fn() -> Box<dyn Decode>,
+    /// The agent reads one message per stdin line and keeps running between them: one
+    /// [`crate::process::Live`] process per conversation (AG2). Else one [`crate::process::Turn`]
+    /// process per message (Codex's CLI reads the prompt to EOF).
+    pub live: bool,
 }
 
 /// Every format an agent may speak.
 pub const FORMATS: &[Format] = &[
-    Format { name: stream_json::FORMAT, input: |m| format!("{}\n", stream_json::user_message(m)), decoder: || Box::new(stream_json::Parser) },
-    Format { name: codex_json::FORMAT, input: |m| m.to_string(), decoder: || Box::new(codex_json::Parser::default()) },
+    Format { name: stream_json::FORMAT, input: |m| format!("{}\n", stream_json::user_message(m)), decoder: || Box::new(stream_json::Parser), live: true },
+    Format { name: codex_json::FORMAT, input: |m| m.to_string(), decoder: || Box::new(codex_json::Parser::default()), live: false },
 ];
 
 /// The format named `name`.

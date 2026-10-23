@@ -344,3 +344,11 @@ Type /login and follow the steps in your browser, then close this window.	Gõ /l
 Open a terminal with the official Claude Code installer.	Mở terminal chạy trình cài đặt chính thức của Claude Code.
 Installing Claude Code with the official installer. When it finishes, run claude and type /login, then go back to BashCutPro.	Đang cài Claude Code bằng trình cài đặt chính thức. Cài xong, chạy claude và gõ /login, rồi quay lại BashCutPro.
 Could not open a terminal: {error}	Không mở được terminal: {error}
+You · queued	Bạn · đang chờ
+Update Claude Code: run `claude update`	Hãy cập nhật Claude Code: chạy `claude update`
+Stopped.	Đã dừng.
+the agent is stopping: wait a moment	Trợ lý đang dừng: chờ một chút
+the agent is still working: wait or stop it	Trợ lý vẫn đang làm: hãy chờ hoặc dừng lại
+the agent ended before answering	Trợ lý đã thoát trước khi trả lời
+the agent took too long and was stopped	Trợ lý chạy quá lâu nên đã bị dừng
+the agent ended unexpectedly	Trợ lý thoát bất ngờ

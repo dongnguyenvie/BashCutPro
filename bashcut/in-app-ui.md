@@ -332,18 +332,39 @@ labels or subclips (§1 rule 1). A project opened in upstream FilmCraft still wo
 - **Batch agent steps** (`crates/bashcut-batch/src/agent.rs`) use the same server name and add
   `--strict-mcp-config --permission-prompts none`: unattended, a call that would prompt is denied at once (checked:
   it shows up in the `result`'s `permission_denials`) instead of waiting.
-- **Turn** (`crates/bashcut-agent`, `process.rs`): one child process per turn. The message plus a short context line
-  (project, active sequence, selection, playhead) goes in as one stream-json user message, stdin closes, and events
-  stream back into the transcript (`stream_json.rs`, `transcript.rs`). The next turn resumes the agent's session
-  (`--resume <id>`). Edits the agent makes appear in History as normal commands, so Undo works. Tool calls with the
-  same command fold into one row ("edit.razor ×12"). Enter sends; Shift+Enter starts a new line.
+- **Live session (AG2, checked with `claude` 2.1.309 on macOS)**: a format whose `FORMATS` row is `live`
+  (`claude-stream-json`) keeps **one child process per conversation** (`process::Live`): stdin stays open and each
+  message (plus a short context line: project, active sequence, selection, playhead) is one more stream-json line;
+  the end of a turn is the `result` event, not the exit. Checked: two messages written 0.5 s apart give two
+  `result`s from one process (a fresh `system/init` before each turn, same `session_id`), and the process stays
+  alive until stdin closes (then exits 0 in about a second). Claude Code runs with `--replay-user-messages`: when
+  it takes a message from stdin it echoes it as a `user` line with `"isReplay": true` (`Event::Picked`).
+  **Send never blocks**: a message sent while Claude works is written at once and shown under the transcript as
+  "You · queued" (`bashcut.agent.queued.<n>`, `bashcut.agent.state` → `queued`) until its echo arrives, then it
+  joins the transcript (an agent without the echo: at its `result`). The `system/init` `capabilities` are kept on
+  the session (`Agent::capabilities`, in `bashcut.agent.state`) for AG3/AG4. **Restart**: a process that exits
+  (crash, app restart, idle close) is started again with `--resume <session_id>` by the next message; one that
+  exits 0 before taking a written message is restarted once at once and the message written again. A failure
+  with messages unanswered shows the error and puts the queued messages it never read back into the message
+  box. **Too old**: when Claude Code refuses a flag (`unknown option`), the readiness line says "Update Claude
+  Code: run `claude update`" (en+vi). **Session end**: changing conversation, agent or project, hiding the Agent
+  section while idle, `session::IDLE_CLOSE` (30 min) idle, and app exit close stdin; the process gets 2 s, then SIGINT,
+  then its process group is killed 5 s later (`Agent::shutdown` waits up to 3 s). Codex keeps the per-message
+  path (`process::Turn`, `live: false`: its CLI reads the prompt to EOF; Send is disabled while it works).
+  Edits the agent makes appear in History as normal commands, so Undo works. Tool calls with the same command
+  fold into one row ("edit.razor ×12"). Enter sends; Shift+Enter starts a new line.
 - **Conversations**: kept in `<project>.fcproj.bashcut/conversations/<id>.json` (`bashcut-conversation/1`: the
   transcript and the agent's session id), listed newest first in the picker; an unsaved project keeps none.
 - **Gates**: the edit-workflow skill writes gates into `plan.json` (`{"gates": [{stage, summary, evidence, state}]}`,
   `state` `pending` / `approved` / `changes`, other keys kept); the panel shows the first pending one as a card.
   Approve / Ask for changes (a note is required) writes `state` and `note` back and sends the answer as the next
   user message. The answer is written only when the turn can start.
-- **Stop**: ends the agent's turn (its process group); the project stays as it is.
+- **Stop**: a live agent gets **SIGINT** (not SIGTERM, which drops the turn with exit 143 and no result). Checked:
+  Claude Code then echoes `[Request interrupted by user]`, sends a `result` with subtype
+  `error_during_execution` (not shown: "Stopped." follows) and exits 0; the next message resumes the session in a
+  new process. Not exiting within 5 s kills its process group. Queued messages go back into the message box. A
+  per-message turn (Codex) ends its process group as before. The project stays as it is. (AG4: cancel through
+  the stream-json interrupt request, keeping the process.)
 - **Plugin hand-offs**: Runs ▸ Send to agent (`bashcut.plugins.sendToAgent`) sends the run's result and the
   plugin's `handoff.then` as the next message.
 - **Agent replies (UX8)** render minimal Markdown (`bashcut_ui/markdown.rs`): `#`/`##` headings, `-`/`1.` lists,

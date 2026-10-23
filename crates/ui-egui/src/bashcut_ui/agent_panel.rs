@@ -4,8 +4,12 @@
 //! `bashcut.agent.*` commands ([`agent::invoke`]) and registers an automation id.
 //!
 //! Under the header, one readiness line per missing item (UX7): the agent's program, the control
-//! channel, a saved project. Agents whose program is missing are greyed out in the picker and
-//! Send is disabled with the reason.
+//! channel, a saved project, a Claude Code too old for a live session. Agents whose program is
+//! missing are greyed out in the picker and Send is disabled with the reason.
+//!
+//! A live agent (Claude Code, AG2) takes messages while it works: Send stays enabled, and a message
+//! sent mid-turn shows under the transcript as queued until the agent takes it; one it never read
+//! (it failed or was stopped) goes back into the message box.
 //!
 //! AG5: Open in Terminal continues the conversation in the agent's own terminal UI, Sign in opens
 //! `claude` for `/login`, and a missing Claude Code gets an Install button ([`super::terminal`]).
@@ -67,6 +71,12 @@ struct Snapshot {
     resume: Option<Vec<String>>,
     /// The open project, for the folder turns run in ([`Snapshot::cwd`]).
     project: Option<std::path::PathBuf>,
+    /// [`bashcut_agent::Agent::is_live`]: Send stays enabled while it works.
+    live: bool,
+    /// [`bashcut_agent::Agent::queued`].
+    queued: Vec<String>,
+    /// [`bashcut_agent::Agent::outdated`].
+    outdated: bool,
 }
 
 impl Snapshot {
@@ -100,7 +110,7 @@ pub fn draw(app: &mut FilmcraftApp, ui: &mut egui::Ui) {
         v.gate_checked = None;
     }
     let check_gate = v.gate_checked.is_none_or(|at| now - at >= GATE_EVERY);
-    let (snap, gate) = agent::with(app, &ctx, |a| {
+    let (snap, gate, unsent) = agent::with(app, &ctx, |a| {
         a.set_project(c.project.as_deref());
         let snap = Snapshot {
             items: a.conversation.transcript.items.clone(),
@@ -115,10 +125,19 @@ pub fn draw(app: &mut FilmcraftApp, ui: &mut egui::Ui) {
                 .then(|| a.agent.argv.first().map(|p| terminal::resume_argv(p, &a.agent.resume_args, &a.conversation.session)))
                 .flatten(),
             project: c.project.clone(),
+            live: a.is_live(),
+            queued: a.queued(),
+            outdated: a.outdated(),
         };
         let gate = if check_gate && !a.is_running() { Some(a.gate()) } else { None };
-        (snap, gate)
+        (snap, gate, a.take_unsent())
     });
+    if !unsent.is_empty() {
+        // what the agent never read goes back into the message box, before anything typed since
+        let mut parts = unsent;
+        parts.extend(Some(v.input.trim().to_string()).filter(|t| !t.is_empty()));
+        v.input = parts.join("\n\n");
+    }
     if let Some(g) = gate {
         v.gate = g;
         v.gate_checked = Some(now);
@@ -133,7 +152,8 @@ pub fn draw(app: &mut FilmcraftApp, ui: &mut egui::Ui) {
 
     header(app, ui, &ctx, &mut v, &snap, running);
     readiness(app, ui, &ctx, &snap);
-    super::toast::status_line(app, ui, "bashcut.agent.status", v.status.as_deref(), t.danger);
+    // the agent crate's messages are English; those with a catalog row show translated
+    super::toast::status_line(app, ui, "bashcut.agent.status", v.status.as_deref().map(s), t.danger);
     if let Some(g) = v.gate.clone() {
         gate_card(app, ui, &ctx, &mut v, &g, running);
     }
@@ -150,6 +170,12 @@ pub fn draw(app: &mut FilmcraftApp, ui: &mut egui::Ui) {
                 note(ui, s("The agent stops at each stage for your approval."), NOTE, t.text_dim);
             }
             transcript(app, ui, &snap.items);
+            for (i, text) in snap.queued.iter().enumerate() {
+                ui.add_space(6.0);
+                strong_note(ui, s("You · queued"), META, t.text_dim);
+                let r = ui.add(egui::Label::new(egui::RichText::new(text).color(t.text_dim)).selectable(true).wrap());
+                app.auto.add_response(&format!("bashcut.agent.queued.{i}"), &r, text);
+            }
             if running {
                 ui.horizontal(|ui| {
                     ui.spinner();
@@ -166,7 +192,9 @@ pub fn draw(app: &mut FilmcraftApp, ui: &mut egui::Ui) {
     app.auto.add("bashcut.agent.transcript", out.inner_rect, &snap.title);
 
     ui.separator();
-    input(app, ui, &ctx, &mut v, running, snap.missing.as_deref());
+    // a live agent takes messages while it works; a stopping one is about to exit
+    let busy = running && (!snap.live || snap.status == Status::Stopping);
+    input(app, ui, &ctx, &mut v, busy, running, snap.missing.as_deref());
     if running {
         ctx.request_repaint_after(std::time::Duration::from_millis(100));
     }
@@ -183,6 +211,9 @@ pub(super) const QUIET_LINES: [&str; 2] = [
 fn quiet_line() -> &'static str {
     if cfg!(target_os = "macos") { QUIET_LINES[0] } else { QUIET_LINES[1] }
 }
+
+/// The readiness line when Claude Code refused a flag of the live session (too old).
+pub(super) const OUTDATED_LINE: &str = "Update Claude Code: run `claude update`";
 
 /// "Claude Code not found: install it, or set BASHCUT_CLAUDE" (an agent plugin: install its program).
 fn missing_line(spec: &bashcut_agent::AgentSpec) -> String {
@@ -211,6 +242,11 @@ fn readiness(app: &mut FilmcraftApp, ui: &mut egui::Ui, ctx: &egui::Context, sna
                 open_terminal(app, &snap.cwd(), &terminal::install_job(terminal::Os::current()), Some(hint));
             }
         });
+    }
+    if snap.outdated {
+        let line = s(OUTDATED_LINE);
+        let r = note(ui, line, NOTE, t.danger);
+        app.auto.add_response("bashcut.agent.ready.update", &r, line);
     }
     terminal_row(app, ui, snap);
     if !hints::control_on() {
@@ -406,10 +442,10 @@ fn transcript(app: &mut FilmcraftApp, ui: &mut egui::Ui, items: &[Item]) {
                 super::widgets::note(ui, line, NOTE, t.accent);
             }
             Item::Error { message } => {
-                note(ui, message, NOTE, t.danger);
+                note(ui, s(message), NOTE, t.danger);
             }
             Item::Notice { message } => {
-                note(ui, message, META, t.text_dim);
+                note(ui, s(message), META, t.text_dim);
             }
         }
         i += 1;
@@ -453,7 +489,9 @@ fn tool_group(app: &mut FilmcraftApp, ui: &mut egui::Ui, at: usize, key: &str, g
     app.auto.add_response(&format!("bashcut.agent.tool.{at}"), &head.header_response, &title);
 }
 
-fn input(app: &mut FilmcraftApp, ui: &mut egui::Ui, ctx: &egui::Context, v: &mut View, running: bool, missing: Option<&str>) {
+/// The message box; `busy`: Send is off (a turn of a per-message agent, or a stopping one), `running`:
+/// Stop is on.
+fn input(app: &mut FilmcraftApp, ui: &mut egui::Ui, ctx: &egui::Context, v: &mut View, busy: bool, running: bool, missing: Option<&str>) {
     // Enter sends, Shift+Enter is a new line: take the Enter press away before the text box sees it
     let focused = ctx.memory(|m| m.has_focus(input_id()));
     let enter = focused
@@ -473,7 +511,7 @@ fn input(app: &mut FilmcraftApp, ui: &mut egui::Ui, ctx: &egui::Context, v: &mut
     );
     app.auto.add_response("bashcut.agent.input", &r, "message");
     ui.horizontal(|ui| {
-        let can_send = !running && !v.input.trim().is_empty() && missing.is_none();
+        let can_send = !busy && !v.input.trim().is_empty() && missing.is_none();
         let mut r = ui.add_enabled(can_send, egui::Button::new(s("Send")));
         if let Some(why) = missing {
             r = r.on_disabled_hover_text(why);
@@ -510,7 +548,13 @@ mod tests {
         for line in [missing_line(&fake), missing_line(&plugin), f("{agent} (not installed)", &[("agent", "Codex")])] {
             assert!(!line.contains("not found") && !line.contains("not installed"), "{line}");
         }
-        for k in ["Control channel off: the agent cannot edit the open project.", "Project not saved: conversations will not be kept", "Save…"] {
+        for k in [
+            "Control channel off: the agent cannot edit the open project.",
+            "Project not saved: conversations will not be kept",
+            "Save…",
+            OUTDATED_LINE,
+            "You · queued",
+        ] {
             assert_ne!(s(k), k);
         }
         set_language(None);
