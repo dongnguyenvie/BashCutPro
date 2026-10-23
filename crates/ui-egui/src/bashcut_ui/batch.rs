@@ -12,7 +12,7 @@ use std::time::{Duration, Instant};
 
 use bashcut_batch::book::now_ms;
 use bashcut_batch::pipeline::{self, AgentStep, OnFailure, Output, PluginAction, ProcessStep, Step};
-use bashcut_batch::{Book, ItemState, Job, Options, Pipeline, SCHEMA, Status, Summary, presets};
+use bashcut_batch::{Book, Choices, ItemState, Job, Options, Pipeline, SCHEMA, Status, Summary, presets};
 use bashcut_plugin_host::manifest::Connection;
 use bashcut_plugin_host::settings::{self, MemoryStore};
 use filmcraft_engine::shortcuts::CommandInfo;
@@ -377,11 +377,10 @@ fn start(ctx: &egui::Context, g: &mut Batch, job: Job, opts: Options) -> Result<
     Ok(())
 }
 
-fn options(app: &FilmcraftApp, cli: &str) -> Options {
-    let mut o = Options::new(cli);
+/// The same options `bashcut-batch` resolves (kit, MCP, keep-awake), so a pipeline runs alike from both.
+fn options(app: &FilmcraftApp, cli: &str) -> Result<Options, String> {
     // profile outputs are compiled into the app's user export presets
-    o.data_dir = super::data_dir(app);
-    o
+    Options::resolve(Choices { cli: Some(cli.into()), data_dir: super::data_dir(app), ..Choices::default() })
 }
 
 fn cli_param(params: &Value, last: Option<&str>) -> Result<String, String> {
@@ -635,10 +634,11 @@ pub fn invoke(app: &mut FilmcraftApp, ctx: &egui::Context, name: &str, p: &Value
             }
             let cli = cli_param(p, None)?;
             let pipeline = prepared(&g.draft)?;
+            let opts = options(app, &cli)?;
             let job = Job::create(&pipeline, None).map_err(plain_create_error)?;
             let dir_text = job.dir.to_string_lossy().into_owned();
             g.cli = Some(cli.clone());
-            start(ctx, &mut g, job, options(app, &cli))?;
+            start(ctx, &mut g, job, opts)?;
             g.save(dir.as_deref());
             Ok(json!({"job": dir_text, "items": g.book.as_ref().map(|b| b.items.len())}))
         }
@@ -659,10 +659,11 @@ pub fn invoke(app: &mut FilmcraftApp, ctx: &egui::Context, name: &str, p: &Value
                 p.get("items").and_then(Value::as_array).map(|a| a.iter().filter_map(Value::as_str).map(str::to_string).collect()).unwrap_or_default();
             let names = if names.is_empty() { str_p(p, "item").map(|s| vec![s.to_string()]).unwrap_or_default() } else { names };
             // markDone: the item's failed step was finished by hand (a hand-off); the steps after it run
-            let reopened = job.retry_with(&names, name == "markDone")?;
             let cli = cli_param(p, g.cli.clone().as_deref())?;
+            let opts = options(app, &cli)?;
+            let reopened = job.retry_with(&names, name == "markDone")?;
             g.cli = Some(cli.clone());
-            start(ctx, &mut g, job, options(app, &cli))?;
+            start(ctx, &mut g, job, opts)?;
             g.save(dir.as_deref());
             Ok(json!({"reopened": reopened}))
         }

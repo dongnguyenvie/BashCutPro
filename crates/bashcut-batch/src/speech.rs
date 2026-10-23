@@ -11,14 +11,22 @@
 //! line keeps them.
 
 use serde_json::Value;
+use std::io::Read;
 use std::path::Path;
-use std::process::Command;
+use std::process::{Command, Stdio};
+use std::time::{Duration, Instant};
 
 /// Commands that transcribe with a speech model and take a `model` param.
 pub const TRANSCRIBE_COMMANDS: [&str; 2] = ["sequence.transcribe", "transcript.generate"];
 
 /// Biggest `preferences.json` read (the app's file is a few KB).
 const MAX_PREFS: u64 = 4 << 20;
+
+/// Biggest `transcript.models` answer read (a few KB in practice).
+const MAX_MODELS: u64 = 4 << 20;
+
+/// How long the engine may take to list its speech models.
+const MODELS_TIMEOUT: Duration = Duration::from_secs(30);
 
 /// The speech model chosen in the app's Settings (`mediaAnalysis.whisperModel` in
 /// `<data dir>/preferences.json`).
@@ -31,13 +39,42 @@ pub fn settings_model(data_dir: &Path) -> Option<String> {
     v.get("mediaAnalysis")?.get("whisperModel")?.as_str().map(str::trim).filter(|m| !m.is_empty()).map(str::to_string)
 }
 
-/// The engine's `transcript.models` answer, `None` when it gives none.
+/// The engine's `transcript.models` answer, `None` when it gives none or takes longer than [`MODELS_TIMEOUT`]
+/// (I7: a stuck engine must not hold up the run's start). No stdin, so it cannot wait on a prompt.
 pub fn engine_models(cli: &Path, data_dir_args: &[String], env: &[(String, String)]) -> Option<Value> {
-    let out = Command::new(cli).args(["exec", "transcript.models"]).args(data_dir_args).envs(env.iter().map(|(k, v)| (k, v))).output().ok()?;
-    if !out.status.success() {
+    let mut child = Command::new(cli)
+        .args(["exec", "transcript.models"])
+        .args(data_dir_args)
+        .envs(env.iter().map(|(k, v)| (k, v)))
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .spawn()
+        .ok()?;
+    let mut stdout = child.stdout.take()?;
+    // read on the side so a full pipe cannot block the wait below
+    let reader = std::thread::spawn(move || {
+        let mut buf = Vec::new();
+        let _ = (&mut stdout).take(MAX_MODELS).read_to_end(&mut buf);
+        buf
+    });
+    let start = Instant::now();
+    let status = loop {
+        match child.try_wait() {
+            Ok(Some(status)) => break status,
+            Ok(None) if start.elapsed() < MODELS_TIMEOUT => std::thread::sleep(Duration::from_millis(50)),
+            _ => {
+                let _ = child.kill();
+                let _ = child.wait();
+                return None;
+            }
+        }
+    };
+    let out = reader.join().ok()?;
+    if !status.success() {
         return None;
     }
-    serde_json::from_slice(&out.stdout).ok()
+    serde_json::from_slice(&out).ok()
 }
 
 /// The model to pass (see the module doc); `None` leaves the engine's default.
@@ -166,4 +203,8 @@ mod tests {
         assert_eq!(settings_model(&dir), None);
         let _ = std::fs::remove_dir_all(&dir);
     }
+
+    #[test]
+    #[ignore = "test ticket: engine_models gives None after MODELS_TIMEOUT for an engine that hangs, without stdin"]
+    fn engine_models_times_out_on_a_stuck_engine() {}
 }

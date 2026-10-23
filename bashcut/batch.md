@@ -129,7 +129,8 @@ Issue #60. `{"agent": {"skill", "brief", "agent"?, "argv"?, "maxTurns"?, "maxMin
    sequence after that end the item **needsFix** (category `review`), which `retry` reopens.
 4. **Caps.** `maxTurns` per round (default 120), `maxMinutes` for the whole step (default 30, every round included;
    `timeout`), and at most `agentConcurrency` agent steps at once across items (default 1, separate from
-   `concurrency`).
+   `concurrency`; `--agent-concurrency` overrides it). `resources.agentConcurrency` is the same setting: the larger of
+   the two counts (RC8; before, the `resources` one was validated but never read).
    **Out of turns (#219).** An agent that hits `maxTurns` does not fail the item with nothing: its step ends `done`
    with a `limit` note, the review is skipped, the rest of the item (later steps, the exports) runs on the project as
    the agent last saved it (the prompt asks it to save after each finished part), and the item ends
@@ -150,7 +151,9 @@ Issue #60. `{"agent": {"skill", "brief", "agent"?, "argv"?, "maxTurns"?, "maxMin
 `<projectsFolder>/.bashcut-batch/<id>/`: `state.json` (`bashcut-batch-state/1`: job, items, steps with status,
 attempts, pid, start / end / duration, error `{category, message}`, outputs), `pipeline.json` (the resolved pipeline
 the job runs, so editing the original file does not change a running job), `items/<name>/` (step scripts,
-`<step>.out` / `.err` logs), `cancel`, `runner.lock`. It is rewritten (temp file + rename) after every change, as
+`<step>.out` / `.err` logs), `cancel`, `runner.lock`. It is rewritten (temp file + rename) at once when an item's
+or step's status, a step's pid or the pause note changes, other changes (a step's notes, agent usage) at most every
+500 ms, and once more when the run ends (RC8: a whole-book rewrite per step event made long jobs quadratic); as
 compact JSON, and capped at 256 MB on read and on write alike: a save that would pass the cap fails and keeps the
 previous `state.json`, so every book on disk can be resumed (RCC).
 
@@ -183,6 +186,13 @@ then `$FILMCRAFT_CLI`), else `bashcutpro` or `filmcraft-cli` next to `bashcut-ba
 (`crates/bashcut-batch/src/cli.rs`, #154). `bashcutpro` is the engine itself (generated from
 `filmcraft-cli`, SB2), so the memory watch and Cancel reach it directly on every OS.
 
+**Options (RC8).** The command line and the app's Batch section build their run options with the same
+`Options::resolve` (`crates/bashcut-batch/src/runner.rs`): the kit, `bashcut-mcp` and keep-awake are found the same
+way, so a pipeline behaves alike from both (the app passes its engine and data dir, the rest is default). Relative
+`--cli` (with a folder in it), `--data-dir`, `--mcp` and `--kit` are made absolute, since plugin and agent steps run in
+the item's folder. The engine's speech-model list (`transcript.models`, asked once per run when a transcribe step names
+no model) gets 30 s and no stdin; past that the run starts with the Settings choice.
+
 ## Built-in presets (#59)
 
 `bashcutpro-plugins/packs/batch/`: `vietsub-folder`, `podcast-shorts`, `every-platform`, `captions-draft`,
@@ -201,8 +211,8 @@ Their recipes and limits are in that folder's README.
 ## Resources (#61)
 
 `resources` in the pipeline (all optional): `memoryPerItemGb` (3), `maxItemMemoryGb` (8; 0 = no cap),
-`minFreeDiskGb` (2), `exportReserveGb` (1), `halfCores` (true), `agentConcurrency` (1, #60). Code:
-`crates/bashcut-batch/src/governor.rs`.
+`minFreeDiskGb` (2), `exportReserveGb` (1), `halfCores` (true), `agentConcurrency` (1, #60; the same setting as
+the top-level one, the larger wins). Code: `crates/bashcut-batch/src/governor.rs`.
 
 - **Concurrency**: before every item the runner asks the governor whether one more may start: at most
   `concurrency`, half the cores, and only while `memoryPerItemGb` of RAM is free (one item always runs). Workers above

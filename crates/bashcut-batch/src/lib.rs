@@ -22,4 +22,4 @@ pub use bashcut_dirs::pid_alive;
 pub use book::{AgentTotals, AgentUsage, Book, Category, Counts, ErrorInfo, ItemState, Job, Status, StepState, list_jobs};
 pub use governor::{FakeProbe, Limits, Probe, Report, SystemProbe};
 pub use pipeline::{Pipeline, SCHEMA};
-pub use runner::{Options, Summary, run};
+pub use runner::{Choices, Options, Summary, run};

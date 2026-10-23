@@ -3,7 +3,7 @@
 //! job book in `<projectsFolder>/.bashcut-batch/<id>/` survives restarts. Output is JSON.
 
 use bashcut_batch::pipeline::{self, Pipeline};
-use bashcut_batch::{Job, Options, Status, Summary, presets};
+use bashcut_batch::{Choices, Job, Options, Status, Summary, presets};
 use serde_json::{Value, json};
 use std::io::Write;
 use std::path::{Path, PathBuf};
@@ -248,7 +248,7 @@ fn open_job(a: &Args) -> Result<Job, Fail> {
 }
 
 fn data_dir(a: &Args) -> Result<PathBuf, Fail> {
-    a.opt("--data-dir").map(PathBuf::from).or_else(bashcut_dirs::data_dir).ok_or_else(|| usage("no data dir: pass --data-dir"))
+    a.opt("--data-dir").map(|d| pipeline::absolute(Path::new(d))).or_else(bashcut_dirs::data_dir).ok_or_else(|| usage("no data dir: pass --data-dir"))
 }
 
 /// The pipeline from `pos(at)` or `--preset`, with `--input` / `--projects` / `--outputs` applied. A preset run
@@ -278,63 +278,18 @@ fn load_pipeline(a: &Args, at: usize) -> Result<Pipeline, Fail> {
 }
 
 fn options(a: &Args) -> Result<Options, Fail> {
-    let mut o = Options::new(find_cli(a));
-    if let Some(n) = a.opt("--concurrency") {
-        let n: usize = n.parse().map_err(|_| usage("--concurrency takes a number"))?;
-        if n == 0 || n > pipeline::MAX_CONCURRENCY {
-            return Err(usage(format!("--concurrency must be 1 to {}", pipeline::MAX_CONCURRENCY)));
-        }
-        o.concurrency = Some(n);
-    }
-    if let Some(n) = a.opt("--agent-concurrency") {
-        let n: usize = n.parse().map_err(|_| usage("--agent-concurrency takes a number"))?;
-        if n == 0 || n > pipeline::MAX_CONCURRENCY {
-            return Err(usage(format!("--agent-concurrency must be 1 to {}", pipeline::MAX_CONCURRENCY)));
-        }
-        o.agent_concurrency = Some(n);
-    }
-    o.data_dir = a.opt("--data-dir").map(PathBuf::from);
-    o.speech_model = a.opt("--speech-model").map(str::to_string);
-    o.keep_awake = !a.flag("--no-keep-awake");
-    o.mcp = find_mcp(a);
-    o.kit = find_kit(a)?;
-    Ok(o)
-}
-
-/// The agent kit (#204): `--kit`, `$BASHCUT_KIT`, else `<data dir>/bashcut-kit` when it is there. A
-/// folder named on purpose that is not a kit (no `skills/`) is an error; the default is skipped quietly.
-fn find_kit(a: &Args) -> Result<Option<PathBuf>, Fail> {
-    let named = a.opt("--kit").map(PathBuf::from).or_else(|| std::env::var_os("BASHCUT_KIT").filter(|v| !v.is_empty()).map(PathBuf::from));
-    if let Some(k) = named {
-        let k = pipeline::absolute(&k);
-        if !k.join("skills").is_dir() {
-            return Err(usage(format!("{} is not the agent kit (it has no skills folder): pass --kit <bashcutpro-agent-kit folder>", k.display())));
-        }
-        return Ok(Some(k));
-    }
-    let default = a.opt("--data-dir").map(PathBuf::from).or_else(bashcut_dirs::data_dir).map(|d| d.join("bashcut-kit"));
-    Ok(default.filter(|k| k.join("skills").is_dir()))
-}
-
-/// `bashcut-mcp` for agent steps: `--mcp`, `$BASHCUT_MCP`, else next to this program.
-fn find_mcp(a: &Args) -> Option<PathBuf> {
-    if let Some(m) = a.opt("--mcp") {
-        return Some(PathBuf::from(m));
-    }
-    if let Some(m) = std::env::var_os("BASHCUT_MCP").filter(|v| !v.is_empty()) {
-        return Some(PathBuf::from(m));
-    }
-    let name = format!("bashcut-mcp{}", std::env::consts::EXE_SUFFIX);
-    std::env::current_exe().ok().and_then(|e| e.parent().map(|d| d.join(&name))).filter(|p| p.is_file())
-}
-
-fn find_cli(a: &Args) -> PathBuf {
-    if let Some(c) = a.opt("--cli") {
-        // plugin and agent steps run in the item's folder, so a relative path must not stay relative
-        let c = Path::new(c);
-        return if c.components().count() > 1 { pipeline::absolute(c) } else { c.to_path_buf() };
-    }
-    bashcut_batch::cli::default_cli()
+    let count = |k: &str| a.opt(k).map(|n| n.parse::<usize>().map_err(|_| usage(format!("{k} takes a number")))).transpose();
+    Options::resolve(Choices {
+        cli: a.opt("--cli").map(PathBuf::from),
+        concurrency: count("--concurrency")?,
+        agent_concurrency: count("--agent-concurrency")?,
+        data_dir: a.opt("--data-dir").map(PathBuf::from),
+        mcp: a.opt("--mcp").map(PathBuf::from),
+        kit: a.opt("--kit").map(PathBuf::from),
+        speech_model: a.opt("--speech-model").map(str::to_string),
+        no_keep_awake: a.flag("--no-keep-awake"),
+    })
+    .map_err(usage)
 }
 
 fn presets_cmd(a: &Args) -> Result<u8, Fail> {

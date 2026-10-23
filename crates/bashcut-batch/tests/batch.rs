@@ -536,3 +536,7 @@ fn transcribe_steps_use_the_settings_speech_model_when_downloaded() {
     // --speech-model wins
     assert_eq!(run_with("s3", &["whisper-small"], Some("whisper-tiny")), steps("whisper-tiny"));
 }
+
+#[test]
+#[ignore = "test ticket: resources.agentConcurrency 2 with the top-level default lets two agent steps run at once"]
+fn resources_agent_concurrency_raises_the_agent_cap() {}

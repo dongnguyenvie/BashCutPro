@@ -20,6 +20,20 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Condvar, Mutex, PoisonError};
 use std::time::{Duration, Instant};
 
+/// Book writes that change no status are at most this often ([`Shared::with`]).
+const SAVE_EVERY: Duration = Duration::from_millis(500);
+
+/// Every item's and step's status, each step's pid (the tripwire reads it) and the paused note, in order: a
+/// change here is saved at once.
+fn statuses(b: &Book) -> (Vec<(Status, Option<u32>)>, Option<String>) {
+    let mut v = Vec::new();
+    for item in &b.items {
+        v.push((item.status, None));
+        v.extend(item.steps.iter().map(|s| (s.status, s.pid)));
+    }
+    (v, b.paused.clone())
+}
+
 /// How much of a step's stdout / stderr goes into its error message.
 const LOG_TAIL: u64 = 4096;
 const MAX_MESSAGE: usize = 600;
@@ -38,7 +52,7 @@ pub struct Options {
     pub env: Vec<(String, String)>,
     /// Reads free RAM, cores, disk and process memory (#61; tests pass a [`crate::FakeProbe`]).
     pub probe: Arc<dyn Probe>,
-    /// Keep the machine from idle-sleeping while the batch runs (the command line turns it on).
+    /// Keep the machine from idle-sleeping while the batch runs ([`Options::resolve`] turns it on).
     pub keep_awake: bool,
     /// How often a step's process memory is checked against the cap.
     pub watch_every: Duration,
@@ -72,6 +86,75 @@ impl Options {
             kit: None,
         }
     }
+
+    /// The options the app and `bashcut-batch` run with (I5): what the caller named in `choices`, the rest from the
+    /// environment and the defaults. Paths are made absolute, since plugin and agent steps run in the item's folder
+    /// (I6). Errors are for the person: a count out of range, a kit folder named on purpose that is not a kit.
+    pub fn resolve(choices: Choices) -> Result<Options, String> {
+        let in_range = |what: &str, n: Option<usize>| match n {
+            Some(n) if n == 0 || n > pipeline::MAX_CONCURRENCY => Err(format!("{what} must be 1 to {}", pipeline::MAX_CONCURRENCY)),
+            _ => Ok(n),
+        };
+        let mut o = Options::new(match choices.cli {
+            // a bare name is looked up on PATH; anything with a folder in it must not stay relative
+            Some(c) if c.components().count() > 1 => pipeline::absolute(&c),
+            Some(c) => c,
+            None => crate::cli::default_cli(),
+        });
+        o.concurrency = in_range("concurrency (--concurrency)", choices.concurrency)?;
+        o.agent_concurrency = in_range("agentConcurrency (--agent-concurrency)", choices.agent_concurrency)?;
+        o.data_dir = choices.data_dir.map(|d| pipeline::absolute(&d));
+        o.speech_model = choices.speech_model.filter(|m| !m.trim().is_empty());
+        o.keep_awake = !choices.no_keep_awake;
+        o.mcp = find_mcp(choices.mcp).map(|m| pipeline::absolute(&m));
+        o.kit = find_kit(choices.kit, o.data_dir.as_deref())?;
+        Ok(o)
+    }
+}
+
+/// What the caller of [`Options::resolve`] names; `None` means the default.
+#[derive(Clone, Debug, Default)]
+pub struct Choices {
+    /// The engine; default [`crate::cli::default_cli`].
+    pub cli: Option<PathBuf>,
+    pub concurrency: Option<usize>,
+    pub agent_concurrency: Option<usize>,
+    /// The BashCutPro data dir; default the engine's own.
+    pub data_dir: Option<PathBuf>,
+    /// `bashcut-mcp`; default `$BASHCUT_MCP`, else next to this program.
+    pub mcp: Option<PathBuf>,
+    /// The agent kit; default `$BASHCUT_KIT`, else `<data dir>/bashcut-kit` when it is there.
+    pub kit: Option<PathBuf>,
+    pub speech_model: Option<String>,
+    /// Let the machine sleep while the batch runs.
+    pub no_keep_awake: bool,
+}
+
+/// The agent kit (#204): `named`, `$BASHCUT_KIT`, else `<data dir>/bashcut-kit` when it is there. A folder named
+/// on purpose that is not a kit (no `skills/`) is an error; the default is skipped quietly.
+fn find_kit(named: Option<PathBuf>, data_dir: Option<&Path>) -> Result<Option<PathBuf>, String> {
+    let named = named.or_else(|| std::env::var_os("BASHCUT_KIT").filter(|v| !v.is_empty()).map(PathBuf::from));
+    if let Some(k) = named {
+        let k = pipeline::absolute(&k);
+        if !k.join("skills").is_dir() {
+            return Err(format!("{} is not the agent kit (it has no skills folder): pass --kit <bashcutpro-agent-kit folder>", k.display()));
+        }
+        return Ok(Some(k));
+    }
+    let default = data_dir.map(Path::to_path_buf).or_else(bashcut_dirs::data_dir).map(|d| d.join("bashcut-kit"));
+    Ok(default.filter(|k| k.join("skills").is_dir()))
+}
+
+/// `bashcut-mcp` for agent steps: `named`, `$BASHCUT_MCP`, else next to this program.
+fn find_mcp(named: Option<PathBuf>) -> Option<PathBuf> {
+    if let Some(m) = named {
+        return Some(m);
+    }
+    if let Some(m) = std::env::var_os("BASHCUT_MCP").filter(|v| !v.is_empty()) {
+        return Some(PathBuf::from(m));
+    }
+    let name = format!("bashcut-mcp{}", std::env::consts::EXE_SUFFIX);
+    std::env::current_exe().ok().and_then(|e| e.parent().map(|d| d.join(&name))).filter(|p| p.is_file())
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize)]
@@ -142,11 +225,13 @@ pub fn run(job: &Job, opts: &Options) -> Result<Summary, String> {
         stop: AtomicBool::new(false),
         cancel: AtomicBool::new(false),
         save_error: Mutex::new(None),
+        saved_at: Mutex::new(Instant::now()),
         max_items: workers,
         meter: Meter::default(),
         agents: Mutex::new(0),
         agents_free: Condvar::new(),
-        agent_cap: opts.agent_concurrency.unwrap_or(pipeline.agent_concurrency).clamp(1, pipeline::MAX_CONCURRENCY),
+        // `resources.agentConcurrency` is the same setting (X2): either one raises the cap
+        agent_cap: opts.agent_concurrency.unwrap_or(pipeline.agent_concurrency.max(pipeline.resources.agent_concurrency)).clamp(1, pipeline::MAX_CONCURRENCY),
         speech_model: speech_model(&pipeline, opts),
     };
     std::thread::scope(|s| {
@@ -228,6 +313,8 @@ struct Shared<'a> {
     stop: AtomicBool,
     cancel: AtomicBool,
     save_error: Mutex<Option<String>>,
+    /// When the book was last written; step events in between are coalesced ([`Shared::with`]).
+    saved_at: Mutex<Instant>,
     /// Items at once at most (the governor may allow fewer).
     max_items: usize,
     meter: Meter,
@@ -282,13 +369,20 @@ impl Drop for AgentSlot<'_, '_> {
 }
 
 impl Shared<'_> {
-    /// Change the book and save it.
+    /// Change the book and save it: at once when an item or step changes status, else at most every
+    /// [`SAVE_EVERY`] (a step's notes and usage), since every save rewrites the whole book. The run's end saves
+    /// whatever is left.
     fn with<R>(&self, f: impl FnOnce(&mut Book) -> R) -> R {
         let mut b = self.book.lock().unwrap_or_else(PoisonError::into_inner);
+        let before = statuses(&b);
         let r = f(&mut b);
         b.updated_at = now_ms();
-        if let Err(e) = self.job.save(&b) {
-            *self.save_error.lock().unwrap_or_else(PoisonError::into_inner) = Some(e);
+        let mut saved_at = self.saved_at.lock().unwrap_or_else(PoisonError::into_inner);
+        if statuses(&b) != before || saved_at.elapsed() >= SAVE_EVERY {
+            if let Err(e) = self.job.save(&b) {
+                *self.save_error.lock().unwrap_or_else(PoisonError::into_inner) = Some(e);
+            }
+            *saved_at = Instant::now();
         }
         r
     }
@@ -990,4 +1084,12 @@ mod tests {
         assert!(!is_relative_inside(Path::new("/tmp/a.mp4")));
         assert!(!is_relative_inside(Path::new("")));
     }
+
+    #[test]
+    #[ignore = "test ticket: Options::resolve makes relative --data-dir / --mcp / --kit / --cli with a folder absolute, keeps a bare --cli name, rejects 0 and >MAX concurrency, a named non-kit folder"]
+    fn resolve_makes_paths_absolute_and_checks_counts() {}
+
+    #[test]
+    #[ignore = "test ticket: Shared::with saves at once on a status / pid / pause change and coalesces other changes to one write per 500 ms"]
+    fn book_writes_are_coalesced_between_status_changes() {}
 }
