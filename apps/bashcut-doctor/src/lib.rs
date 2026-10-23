@@ -155,13 +155,17 @@ pub fn meets(version: (u64, u64, u64), requirement: &str) -> bool {
     }
 }
 
-/// The engine program (#154, RC2): `--cli`, else the shared lookup (`bashcut_dirs::engine`, the one
-/// batch and the UI use): its variables (`BASHCUTPRO_CLI`, `BASHCUT_FILMCRAFT_CLI`, `FILMCRAFT_CLI`),
-/// then [`Env::find_engine`] (next to the doctor, else `bashcutpro` / `bcpro` / `filmcraft-cli` on
-/// `PATH`), else `filmcraft-cli`. Whether it starts is [`check_cli`]'s `--version` probe, a separate step.
+/// The engine program (#154, RC2): `--cli`, else the shared lookup `bashcut_dirs::engine::lookup` (the one
+/// batch and the UI use) fed from [`Env`]: its variables (`BASHCUTPRO_CLI`, `BASHCUT_FILMCRAFT_CLI`,
+/// `FILMCRAFT_CLI`), then `bashcutpro` / `bcpro` / `filmcraft-cli` in [`Env::exe_dir`], then on [`Env::path`],
+/// else `filmcraft-cli`. Whether it starts is [`check_cli`]'s `--version` probe, a separate step.
 pub fn cli_program(env: &dyn Env, opts: &Options) -> String {
-    let named = opts.cli.clone().or_else(|| bashcut_dirs::engine::ENV.iter().find_map(|k| env.var(k)));
-    named.or_else(|| env.find_engine()).unwrap_or_else(|| "filmcraft-cli".to_string())
+    if let Some(cli) = &opts.cli {
+        return cli.clone();
+    }
+    let var = |k: &str| env.var(k).map(std::ffi::OsString::from);
+    let found = bashcut_dirs::engine::lookup(&var, env.exe_dir().as_deref(), env.path().as_deref());
+    found.map(|p| p.to_string_lossy().into_owned()).unwrap_or_else(|| "filmcraft-cli".to_string())
 }
 
 /// Every check, in a fixed order.

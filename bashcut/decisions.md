@@ -31,7 +31,8 @@ decides something; don't change an old one, add a new one that supersedes it.
   the doctor, then on `PATH`). The `--version` probe stays a separate step in the `cli` check.
 - **Behaviour change:** `bcpro` (the name inside the macOS bundle, #187) and `BASHCUT_FILMCRAFT_CLI` are now honoured,
   and an engine next to the doctor wins over one on `PATH`; the `cli` finding shows the found path. Fakes keep
-  the old probe (first of the names whose `--version` starts) through the `Env::find_engine` default.
+  no probe: `cli_program` calls `bashcut_dirs::engine::lookup` with the `Env`'s variables, `Env::exe_dir`
+  (None for fakes) and `Env::path` (DR1).
 - **Not changed:** the `model.<id>` check keeps `<data dir>/bashcut-models` (`BASHCUT_MODELS_DIR`). RV2 listed it as
   a bug against `bashcut_dirs::models_dir` (`<data dir>/models`), but they are two stores: `bashcut-models` is where
   the plugins' downloader (`bashcut_models.py`) caches what `models.json` lists, `models` holds the engine's

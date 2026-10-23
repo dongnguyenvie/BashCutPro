@@ -285,5 +285,9 @@ fn kit_installed_as_claude_plugin_or_by_setup_is_found() {
 }
 
 #[test]
-#[ignore = "test ticket: BASHCUT_FILMCRAFT_CLI names the engine; with no variable only `bcpro --version` starts and the cli finding says (bcpro)"]
+#[ignore = "test ticket: BASHCUT_FILMCRAFT_CLI names the engine; with no variable and a temp dir holding only `bcpro` as the fake's PATH, cli_program is <dir>/bcpro (engine::lookup, DR1); no variable and no PATH gives filmcraft-cli"]
 fn shared_engine_lookup_honours_bcpro_and_bashcut_filmcraft_cli() {}
+
+#[test]
+#[ignore = "test ticket: RealEnv::run stops a probe that hangs (unix `sleep 60`, or one that reads stdin) after RUN_TIMEOUT with code None, keeps stdout under its cap, and stdin is null (DR1)"]
+fn real_run_times_out_with_null_stdin() {}

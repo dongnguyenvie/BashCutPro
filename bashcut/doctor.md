@@ -20,7 +20,9 @@ So a long unattended run does not fail on setup. Rules: [extending-upstream.md](
 
 Exit 1 when anything failed, else 0. `--json` prints `{"schema":"bashcut-doctor/1","ok","worst","findings":[{id,level,message,fix}]}`:
 the batch runner runs it before every batch and the Runs section shows it. Everything goes through the `Env` trait, so
-the tests (`apps/bashcut-doctor/tests/bashcut_doctor.rs`) use a fake machine.
+the tests (`apps/bashcut-doctor/tests/bashcut_doctor.rs`) use a fake machine. Every program it runs (engine probes,
+`python3 --version`, `df`) runs through `bashcut_dirs::child` with stdin null, its own process group and capped
+output, and is stopped after 30 s (`RUN_TIMEOUT`; a stopped probe counts as not starting, DR1).
 
 ## Update checks (`--updates`)
 
