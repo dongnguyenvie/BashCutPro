@@ -137,17 +137,8 @@ enum Live {
     Task(Receiver<Task>),
 }
 
-/// How to start an agent plugin (`Host::agents`).
-#[derive(Clone, Debug, PartialEq)]
-pub struct AgentLaunch {
-    pub id: String,
-    pub name: String,
-    pub argv: Vec<String>,
-    pub mcp_args: Vec<String>,
-    pub resume_args: Vec<String>,
-    pub events: String,
-    pub env: Vec<(String, String)>,
-}
+/// How to start an agent plugin (`Host::agents`); shared with `bashcut-agent` (RC6).
+pub use crate::manifest::AgentLaunch;
 
 /// What a run connects to, from the app.
 #[derive(Clone, Debug, Default)]
@@ -253,8 +244,10 @@ impl Host {
                     argv,
                     mcp_args: a.mcp_config.clone(),
                     resume_args: a.resume.clone(),
-                    events: if a.events.is_empty() { crate::manifest::AGENT_EVENTS.to_string() } else { a.events.clone() },
+                    prompt_args: a.prompt.clone(),
+                    events: if a.events.is_empty() { crate::manifest::CLAUDE_STREAM_JSON.to_string() } else { a.events.clone() },
                     env,
+                    timeout_secs: a.timeout_secs,
                 })
             })
             .collect()

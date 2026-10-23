@@ -120,21 +120,53 @@ pub fn choice_label<'a>(i18n: &'a I18n, lang: &str, value: &'a str) -> &'a str {
     }
 }
 
-/// An agent plugin (`bashcut/in-app-ui.md` §6): the entry plus `args` runs one turn, reading one
-/// stream-json user message on stdin and printing `events` on stdout.
+/// An agent plugin (`bashcut/in-app-ui.md` §6): the entry plus `args` runs one turn, reading the
+/// message on stdin (as its `events` format writes it) and printing `events` on stdout.
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 #[serde(default, rename_all = "camelCase")]
 pub struct AgentSection {
     pub args: Vec<String>,
-    /// Arguments passing the MCP config file (`{config}`); empty: the agent does not use the app.
+    /// Arguments passing the MCP config: `{config}` (its file), or `{mcpCommand}` / `{mcpArgs}` (the
+    /// server's command and arguments, for agents configured on the command line); empty: the agent
+    /// does not use the app.
     pub mcp_config: Vec<String>,
     /// Arguments resuming a session (`{session}`); empty: every turn starts fresh.
     pub resume: Vec<String>,
-    /// stdout event format; only `claude-stream-json` for now.
+    /// Arguments after everything else (a Codex-style `-`: the prompt comes from stdin).
+    pub prompt: Vec<String>,
+    /// stdout event format, one of [`AGENT_EVENTS`]; empty: [`CLAUDE_STREAM_JSON`].
     pub events: String,
+    /// A turn is stopped after this many seconds; 0: the agent default (2 h). At most [`MAX_AGENT_TIMEOUT`].
+    pub timeout_secs: u64,
 }
 
-pub const AGENT_EVENTS: &str = "claude-stream-json";
+/// Claude Code's stream-json events (the default).
+pub const CLAUDE_STREAM_JSON: &str = "claude-stream-json";
+/// Codex's `exec --json` events.
+pub const CODEX_JSON: &str = "codex-json";
+/// The agent event formats a manifest may name; `bashcut-agent`'s format registry decodes each.
+pub const AGENT_EVENTS: &[&str] = &[CLAUDE_STREAM_JSON, CODEX_JSON];
+/// Longest agent turn a manifest may ask for (24 h).
+pub const MAX_AGENT_TIMEOUT: u64 = 24 * 60 * 60;
+
+/// How to start an agent plugin (`bashcut-plugin-host`'s `Host::agents`): the manifest's `agent`
+/// section resolved against the plugin folder and settings. Field names and serde form match
+/// `bashcut_agent::AgentSpec`, which it is a subset of (`AgentSpec::from`).
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[serde(default, rename_all = "camelCase")]
+pub struct AgentLaunch {
+    pub id: String,
+    pub name: String,
+    pub argv: Vec<String>,
+    pub mcp_args: Vec<String>,
+    pub resume_args: Vec<String>,
+    pub prompt_args: Vec<String>,
+    /// One of [`AGENT_EVENTS`].
+    pub events: String,
+    pub env: Vec<(String, String)>,
+    /// 0: the agent default.
+    pub timeout_secs: u64,
+}
 
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 #[serde(default, rename_all = "camelCase")]
@@ -350,14 +382,18 @@ impl Manifest {
         match (self.kind.as_str(), &self.agent) {
             ("" | "tool", None) => {}
             ("agent", Some(a)) => {
-                if a.args.len() > MAX_ARGS || a.mcp_config.len() > MAX_ARGS || a.resume.len() > MAX_ARGS {
+                if [&a.args, &a.mcp_config, &a.resume, &a.prompt].iter().any(|v| v.len() > MAX_ARGS) {
                     return err(format!("{}: agent args are too long", self.id));
                 }
-                if !a.events.is_empty() && a.events != AGENT_EVENTS {
-                    return err(format!("{}: agent events `{}` are not {AGENT_EVENTS}", self.id, a.events));
+                if !a.events.is_empty() && !AGENT_EVENTS.contains(&a.events.as_str()) {
+                    return err(format!("{}: agent events `{}` are not one of {}", self.id, a.events, AGENT_EVENTS.join(", ")));
                 }
-                if !a.mcp_config.iter().any(|x| x.contains("{config}")) && !a.mcp_config.is_empty() {
-                    return err(format!("{}: agent.mcpConfig must name {{config}}", self.id));
+                if a.timeout_secs > MAX_AGENT_TIMEOUT {
+                    return err(format!("{}: agent.timeoutSecs is longer than {MAX_AGENT_TIMEOUT}", self.id));
+                }
+                let names_server = |x: &String| ["{config}", "{mcpCommand}", "{mcpArgs}"].iter().any(|t| x.contains(t));
+                if !a.mcp_config.iter().any(names_server) && !a.mcp_config.is_empty() {
+                    return err(format!("{}: agent.mcpConfig must name {{config}}, {{mcpCommand}} or {{mcpArgs}}", self.id));
                 }
                 if !a.resume.iter().any(|x| x.contains("{session}")) && !a.resume.is_empty() {
                     return err(format!("{}: agent.resume must name {{session}}", self.id));
@@ -718,4 +754,8 @@ mod tests {
         assert!(Manifest::parse(&b.to_string()).is_err(), "an agent section needs kind agent");
         assert!(!Manifest::parse(&sample()).unwrap().is_agent());
     }
+
+    #[test]
+    #[ignore = "test ticket: a codex-json agent section (mcpConfig with {mcpCommand}/{mcpArgs}, prompt [\"-\"], timeoutSecs) parses; timeoutSecs over 24 h and unknown events fail"]
+    fn codex_agent_plugins_are_checked() {}
 }

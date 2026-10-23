@@ -56,9 +56,15 @@ the one upstream line is the ui-egui dependency (H4). Views (`view.rs`, §Views)
 and `tests/fake_plugins.rs` (fake Python plugins and a local git registry).
 
 Agent plugins (#35): a manifest with `"kind": "agent"` carries an `agent` section instead of being run as a tool:
-`args` (appended to the entry), `mcpConfig` (args that pass the MCP config file; must contain `{config}`), `resume`
-(must contain `{session}`) and `events` (`claude-stream-json`). `Host::agents()` lists them as `AgentLaunch`es with
-the plugin's settings as env; the Agent section offers them next to Claude Code ([in-app-ui.md](in-app-ui.md) §6).
+`args` (appended to the entry), `mcpConfig` (args that pass the MCP config: `{config}` for its file, or `{mcpCommand}`
+/ `{mcpArgs}` for the server's command and arguments as TOML/JSON values, Codex-style `-c`), `resume` (must contain
+`{session}`), `prompt` (args after everything else, Codex's `-`), `events` (`claude-stream-json`, the default, or
+`codex-json`; `bashcut_manifest::AGENT_EVENTS`, each decoded by a row of `bashcut_agent::format::FORMATS`) and
+`timeoutSecs` (0: 2 h; at most 24 h). `Host::agents()` lists them as `AgentLaunch`es (`bashcut-manifest`, serde-compatible
+subset of `bashcut_agent::AgentSpec`, converted with `AgentSpec::from`, RC6) with the plugin's settings as env; the
+Agent section offers them next to Claude Code ([in-app-ui.md](in-app-ui.md) §6). A Codex-style plugin:
+`"agent": {"args": ["exec", "--json"], "mcpConfig": ["-c", "mcp_servers.filmcraft.command={mcpCommand}", "-c",
+"mcp_servers.filmcraft.args={mcpArgs}"], "resume": ["resume", "{session}"], "prompt": ["-"], "events": "codex-json"}`.
 
 ## Touch points in upstream files (the whole core change)
 

@@ -287,8 +287,9 @@ labels or subclips (§1 rule 1). A project opened in upstream FilmCraft still wo
 ## 6. Agent panel in detail
 
 - **Start**: user picks an agent: Claude Code (`claude`, or `BASHCUT_CLAUDE`) or an agent plugin (`kind: "agent"`
-  in `bashcut-plugin.json`, with an `agent` section: `args`, `mcpConfig` (`{config}`), `resume` (`{session}`) and
-  `events`, only `claude-stream-json` so far). The app writes a temporary MCP config for
+  in `bashcut-plugin.json`, with an `agent` section: `args`, `mcpConfig` (`{config}`, or `{mcpCommand}`/`{mcpArgs}`),
+  `resume` (`{session}`), `prompt`, `timeoutSecs` and `events`: `claude-stream-json` or `codex-json`, the rows of
+  `bashcut_agent::format::FORMATS`, RC6; see [plugin-host.md](plugin-host.md)). The app writes a temporary MCP config for
   `<engine> mcp --bridge 127.0.0.1:<control port>` (`bashcutpro`, else `filmcraft-cli`) and starts the agent with the kit's skills available; with the
   control channel off (CC1: on by default) an agent that needs the app says so instead of starting.
 - **Turn** (`crates/bashcut-agent`, `process.rs`): one child process per turn. The message plus a short context line

@@ -11,7 +11,7 @@ use crate::clip;
 use crate::stream_json::{Event, MAX_TEXT, capped_input, content_text};
 
 /// The event format name in agent specs and plugin manifests.
-pub const FORMAT: &str = "codex-json";
+pub const FORMAT: &str = bashcut_manifest::CODEX_JSON;
 /// Tool calls remembered as started (a hostile stream cannot grow this without bound).
 const MAX_STARTED: usize = 4096;
 
@@ -22,6 +22,12 @@ pub struct Parser {
     thread: String,
     last_text: String,
     started: HashSet<String>,
+}
+
+impl crate::format::Decode for Parser {
+    fn parse_line(&mut self, line: &str) -> Vec<Event> {
+        Parser::parse_line(self, line)
+    }
 }
 
 impl Parser {

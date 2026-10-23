@@ -504,6 +504,7 @@ name = "bashcut-agent"
 version = "0.10.0"
 dependencies = [
  "bashcut-dirs",
+ "bashcut-manifest",
  "log",
  "serde",
  "serde_json",
