@@ -187,11 +187,42 @@ mod tests {
         assert_eq!(layer_of("engine"), None);
     }
 
-    #[test]
-    #[ignore = "test ticket: dev args: --release, --features a,b / --features=a / -F a, `--` passes the rest to the app, unknown option is an error"]
-    fn dev_args_parse() {}
+    fn strs(v: &[&str]) -> Vec<String> {
+        v.iter().map(|s| s.to_string()).collect()
+    }
 
     #[test]
-    #[ignore = "test ticket: dev features: bare `whisper` becomes filmcraft/whisper + bashcutpro-cli/whisper, qualified passes through, unknown feature is an error"]
-    fn dev_features_qualify() {}
+    fn dev_args_parse() {
+        assert_eq!(parse_dev_args(&[]), Ok(DevArgs::default()));
+        assert!(parse_dev_args(&strs(&["--release"])).is_ok_and(|a| a.release));
+        assert!(parse_dev_args(&strs(&["-r"])).is_ok_and(|a| a.release));
+        let a = parse_dev_args(&strs(&["--features", "a,b", "--features=c", "-F", "d e", "--features=,f,"]));
+        assert_eq!(a.map(|a| a.features), Ok(strs(&["a", "b", "c", "d", "e", "f"])));
+        // Everything after `--` goes to the app untouched, options included.
+        let a = parse_dev_args(&strs(&["-r", "--", "--help", "--release", "--", "x"]));
+        assert_eq!(a, Ok(DevArgs { release: true, features: vec![], app_args: strs(&["--help", "--release", "--", "x"]) }));
+        assert!(parse_dev_args(&strs(&["--features"])).is_err_and(|e| e.contains("needs a value")));
+        assert!(parse_dev_args(&strs(&["--bogus"])).is_err_and(|e| e.contains("`--bogus`") && e.contains("usage:")));
+        // An app argument before `--` is an unknown option, not silently passed on.
+        assert!(parse_dev_args(&strs(&["--control", "9876"])).is_err());
+    }
+
+    #[test]
+    fn dev_features_qualify() {
+        let md = serde_json::json!({ "packages": [
+            { "name": "filmcraft", "features": { "default": [], "whisper": [] } },
+            { "name": "bashcutpro-cli", "features": { "whisper": [] } },
+            { "name": "bashcut-mcp", "features": {} },
+            // Not a dev package: its `whisper` must not be turned on.
+            { "name": "bashcut-transcribe", "features": { "whisper": [], "extra": [] } },
+        ]});
+        assert_eq!(qualify_features(&strs(&["whisper"]), &md), Ok(strs(&["filmcraft/whisper", "bashcutpro-cli/whisper"])));
+        assert_eq!(qualify_features(&strs(&["default"]), &md), Ok(strs(&["filmcraft/default"])));
+        assert_eq!(qualify_features(&strs(&["other/x", "whisper"]), &md), Ok(strs(&["other/x", "filmcraft/whisper", "bashcutpro-cli/whisper"])));
+        assert!(qualify_features(&strs(&["extra"]), &md).is_err_and(|e| e.contains("`extra`")));
+        assert!(qualify_features(&strs(&["nope"]), &md).is_err());
+        assert_eq!(qualify_features(&[], &md), Ok(vec![]));
+        // Metadata without packages: a bare feature has no owner.
+        assert!(qualify_features(&strs(&["whisper"]), &serde_json::json!({})).is_err());
+    }
 }
