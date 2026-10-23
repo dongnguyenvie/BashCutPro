@@ -244,7 +244,7 @@ pub fn draw(app: &mut FilmcraftApp, ui: &mut egui::Ui) {
     // registry
     ui.add_space(8.0);
     ui.separator();
-    ui.horizontal(|ui| {
+    ui.horizontal_wrapped(|ui| {
         ui.label(egui::RichText::new(s("Available")).strong().color(t.text));
         let label = if registry.is_some() { s("Refresh") } else { s("Check registry") };
         let checking = snap.registry_check.as_ref().is_some_and(|j| j.state.is_running());
@@ -282,7 +282,7 @@ fn registry_row(app: &mut FilmcraftApp, ui: &mut egui::Ui, ctx: &egui::Context, 
     // one install at a time: the button waits while the host installs this id
     let installing = snap.installing.contains(&e.id);
     let lang = strings::current();
-    ui.horizontal(|ui| {
+    ui.horizontal_wrapped(|ui| {
         ui.label(egui::RichText::new(format!("{} {}", e.name_in(lang), e.version)).color(t.text));
         let label = if installing { s("Installing…") } else { s("Install") };
         if button(app, ui, &format!("bashcut.plugins.{}.install", e.id), label, can_install && supported && !installing) {
@@ -323,7 +323,7 @@ fn last_run(app: &mut FilmcraftApp, ui: &mut egui::Ui, ctx: &egui::Context, d: &
         let r = ui.add(egui::Label::new(text.clone()).wrap());
         app.auto.add_response(&id, &r, &line.text);
     }
-    ui.horizontal(|ui| {
+    ui.horizontal_wrapped(|ui| {
         if !line.failed {
             let r = ui.label(text);
             app.auto.add_response(&id, &r, &line.text);
@@ -348,7 +348,7 @@ fn last_run(app: &mut FilmcraftApp, ui: &mut egui::Ui, ctx: &egui::Context, d: &
 fn plugin_card(app: &mut FilmcraftApp, ui: &mut egui::Ui, ctx: &egui::Context, d: &mut Drafts, snap: &Snapshot, p: &Installed) {
     let t = app.tokens;
     let Some(m) = &p.manifest else {
-        ui.horizontal(|ui| {
+        ui.horizontal_wrapped(|ui| {
             ui.label(egui::RichText::new(&p.id).color(t.text));
             if button(app, ui, &format!("bashcut.plugins.{}.remove", p.id), s("Remove"), true) {
                 run(app, ctx, d, "remove", json!({"plugin": p.id}));
@@ -368,7 +368,7 @@ fn plugin_card(app: &mut FilmcraftApp, ui: &mut egui::Ui, ctx: &egui::Context, d
             if !m.summary_in(lang).is_empty() {
                 note(ui, plain(m.summary_in(lang)), NOTE, t.text_dim);
             }
-            ui.horizontal(|ui| {
+            ui.horizontal_wrapped(|ui| {
                 let updating = snap.installing.contains(&p.id);
                 let label = if updating {
                     s("Updating…").to_string()
@@ -428,7 +428,7 @@ fn settings_form(app: &mut FilmcraftApp, ui: &mut egui::Ui, ctx: &egui::Context,
             if busy.is_some() {
                 ctx.request_repaint_after(std::time::Duration::from_millis(100));
             }
-            ui.horizontal(|ui| {
+            ui.horizontal_wrapped(|ui| {
                 ui.label(title.as_str());
                 let text = d.secrets.entry(k.clone()).or_default();
                 let hint = if stored { s("stored") } else { s("not set") };
@@ -451,7 +451,7 @@ fn settings_form(app: &mut FilmcraftApp, ui: &mut egui::Ui, ctx: &egui::Context,
             let initial = saved.get(&st.id).or(st.default.as_ref()).map(value_text).unwrap_or_default();
             let text = d.settings.entry(k).or_insert(initial);
             let id = format!("bashcut.plugins.{}.settings.{}", m.id, st.id);
-            ui.horizontal(|ui| {
+            ui.horizontal_wrapped(|ui| {
                 ui.label(title.as_str());
                 field(app, ui, &id, &title, Spec::setting(st), text);
             });
@@ -544,14 +544,14 @@ fn action_row(app: &mut FilmcraftApp, ui: &mut egui::Ui, ctx: &egui::Context, d:
             let ptitle = param_title(p);
             let text = d.params.entry(k).or_insert_with(|| p.default.as_ref().map(value_text).unwrap_or_default());
             let id = format!("bashcut.plugins.{}.action.{}.param.{}", m.id, a.id, p.id);
-            ui.horizontal(|ui| {
+            ui.horizontal_wrapped(|ui| {
                 ui.label(if required(p) { format!("{ptitle} *") } else { ptitle.clone() });
                 field(app, ui, &id, &ptitle, Spec::param(p), text);
             });
         }
         let missing = missing(d, m, a);
         let why = run_blocker(control, a, &missing);
-        ui.horizontal(|ui| {
+        ui.horizontal_wrapped(|ui| {
             if gated_button(app, ui, &format!("bashcut.plugins.{}.{}.run", m.id, a.id), s("Run"), why.as_deref()) {
                 start(app, ctx, d, m, a);
             }

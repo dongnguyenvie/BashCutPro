@@ -281,7 +281,7 @@ preview need an HTTP image loader / player (later, or through plugin views #37).
   is `horizontal_wrapped`, not `horizontal`: one row wider than the area grows the content's max rect (egui expands
   it to whatever a child allocates), so every card and right-aligned button below it overflows too. A text field
   beside a button takes the width the button leaves (Batch's preset name), a card's thumbnail at most 40% of it
-  (Looks).
+  (Looks). FX30 swept Plugins (cards, settings, parameters, last run), Library, Agent and Runs the same way; a card's name row has no row gap when its ☆ wraps.
 - **Open modal dialogs** (FX14, `bashcut_ui/modal.rs`, hook H14): an egui `Modal` (upstream's Recover Unsaved
   Changes, Revert, Preferences) takes every click outside its own widgets. `ui.click` on an element behind it (by
   `id`, or at `x,y` over such an element) answers `ok: false` with `“Recover Unsaved Changes” is open and takes

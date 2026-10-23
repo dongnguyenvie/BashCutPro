@@ -532,7 +532,7 @@ fn gate_card(app: &mut FilmcraftApp, ui: &mut egui::Ui, ctx: &egui::Context, v: 
         }
         let r = ui.add(egui::TextEdit::multiline(&mut v.note).hint_text(s("Note (needed to ask for changes)")).desired_rows(2).desired_width(f32::INFINITY));
         app.auto.add_response("bashcut.gate.note", &r, "note");
-        ui.horizontal(|ui| {
+        ui.horizontal_wrapped(|ui| {
             let note = v.note.trim().to_string();
             if button(app, ui, "bashcut.gate.approve", s("Approve"), !running) && call(app, ctx, v, "approve", json!({"note": note})) {
                 v.note.clear();
