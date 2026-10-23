@@ -77,6 +77,7 @@ pub fn run_watched(
     let stderr = std::fs::File::create(&err).map_err(|e| io(e, &err))?;
     let mut cmd = Command::new(program);
     cmd.args(args).stdin(Stdio::null()).stdout(stdout).stderr(stderr);
+    bashcut_dirs::child::no_window(&mut cmd);
     if let Some(cwd) = &spec.cwd {
         cmd.current_dir(cwd);
     }
