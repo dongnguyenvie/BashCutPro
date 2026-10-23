@@ -150,6 +150,24 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "test ticket: past MAX_LISTED conversations, list keeps the newest by mtime"]
-    fn list_keeps_the_newest_past_the_cap() {}
+    fn list_keeps_the_newest_past_the_cap() {
+        let side = std::env::temp_dir().join(format!("bashcut-store-cap-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&side);
+        let extra = 7;
+        let base = UNIX_EPOCH + std::time::Duration::from_secs(1_700_000_000);
+        for i in 0..(MAX_LISTED + extra) as u64 {
+            // ids sort against age (`c9…` is older than `c1…`), so only the mtime can pick the newest
+            let id = format!("c{}", 10_000 - i);
+            let c = Conversation { schema: SCHEMA.into(), id: id.clone(), agent: "claude-code".into(), updated: i, ..Conversation::default() };
+            save(&side, &c).unwrap();
+            let f = std::fs::File::options().write(true).open(dir(&side).join(format!("{id}.json"))).unwrap();
+            f.set_modified(base + std::time::Duration::from_secs(i)).unwrap();
+        }
+        let l = list(&side);
+        assert_eq!(l.len(), MAX_LISTED);
+        assert_eq!(l[0].updated, (MAX_LISTED + extra - 1) as u64, "newest first");
+        assert_eq!(l.last().map(|s| s.updated), Some(extra as u64), "the oldest are the ones dropped");
+        assert!(l.windows(2).all(|w| w[0].updated > w[1].updated));
+        let _ = std::fs::remove_dir_all(&side);
+    }
 }

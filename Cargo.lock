@@ -505,6 +505,7 @@ version = "0.10.0"
 dependencies = [
  "bashcut-dirs",
  "bashcut-manifest",
+ "bashcut-plugin-host",
  "log",
  "serde",
  "serde_json",

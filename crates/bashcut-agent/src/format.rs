@@ -40,7 +40,17 @@ pub fn names() -> Vec<&'static str> {
 
 #[cfg(test)]
 mod tests {
+    use super::*;
+
     #[test]
-    #[ignore = "test ticket: every bashcut_manifest::AGENT_EVENTS name has a FORMATS row and find() rejects others"]
-    fn manifest_names_have_a_format() {}
+    fn manifest_names_have_a_format() {
+        for name in bashcut_manifest::AGENT_EVENTS {
+            assert_eq!(find(name).map(|f| f.name).ok(), Some(*name), "{name} has no FORMATS row");
+        }
+        assert_eq!(names().len(), bashcut_manifest::AGENT_EVENTS.len(), "a FORMATS row the manifest cannot name");
+        for bad in ["", "other", "Claude-Stream-Json", "codex-json "] {
+            let e = find(bad).err().map(|e| e.0).unwrap_or_default();
+            assert!(e.contains("not supported") && e.contains(codex_json::FORMAT), "{bad:?}: {e}");
+        }
+    }
 }
