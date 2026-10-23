@@ -70,10 +70,16 @@ pub fn lookup(var: &dyn Fn(&str) -> Option<OsString>, exe_dir: Option<&Path>, pa
     env.or_else(|| installed_in(exe_dir, path))
 }
 
-/// The default `--cli`: [`ENV`], else next to this program, else on `PATH`, else [`FALLBACK`].
-pub fn default_cli() -> PathBuf {
+/// [`lookup`] for this process: [`ENV`], else next to this program, else on `PATH`; `None` when
+/// nothing names or holds an engine (what the plugin host passes on as `BASHCUTPRO_CLI`, NM4).
+pub fn found() -> Option<PathBuf> {
     let exe_dir = std::env::current_exe().ok().and_then(|e| e.parent().map(Path::to_path_buf));
-    lookup(&|k| std::env::var_os(k), exe_dir.as_deref(), std::env::var_os("PATH").as_deref()).unwrap_or_else(|| PathBuf::from(exe(FALLBACK)))
+    lookup(&|k| std::env::var_os(k), exe_dir.as_deref(), std::env::var_os("PATH").as_deref())
+}
+
+/// The default `--cli`: [`found`], else [`FALLBACK`].
+pub fn default_cli() -> PathBuf {
+    found().unwrap_or_else(|| PathBuf::from(exe(FALLBACK)))
 }
 
 #[cfg(test)]

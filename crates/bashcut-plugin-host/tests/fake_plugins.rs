@@ -399,6 +399,74 @@ fn plugin_runs_get_the_data_dir() {
     let _ = std::fs::remove_dir_all(&root);
 }
 
+/// Set in the copies of this test binary that [`plugin_runs_find_the_engine_beside_the_app`] starts:
+/// the `BASHCUTPRO_CLI` the fake plugin must see.
+const EXPECT_CLI: &str = "BASHCUT_TEST_EXPECT_CLI";
+
+#[test]
+fn plugin_runs_find_the_engine_beside_the_app() {
+    // NM4: a packaged app's engine (`Contents/MacOS/bashcutpro-cli`, `<install>ashcutpro-cli.exe`,
+    // `/usr/bin/bashcutpro-cli`) sits next to the app, not always on PATH: every plugin child gets it as
+    // BASHCUTPRO_CLI, also without a `--cli` in the run context (agent plugins, hooks). The parent copies
+    // this test binary next to a fake engine and runs the copy, since the lookup starts at the executable's folder.
+    let Some(py) = python() else {
+        eprintln!("skipped: no python3 or python");
+        return;
+    };
+    if let Ok(expect) = std::env::var(EXPECT_CLI) {
+        let data = scratch("cli-host");
+        let dir = bashcut_plugin_host::plugins_dir(&data).join("test.fake");
+        write_plugin(&dir, "test.fake");
+        let mut m = manifest("test.fake");
+        m["entry"] = json!({"command": [py, "plugin.py"]});
+        std::fs::write(dir.join("bashcut-plugin.json"), m.to_string()).unwrap();
+        let mut host = Host::new(Some(data.clone()), Arc::new(MemoryStore::default()));
+        let job = host.command("run", &json!({"plugin": "test.fake", "action": "ok"}), &RunContext::default()).unwrap()["job"].as_u64().unwrap();
+        assert_eq!(wait_job(&mut host, job), JobState::Succeeded, "{:?}", host.job(job));
+        let seen = host.job(job).unwrap().outcome.as_ref().unwrap().result.as_ref().unwrap().data["cli"].clone();
+        let parsed = bashcut_plugin_host::Manifest::parse(&m.to_string()).unwrap();
+        let env = bashcut_plugin_host::settings::env_for(&parsed, &Default::default(), &MemoryStore::default());
+        let _ = std::fs::remove_dir_all(&data);
+        assert_eq!(seen, json!(expect), "action run");
+        assert!(env.contains(&("BASHCUTPRO_CLI".to_string(), expect.clone())), "agent plugins and hooks (env_for): {env:?}");
+        return;
+    }
+    let Ok(exe) = std::env::current_exe() else {
+        eprintln!("skipped: no current_exe");
+        return;
+    };
+    let root = scratch("cli");
+    let run = |name: &str, engine: &str, exported: Option<&str>, expect: &str| {
+        let bin_dir = root.join(name);
+        std::fs::create_dir_all(&bin_dir).unwrap();
+        std::fs::write(bin_dir.join(engine), "").unwrap();
+        let copy = bin_dir.join(exe.file_name().unwrap());
+        std::fs::copy(&exe, &copy).unwrap();
+        let mut c = Command::new(&copy);
+        c.args(["--exact", "plugin_runs_find_the_engine_beside_the_app", "--nocapture", "--test-threads=1"]);
+        c.env(EXPECT_CLI, expect.replace("{dir}", &bin_dir.to_string_lossy()));
+        for k in bashcut_dirs::engine::ENV {
+            c.env_remove(k);
+        }
+        if let Some(v) = exported {
+            c.env("BASHCUTPRO_CLI", v);
+        }
+        let out = c.output().unwrap();
+        let text = format!("{}{}", String::from_utf8_lossy(&out.stdout), String::from_utf8_lossy(&out.stderr));
+        assert!(out.status.success(), "{name}: {text}");
+        assert!(text.contains("1 passed"), "the copy ran the check: {text}");
+    };
+    let exe_name = |n: &str| format!("{n}{}", std::env::consts::EXE_SUFFIX);
+    let sep = std::path::MAIN_SEPARATOR;
+    // the engine next to the app
+    run("packaged", &exe_name("bashcutpro-cli"), None, &format!("{{dir}}{sep}{}", exe_name("bashcutpro-cli")));
+    // an older build's engine name
+    run("older", &exe_name("filmcraft-cli"), None, &format!("{{dir}}{sep}{}", exe_name("filmcraft-cli")));
+    // an exported value is kept
+    run("exported", &exe_name("bashcutpro-cli"), Some("/my/bashcutpro-cli"), "/my/bashcutpro-cli");
+    let _ = std::fs::remove_dir_all(&root);
+}
+
 #[cfg(windows)]
 #[test]
 fn install_into_a_deep_data_dir() {

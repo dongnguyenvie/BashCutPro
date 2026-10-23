@@ -107,7 +107,14 @@ mod tests {
         assert_eq!(python, "Python 3 was not found: install Python 3.9 or newer, then run the action again. See Troubleshooting.");
         assert!(friendly("cannot start `py`: program not found").starts_with("Python 3 was not found"));
         assert!(friendly("cannot start `claude`: No such file or directory (os error 2)").starts_with("Claude Code was not found"));
-        assert!(friendly("no_cli: bashcutpro (or filmcraft-cli) not found: pass --cli <path>").starts_with("The BashCutPro engine"));
+        // the plugins' messages since NM3a (plugins #72), and the older installed plugins' one
+        for e in [
+            "no_cli: bashcutpro-cli not found: pass --cli <path>, set BASHCUTPRO_CLI, or put it on PATH (it ships next to the app on Windows and Linux, and in the CLI zip on macOS)",
+            "no_cli: the BashCutPro command line was not found at /opt/bcp/bashcutpro-cli",
+            "no_cli: bashcutpro (or filmcraft-cli) not found: pass --cli <path>",
+        ] {
+            assert!(friendly(e).starts_with("The BashCutPro engine (bashcutpro-cli) was not found"), "{e}");
+        }
         let project = friendly("`Translate captions…` needs the open project: start BashCutPro with --control <port>");
         assert!(project.contains("--control 9876"), "{project}");
         for e in [python, project] {

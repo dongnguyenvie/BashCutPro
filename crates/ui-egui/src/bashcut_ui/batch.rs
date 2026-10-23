@@ -469,7 +469,8 @@ fn plugin_step(app: &mut FilmcraftApp, ctx: &egui::Context, plugin: &str, action
     } else {
         Vec::new()
     };
-    let env = settings::env_for(m, &values, &MemoryStore::default()).into_iter().collect();
+    // the runner sets BASHCUTPRO_CLI to its own --cli; this app's engine path stays out of the saved pipeline (NM4)
+    let env = settings::env_for(m, &values, &MemoryStore::default()).into_iter().filter(|(k, _)| k != settings::CLI_ENV).collect();
     let name = if m.name.is_empty() { m.id.as_str() } else { m.name.as_str() };
     let title = if a.title.is_empty() { a.id.as_str() } else { a.title.trim_end_matches('…') };
     let source = PluginAction { plugin: plugin.to_string(), action: action.to_string(), params, missing };
