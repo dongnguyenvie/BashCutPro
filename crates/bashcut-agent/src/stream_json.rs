@@ -10,6 +10,11 @@
 //! `result` with `is_error: true` and the same text; a rejected login mid-turn arrives as
 //! `system/api_retry` with the same `error` values.
 //!
+//! AG12: `system/init` also lists the session's slash commands (`slash_commands`, plain names such
+//! as `bcp:setup` or `compact`, no descriptions; checked with Claude Code 2.1.309) and which of them
+//! are skills (`skills`); `terminal_slash_commands` (terminal-only, e.g. `doctor`) and internal
+//! `__`-prefixed names are left out ([`SlashCommand`], the message box's `/` list).
+//!
 //! AG8: with `--permission-prompt-tool stdio` Claude Code asks the host before a tool call that is
 //! not pre-allowed: a `control_request` with subtype `can_use_tool` ([`Event::Permission`]), answered
 //! with [`permission_response`]; `control_cancel_request` withdraws one ([`Event::PermissionWithdrawn`]).
@@ -27,6 +32,9 @@ const MAX_INPUT: usize = 8 * 1024;
 /// `capabilities` kept from `system/init`, and the longest one.
 const MAX_CAPABILITIES: usize = 64;
 const MAX_CAPABILITY: usize = 64;
+/// Slash commands kept from `system/init`, and the longest name.
+const MAX_COMMANDS: usize = 512;
+const MAX_COMMAND: usize = 128;
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum Event {
@@ -40,6 +48,8 @@ pub enum Event {
         capabilities: Vec<String>,
         /// Names of the Claude Code plugins it loaded (AG9: `bcp` is the BashCutPro kit).
         plugins: Vec<String>,
+        /// The slash commands and skills a message can start with (AG12), in the agent's order.
+        commands: Vec<SlashCommand>,
     },
     /// The agent took the next message from stdin (Claude Code's `isReplay` echo): a queued message
     /// is now being worked on. `uuid` is the echoed message's (ours when we wrote one, AG4; may be empty).
@@ -90,6 +100,15 @@ pub enum Event {
         category: String,
         message: String,
     },
+}
+
+/// One entry of `system/init`'s `slash_commands` (AG12): `/name` in a message runs it.
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize)]
+pub struct SlashCommand {
+    /// Without the `/`; a plugin's carry its namespace (`bcp:setup`).
+    pub name: String,
+    /// Listed in `skills` too (else a built-in or custom command).
+    pub skill: bool,
 }
 
 /// A `can_use_tool` request as the panel shows it.
@@ -160,6 +179,7 @@ pub fn parse_line(line: &str) -> Vec<Event> {
                 model: text(&v, "model"),
                 capabilities: capabilities(v.get("capabilities")),
                 plugins: plugins(v.get("plugins")),
+                commands: slash_commands(&v),
             }]
         }
         "user" if v.get("isReplay").and_then(Value::as_bool) == Some(true) => vec![Event::Picked { uuid: clip(&text(&v, "uuid"), 64) }],
@@ -294,6 +314,31 @@ fn plugins(v: Option<&Value>) -> Vec<String> {
     a.iter().filter_map(|p| p.get("name").and_then(Value::as_str)).take(MAX_CAPABILITIES).map(|n| clip(n, MAX_CAPABILITY)).collect()
 }
 
+/// `system/init`'s `slash_commands` without the terminal-only and internal ones, capped; `skill`
+/// from `skills`.
+fn slash_commands(v: &Value) -> Vec<SlashCommand> {
+    let names = |k: &str| v.get(k).and_then(Value::as_array).into_iter().flatten().filter_map(Value::as_str).take(MAX_COMMANDS * 2).collect::<Vec<_>>();
+    let (skills, terminal) = (names("skills"), names("terminal_slash_commands"));
+    let mut out: Vec<SlashCommand> = Vec::new();
+    for n in names("slash_commands") {
+        let n = n.trim().trim_start_matches('/');
+        if n.is_empty()
+            || n.starts_with("__")
+            || n.len() > MAX_COMMAND
+            || n.chars().any(char::is_whitespace)
+            || terminal.contains(&n)
+            || out.iter().any(|c| c.name == n)
+        {
+            continue;
+        }
+        out.push(SlashCommand { name: n.to_string(), skill: skills.contains(&n) });
+        if out.len() >= MAX_COMMANDS {
+            break;
+        }
+    }
+    out
+}
+
 fn blocks(v: &Value) -> Vec<Value> {
     match v.get("message").and_then(|m| m.get("content")) {
         Some(Value::Array(a)) => a.iter().take(256).cloned().collect(),
@@ -356,7 +401,7 @@ mod tests {
     #[test]
     fn parses_a_turn() {
         let init = parse_line(r#"{"type":"system","subtype":"init","session_id":"s1","model":"m","tools":[]}"#);
-        assert_eq!(init, vec![Event::Init { session: "s1".into(), model: "m".into(), capabilities: Vec::new(), plugins: Vec::new() }]);
+        assert_eq!(init, vec![Event::Init { session: "s1".into(), model: "m".into(), capabilities: Vec::new(), plugins: Vec::new(), commands: Vec::new() }]);
         let a = parse_line(
             r#"{"type":"assistant","message":{"content":[{"type":"text","text":"Cutting."},{"type":"tool_use","id":"t1","name":"mcp__bashcutpro__command_execute","input":{"command":"edit.razor"}}]}}"#,
         );
@@ -415,6 +460,10 @@ mod tests {
         // another system subtype is ignored
         assert_eq!(parse_line(r#"{"type":"system","subtype":"status","session_id":"s"}"#), vec![]);
     }
+
+    #[test]
+    #[ignore = "test ticket: init slash_commands become SlashCommand (skill flag from skills; terminal_slash_commands, __ names, duplicates, non-strings, over-long names dropped; capped at MAX_COMMANDS; missing field: empty)"]
+    fn init_slash_commands_are_parsed() {}
 
     #[test]
     fn init_plugin_names_are_parsed() {

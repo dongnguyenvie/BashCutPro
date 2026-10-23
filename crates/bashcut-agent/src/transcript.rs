@@ -190,7 +190,7 @@ mod tests {
         assert_eq!(t.items[1], Item::Auth { category: "authentication_failed".into(), message: "Not logged in · Please run /login".into() });
         assert_eq!(t.auth_problem(), Some(("authentication_failed", "Not logged in · Please run /login")));
         // Init, Control and a successful result do not hide it
-        t.apply(&Event::Init { session: "s".into(), model: "m".into(), capabilities: Vec::new(), plugins: Vec::new() });
+        t.apply(&Event::Init { session: "s".into(), model: "m".into(), capabilities: Vec::new(), plugins: Vec::new(), commands: Vec::new() });
         t.apply(&Event::Result { ok: true, text: String::new(), session: "s".into(), cost_usd: None, turns: None });
         assert_eq!(t.auth_problem().map(|a| a.0), Some("authentication_failed"));
         // another category is its own item and the latest problem

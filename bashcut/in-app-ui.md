@@ -553,6 +553,23 @@ labels or subclips (§1 rule 1). A project opened in upstream FilmCraft still wo
   Code is not signed in" or "Claude Code account problem: billing" / "…: this organization is not allowed", with
   **Sign in…** (`sign_in_button`, moved off the terminal row while the line shows) and the agent's message as
   selectable text (`bashcut.agent.ready.auth.message`). The next Send clears it.
+- **`/` suggests skills and slash commands (AG12)**: checked on 2026-10-23 with Claude Code 2.1.309 on macOS: the
+  first `system/init` of a session (it comes after the first message is written, not at start-up) carries
+  `slash_commands` (plain names, no descriptions: `bcp:setup`, `compact`, `__remote-workflow`, …), `skills` (a subset
+  of those names), `terminal_slash_commands` (terminal-only: `doctor`, `color`, `focus`, `reload-plugins`) and
+  `agents`. `stream_json` keeps `slash_commands` minus the terminal-only and `__` ones as
+  `Event::Init.commands: Vec<SlashCommand {name, skill}>` (deduplicated, at most 512, names up to 128 bytes, no
+  whitespace); `Agent::commands` holds the last one (`None` before an init or after switching agent; also
+  `slashCommands` in `bashcut.agent.state`). In the message box, when the caret ends a word that starts with `/` (at
+  the start or after whitespace, nothing but whitespace after the caret, no second `/` so a path is not one), a list
+  opens above the box (`agent_panel::slash_list`, at most 8 rows `bashcut.agent.slash.<i>`, each `/name` with "skill"
+  or "command" on the right since init gives no descriptions): names (or the part after the plugin namespace,
+  `setup` of `bcp:setup`) starting with the typed text first, then names containing it; skills before other
+  commands within each. ↑/↓ pick, Enter or Tab insert `/name ` at the word (Enter does not send while the list has
+  rows), Esc closes it until the word changes, a click inserts too; no match closes it. Before the first init it
+  shows one line, "Start a message to load skills" (`bashcut.agent.slash.hint`). Only agents whose events are
+  `claude-stream-json` get the list (Codex has no command list). The text is sent as typed: `claude -p` expands
+  `/bcp:setup` itself.
 - **Phase 1 adapters**: Claude Code (`claude -p --output-format stream-json --input-format stream-json`) and Codex
   (`codex exec --json -` with the prompt on stdin, `resume <thread>` for later turns, the MCP server passed as `-c
   mcp_servers.bashcutpro.*`; `codex`, or `BASHCUT_CODEX`; events `codex-json`, #37); others as plugins.
