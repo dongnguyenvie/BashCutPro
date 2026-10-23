@@ -60,6 +60,9 @@ The first time in a folder, Claude Code asks whether you trust it: choose **Yes,
   `claude plugin install bcp@bashcutpro-agent-kit`) and an **Install kit…** button that runs them in a terminal.
   Nothing is installed until you press it. When it finishes, press **New**: the line goes away once the new
   conversation's first message shows the kit. The recipe buttons of an empty conversation need the kit too.
+- The command palette has the same three actions: **Open Agent in Terminal**, **Sign In to Claude Code** and
+  **Install Claude Code** (an agent driving BashCutPro can call them as `bashcut.agent.terminal`,
+  `bashcut.agent.signIn` and `bashcut.agent.install`). Install still runs only when you choose it.
 
 The terminal is Terminal on macOS, Windows Terminal (else a PowerShell window) on Windows, and your desktop's
 default terminal (else GNOME Terminal, Konsole or xterm) on Linux.

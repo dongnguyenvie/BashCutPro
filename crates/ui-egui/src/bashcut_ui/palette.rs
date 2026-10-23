@@ -249,8 +249,9 @@ fn command_item(id: &str, label: &str, menu: &[String], signature: &str, shortcu
     Item {
         key: format!("command:{id}"),
         kind: if id.starts_with("bashcut.") { Kind::Pro } else { Kind::Command },
-        // BR5: upstream labels that name FilmCraft ("Selection as FilmCraft Project…", "FilmCraft Help…") as ours
-        label: crate::bashcut_brand::text(label).unwrap_or(label).to_string(),
+        // BR5: upstream labels that name FilmCraft ("Selection as FilmCraft Project…", "FilmCraft Help…") as ours;
+        // AG10: ours in the UI language (a label without a catalog row stays English)
+        label: if id.starts_with("bashcut.") { s(label) } else { crate::bashcut_brand::text(label).unwrap_or(label) }.to_string(),
         detail: if menu.is_empty() { id.to_string() } else { format!("{} · {id}", menu.join(" › ")) },
         shortcut,
         enabled,

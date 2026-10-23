@@ -335,6 +335,8 @@ impl Agent {
         }
         if a.id != self.agent.id {
             self.agent = a;
+            // the plugins were the other agent's (AG9's kit line); unknown until this one's init
+            self.plugins = None;
             self.new_conversation()?;
         }
         Ok(())
