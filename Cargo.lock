@@ -551,6 +551,7 @@ dependencies = [
 name = "bashcut-dirs"
 version = "0.10.0"
 dependencies = [
+ "ctrlc",
  "log",
 ]
 

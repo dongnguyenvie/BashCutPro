@@ -5,6 +5,7 @@
 //! a second (headless) engine on the same project. Written again when the open project changes,
 //! removed when the window closes (only by the window it names); readers also check that `pid` is
 //! alive. With two windows the first started keeps it; the other claims it once it is free (FX7).
+//! SIGINT / SIGTERM remove it too (AG1, [`bashcut_dirs::signal`]).
 //!
 //! The channel binds 127.0.0.1 only and has no token (`token` stays `null`): any local process
 //! that can reach the port can drive the window. It runs by default (CC1, [`super::control`]);
@@ -82,7 +83,13 @@ pub fn publish(app: &FilmcraftApp, ctx: &egui::Context, data_dir: Option<&Path>)
         return;
     }
     // remembered even when the write fails, so a read-only data dir is not retried every frame
-    let _ = claim(&path, port, project.as_deref(), bashcut_dirs::pid_alive);
+    if let Ok(Claim::Ours) = claim(&path, port, project.as_deref(), bashcut_dirs::pid_alive) {
+        // a window ended by a signal never sees close_requested: remove the file then too (AG1)
+        let path = path.clone();
+        bashcut_dirs::signal::at_terminate("automation.json", move || {
+            let _ = release(&path);
+        });
+    }
     ctx.data_mut(|d| d.insert_temp(id, Published { project, checked: std::time::Instant::now() }));
     // an idle window still runs a pass now and then to take the file over
     ctx.request_repaint_after(CHECK);

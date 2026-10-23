@@ -22,7 +22,8 @@ No upstream file changes: the window side runs from our `bashcut_ui::layout` (ho
 
 Written (owner-only, 0600 on Unix; temp file + rename) when the window runs its control channel, i.e. it was started
 with `--control PORT` or `FILMCRAFT_CONTROL_PORT`. It is written again when the open project changes, and removed
-when the window closes, only by the window it names. A window that crashed leaves the file behind, so readers also
+when the window closes, only by the window it names, also when it is ended by SIGINT / SIGTERM (AG1,
+`bashcut_dirs::signal`, Unix; the process then exits with 130). A window that crashed or was killed (SIGKILL) leaves the file behind, so readers also
 check that `pid` is alive and that the address (loopback only) accepts a connection.
 
 Two windows (FX7, `decisions.md`): the first one started keeps the file. The other checks every 3 s and claims the

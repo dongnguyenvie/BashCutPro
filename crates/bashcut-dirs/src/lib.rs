@@ -9,7 +9,8 @@
 //! the one engine-binary lookup (`bashcutpro-cli` → `bcpro` → `filmcraft-cli`); [`pid_alive`] the one
 //! "does this process run" check (`bashcut-connect`, `bashcut-batch`); [`fs`] the one `read_capped` /
 //! `write_atomic` / `clip` and message error of every BashCutPro crate (RC4); [`Os`] the one OS mapping (RC5);
-//! [`child`] the one child-process supervisor (plugin runs, agent turns, hooks, key store; RC3).
+//! [`child`] the one child-process supervisor (plugin runs, agent turns, hooks, key store; RC3);
+//! [`signal`] the cleanups a window runs on SIGINT / SIGTERM (AG1).
 
 use std::path::{Path, PathBuf};
 
@@ -18,6 +19,7 @@ pub mod engine;
 pub mod fs;
 pub mod os;
 pub mod process;
+pub mod signal;
 
 pub use os::Os;
 pub use process::pid_alive;

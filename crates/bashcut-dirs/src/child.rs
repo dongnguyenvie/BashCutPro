@@ -4,6 +4,11 @@
 //! [`supervise`] (cancel and timeout both stop softly first: TERM, then KILL after [`GRACE`]),
 //! [`terminate`], and the capped pipe readers [`pump`] / [`read_lines`] / [`tail`].
 //!
+//! Inherited handles (AG1): every file, pipe and socket Rust's std opens is close-on-exec, so a
+//! child never gets ours (tested below). Descriptors opened without it by system frameworks in the
+//! app (Metal's shader cache on macOS) still reach the child; closing them needs `pre_exec` or
+//! `POSIX_SPAWN_CLOEXEC_DEFAULT`, i.e. `unsafe`, which only `crates/platform` may use (RC13).
+//!
 //! A fix here (a Windows tree kill, a pipe hang) lands in every runner at once. Nothing here panics:
 //! reader threads run under `catch_unwind`, and a grandchild that keeps a pipe open never hangs the
 //! caller ([`collect`] waits a bounded time).
@@ -302,6 +307,24 @@ mod tests {
         assert!(out.is_empty(), "still being read: the default");
         // the grandchild is still in the group: end it
         terminate(&mut c, true);
+    }
+
+    /// AG1: a file the app opened through std (close-on-exec) is not open in a spawned child.
+    #[cfg(unix)]
+    #[test]
+    fn our_files_are_not_inherited() {
+        use std::os::fd::AsRawFd;
+        let path = std::env::temp_dir().join(format!("bashcut-child-fd-{}", std::process::id()));
+        let held = std::fs::File::create(&path).unwrap();
+        let fd = held.as_raw_fd().to_string();
+        // `true <&N` fails when N is not open in the shell; fd 1 is the control
+        let script = format!("for n in 1 {fd}; do if {{ true <&$n; }} 2>/dev/null; then echo open; else echo closed; fi; done");
+        let mut c = spawn(sh(&script), &Opts::default()).unwrap();
+        let out = collect(&pump("test-stdout", c.stdout.take(), |out| read_lines(out, 1024, 64, |_, _| {}).0), STDOUT_WAIT);
+        assert_eq!(supervise(&mut c, Duration::from_secs(10), None).code(), Some(0));
+        assert_eq!(String::from_utf8_lossy(&out), "open\nclosed\n", "fd {fd} leaked into the child");
+        drop(held);
+        let _ = std::fs::remove_file(&path);
     }
 
     /// The pids of `pid`'s children (PowerShell's CIM query: no `unsafe`, no extra crate).
