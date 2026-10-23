@@ -169,6 +169,8 @@ impl Agent {
         let cwd = ctx.project.as_deref().and_then(Path::parent).map(Path::to_path_buf).unwrap_or_else(unsaved_cwd);
         let mut env = self.agent.env.clone();
         env.push(("BASHCUT_AGENT_HOST".into(), "1".into()));
+        // the kit's MCP launcher steps aside when it sees this: the app passes its own server (AK3)
+        env.push(("BASHCUT_IN_APP_AGENT".into(), "1".into()));
         if let Some(side) = ctx.project.as_deref().map(crate::sidecar) {
             env.push(("BASHCUT_PROJECT_SIDECAR".into(), side.to_string_lossy().into_owned()));
         }

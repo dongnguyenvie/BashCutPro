@@ -29,11 +29,19 @@ const MAX_STDERR: usize = 8 * 1024;
 pub const SERVER: &str = "bashcutpro";
 
 /// What Claude Code may use without asking (in print mode nobody answers a prompt, so anything else
-/// that needs one is denied): the app's MCP tools and the engine's command line, which the kit's
-/// skills run to check the engine (`/bcp:setup`: `bashcutpro commands razor`).
+/// that needs one is denied): the app's MCP tools and the read-only checks the kit's `/bcp:setup`
+/// runs (find the engine, `<engine> commands razor`, read the kit's `mcp.env` and the open window's
+/// `automation.json`). Not installs, builds, `claude mcp add` or writing `mcp.env`.
 pub fn allowed_tools() -> Vec<String> {
-    let cli = ["bashcutpro-cli", "bcpro", "bashcutpro"].map(|p| format!("Bash({p} *)"));
-    std::iter::once(format!("mcp__{SERVER}")).chain(cli).collect()
+    let mut tools = vec![format!("mcp__{SERVER}"), "Bash(command -v *)".into(), "Bash(printenv BASHCUTPRO_CLI *)".into()];
+    tools.extend(["bashcutpro-cli", "bcpro", "filmcraft-cli"].map(|p| format!("Bash({p} commands *)")));
+    tools.push("Read(~/.config/bashcutpro/mcp.env)".into());
+    // an absolute path is `//path` in a rule; a Windows path has no such form, the read then asks (and is denied)
+    let automation = bashcut_dirs::data_dir().map(|d| d.join("bashcut").join("automation.json"));
+    if let Some(a) = automation.map(|a| a.to_string_lossy().into_owned()).filter(|a| a.starts_with('/')) {
+        tools.push(format!("Read(/{a})"));
+    }
+    tools
 }
 
 /// How to start an agent.
