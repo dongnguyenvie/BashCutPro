@@ -422,3 +422,18 @@ decides something; don't change an old one, add a new one that supersedes it.
 - **Owner-visible:** upstream's docs advise against putting the token in shared files. Ours is not shared: it is
   per user, 0600 (the per-user data dir on Windows), and `automation.json` is already the discovery file.
 - **Replaces:** the "no password, no prompt" line of CC1 and the old `agent-connect.md` section.
+
+## 2026-10-24: control input waits while the window is hidden (FX32)
+
+- **Decided:** upstream's `raw_input_hook` drains queued synthetic events (click, key, scroll) one pass at a time. While
+  the viewport is minimised or occluded (`ViewportInfo::visible() == Some(false)`) it now leaves them queued
+  (`bashcut_ui::control::hold_while_hidden` / `release`, two recorded hook lines in `lib.rs`), so `logic` keeps the
+  request open and raises the window, and a window that never draws ends with FX19's 11 s "window not in front".
+- **Why:** on macOS 05 (SY6M) `ui.click` on plugin buttons (even the registry Refresh) answered `ok` and ran nothing.
+  Cause: neither the click's target, the FX14 modal guard, the FX19 cap, the AG13 blocker nor the plugin host. With the
+  window visible the same clicks work (Refresh checks the registry, Install installs `bashcut.library`; main 44be5589,
+  debug build, scratch data dir). With the window hidden, eframe runs `logic` without a `ui` pass: the click events were
+  drained into that pass, no widget saw them, and `logic` replied `ok: true` because the queue was empty. Windows
+  (SY6W) draws while covered, so it was not hit.
+- **Agents:** a click that answers `ok` is still worth checking against state (`ui.elements`, Runs); after the error
+  call `ui.focus {}`.
