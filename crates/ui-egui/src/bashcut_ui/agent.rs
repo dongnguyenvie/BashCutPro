@@ -200,6 +200,19 @@ pub fn invoke(app: &mut FilmcraftApp, ctx: &egui::Context, name: &str, params: &
             install(context(app).project.as_deref())?;
             return Ok(json!({"opened": true}));
         }
+        "installKit" => {
+            // only on this explicit command (or the button); refused once the session's init lists the kit
+            let (program, present) = with(app, ctx, |a| {
+                let program = (a.agent.id == "claude-code").then(|| resume(a)).flatten().and_then(|v| v.into_iter().next());
+                (program, kit_present(a))
+            });
+            let program = program.ok_or_else(|| s("Install kit works with Claude Code once it is installed.").to_string())?;
+            if present {
+                return Err(s("The BashCutPro kit is already installed.").into());
+            }
+            install_kit(&program, &bashcut_agent::session::turn_dir(context(app).project.as_deref()))?;
+            return Ok(json!({"opened": true}));
+        }
         _ => {}
     }
     let c = context(app);
@@ -234,6 +247,11 @@ pub fn kit_missing(a: &Agent) -> bool {
     a.agent.id == "claude-code" && a.plugins.as_ref().is_some_and(|p| !p.iter().any(|n| n == terminal::KIT_PLUGIN))
 }
 
+/// Claude Code's last `system/init` listed [`terminal::KIT_PLUGIN`] (unknown before one: `false`).
+fn kit_present(a: &Agent) -> bool {
+    a.agent.id == "claude-code" && a.plugins.as_ref().is_some_and(|p| p.iter().any(|n| n == terminal::KIT_PLUGIN))
+}
+
 /// `argv` plus, while the kit is missing (no `bashcutpro` server in the terminal), the app's own (AG9).
 fn terminal_argv(mut argv: Vec<String>, kit_missing: bool, c: &Context) -> Vec<String> {
     if kit_missing && let (Some(cli), Some(bridge)) = (&c.cli, &c.bridge) {
@@ -261,6 +279,13 @@ pub fn sign_in(program: &str, project: Option<&Path>) -> Result<(), String> {
 pub fn install(project: Option<&Path>) -> Result<(), String> {
     let hint = s("Installing Claude Code with the official installer. When it finishes, run claude and type /login, then go back to BashCutPro.");
     open_terminal(&bashcut_agent::session::turn_dir(project), &terminal::install_job(terminal::Os::current()), Some(hint))
+}
+
+/// Install kit (AG9's button and `bashcut.agent.installKit`): the agent kit's two `claude plugin`
+/// commands ([`terminal::kit_job`]) in a terminal in `cwd`; user-started only, never automatic.
+pub fn install_kit(program: &str, cwd: &Path) -> Result<(), String> {
+    let hint = s("Installing the BashCutPro kit for Claude Code. When it finishes, close this window and start a New conversation in BashCutPro.");
+    open_terminal(cwd, &terminal::kit_job(terminal::Os::current(), program), Some(hint))
 }
 
 fn hand_off_key() -> egui::Id {
@@ -342,6 +367,7 @@ pub fn commands() -> Vec<CommandInfo> {
         ("terminal", "Open Agent in Terminal"),
         ("signIn", "Sign In to Claude Code"),
         ("install", "Install Claude Code"),
+        ("installKit", "Install BashCutPro Kit"),
     ]
     .into_iter()
     .map(|(id, label)| CommandInfo::new(&format!("bashcut.agent.{id}"), label, &[], None))
@@ -364,6 +390,10 @@ mod tests {
     #[test]
     #[ignore = "test ticket: bashcut.agent.install errors while Claude Code is found; signIn errors for Codex or a missing Claude Code"]
     fn install_and_sign_in_commands_refuse_when_not_applicable() {}
+
+    #[test]
+    #[ignore = "test ticket: bashcut.agent.installKit errors once the init plugins list bcp, errors for Codex or a missing Claude Code, opens the kit terminal when the kit is missing or not known yet"]
+    fn install_kit_command_refuses_when_kit_present() {}
 
     /// PV3: `claude` in `~/.local/bin` with a login `PATH` resolves to that file and puts its folder
     /// first on the child's `PATH`; found on `PATH`, or `BASHCUT_CLAUDE` set, keeps the given program.

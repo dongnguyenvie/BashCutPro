@@ -66,7 +66,9 @@ Lần đầu ở một thư mục, Claude Code hỏi bạn có tin thư mục đ
   thấy bộ công cụ. Các nút công thức của cuộc trò chuyện trống cũng cần bộ công cụ.
 - Bảng lệnh cũng có ba thao tác này: **Mở trợ lý trong Terminal**, **Đăng nhập Claude Code** và **Cài Claude Code**
   (trợ lý điều khiển BashCutPro có thể gọi chúng bằng `bashcut.agent.terminal`, `bashcut.agent.signIn` và
-  `bashcut.agent.install`). Việc cài vẫn chỉ chạy khi bạn chọn.
+  `bashcut.agent.install`). Việc cài vẫn chỉ chạy khi bạn chọn. **Cài bộ công cụ BashCutPro**
+  (`bashcut.agent.installKit`) làm đúng như nút **Cài bộ công cụ…**; lệnh sẽ báo lỗi nếu cuộc trò chuyện đã thấy bộ
+  công cụ.
 
 Terminal là Terminal trên macOS, Windows Terminal (không có thì một cửa sổ PowerShell) trên Windows, và terminal mặc
 định của màn hình nền (không có thì GNOME Terminal, Konsole hoặc xterm) trên Linux.

@@ -387,8 +387,7 @@ fn kit_line(app: &mut FilmcraftApp, ui: &mut egui::Ui, snap: &Snapshot) {
                 s("Open a terminal that installs the BashCutPro kit (bcp plugin) for Claude Code."),
             )
         {
-            let hint = s("Installing the BashCutPro kit for Claude Code. When it finishes, close this window and start a New conversation in BashCutPro.");
-            report(app, agent::open_terminal(&snap.cwd(), &terminal::kit_job(terminal::Os::current(), &program), Some(hint)));
+            report(app, agent::install_kit(&program, &snap.cwd()));
         }
     });
     let cmds = kit_commands();
