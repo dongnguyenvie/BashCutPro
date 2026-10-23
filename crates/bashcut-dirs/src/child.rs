@@ -114,17 +114,19 @@ pub fn supervise(child: &mut Child, timeout: Duration, cancel: Option<&AtomicBoo
     Exit { status, stop: stop.map(|(w, _)| w) }
 }
 
-/// Stop the child (and on Unix its process group): TERM first, KILL when `hard`. Without a group
-/// (or off Unix) a soft stop is a kill too, as there is no TERM to send. On Windows the kill takes
+/// Stop the child (and on Unix its process group): TERM first, KILL when `hard`. On Unix a child
+/// without a group gets the signal itself; off Unix a soft stop is a kill too, as there is no TERM to send. On Windows the kill takes
 /// the whole tree (`taskkill /T /F`), so grandchildren go too; a job object would need `unsafe`,
 /// which only `crates/platform` may use (RC13, `bashcut/decisions.md`).
 pub fn terminate(child: &mut Child, hard: bool) {
     #[cfg(unix)]
     {
         let sig = if hard { "-KILL" } else { "-TERM" };
-        let group = format!("-{}", child.id());
-        let ok = Command::new("kill").args([sig, "--", &group]).stdout(Stdio::null()).stderr(Stdio::null()).status().is_ok_and(|s| s.success());
-        if ok {
+        let pid = child.id().to_string();
+        let kill =
+            |target: &str| Command::new("kill").args([sig, "--", target]).stdout(Stdio::null()).stderr(Stdio::null()).status().is_ok_and(|s| s.success());
+        // the group first; a child without one (or whose group is gone) gets the signal itself
+        if kill(&format!("-{pid}")) || kill(&pid) {
             return;
         }
     }
@@ -245,13 +247,62 @@ mod tests {
         assert_eq!(tail(&b"0123456789"[..], 3), b"789");
     }
 
-    #[test]
-    #[ignore = "test ticket: supervise sends TERM on timeout, then KILL after GRACE (unix `trap '' TERM; sleep 30`), and reports Stop::TimedOut"]
-    fn timeout_is_soft_first_then_kill() {}
+    #[cfg(unix)]
+    fn sh(script: &str) -> Command {
+        let mut cmd = Command::new("sh");
+        cmd.args(["-c", script]);
+        cmd
+    }
 
+    #[cfg(unix)]
     #[test]
-    #[ignore = "test ticket: a grandchild holding stdout open does not hang collect past STDOUT_WAIT"]
-    fn grandchild_pipe_does_not_hang() {}
+    fn timeout_is_soft_first_then_kill() {
+        use std::os::unix::process::ExitStatusExt;
+        let opts = Opts { group: true, ..Opts::default() };
+        // TERM is enough for a child that honours it: it ends well before GRACE
+        let mut c = spawn(sh("sleep 30"), &opts).unwrap();
+        let start = Instant::now();
+        let exit = supervise(&mut c, Duration::from_millis(100), None);
+        assert_eq!((exit.stop, exit.status.and_then(|s| s.signal())), (Some(Stop::TimedOut), Some(15)));
+        assert!(start.elapsed() < GRACE, "{:?}", start.elapsed());
+        // a child (and its group) ignoring TERM is killed after GRACE
+        let mut c = spawn(sh("trap '' TERM; sleep 30"), &opts).unwrap();
+        let start = Instant::now();
+        let exit = supervise(&mut c, Duration::from_millis(100), None);
+        assert_eq!((exit.stop, exit.status.and_then(|s| s.signal())), (Some(Stop::TimedOut), Some(9)));
+        assert!(start.elapsed() >= GRACE && start.elapsed() < GRACE + Duration::from_secs(5), "{:?}", start.elapsed());
+        // without a group the child itself gets TERM, so it still ends well before GRACE
+        let mut c = spawn(sh("exec sleep 30"), &Opts::default()).unwrap();
+        let start = Instant::now();
+        let exit = supervise(&mut c, Duration::from_millis(100), None);
+        assert_eq!((exit.stop, exit.status.and_then(|s| s.signal())), (Some(Stop::TimedOut), Some(15)));
+        assert!(start.elapsed() < GRACE, "no group: {:?}", start.elapsed());
+        // cancel stops it the same way
+        let mut c = spawn(sh("sleep 30"), &opts).unwrap();
+        let exit = supervise(&mut c, Duration::from_secs(60), Some(&AtomicBool::new(true)));
+        assert_eq!(exit.stop, Some(Stop::Cancelled));
+        // a child that ends in time is not stopped
+        let mut c = spawn(sh("exit 3"), &opts).unwrap();
+        let exit = supervise(&mut c, Duration::from_secs(60), None);
+        assert_eq!((exit.stop, exit.code()), (None, Some(3)));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn grandchild_pipe_does_not_hang() {
+        // the child exits at once, its background grandchild keeps stdout open for 30 s
+        let mut c = spawn(sh("sleep 30 & echo hi"), &Opts { group: true, ..Opts::default() }).unwrap();
+        let reader = pump("test-stdout", c.stdout.take(), |out| read_lines(out, 1024, 1024, |_, _| {}).0);
+        let exit = supervise(&mut c, Duration::from_secs(10), None);
+        assert_eq!((exit.stop, exit.code()), (None, Some(0)));
+        let start = Instant::now();
+        let out = collect(&reader, STDOUT_WAIT);
+        let waited = start.elapsed();
+        assert!(waited >= STDOUT_WAIT && waited < STDOUT_WAIT + Duration::from_secs(2), "{waited:?}");
+        assert!(out.is_empty(), "still being read: the default");
+        // the grandchild is still in the group: end it
+        terminate(&mut c, true);
+    }
 
     #[test]
     #[ignore = "test ticket: on Windows terminate ends a grandchild too (cmd /c start /b ping -t), via taskkill /T"]

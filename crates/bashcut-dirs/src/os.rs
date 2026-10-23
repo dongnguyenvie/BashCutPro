@@ -48,7 +48,19 @@ impl fmt::Display for Os {
 
 #[cfg(test)]
 mod tests {
+    use super::Os;
+
     #[test]
-    #[ignore = "test ticket: Os::from_name maps macos/windows and every other OS (freebsd, openbsd, linux, \"\") to Linux; as_str round-trips"]
-    fn every_other_unix_is_linux() {}
+    fn every_other_unix_is_linux() {
+        assert_eq!(Os::from_name("macos"), Os::Macos);
+        assert_eq!(Os::from_name("windows"), Os::Windows);
+        for other in ["linux", "freebsd", "openbsd", "netbsd", "dragonfly", "solaris", "illumos", "android", ""] {
+            assert_eq!(Os::from_name(other), Os::Linux, "{other:?}");
+        }
+        for os in Os::ALL {
+            assert_eq!(Os::from_name(os.as_str()), os);
+            assert_eq!(os.to_string(), os.as_str());
+        }
+        assert_eq!(Os::current(), Os::from_name(std::env::consts::OS));
+    }
 }

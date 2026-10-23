@@ -87,6 +87,30 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "test ticket: lookup prefers ENV (in order, empty = unset) over exe_dir over PATH; installed_in(None, None) is None"]
-    fn lookup_with_injected_env_dir_and_path() {}
+    fn lookup_with_injected_env_dir_and_path() {
+        let (exe_dir, on) = (tmp("exe"), tmp("path"));
+        std::fs::write(exe_dir.join(exe("bcpro")), "").unwrap();
+        std::fs::write(on.join(exe("bashcutpro")), "").unwrap();
+        let path = std::env::join_paths([&on]).unwrap();
+        let env = |vars: &'static [(&'static str, &'static str)]| move |k: &str| vars.iter().find(|(n, _)| *n == k).map(|(_, v)| OsString::from(v));
+        // ENV in order: BASHCUTPRO_CLI over BASHCUT_FILMCRAFT_CLI over FILMCRAFT_CLI
+        let all = env(&[("FILMCRAFT_CLI", "/c"), ("BASHCUT_FILMCRAFT_CLI", "/b"), ("BASHCUTPRO_CLI", "/a")]);
+        assert_eq!(lookup(&all, Some(&exe_dir), Some(&path)), Some(PathBuf::from("/a")));
+        let two = env(&[("FILMCRAFT_CLI", "/c"), ("BASHCUT_FILMCRAFT_CLI", "/b")]);
+        assert_eq!(lookup(&two, Some(&exe_dir), Some(&path)), Some(PathBuf::from("/b")));
+        let one = env(&[("FILMCRAFT_CLI", "/c")]);
+        assert_eq!(lookup(&one, Some(&exe_dir), Some(&path)), Some(PathBuf::from("/c")));
+        // an empty value counts as unset
+        let empty = env(&[("BASHCUTPRO_CLI", ""), ("BASHCUT_FILMCRAFT_CLI", ""), ("FILMCRAFT_CLI", "/c")]);
+        assert_eq!(lookup(&empty, Some(&exe_dir), Some(&path)), Some(PathBuf::from("/c")));
+        // no variable: this program's folder, then PATH, then nothing
+        let none = env(&[("BASHCUTPRO_CLI", "")]);
+        assert_eq!(lookup(&none, Some(&exe_dir), Some(&path)), Some(exe_dir.join(exe("bcpro"))));
+        assert_eq!(lookup(&none, None, Some(&path)), Some(on.join(exe("bashcutpro"))));
+        assert_eq!(lookup(&none, Some(&tmp("empty")), None), None);
+        assert_eq!(installed_in(None, None), None);
+        for d in ["exe", "path", "empty"] {
+            let _ = std::fs::remove_dir_all(tmp(d));
+        }
+    }
 }

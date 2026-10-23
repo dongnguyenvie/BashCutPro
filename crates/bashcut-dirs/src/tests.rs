@@ -132,13 +132,70 @@ fn models_fall_back_to_filmcraft_per_file() {
 }
 
 #[test]
-#[ignore = "test ticket: fs::read_capped reads a file at the cap and refuses one byte over it with the path in the message"]
-fn read_capped_refuses_files_over_the_cap() {}
+fn read_capped_refuses_files_over_the_cap() {
+    let root = tmp("read-capped");
+    let p = root.join("f.txt");
+    put(&p, "12345");
+    assert_eq!(fs::read_capped(&p, 5), Ok("12345".to_string()), "at the cap");
+    let e = fs::read_capped(&p, 4).unwrap_err();
+    assert!(e.0.contains(&p.display().to_string()) && e.0.contains("larger than 4 bytes"), "{e}");
+    let missing = root.join("missing.txt");
+    let e = fs::read_capped(&missing, 5).unwrap_err();
+    assert!(e.0.contains(&missing.display().to_string()), "{e}");
+    let _ = std::fs::remove_dir_all(&root);
+}
 
 #[test]
-#[ignore = "test ticket: fs::write_atomic creates the parent folder, replaces an existing file, leaves no .tmp behind, and keeps the old file when the write fails"]
-fn write_atomic_replaces_whole_files_only() {}
+fn write_atomic_replaces_whole_files_only() {
+    let root = tmp("write-atomic");
+    let p = root.join("a/b/settings.json");
+    fs::write_atomic(&p, b"one").unwrap();
+    assert_eq!(std::fs::read_to_string(&p).unwrap(), "one", "parent created");
+    fs::write_atomic(&p, b"two").unwrap();
+    assert_eq!(std::fs::read_to_string(&p).unwrap(), "two", "replaced");
+    let names: Vec<String> = std::fs::read_dir(root.join("a/b")).unwrap().flatten().map(|e| e.file_name().to_string_lossy().into_owned()).collect();
+    assert_eq!(names, ["settings.json"], "no .tmp left behind");
+    // the rename fails (a folder is in the way): the folder stays and no .tmp is left
+    let dir = root.join("a/dir");
+    put(&dir.join("keep.txt"), "kept");
+    assert!(fs::write_atomic(&dir, b"x").is_err());
+    assert_eq!(std::fs::read_to_string(dir.join("keep.txt")).unwrap(), "kept");
+    // the parent cannot be created (it is a file): an error naming the path, the old file whole
+    let e = fs::write_atomic(&p.join("child"), b"x").unwrap_err();
+    assert!(e.0.contains("settings.json"), "{e}");
+    assert_eq!(std::fs::read_to_string(&p).unwrap(), "two", "old file kept");
+    // the temp write fails (a read-only folder): the old file whole, no .tmp
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let ro = root.join("ro");
+        put(&ro.join("f.json"), "old");
+        let _ = std::fs::set_permissions(&ro, std::fs::Permissions::from_mode(0o555));
+        let probe = std::fs::write(ro.join("probe"), "");
+        if probe.is_err() {
+            // (skipped when running as root, which writes anyway)
+            assert!(fs::write_atomic(&ro.join("f.json"), b"new").is_err());
+            assert_eq!(std::fs::read_to_string(ro.join("f.json")).unwrap(), "old");
+            let names: Vec<String> = std::fs::read_dir(&ro).unwrap().flatten().map(|e| e.file_name().to_string_lossy().into_owned()).collect();
+            assert_eq!(names, ["f.json"]);
+        }
+        let _ = std::fs::set_permissions(&ro, std::fs::Permissions::from_mode(0o755));
+    }
+    let names: Vec<String> = std::fs::read_dir(root.join("a")).unwrap().flatten().map(|e| e.file_name().to_string_lossy().into_owned()).collect();
+    assert!(names.iter().all(|n| !n.ends_with(".tmp")), "{names:?}");
+    let _ = std::fs::remove_dir_all(&root);
+}
 
 #[test]
-#[ignore = "test ticket: fs::clip keeps short text, cuts multi-byte text on a char boundary and appends the ellipsis only when cut"]
-fn clip_cuts_on_char_boundaries() {}
+fn clip_cuts_on_char_boundaries() {
+    assert_eq!(fs::clip("short", 10, "…"), "short");
+    assert_eq!(fs::clip("exact", 5, "…"), "exact", "at max: not cut, no ellipsis");
+    assert_eq!(fs::clip("abcdef", 3, "…"), "abc…");
+    assert_eq!(fs::clip("abcdef", 3, ""), "abc");
+    // "Tiếng" is T i ế(3 bytes) n g: a cut inside ế backs up to its start
+    assert_eq!(fs::clip("Tiếng Việt", 3, "…"), "Ti…");
+    assert_eq!(fs::clip("Tiếng Việt", 4, ""), "Ti");
+    assert_eq!(fs::clip("Tiếng Việt", 5, "…"), "Tiế…");
+    assert_eq!(fs::clip("日本", 2, "…"), "…", "nothing fits: just the ellipsis");
+    assert_eq!(fs::clip("", 0, "…"), "");
+}
