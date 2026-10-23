@@ -300,11 +300,22 @@ labels or subclips (§1 rule 1). A project opened in upstream FilmCraft still wo
   source `dynamic`), plus the user's claude.ai connectors; with the flag only `bashcutpro` is left, while the
   `bcp:*` skills and every plugin still load (`plugins`, `skills`). The user's other MCP servers are not offered to
   the in-app agent; that is the price of one copy of the tools. No `--bare` (it skips the subscription login and
-  plugin discovery). Allowed without a prompt (`process::allowed_tools`): `mcp__bashcutpro` and the engine CLI
-  (`Bash(bashcutpro-cli *)`, `Bash(bcpro *)`, `Bash(bashcutpro *)`; `/bcp:setup` checks the engine with
-  `bashcutpro commands razor` and otherwise only calls the MCP tools). Nothing broader, no bypass mode: in print
-  mode anything else that needs approval is denied. The `system/init` event also carries `capabilities`
-  (`interrupt_receipt_v1`, `interrupt_cancel_queued_v1`, …), `tools`, `mcp_servers` and `plugins`.
+  plugin discovery). Allowed without a prompt (`process::allowed_tools`): `mcp__bashcutpro` (every tool of
+  the app's server) and only the read-only checks `/bcp:setup` runs (AK2): `Bash(command -v *)`,
+  `Bash(printenv BASHCUTPRO_CLI *)`, `Bash(<engine> commands *)` for `bashcutpro-cli`, `bcpro` and `filmcraft-cli`
+  (an absolute path to the engine does not match and is denied), `Read(~/.config/bashcutpro/mcp.env)` and
+  `Read(//<data dir>/bashcut/automation.json)` (macOS / Linux; a Windows path has no rule form). Not installs,
+  builds, `claude mcp add` or writing `mcp.env`; no bypass mode: in print mode anything else that needs approval
+  is denied (checked: `touch` lands in `permission_denials`, the rules above run). The `system/init` event also
+  carries `capabilities` (`interrupt_receipt_v1`, `interrupt_cancel_queued_v1`, …), `tools`, `mcp_servers` and
+  `plugins`.
+- **`BASHCUT_IN_APP_AGENT=1`** (next to `BASHCUT_AGENT_HOST=1`) is in every in-app agent child's environment. What
+  the kit's launcher (`scripts/bashcutpro-mcp.sh`, AK3) should do with it: when set, exit 0 at once without
+  starting an engine, printing one line to stderr ("the app passes its own bashcutpro server"). With
+  `--strict-mcp-config` Claude Code does not start the plugin's server at all, so this only matters for agents
+  started without it (agent plugins, a user's own `BASHCUT_CLAUDE` wrapper). Codex: `install-codex.sh` registers
+  `bashcutpro` in Codex's own config and our `-c mcp_servers.bashcutpro.*` overrides that same key, so Codex also
+  sees one copy.
 - **Working directory**: the project's folder, or `<data dir>/agent` (`~/Library/Application Support/BashCutPro/agent`
   on macOS) for an unsaved project, never the app's folder or a checkout (a BashCutPro checkout's `.mcp.json` adds
   `filmcraft` servers for development). Claude Code keeps its sessions per folder, so `--resume` finds them there.
