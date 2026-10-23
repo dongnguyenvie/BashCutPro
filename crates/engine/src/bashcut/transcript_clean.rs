@@ -325,21 +325,17 @@ fn generate_cmd(s: &mut Session, p: &Value) -> Result<Value> {
 
 pub(crate) fn commands() -> Vec<CommandSpec> {
     vec![
-        CommandSpec {
+        spec! {
             id: GENERATE,
             label: "Transcribe (Drop Doubtful Text)",
-            menu: &[],
-            shortcut: None,
             params: r#"{…transcript.generate params, "keepDoubtful":bool=false,"minRepeats":n=3,"keepWordTimes":bool=false,"minSilenceSeconds":f=0.3}  (transcribes, moves word edges out of pauses measured on the audio (edgesMoved), then drops Whisper's repeated-text loops; an item with only loops reports noSpeech and keeps an empty transcript)"#,
             enabled: crate::transcript::can_transcribe,
             run: generate_cmd,
             journal: true,
         },
-        CommandSpec {
+        spec! {
             id: CLEAN,
             label: "Drop Doubtful Transcript Text",
-            menu: &[],
-            shortcut: None,
             params: r#"{"items":[id]? (default every transcript a recogniser made),"minRepeats":n=3,"dryRun":bool=false}  (doubtful stretches: start / end in media seconds)"#,
             enabled: always,
             run: clean_cmd,

@@ -16,6 +16,7 @@ use serde_json::{Value, json};
 
 use super::errors::{code_of, fail};
 use super::summary;
+use super::undo::UndoGroup;
 use crate::commands::{CommandSpec, always, bad};
 use crate::{EngineError, Result, Session};
 
@@ -80,32 +81,24 @@ fn steps_p(p: &Value) -> Result<Vec<Step>> {
 
 /// What the session looked like before the batch.
 struct Before {
-    project: Arc<filmcraft_project::Project>,
+    group: UndoGroup,
     state: crate::EditorState,
-    undo_len: usize,
     redo: Vec<(String, Arc<filmcraft_project::Project>)>,
-    limit: usize,
 }
 
 impl Before {
+    /// No step may fold into an edit made before the batch, and no step may push the batch's own first entries out
+    /// of the history ([`UndoGroup::start`]).
     fn take(s: &mut Session) -> Before {
-        let b =
-            Before { project: s.project.clone(), state: s.state.clone(), undo_len: s.history.undo.len(), redo: s.history.redo.clone(), limit: s.history.limit };
-        // no step may fold into an edit made before the batch, and no step may push the batch's own
-        // first entries out of the history
-        s.history.merge_key = None;
-        s.history.limit = usize::MAX;
-        b
+        let (state, redo) = (s.state.clone(), s.history.redo.clone());
+        Before { group: UndoGroup::start(s), state, redo }
     }
 
     /// Put everything back as it was.
     fn restore(self, s: &mut Session) {
-        s.project = self.project;
+        self.group.cancel(s);
         s.state = self.state;
-        s.history.undo.truncate(self.undo_len);
         s.history.redo = self.redo;
-        s.history.merge_key = None;
-        s.history.limit = self.limit;
         s.fix_state();
         s.bump();
     }
@@ -113,23 +106,7 @@ impl Before {
     /// Fold the undo entries the steps pushed into one. Returns the number of undo steps the batch
     /// left (0 when nothing undoable happened, else 1).
     fn fold(self, s: &mut Session, label: &str) -> usize {
-        s.history.limit = self.limit;
-        s.history.merge_key = None;
-        let pushed = s.history.undo.len().saturating_sub(self.undo_len);
-        if pushed == 0 && Arc::ptr_eq(&s.project, &self.project) {
-            return 0;
-        }
-        if s.history.undo.len() < self.undo_len {
-            // a step reset the history (a project was opened): nothing to fold into
-            return pushed.min(1);
-        }
-        s.history.undo.truncate(self.undo_len);
-        s.history.undo.push((label.to_string(), self.project));
-        let over = s.history.undo.len().saturating_sub(s.history.limit.max(1));
-        if over > 0 {
-            s.history.undo.drain(..over);
-        }
-        1
+        usize::from(self.group.finish(s, label))
     }
 }
 
@@ -190,11 +167,9 @@ fn batch(s: &mut Session, p: &Value) -> Result<Value> {
 }
 
 pub(crate) fn commands() -> Vec<CommandSpec> {
-    vec![CommandSpec {
+    vec![spec! {
         id: CMD,
         label: "Run Batch",
-        menu: &[],
-        shortcut: None,
         params: r#"{"commands":[{"id":str,"params":{}?}] (at most 10000),"atomic":bool=true,"label":str?} (one undo step; atomic: an error restores the project and names the failing step; times inside each step's params use that command's units)"#,
         enabled: always,
         run: batch,

@@ -41,11 +41,9 @@ const QUIET_AT: f32 = 0.3;
 const MAX_LISTED: usize = 20;
 
 pub(crate) fn commands() -> Vec<CommandSpec> {
-    vec![CommandSpec {
+    vec![spec! {
         id: CMD,
         label: "Refine Word Edges from Audio",
-        menu: &[],
-        shortcut: None,
         params: r#"{"items":[id]? (default every transcript a recogniser made),"minSilenceSeconds":f=0.3 (0.1..5),"dryRun":bool=false}  (moves word edges out of pauses measured on the audio; one undo step)"#,
         enabled: always,
         run: refine_cmd,

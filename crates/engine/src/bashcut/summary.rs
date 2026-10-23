@@ -173,11 +173,9 @@ fn summary_cmd(s: &mut Session, p: &Value) -> Result<Value> {
 }
 
 pub(crate) fn commands() -> Vec<CommandSpec> {
-    vec![CommandSpec {
+    vec![spec! {
         id: CMD,
         label: "Timeline Summary",
-        menu: &[],
-        shortcut: None,
         params: r#"{"sequence":id? (default the active sequence)} (tracks and clips with ids; start / end / in / duration in seconds, only fields that differ from a plain clip)"#,
         enabled: always,
         run: summary_cmd,

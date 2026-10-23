@@ -33,11 +33,9 @@ const BOOST_PASSES: usize = 8;
 const BOOST_HEADROOM: f64 = 0.3;
 
 pub fn commands() -> Vec<CommandSpec> {
-    vec![CommandSpec {
+    vec![spec! {
         id: CMD,
         label: "Polish Voice",
-        menu: &[],
-        shortcut: None,
         params: r#"{"clips":[id]? (default the selection),"amount":0..1=0.5,"target":lufs?,"profile":str? (its loudness when no target),"loudness":bool=true,"savePreset":bool=false,"dir":str?}"#,
         enabled: has_seq,
         run: polish,

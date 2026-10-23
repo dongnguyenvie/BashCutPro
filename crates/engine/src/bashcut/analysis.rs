@@ -343,31 +343,25 @@ fn picture_cmd(s: &mut Session, p: &Value) -> Result<Value> {
 
 pub(crate) fn commands() -> Vec<CommandSpec> {
     vec![
-        CommandSpec {
+        spec! {
             id: "bashcut.audio.loudness",
             label: "Measure Loudness",
-            menu: &[],
-            shortcut: None,
             params: r#"{"clip":id?,"track":id|"A1"?,"range":{"start":seconds?,"end":seconds?}?,"series":bool?} (no clip / track = the sequence mix; result in LUFS, LU, dBTP, seconds)"#,
             enabled: has_seq,
             run: loudness_cmd,
             journal: false,
         },
-        CommandSpec {
+        spec! {
             id: "bashcut.audio.beats",
             label: "Detect Beats",
-            menu: &[],
-            shortcut: None,
             params: r#"{"clip":id?,"writeMarkers":bool?} (default: the selected audio clip; result in sequence seconds and BPM)"#,
             enabled: has_seq,
             run: beats_cmd,
             journal: true,
         },
-        CommandSpec {
+        spec! {
             id: "bashcut.review.pictureChecks",
             label: "Picture Checks",
-            menu: &[],
-            shortcut: None,
             params: r#"{"range":{"start":seconds?,"end":seconds?}?,"samplesPerSecond":0.5..60=5} (black, frozen, long-still and flash stretches; result in seconds)"#,
             enabled: has_seq,
             run: picture_cmd,

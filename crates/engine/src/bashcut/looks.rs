@@ -775,49 +775,46 @@ fn check(_: &mut Session, p: &Value) -> Result<Value> {
     Ok(json!({"ok": ok, "looks": rows}))
 }
 
-type Run = fn(&mut Session, &Value) -> Result<Value>;
-
-fn query(id: &'static str, label: &'static str, params: &'static str, run: Run) -> CommandSpec {
-    CommandSpec { id, label, menu: &[], shortcut: None, params, enabled: always, run, journal: false }
+/// A read-only look command, always enabled.
+macro_rules! query {
+    ($id:expr, $label:expr, $params:expr, $run:expr $(,)?) => {
+        spec! { id: $id, label: $label, params: $params, enabled: always, run: $run, journal: false }
+    };
 }
 
 pub fn commands() -> Vec<CommandSpec> {
     vec![
-        query("bashcut.looks.list", "List Looks", r#"{"tags":[str]|str? (any of; e.g. "talking-head","travel","food"),"query":str?}"#, list),
-        query("bashcut.looks.get", "Get Look", r#"{"look":str,"intensity":0..1.5=1?}"#, get),
-        CommandSpec {
+        query!("bashcut.looks.list", "List Looks", r#"{"tags":[str]|str? (any of; e.g. "talking-head","travel","food"),"query":str?}"#, list),
+        query!("bashcut.looks.get", "Get Look", r#"{"look":str,"intensity":0..1.5=1?}"#, get),
+        spec! {
             id: "bashcut.looks.apply",
             label: "Apply Look",
-            menu: &[],
-            shortcut: None,
             params: r#"{"look":str,"intensity":0..1.5=1? (clamped to the look's safe range),"clips":[id]? (default the selection)}"#,
             enabled: has_seq,
             run: apply,
             journal: true,
         },
-        CommandSpec {
+        spec! {
             id: "bashcut.looks.remove",
             label: "Remove Look",
-            menu: &[],
-            shortcut: None,
             params: r#"{"clips":[id]? (default the selection)}"#,
             enabled: has_seq,
             run: remove,
             journal: true,
         },
-        query(
+        query!(
             "bashcut.looks.thumbnail",
             "Look Thumbnail",
             r#"{"look":str,"intensity":0..1.5=1?,"width":n=160,"frame":bool=false (on the program frame at the playhead),"path":str? (PNG; default a cache file in the data dir)}"#,
             thumb,
         ),
-        query(
+        query!(
             "bashcut.looks.export",
             "Export Looks as LUTs",
             r#"{"look":str?,"path":str? (.cube, with look),"dir":str? (the whole pack + looks.json),"intensity":0..1.5=1?,"size":2..65=33}"#,
             export,
         ),
-        query(
+        query!(
             "bashcut.looks.check",
             "Check Looks",
             r#"{"look":str? (default every look)}  (clipped highlights, crushed shadows, skin hue shift at min / default / max)"#,

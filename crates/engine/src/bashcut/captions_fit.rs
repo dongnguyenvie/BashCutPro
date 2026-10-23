@@ -36,11 +36,9 @@ const WEAK: &[&str] = &[
 ];
 
 pub fn commands() -> Vec<CommandSpec> {
-    vec![CommandSpec {
+    vec![spec! {
         id: CMD,
         label: "Create Readable Captions from Transcript…",
-        menu: &[],
-        shortcut: None,
         params: r#"{"maxChars":n=42 (characters a line),"lines":1|2=2,"maxCps":f=20 (characters a second),"minSeconds":f=0.7,"maxSeconds":f=7,"breakSeconds":f=0.5 (a pause this long starts a cue),"fill":0..1=0.5 (break at a comma once the cue is this full),"gapFrames":n=2,"leadSeconds":f=0.15 (a cue may start this much before its first word),"keepFillers":bool=false,"trimHedges":bool=false,"format":str?,"name":str?="Captions","dryRun":bool=false}"#,
         enabled: has_words,
         run: create,
