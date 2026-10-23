@@ -1,7 +1,19 @@
 //! What the doctor reads from the machine, behind a trait so tests use fakes.
 
+use std::ffi::OsString;
 use std::path::{Path, PathBuf};
 use std::process::Command;
+use std::time::Duration;
+
+use bashcut_dirs::child;
+
+/// How long a probe (`--version`, `commands`, `exec transcript.models`, `df`) may run before it is
+/// stopped (I7, DR1): a stuck engine must not hang the doctor.
+pub const RUN_TIMEOUT: Duration = Duration::from_secs(30);
+/// What a probe's stdout may hold (the `commands bashcut --json` list is a few KiB); the rest is read and dropped.
+const MAX_STDOUT: usize = 4 << 20;
+/// The tail of stderr a probe keeps.
+const MAX_STDERR: usize = 64 << 10;
 
 /// A finished program: exit code (None = killed by a signal) and its output.
 #[derive(Clone, Debug, Default)]
@@ -20,7 +32,8 @@ impl Output {
 pub trait Env {
     /// An environment variable (empty counts as unset).
     fn var(&self, key: &str) -> Option<String>;
-    /// Run a program; None when it cannot be started (not installed).
+    /// Run a program (stdin null, stopped after [`RUN_TIMEOUT`]); None when it cannot be started
+    /// (not installed). A stopped program has no exit code, so it is not [`Output::ok`].
     fn run(&self, program: &str, args: &[&str]) -> Option<Output>;
     /// Read a whole file (callers keep to small files or hash in [`Env::hash_file`]).
     fn read(&self, path: &Path) -> Option<Vec<u8>>;
@@ -36,11 +49,14 @@ pub trait Env {
     fn total_ram(&self) -> Option<u64>;
     /// `macos` | `windows` | `linux` | other.
     fn os(&self) -> &str;
-    /// The engine when no `--cli` or variable names it (RC2). The real machine asks
-    /// `bashcut_dirs::engine` (next to this program, else on `PATH`); the default, for fakes, is the
-    /// first of `bashcut_dirs::engine::NAMES` whose `--version` starts.
-    fn find_engine(&self) -> Option<String> {
-        bashcut_dirs::engine::NAMES.iter().find(|n| self.run(n, &["--version"]).is_some_and(|o| o.ok())).map(|n| n.to_string())
+    /// This program's folder, where `bashcut_dirs::engine::lookup` looks first (RC2, DR1). None for
+    /// fakes, which name the engine by variable or put a real folder on [`Env::path`].
+    fn exe_dir(&self) -> Option<PathBuf> {
+        None
+    }
+    /// The `PATH` the engine lookup searches.
+    fn path(&self) -> Option<OsString> {
+        self.var("PATH").map(OsString::from)
     }
 }
 
@@ -55,13 +71,22 @@ impl Env for RealEnv {
     }
 
     fn run(&self, program: &str, args: &[&str]) -> Option<Output> {
+        let mut cmd = Command::new(program);
         // the engine probes (`commands`, `exec`) check the engine itself, not the open app (CC3)
-        let out = Command::new(program).args(args).env("BASHCUT_BRIDGE", "off").output().ok()?;
-        Some(Output {
-            code: out.status.code(),
-            stdout: String::from_utf8_lossy(&out.stdout).into_owned(),
-            stderr: String::from_utf8_lossy(&out.stderr).into_owned(),
-        })
+        cmd.args(args).env("BASHCUT_BRIDGE", "off");
+        // stdin null, its own process group so a timeout also stops what it started (RC3 supervisor, DR1)
+        let mut proc = child::spawn(cmd, &child::Opts { stdin: None, group: true, stderr: true }).ok()?;
+        let out = child::pump("bashcut-doctor-stdout", proc.stdout.take(), |r| child::read_lines(r, MAX_STDOUT, 0, |_, _| {}).0);
+        let err = child::pump("bashcut-doctor-stderr", proc.stderr.take(), |r| child::tail(r, MAX_STDERR));
+        let exit = child::supervise(&mut proc, RUN_TIMEOUT, None);
+        let stdout = child::collect(&out, child::STDOUT_WAIT);
+        let mut stderr = String::from_utf8_lossy(&child::collect(&err, child::STDERR_WAIT)).into_owned();
+        // a stopped probe has no exit code, so it never counts as ok
+        let code = if exit.stop.is_some() { None } else { exit.code() };
+        if exit.stop.is_some() {
+            stderr.push_str(&format!("\n(stopped after {} s)", RUN_TIMEOUT.as_secs()));
+        }
+        Some(Output { code, stdout: String::from_utf8_lossy(&stdout).into_owned(), stderr })
     }
 
     fn read(&self, path: &Path) -> Option<Vec<u8>> {
@@ -125,8 +150,12 @@ impl Env for RealEnv {
         std::env::consts::OS
     }
 
-    fn find_engine(&self) -> Option<String> {
-        bashcut_dirs::engine::installed().map(|p| p.to_string_lossy().into_owned())
+    fn exe_dir(&self) -> Option<PathBuf> {
+        std::env::current_exe().ok().and_then(|e| e.parent().map(Path::to_path_buf))
+    }
+
+    fn path(&self) -> Option<OsString> {
+        std::env::var_os("PATH")
     }
 }
 
