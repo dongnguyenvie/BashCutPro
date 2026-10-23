@@ -205,6 +205,8 @@ pub fn draw(app: &mut FilmcraftApp, ui: &mut egui::Ui) {
                 ui.horizontal(|ui| {
                     strong_note(ui, f("You · queued {n}", &[("n", &(i + 1).to_string())]), META, t.text_dim);
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        // a floating scroll bar draws over the content's right edge (FX16)
+                        ui.add_space(scroll_bar_overlap(ui));
                         if q.cancelling {
                             note(ui, s("Removing…"), META, t.text_dim);
                             return;
@@ -243,6 +245,13 @@ pub fn draw(app: &mut FilmcraftApp, ui: &mut egui::Ui) {
         ctx.request_repaint_after(std::time::Duration::from_millis(100));
     }
     super::shared::put_temp(&ctx, key(), v);
+}
+
+/// The width a floating vertical scroll bar covers at the right of a scroll area's content when
+/// hovered (none for a solid one: the area already keeps it out of the content).
+fn scroll_bar_overlap(ui: &egui::Ui) -> f32 {
+    let s = &ui.spacing().scroll;
+    if s.floating { (s.bar_inner_margin + s.bar_width + s.bar_outer_margin - s.allocated_width()).max(0.0) } else { 0.0 }
 }
 
 /// The hints after [`QUIET_HINT`] with no output, macOS first (the strings test reads both).
