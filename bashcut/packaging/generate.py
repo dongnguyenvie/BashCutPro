@@ -23,6 +23,12 @@ import sys
 # Our binaries next to the app. bashcutpro (#154, SB2: upstream's engine CLI generated under our name by
 # apps/bashcutpro-cli) is not listed: it takes filmcraft-cli's place in upstream's lines (RENAMES); bcpro is its alias.
 PRO_BINS = ["bcpro", "bashcut-doctor", "bashcut-batch", "bashcut-mcp"]
+# PK3: where a package can hold a symlink (Linux, the macOS CLI zip, Flatpak), bcpro is a relative link to the engine
+# (written `filmcraft-cli`, renamed to bashcutpro below) instead of a second ~36 MB copy. Windows (MSI, portable zip)
+# and the macOS app (bcpro is the only engine name there, #187) keep a real file.
+ALIAS = "bcpro"
+TOOLS = [b for b in PRO_BINS if b != ALIAS]
+TOOLS_SH = " ".join(TOOLS)
 PRO_PACKAGES = "-p bashcut-doctor -p bashcut-batch-cli -p bashcut-mcp"
 BINS_SH = " ".join(PRO_BINS)
 # speech-to-text in the app and the engine CLI (#146): the batch presets and caption skills start by
@@ -83,14 +89,15 @@ SUBS = [
         'cp "$WORK/bin/filmcraft-cli" "$CLI_DIR/"\n',
         'cp "$WORK/bin/filmcraft-cli" "$CLI_DIR/"\n'
         'for b in %s; do cp "$WORK/bin/$b" "$CLI_DIR/"; done\n'
-        'cp "$ROOT/bashcut/packaging/share/"* "$CLI_DIR/"\n' % BINS_SH,
+        'ln -s filmcraft-cli "$CLI_DIR/%s"\n'
+        'cp "$ROOT/bashcut/packaging/share/"* "$CLI_DIR/"\n' % (TOOLS_SH, ALIAS),
         1,
     ),
     (
         "macos/package.sh",
         'sign --options runtime "$CLI_DIR/filmcraft-cli"\n',
         'sign --options runtime "$CLI_DIR/filmcraft-cli"\n'
-        'for b in %s; do sign --options runtime "$CLI_DIR/$b"; done\n' % BINS_SH,
+        'for b in %s; do sign --options runtime "$CLI_DIR/$b"; done\n' % TOOLS_SH,
         1,
     ),
     # ---- Linux
@@ -101,20 +108,36 @@ SUBS = [
         'install -Dm755 "$BIN/filmcraft-cli" "$STAGE/usr/bin/filmcraft-cli"\n'
         "# BashCutPro: Pro tools and the first-run setup\n"
         'for b in %s; do install -Dm755 "$BIN/$b" "$STAGE/usr/bin/$b"; "${CROSS_COMPILE:-}strip" "$STAGE/usr/bin/$b" 2>/dev/null || true; done\n'
-        'mkdir -p "$STAGE/usr/share/bashcutpro" && cp "$ROOT/bashcut/packaging/share/"* "$STAGE/usr/share/bashcutpro/"\n' % BINS_SH,
+        'ln -s filmcraft-cli "$STAGE/usr/bin/%s"\n'
+        'mkdir -p "$STAGE/usr/share/bashcutpro" && cp "$ROOT/bashcut/packaging/share/"* "$STAGE/usr/share/bashcutpro/"\n' % (TOOLS_SH, ALIAS),
         1,
     ),
     # SB4: the copy's install.sh, nfpm.yaml, desktop file, metainfo, MIME file and icons (renamed to APP_ID)
     ("linux/package.sh", 'HERE="$ROOT/packaging/linux"\n', 'HERE="$BASHCUT_PACKAGING/linux"\n', 1),
     ("linux/package.sh", 'cp -R "$BRAND_ICON_DIR/hicolor" ', 'cp -R "$HERE/icons/hicolor" ', 1),
     ("linux/package.sh", '"$BRAND_ICON_DIR/hicolor/256x256/apps/$APP_ID.png"', '"$HERE/icons/hicolor/256x256/apps/$APP_ID.png"', 1),
+    # PK3: the docs folder is named after the package (Debian policy 12.3, lintian)
+    ("linux/package.sh", '"$STAGE/usr/share/doc/filmcraft"', '"$STAGE/usr/share/doc/bashcutpro"', 2),
+    ("linux/flatpak/ai.storyteller.filmcraft.bundle.yml", "cp -R share/doc/filmcraft /app/share/doc/", "cp -R share/doc/bashcutpro /app/share/doc/", 1),
+    # PK3: a real first description paragraph (software centres show it; appstream wants a full sentence)
+    (
+        "linux/ai.storyteller.filmcraft.metainfo.xml.in",
+        "    <p>\n      BashCutPro is a video editor based on FilmCraft. Edit video, color and sound\n    </p>\n",
+        "    <p>\n      BashCutPro is a native, open-source video editor based on FilmCraft: cut on a timeline with source\n"
+        "      and program monitors, grade color with scopes, add effects, titles and captions, mix sound with\n"
+        "      loudness meters, and export.\n    </p>\n"
+        "    <p>\n      The bashcutpro command line, the batch runner and the MCP server drive the same editor from\n"
+        "      scripts and AI agents, and speech-to-text writes captions on your own computer.\n    </p>\n",
+        1,
+    ),
     ("linux/flatpak-bundle.sh", 'HERE="$ROOT/packaging/linux"\n', 'HERE="$BASHCUT_PACKAGING/linux"\n', 1),
     (
         "linux/flatpak/ai.storyteller.filmcraft.bundle.yml",
         "      - install -Dm755 bin/filmcraft-cli /app/bin/filmcraft-cli\n",
         "      - install -Dm755 bin/filmcraft-cli /app/bin/filmcraft-cli\n"
         "      # BashCutPro: Pro tools and the first-run setup\n"
-        + "".join("      - install -Dm755 bin/%s /app/bin/%s\n" % (b, b) for b in PRO_BINS)
+        + "".join("      - install -Dm755 bin/%s /app/bin/%s\n" % (b, b) for b in TOOLS)
+        + "      - ln -s filmcraft-cli /app/bin/%s\n" % ALIAS
         + "      - mkdir -p /app/share/bashcutpro && cp -R share/bashcutpro/. /app/share/bashcutpro/\n",
         1,
     ),
@@ -126,7 +149,8 @@ SUBS = [
         "      - install -Dm755 target/release/filmcraft-cli /app/bin/filmcraft-cli\n",
         "      - install -Dm755 target/release/filmcraft-cli /app/bin/filmcraft-cli\n"
         "      # BashCutPro: Pro tools and the first-run setup\n"
-        + "".join("      - install -Dm755 target/release/%s /app/bin/%s\n" % (b, b) for b in PRO_BINS)
+        + "".join("      - install -Dm755 target/release/%s /app/bin/%s\n" % (b, b) for b in TOOLS)
+        + "      - ln -s filmcraft-cli /app/bin/%s\n" % ALIAS
         + "      - mkdir -p /app/share/bashcutpro && cp bashcut/packaging/share/* /app/share/bashcutpro/\n",
         1,
     ),
@@ -158,14 +182,17 @@ SUBS = [
         "linux/nfpm.yaml",
         "  - src: ${STAGE}/usr/bin/filmcraft-cli\n    dst: /usr/bin/filmcraft-cli\n    file_info: { mode: 0755 }\n",
         "  - src: ${STAGE}/usr/bin/filmcraft-cli\n    dst: /usr/bin/filmcraft-cli\n    file_info: { mode: 0755 }\n"
-        + "".join("  - src: ${STAGE}/usr/bin/%s\n    dst: /usr/bin/%s\n    file_info: { mode: 0755 }\n" % (b, b) for b in PRO_BINS),
+        + "".join("  - src: ${STAGE}/usr/bin/%s\n    dst: /usr/bin/%s\n    file_info: { mode: 0755 }\n" % (b, b) for b in TOOLS)
+        # the staged link itself: nfpm keeps it a symlink with the build's mtime (type: symlink wrote mtime 2042)
+        + "  - src: ${STAGE}/usr/bin/%s\n    dst: /usr/bin/%s\n" % (ALIAS, ALIAS),
         1,
     ),
     (
         "linux/install.sh",
         'install -m755 -- "$source_dir/bin/filmcraft-cli" "$prefix/bin/filmcraft-cli"\n',
         'install -m755 -- "$source_dir/bin/filmcraft-cli" "$prefix/bin/filmcraft-cli"\n'
-        'for b in %s; do if [ -f "$source_dir/bin/$b" ]; then install -m755 -- "$source_dir/bin/$b" "$prefix/bin/$b"; fi; done\n' % BINS_SH,
+        'for b in %s; do if [ -f "$source_dir/bin/$b" ]; then install -m755 -- "$source_dir/bin/$b" "$prefix/bin/$b"; fi; done\n'
+        'if [ -L "$source_dir/bin/%s" ]; then ln -sfn -- filmcraft-cli "$prefix/bin/%s"; fi\n' % (TOOLS_SH, ALIAS, ALIAS),
         1,
     ),
     # ---- FreeBSD

@@ -14,6 +14,7 @@ USAGE
   --json        one JSON object (schema bashcut-doctor/1) for the batch runner and the Runs section
   --updates     also compare installed versions with the registry and the release list (reports only)
   --no-hash     check model file sizes only (hashing large models takes a while)
+  --version     print `bashcut-doctor <version>` and exit
 ";
 
 fn main() {
@@ -40,6 +41,10 @@ fn main() {
             "--min-ram-gb" => opts.min_ram_gb = value("--min-ram-gb").parse().unwrap_or(opts.min_ram_gb),
             "-h" | "--help" | "help" => {
                 print!("{HELP}");
+                return;
+            }
+            "-V" | "--version" => {
+                println!("bashcut-doctor {}", env!("CARGO_PKG_VERSION"));
                 return;
             }
             other => {

@@ -184,6 +184,10 @@ class GenerateTest(unittest.TestCase):
             else:
                 self.assertIn("bashcutpro", bins)
 
+    @unittest.skip("test ticket: bcpro is a symlink to bashcutpro in the Linux stage, nfpm (type: symlink), install.sh, both Flatpak manifests and the macOS CLI zip, a real file in the app and on Windows; docs in usr/share/doc/bashcutpro; the metainfo's first <p> is a sentence of 80+ chars")
+    def test_bcpro_is_a_link_and_linux_docs_and_metainfo_are_ours(self):
+        pass
+
     def test_the_output_is_deterministic(self):
         # same input, byte-identical tree (bashcut/scripts/README.md): two runs into different folders
         again = os.path.join(self.tmp, "again")
