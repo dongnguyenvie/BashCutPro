@@ -236,3 +236,12 @@ decides something; don't change an old one, add a new one that supersedes it.
 - **Decided:** every workflow in `.github/workflows/` triggers on `workflow_dispatch` only (commit
   `fc3cd05c`).
 - **When merging upstream:** if a workflow's `on:` block conflicts, keep `workflow_dispatch` only.
+
+## 2026-10-23: One plugin manifest reader (RC5)
+
+- **Decided:** `bashcut-plugin.json` is read only by `crates/bashcut-manifest` (layer 1, deps `bashcut-dirs` +
+  serde), with the `hooks` list in its `Manifest`. The plugin host re-exports it as `manifest`; the engine's hooks
+  and `bashcut-doctor` use it as well, so a manifest the host would refuse declares no hooks, and the doctor
+  reports it as a warning (`plugin.<folder>`) instead of skipping it. OS names come from `bashcut_dirs::Os`:
+  every Unix that is not macOS is `linux` (the `entry.linux` override, XDG folders).
+- **Why:** three parsers had drifted (doctor used raw `consts::OS`, hooks skipped validation).

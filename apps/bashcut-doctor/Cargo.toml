@@ -16,5 +16,6 @@ path = "src/main.rs"
 
 [dependencies]
 bashcut-dirs = { path = "../../crates/bashcut-dirs" }
+bashcut-manifest = { path = "../../crates/bashcut-manifest" }
 serde_json = { workspace = true }
 sha2 = "0.10"

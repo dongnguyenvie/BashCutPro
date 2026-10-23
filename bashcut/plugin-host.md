@@ -25,9 +25,11 @@ store UI beyond installing from `registry.json`.
 ## Shape
 
 ```
+crates/bashcut-manifest/           the one bashcut-plugin.json reader (serde, checked; RC5), re-exported as
+                                   bashcut_plugin_host::manifest; the engine's hooks and bashcut-doctor read
+                                   manifests with it too. OS names: bashcut_dirs::Os (other Unixes = linux)
 crates/bashcut-plugin-host/        new crate, ours only
-  src/manifest.rs                  parse bashcut-plugin.json / registry.json (serde), check app.commands
-                                   against the running build's command list
+  src/registry.rs                  parse registry.json (serde)
   src/install.rs                   <data dir>/bashcut-plugins/<id>/ : fetch from registry source, settings.json
   src/runner.rs                    spawn the entry argv (+ per-OS override) with connect args
                                    (--bridge 127.0.0.1:<control port>), secrets as env; read stderr progress,

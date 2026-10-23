@@ -42,7 +42,7 @@ fn plugins(env: &dyn Env, opts: &Options, out: &mut Vec<Finding>) {
     let dir = opts.plugins_dir.clone().or_else(|| opts.data_dir.clone().or_else(|| data_dir(env)).map(|d| d.join(bashcut_dirs::PLUGINS_DIR)));
     let Some(dir) = dir else { return };
     let installed = installed_plugins(env, &dir);
-    if installed.is_empty() {
+    if !installed.iter().any(|(_, m)| m.is_ok()) {
         return;
     }
     let Some(reg) = registry(env, opts) else {
@@ -50,9 +50,8 @@ fn plugins(env: &dyn Env, opts: &Options, out: &mut Vec<Finding>) {
         return;
     };
     let listed = reg.get("plugins").and_then(Value::as_array).cloned().unwrap_or_default();
-    for (_, m) in &installed {
-        let id = m.get("id").and_then(Value::as_str).unwrap_or("?");
-        let have = m.get("version").and_then(Value::as_str).unwrap_or("0");
+    for m in installed.iter().filter_map(|(_, m)| m.as_ref().ok()) {
+        let (id, have) = (m.id.as_str(), m.version.as_str());
         let key = format!("update.plugin.{id}");
         let Some(entry) = listed.iter().find(|e| e.get("id").and_then(Value::as_str) == Some(id)) else {
             out.push(Finding::new(key, Level::Info, format!("{id} is not in the registry any more")));

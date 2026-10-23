@@ -13,6 +13,7 @@ pub mod updates;
 
 use std::path::{Path, PathBuf};
 
+use bashcut_manifest::{Manifest, Os};
 use serde_json::{Value, json};
 
 pub use env::{Env, Output, RealEnv};
@@ -307,22 +308,18 @@ fn claude_plugin_kit(env: &dyn Env, home: &Path) -> Option<(PathBuf, Option<Stri
     })
 }
 
-/// Installed plugin manifests: `(folder, manifest)`.
-pub fn installed_plugins(env: &dyn Env, dir: &Path) -> Vec<(PathBuf, Value)> {
+/// Installed plugin manifests: `(folder, manifest)`, read and checked by the plugin host's own reader (RC5);
+/// a folder whose `bashcut-plugin.json` it refuses comes with the reason.
+pub fn installed_plugins(env: &dyn Env, dir: &Path) -> Vec<(PathBuf, Result<Manifest, String>)> {
     env.list(dir)
         .into_iter()
         .take(MAX_PLUGINS)
-        .filter_map(|d| read_json(env, &d.join("bashcut-plugin.json")).map(|m| (d, m)))
-        .filter(|(_, m)| m.get("schema").and_then(Value::as_str) == Some("bashcut-plugin/1"))
+        .filter_map(|d| {
+            let bytes = env.read(&d.join(bashcut_manifest::FILE))?;
+            let m = Manifest::parse(&String::from_utf8_lossy(&bytes)).map_err(|e| e.0);
+            Some((d, m))
+        })
         .collect()
-}
-
-/// The program a plugin's entry starts with on this OS (`entry.<os>` overrides `entry.command`).
-pub fn entry_program(manifest: &Value, os: &str) -> Option<Vec<String>> {
-    let entry = manifest.get("entry")?;
-    let list = entry.get(os).or_else(|| entry.get("command"))?.as_array()?;
-    let v: Vec<String> = list.iter().filter_map(Value::as_str).map(str::to_string).collect();
-    (!v.is_empty()).then_some(v)
 }
 
 fn check_plugins(env: &dyn Env, dir: Option<&Path>, r: &mut Report) {
@@ -332,21 +329,29 @@ fn check_plugins(env: &dyn Env, dir: Option<&Path>, r: &mut Report) {
         r.findings.push(Finding::new("plugins", Level::Info, format!("no plugins installed in {}", dir.display())));
         return;
     }
-    for (_, m) in &plugins {
-        let id = m.get("id").and_then(Value::as_str).unwrap_or("?");
-        let version = m.get("version").and_then(Value::as_str).unwrap_or("?");
+    for (folder, m) in &plugins {
+        let m = match m {
+            Ok(m) => m,
+            Err(e) => {
+                // the folder name, not the manifest's id: an unchecked id may hold anything
+                let name: String = folder
+                    .file_name()
+                    .map(|n| n.to_string_lossy().chars().filter(|c| c.is_ascii_alphanumeric() || "-_".contains(*c)).collect())
+                    .unwrap_or_default();
+                r.findings.push(
+                    Finding::new(format!("plugin.{name}"), Level::Warn, format!("{}: {e}", folder.display())).fix("reinstall the plugin from the registry"),
+                );
+                continue;
+            }
+        };
+        let (id, version) = (m.id.as_str(), m.version.as_str());
         let key = format!("plugin.{id}");
-        let runtime = m.get("runtime").cloned().unwrap_or(Value::Null);
-        let kind = runtime.get("type").and_then(Value::as_str).unwrap_or("");
-        if kind != "python" {
+        if m.runtime.kind != "python" {
             r.findings.push(Finding::new(key, Level::Ok, format!("{id} {version}")));
             continue;
         }
-        let want = runtime.get("version").and_then(Value::as_str).unwrap_or(">=3");
-        let Some(argv) = entry_program(m, env.os()) else {
-            r.findings.push(Finding::new(key, Level::Warn, format!("{id} {version}: no entry command")).fix("reinstall the plugin from the registry"));
-            continue;
-        };
+        let want = if m.runtime.version.is_empty() { ">=3" } else { m.runtime.version.as_str() };
+        let argv = m.entry_for(Os::from_name(env.os()));
         // the interpreter itself: `python3` or `py -3`
         let mut args: Vec<&str> = argv.iter().skip(1).map(String::as_str).take_while(|a| a.starts_with('-')).collect();
         args.push("--version");

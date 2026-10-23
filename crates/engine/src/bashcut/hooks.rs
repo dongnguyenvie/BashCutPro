@@ -19,15 +19,14 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::time::{Duration, Instant};
 
+use bashcut_manifest::{Manifest, Os};
 use serde_json::{Value, json};
 
-use super::data;
 use crate::commands::{CommandSpec, always, bad, bool_p, str_p};
 use crate::{EngineError, Result, Session};
 
 pub const EVENTS: &[&str] = &["batch.beforeItem", "batch.afterItem", "import.after", "export.before"];
 const MAX_PLUGINS: usize = 200;
-const MAX_HOOKS: usize = 32;
 const DEFAULT_TIMEOUT: u64 = 300;
 const MAX_TIMEOUT: u64 = 3600;
 const MAX_OUTPUT: usize = 1 << 20;
@@ -46,18 +45,6 @@ pub struct Hook {
     pub timeout: Duration,
 }
 
-fn strings(v: Option<&Value>) -> Option<Vec<String>> {
-    Some(v?.as_array()?.iter().filter_map(Value::as_str).map(str::to_string).collect())
-}
-
-fn os_key() -> &'static str {
-    match std::env::consts::OS {
-        "macos" => "macos",
-        "windows" => "windows",
-        _ => "linux",
-    }
-}
-
 /// The plugins folder: `pluginsDir`, else `<data dir>/bashcut-plugins` (the session's data dir, as in `data.rs`).
 fn plugins_dir(s: &Session, p: &Value) -> Option<PathBuf> {
     if let Some(d) = str_p(p, "pluginsDir").filter(|d| !d.is_empty()) {
@@ -66,45 +53,41 @@ fn plugins_dir(s: &Session, p: &Value) -> Option<PathBuf> {
     super::data::base(s).map(|d| d.join(bashcut_dirs::PLUGINS_DIR))
 }
 
-/// Hooks for `event` declared by the installed plugins, in plugin-folder order.
+/// Hooks for `event` declared by the installed plugins, in plugin-folder order. Read through the plugin host's
+/// own manifest reader (RC5): a manifest it would refuse declares no hooks either.
 pub fn discover(dir: &Path, event: &str) -> Vec<Hook> {
     let Ok(rd) = std::fs::read_dir(dir) else { return Vec::new() };
     let mut folders: Vec<PathBuf> = rd.flatten().map(|e| e.path()).filter(|p| p.is_dir()).take(MAX_PLUGINS).collect();
     folders.sort();
     let mut out = Vec::new();
     for folder in folders {
-        let Ok(m) = data::read_json(&folder.join("bashcut-plugin.json"), 1 << 20) else { continue };
-        if m.get("schema").and_then(Value::as_str) != Some("bashcut-plugin/1") {
-            continue;
-        }
-        let plugin = m.get("id").and_then(Value::as_str).unwrap_or_default().to_string();
-        let entry = m.get("entry");
-        let Some(base) = strings(entry.and_then(|e| e.get(os_key()).or_else(|| e.get("command")))).filter(|v| !v.is_empty()) else { continue };
-        let actions = m.get("actions").and_then(Value::as_array).cloned().unwrap_or_default();
-        let hooks = m.get("hooks").and_then(Value::as_array).cloned().unwrap_or_default();
-        for h in hooks.iter().take(MAX_HOOKS) {
-            if h.get("event").and_then(Value::as_str) != Some(event) {
+        let m = match Manifest::load(&folder) {
+            Ok(m) => m,
+            Err(e) if folder.join(bashcut_manifest::FILE).is_file() => {
+                log::warn!("plugin {}: {e}", folder.display());
                 continue;
             }
-            let Some(action_id) = h.get("action").and_then(Value::as_str) else { continue };
-            let Some(action) = actions.iter().find(|a| a.get("id").and_then(Value::as_str) == Some(action_id)) else {
-                log::warn!("plugin {plugin}: hook names unknown action `{action_id}`");
+            Err(_) => continue,
+        };
+        let base = m.entry_for(Os::current());
+        for h in m.hooks.iter().filter(|h| h.event == event) {
+            let Some(action) = m.action(&h.action) else {
+                log::warn!("plugin {}: hook names unknown action `{}`", m.id, h.action);
                 continue;
             };
-            let mut argv = base.clone();
-            argv.extend(strings(action.get("args")).unwrap_or_default());
-            let needs_project = action.get("needs").and_then(Value::as_str) == Some("project");
-            let project_args =
-                needs_project.then(|| strings(m.get("connect").and_then(|c| c.get("project"))).unwrap_or_else(|| vec!["--project".into(), "{project}".into()]));
-            let secs = h.get("timeoutSeconds").and_then(Value::as_u64).unwrap_or(DEFAULT_TIMEOUT).clamp(1, MAX_TIMEOUT);
+            let mut argv = base.to_vec();
+            argv.extend(action.args.iter().cloned());
+            let project_args = (action.needs == "project")
+                .then(|| if m.connect.project.is_empty() { vec!["--project".into(), "{project}".into()] } else { m.connect.project.clone() });
+            let secs = h.timeout_seconds.unwrap_or(DEFAULT_TIMEOUT).clamp(1, MAX_TIMEOUT);
             out.push(Hook {
-                plugin: plugin.clone(),
+                plugin: m.id.clone(),
                 dir: folder.clone(),
                 event: event.to_string(),
-                action: action_id.to_string(),
+                action: h.action.clone(),
                 argv,
                 project_args,
-                required: h.get("required").and_then(Value::as_bool).unwrap_or(false),
+                required: h.required,
                 timeout: Duration::from_secs(secs),
             });
         }

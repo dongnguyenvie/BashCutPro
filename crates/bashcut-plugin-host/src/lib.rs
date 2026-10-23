@@ -12,12 +12,14 @@
 
 pub mod host;
 pub mod install;
-pub mod manifest;
 pub mod registry;
 pub mod runner;
 pub mod settings;
 pub mod view;
 
+/// The manifest reader shared with the engine's hooks and the doctor (RC5).
+pub use bashcut_manifest as manifest;
+pub use bashcut_manifest::{Os, valid_id};
 pub use host::{AgentLaunch, Host, Job, JobKind, JobState};
 pub use manifest::Manifest;
 pub use registry::Registry;
@@ -34,23 +36,7 @@ pub fn plugins_dir(data_dir: &std::path::Path) -> std::path::PathBuf {
     data_dir.join(bashcut_dirs::PLUGINS_DIR)
 }
 
-/// The OS name manifests use (`macos`, `windows`, `linux`).
-pub fn os() -> &'static str {
-    if cfg!(target_os = "macos") {
-        "macos"
-    } else if cfg!(windows) {
-        "windows"
-    } else {
-        "linux"
-    }
-}
-
-/// A plugin or setting id: lower-case ASCII letters, digits, `.`, `-`, `_`; no leading dot; 1–64 chars.
-/// Ids name folders and environment entries, so nothing else gets through.
-pub fn valid_id(id: &str) -> bool {
-    !id.is_empty()
-        && id.len() <= 64
-        && !id.starts_with('.')
-        && !id.contains("..")
-        && id.bytes().all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'.' || b == b'-' || b == b'_')
+/// This build's OS, as manifests name it (`macos`, `windows`, `linux`; every other Unix is `linux`).
+pub fn os() -> Os {
+    Os::current()
 }
