@@ -118,7 +118,7 @@ fn draw(app: &mut FilmcraftApp, ctx: &egui::Context, ts: &mut Toasts) {
         }
     });
     if let Some(job) = open {
-        State::update(ctx, |st| st.show("runs"));
+        State::update(ctx, |st| st.show(super::RUNS));
         runs_panel::focus(ctx, job);
         gone.push(job);
     }

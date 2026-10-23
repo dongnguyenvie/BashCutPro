@@ -156,7 +156,7 @@ pub fn draw(app: &mut FilmcraftApp, ui: &mut egui::Ui) {
             note(ui, s("Run a plugin action from Plugins and it shows up here."), NOTE, t.text_dim);
         }
         if button(app, ui, "bashcut.runs.openPlugins", s("Open Plugins"), true) {
-            super::State::update(&ctx, |st| st.show("plugins"));
+            super::State::update(&ctx, |st| st.show(super::PLUGINS));
         }
     } else if button(app, ui, "bashcut.runs.clear", s("Clear finished"), jobs.iter().any(|j| !j.state.is_running())) {
         call(app, &mut v, "clear", json!({}));
@@ -178,7 +178,7 @@ pub fn draw(app: &mut FilmcraftApp, ui: &mut egui::Ui) {
                 }
                 Act::SendToAgent => {
                     call(app, &mut v, "sendToAgent", json!({"job": j.id}));
-                    super::State::update(&ctx, |st| st.show("agent"));
+                    super::State::update(&ctx, |st| st.show(super::AGENT));
                 }
             }
         }
@@ -207,7 +207,7 @@ fn batch_row(app: &mut FilmcraftApp, ui: &mut egui::Ui) -> bool {
         ui.horizontal(|ui| {
             ui.label(egui::RichText::new(&text).color(t.text));
             if button(app, ui, "bashcut.runs.batch.open", s("Open Batch"), true) {
-                super::State::update(ui.ctx(), |st| st.show("batch"));
+                super::State::update(ui.ctx(), |st| st.show(super::BATCH));
             }
         });
     });

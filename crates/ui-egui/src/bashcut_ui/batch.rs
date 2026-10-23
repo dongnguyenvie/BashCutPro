@@ -571,7 +571,7 @@ pub fn invoke(app: &mut FilmcraftApp, ctx: &egui::Context, name: &str, p: &Value
                 g.draft.steps.push(s);
             }
             if name == "prefill" {
-                super::State::update(ctx, |st| st.show("batch"));
+                super::State::update(ctx, |st| st.show(super::BATCH));
             }
             Ok(json!({"index": g.draft.steps.len().saturating_sub(1), "steps": g.draft.steps}))
         }

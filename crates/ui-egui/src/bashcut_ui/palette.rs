@@ -579,7 +579,7 @@ pub fn invoke(app: &mut FilmcraftApp, ctx: &egui::Context, name: &str, params: &
             let (id, ..) = RECIPES.iter().find(|(id, ..)| *id == want).ok_or(format!("no recipe {want}"))?;
             let prompt = format!("Use the bcp:{id} recipe on this project.");
             ctx.copy_text(prompt.clone());
-            super::State::update(ctx, |st| st.show("agent"));
+            super::State::update(ctx, |st| st.show(super::AGENT));
             Ok(json!({"recipe": id, "prompt": prompt, "copied": true}))
         }
         _ => Err(format!("unknown command bashcut.palette.{name}")),
