@@ -86,17 +86,29 @@ pub fn check(s: &Setting, v: &Value) -> Result<Value> {
 
 /// The environment of a run: each set value (and each stored secret) under the setting's first
 /// `env` name. Settings without an `env` name are read by the plugin from its settings file.
+/// A non-secret setting nobody saved gets its manifest `default` (FX6), unless that default is
+/// empty or one of the setting's `env` names is already set in the host's own environment (the
+/// child inherits it, and a user's export must not be overridden by a default). Secrets have no default (the manifest
+/// refuses one): only a stored value is ever exported.
 pub fn env_for(m: &Manifest, values: &Values, secrets: &dyn SecretStore) -> Vec<(String, String)> {
+    env_with(m, values, secrets, &|name| std::env::var_os(name).is_some())
+}
+
+/// [`env_for`] with the host environment lookup given (tests).
+fn env_with(m: &Manifest, values: &Values, secrets: &dyn SecretStore, host_has: &dyn Fn(&str) -> bool) -> Vec<(String, String)> {
+    let text = |v: &Value| match v {
+        Value::String(t) => t.clone(),
+        other => other.to_string(),
+    };
     let mut env = Vec::new();
     for s in &m.settings {
         let Some(name) = s.env.first() else { continue };
         let value = if s.is_secret() {
             secrets.get(&m.id, &s.id).ok().flatten()
+        } else if let Some(v) = values.get(&s.id) {
+            Some(text(v))
         } else {
-            values.get(&s.id).map(|v| match v {
-                Value::String(t) => t.clone(),
-                other => other.to_string(),
-            })
+            s.default.as_ref().filter(|d| !d.is_null()).map(text).filter(|d| !d.is_empty() && !s.env.iter().any(|n| host_has(n)))
         };
         if let Some(v) = value {
             env.push((name.clone(), v));
@@ -238,6 +250,39 @@ mod tests {
         let env = env_for(&m, &loaded, &store);
         assert_eq!(env, [("S_SERVICE".to_string(), "b".to_string()), ("S_KEY".to_string(), "sk-1".to_string())]);
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn unsaved_settings_export_their_default() {
+        // FX6: a default reaches the env when nothing is saved; a saved value still wins
+        let m = Manifest::parse(
+            &json!({"schema": "bashcut-plugin/1", "id": "test.d", "version": "0.1.0", "entry": {"command": ["x"]},
+            "settings": [
+                {"id": "service", "type": "enum", "choices": ["a", "b"], "default": "a", "env": ["D_SERVICE", "D_ALT"]},
+                {"id": "n", "type": "integer", "default": 3, "env": ["D_N"]},
+                {"id": "on", "type": "bool", "default": true, "env": ["D_ON"]},
+                {"id": "path", "type": "string", "default": "", "env": ["D_PATH"]},
+                {"id": "nodefault", "type": "string", "env": ["D_NONE"]},
+                {"id": "fileOnly", "type": "string", "default": "x"},
+                {"id": "apiKey", "type": "secret", "env": ["D_KEY"]}
+            ]})
+            .to_string(),
+        )
+        .unwrap();
+        let none = |_: &str| false;
+        let store = MemoryStore::default();
+        let pairs = |v: &[(&str, &str)]| v.iter().map(|(a, b)| (a.to_string(), b.to_string())).collect::<Vec<_>>();
+        assert_eq!(env_with(&m, &Values::new(), &store, &none), pairs(&[("D_SERVICE", "a"), ("D_N", "3"), ("D_ON", "true")]));
+        let saved: Values = [("service".to_string(), json!("b")), ("on".to_string(), json!(false)), ("path".to_string(), json!("/p"))].into();
+        store.set(&m.id, "apiKey", "sk").unwrap();
+        assert_eq!(env_with(&m, &saved, &store, &none), pairs(&[("D_SERVICE", "b"), ("D_N", "3"), ("D_ON", "false"), ("D_PATH", "/p"), ("D_KEY", "sk")]));
+        // the user's own export is inherited by the child: a default never overrides it, a saved value does
+        let host = |n: &str| n == "D_N" || n == "D_ALT";
+        assert_eq!(env_with(&m, &saved, &store, &host), pairs(&[("D_SERVICE", "b"), ("D_ON", "false"), ("D_PATH", "/p"), ("D_KEY", "sk")]));
+        assert_eq!(env_with(&m, &Values::new(), &store, &host), pairs(&[("D_ON", "true"), ("D_KEY", "sk")]), "a later env name counts too");
+        // no stored secret: nothing exported for it (a secret never has a default)
+        store.delete(&m.id, "apiKey").unwrap();
+        assert!(env_with(&m, &Values::new(), &store, &none).iter().all(|(k, _)| k != "D_KEY"));
     }
 
     #[cfg(unix)]
