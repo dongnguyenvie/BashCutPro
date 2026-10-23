@@ -13,7 +13,7 @@ use serde_json::{Map, Value, json};
 use super::hints::{self, CONTROL_OFF, HOW_TO_TURN_ON};
 use super::plugins;
 use super::strings::{self, f, s};
-use super::widgets::button;
+use super::widgets::{META, NOTE, button, note};
 use crate::FilmcraftApp;
 use crate::native_dialogs::FileDialog;
 
@@ -222,7 +222,7 @@ pub fn draw(app: &mut FilmcraftApp, ui: &mut egui::Ui) {
 
     // before any click: without the control channel, project actions cannot run
     if !hints::control_on() {
-        let r = ui.label(egui::RichText::new(s(CONTROL_OFF)).size(11.0).color(t.text_dim)).on_hover_text(s(HOW_TO_TURN_ON));
+        let r = note(ui, s(CONTROL_OFF), NOTE, t.text_dim).on_hover_text(s(HOW_TO_TURN_ON));
         app.auto.add_response("bashcut.plugins.setup", &r, s(CONTROL_OFF));
         super::control::turn_on_button(app, ui, "bashcut.plugins.turnOn");
         ui.add_space(4.0);
@@ -233,7 +233,7 @@ pub fn draw(app: &mut FilmcraftApp, ui: &mut egui::Ui) {
     // installed
     ui.label(egui::RichText::new(s("Installed")).strong().color(t.text));
     if installed.is_empty() {
-        ui.label(egui::RichText::new(s("No plugins installed yet.")).size(11.0).color(t.text_dim));
+        note(ui, s("No plugins installed yet."), NOTE, t.text_dim);
     }
     for p in &installed {
         plugin_card(app, ui, &ctx, &mut d, &snap, p);
@@ -251,7 +251,7 @@ pub fn draw(app: &mut FilmcraftApp, ui: &mut egui::Ui) {
         }
     });
     if !can_install {
-        ui.label(egui::RichText::new(s("No data folder in this session: plugins cannot be installed.")).size(11.0).color(t.text_dim));
+        note(ui, s("No data folder in this session: plugins cannot be installed."), NOTE, t.text_dim);
     }
     let listed: Vec<&Entry> = registry.iter().flat_map(|r| &r.plugins).filter(|e| !installed.iter().any(|p| p.id == e.id)).collect();
     // what the registry check says; where the registry lives is in the tooltip
@@ -288,16 +288,16 @@ fn registry_row(app: &mut FilmcraftApp, ui: &mut egui::Ui, ctx: &egui::Context, 
             run(app, ctx, d, "install", json!({"plugin": e.id}));
         }
         if !supported {
-            ui.label(egui::RichText::new(s("Not available on this system")).size(10.5).color(t.text_dim));
+            note(ui, s("Not available on this system"), META, t.text_dim);
         }
     });
     if !e.summary_in(lang).is_empty() {
-        ui.label(egui::RichText::new(plain(e.summary_in(lang))).size(11.0).color(t.text_dim));
+        note(ui, plain(e.summary_in(lang)), NOTE, t.text_dim);
     }
     // a failed install says why next to its button
     if let Some(j) = snap.newest_install.get(&e.id).and_then(|id| snap.jobs.get(id)).filter(|j| !j.state.is_running() && j.state != JobState::Succeeded) {
         let text = f("Failed: {error}", &[("error", &hints::friendly(&j.message))]);
-        let r = ui.label(egui::RichText::new(&text).size(11.0).color(t.danger));
+        let r = note(ui, &text, NOTE, t.danger);
         app.auto.add_response(&format!("bashcut.plugins.{}.install.status", e.id), &r, &text);
     }
 }
@@ -329,7 +329,7 @@ fn last_run(app: &mut FilmcraftApp, ui: &mut egui::Ui, ctx: &egui::Context, d: &
         }
         if line.in_runs {
             if !line.failed {
-                ui.label(egui::RichText::new("·").size(11.0).color(t.text_dim));
+                note(ui, "·", NOTE, t.text_dim);
             }
             let r = ui.link(egui::RichText::new(s("Open in Runs")).size(11.0));
             app.auto.add_response(&format!("{id}.runs"), &r, s("Open in Runs"));
@@ -358,7 +358,7 @@ fn plugin_card(app: &mut FilmcraftApp, ui: &mut egui::Ui, ctx: &egui::Context, d
             }
         });
         let error = p.error.clone().unwrap_or_default();
-        ui.label(egui::RichText::new(error).size(11.0).color(t.text_dim));
+        note(ui, error, NOTE, t.text_dim);
         return;
     };
     let (update, view) = plugins::with(app, ctx, |h| (h.update_for(&p.id), h.view(&p.id).map(|(job, v)| (job, v.clone()))));
@@ -369,7 +369,7 @@ fn plugin_card(app: &mut FilmcraftApp, ui: &mut egui::Ui, ctx: &egui::Context, d
         .show(ui, |ui| {
             last_run(app, ui, ctx, d, snap, &p.id);
             if !m.summary_in(lang).is_empty() {
-                ui.label(egui::RichText::new(plain(m.summary_in(lang))).size(11.0).color(t.text_dim));
+                note(ui, plain(m.summary_in(lang)), NOTE, t.text_dim);
             }
             ui.horizontal(|ui| {
                 let updating = snap.installing.contains(&p.id);
@@ -456,7 +456,7 @@ fn settings_form(app: &mut FilmcraftApp, ui: &mut egui::Ui, ctx: &egui::Context,
             });
         }
         if !st.help_in(lang).is_empty() {
-            ui.label(egui::RichText::new(plain(st.help_in(lang))).size(10.5).color(t.text_dim));
+            note(ui, plain(st.help_in(lang)), META, t.text_dim);
         }
     }
     if m.settings.iter().any(|st| !st.is_secret()) && button(app, ui, &format!("bashcut.plugins.{}.settings.save", m.id), s("Save settings"), true) {
@@ -501,9 +501,9 @@ fn action_row(app: &mut FilmcraftApp, ui: &mut egui::Ui, ctx: &egui::Context, d:
             }
         }
         if a.needs == "project" && control {
-            ui.label(egui::RichText::new(s("uses the open project")).size(10.5).color(t.text_dim));
+            note(ui, s("uses the open project"), META, t.text_dim);
         } else if a.needs == "project" {
-            let r = ui.label(egui::RichText::new(s("needs the control channel")).size(10.5).color(t.text_dim)).on_hover_text(s(HOW_TO_TURN_ON));
+            let r = note(ui, s("needs the control channel"), META, t.text_dim).on_hover_text(s(HOW_TO_TURN_ON));
             app.auto.add_response(&format!("bashcut.plugins.{}.action.{}.blocked", m.id, a.id), &r, s("needs the control channel"));
         }
         // with parameters, the button sits in the form so the batch takes their values

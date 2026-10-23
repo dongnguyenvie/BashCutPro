@@ -20,6 +20,7 @@ use serde::Serialize;
 use serde_json::{Map, Value, json};
 
 use super::strings::{f, s};
+use super::widgets::{META, note};
 use crate::FilmcraftApp;
 use crate::theme::Tokens;
 
@@ -787,7 +788,7 @@ fn paint_row(ui: &egui::Ui, r: Rect, it: &Item, t: &Tokens) {
 fn params_editor(app: &mut FilmcraftApp, ui: &mut egui::Ui, p: &mut Palette, it: &Item, cmd_enter: bool) -> Option<Act> {
     let t = app.tokens;
     ui.label(egui::RichText::new(&it.label).font(Tokens::semibold(13.0)).color(t.text));
-    ui.label(egui::RichText::new(&it.command).size(10.5).color(t.text_dim));
+    note(ui, &it.command, META, t.text_dim);
     if !it.signature.is_empty() {
         ui.label(egui::RichText::new(&it.signature).monospace().size(10.5).color(t.text_dim));
     }

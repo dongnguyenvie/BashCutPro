@@ -13,7 +13,7 @@ use serde_json::{Value, json};
 use super::agent;
 use super::hints::{self, HOW_TO_TURN_ON};
 use super::strings::{f, s};
-use super::widgets::button;
+use super::widgets::{META, NOTE, button, note};
 use crate::FilmcraftApp;
 
 /// The pending gate is re-read from `plan.json` this often (seconds), not every frame.
@@ -109,19 +109,19 @@ pub fn draw(app: &mut FilmcraftApp, ui: &mut egui::Ui) {
     let out =
         egui::ScrollArea::vertical().id_salt("bashcut.agent.transcript").max_height(height).auto_shrink([false, false]).stick_to_bottom(true).show(ui, |ui| {
             if snap.items.is_empty() {
-                ui.label(egui::RichText::new(f("Ask {agent} to edit this project.", &[("agent", &snap.agent.1)])).size(11.0).color(t.text_dim));
+                note(ui, f("Ask {agent} to edit this project.", &[("agent", &snap.agent.1)]), NOTE, t.text_dim);
                 if let Some(prompt) = examples(app, ui) {
                     v.input = prompt;
                     ctx.memory_mut(|m| m.request_focus(input_id()));
                 }
-                ui.label(egui::RichText::new(s("The agent stops at each stage for your approval.")).size(11.0).color(t.text_dim));
+                note(ui, s("The agent stops at each stage for your approval."), NOTE, t.text_dim);
             }
             transcript(app, ui, &snap.items);
             if running {
                 ui.horizontal(|ui| {
                     ui.spinner();
                     let label = if snap.status == Status::Stopping { s("Stopping…") } else { s("Working…") };
-                    ui.label(egui::RichText::new(label).size(11.0).color(t.text_dim));
+                    note(ui, label, NOTE, t.text_dim);
                 });
             }
         });
@@ -152,19 +152,19 @@ fn missing_line(spec: &bashcut_agent::AgentSpec) -> String {
 fn readiness(app: &mut FilmcraftApp, ui: &mut egui::Ui, ctx: &egui::Context, snap: &Snapshot) {
     let t = app.tokens;
     if let Some(line) = &snap.missing {
-        let r = ui.label(egui::RichText::new(line).size(11.0).color(t.danger));
+        let r = note(ui, line, NOTE, t.danger);
         app.auto.add_response("bashcut.agent.ready.agent", &r, line);
     }
     if !hints::control_on() {
         let line = s("Control channel off: the agent cannot edit the open project.");
-        let r = ui.label(egui::RichText::new(line).size(11.0).color(t.text_dim)).on_hover_text(s(HOW_TO_TURN_ON));
+        let r = note(ui, line, NOTE, t.text_dim).on_hover_text(s(HOW_TO_TURN_ON));
         app.auto.add_response("bashcut.agent.ready.control", &r, line);
     }
     super::control::setting(app, ui);
     if !snap.has_project {
         ui.horizontal_wrapped(|ui| {
             let line = s("Project not saved: conversations will not be kept");
-            let r = ui.label(egui::RichText::new(line).size(11.0).color(t.text_dim));
+            let r = note(ui, line, NOTE, t.text_dim);
             app.auto.add_response("bashcut.agent.ready.project", &r, line);
             if button(app, ui, "bashcut.agent.save", s("Save…"), true)
                 && let Err(e) = crate::menus::invoke(app, ctx, "file.save", json!({}))
@@ -238,7 +238,7 @@ fn gate_card(app: &mut FilmcraftApp, ui: &mut egui::Ui, ctx: &egui::Context, v: 
             ui.label(egui::RichText::new(&g.summary).size(11.5).color(t.text));
         }
         for line in g.evidence_lines() {
-            ui.label(egui::RichText::new(format!("• {line}")).size(11.0).color(t.text_dim));
+            note(ui, format!("• {line}"), NOTE, t.text_dim);
         }
         let r = ui.add(egui::TextEdit::multiline(&mut v.note).hint_text(s("Note (needed to ask for changes)")).desired_rows(2).desired_width(f32::INFINITY));
         app.auto.add_response("bashcut.gate.note", &r, "note");
@@ -310,10 +310,10 @@ fn transcript(app: &mut FilmcraftApp, ui: &mut egui::Ui, items: &[Item]) {
                 ui.label(egui::RichText::new(line).size(11.0).color(t.accent));
             }
             Item::Error { message } => {
-                ui.label(egui::RichText::new(message).size(11.0).color(t.danger));
+                note(ui, message, NOTE, t.danger);
             }
             Item::Notice { message } => {
-                ui.label(egui::RichText::new(message).size(10.5).color(t.text_dim));
+                note(ui, message, META, t.text_dim);
             }
         }
         i += 1;

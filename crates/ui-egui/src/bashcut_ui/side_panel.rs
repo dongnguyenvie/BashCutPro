@@ -6,6 +6,7 @@ use egui::{Align2, Rect, Sense, Stroke, pos2, vec2};
 
 use super::state::{MAX_WIDTH, MIN_WIDTH};
 use super::strings::s;
+use super::widgets::{NOTE, note};
 use super::{SECTIONS, Section, State};
 use crate::FilmcraftApp;
 use crate::icons::{self, Icon};
@@ -83,7 +84,7 @@ fn header_button(app: &mut FilmcraftApp, ui: &mut egui::Ui, r: Rect, icon: Icon,
 
 /// A section's content: its blurb, then what its `draw` shows, scrolling.
 fn body(app: &mut FilmcraftApp, ui: &mut egui::Ui, sec: &Section) {
-    ui.label(egui::RichText::new(s(sec.blurb)).size(11.0).color(app.tokens.text_dim));
+    note(ui, s(sec.blurb), NOTE, app.tokens.text_dim);
     ui.add_space(6.0);
     egui::ScrollArea::vertical().id_salt(("bashcut.scroll", sec.id)).auto_shrink([false, false]).show(ui, |ui| (sec.draw)(app, ui));
 }

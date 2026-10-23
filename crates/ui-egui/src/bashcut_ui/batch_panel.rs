@@ -12,7 +12,7 @@ use super::batch;
 use super::palette::{self, Item};
 use super::plugins_panel::{Spec, field, gated_button, param_title, param_value, required, value_text};
 use super::strings::{f, s};
-use super::widgets::button;
+use super::widgets::{META, NOTE, button, note};
 use crate::FilmcraftApp;
 use crate::native_dialogs::FileDialog;
 use bashcut_batch::book::now_ms;
@@ -126,9 +126,9 @@ pub fn draw(app: &mut FilmcraftApp, ui: &mut egui::Ui) {
             call(app, &ctx, &mut v, "cancel", json!({}));
         }
         if !running && draft.inputs.is_empty() {
-            ui.label(egui::RichText::new(s("Add files to run the batch.")).size(10.5).color(app.tokens.text_dim));
+            note(ui, s("Add files to run the batch."), META, app.tokens.text_dim);
         } else if let Some(why) = why.filter(|w| !running && !w.is_empty()) {
-            let r = ui.label(egui::RichText::new(&why).size(10.5).color(app.tokens.danger));
+            let r = note(ui, &why, META, app.tokens.danger);
             app.auto.add_response("bashcut.batch.run.blocked", &r, &why);
         }
     });
@@ -198,7 +198,7 @@ fn inputs(app: &mut FilmcraftApp, ui: &mut egui::Ui, ctx: &egui::Context, v: &mu
         heading(app, ui, "Inputs");
         if !list.is_empty() {
             let n = list.len().to_string();
-            ui.label(egui::RichText::new(f("{n} files ·", &[("n", &n)])).size(10.5).color(t.text_dim));
+            note(ui, f("{n} files ·", &[("n", &n)]), META, t.text_dim);
             if button(app, ui, "bashcut.batch.clearInputs", s("Clear all"), true) {
                 call(app, ctx, v, "clearInputs", json!({}));
             }
@@ -208,7 +208,7 @@ fn inputs(app: &mut FilmcraftApp, ui: &mut egui::Ui, ctx: &egui::Context, v: &mu
     let frame = egui::Frame::group(ui.style()).stroke(egui::Stroke::new(1.0, if hovering { t.accent } else { t.text_dim })).show(ui, |ui| {
         ui.set_width(ui.available_width());
         if list.is_empty() {
-            ui.label(egui::RichText::new(s("Drop files or folders here, or add them below.")).size(11.0).color(t.text_dim));
+            note(ui, s("Drop files or folders here, or add them below."), NOTE, t.text_dim);
         }
         for (i, path) in list.iter().enumerate() {
             ui.horizontal(|ui| {
@@ -268,7 +268,7 @@ fn step_params(item: &Item) -> Option<Value> {
 fn steps(app: &mut FilmcraftApp, ui: &mut egui::Ui, ctx: &egui::Context, v: &mut View, list: &[bashcut_batch::pipeline::Step]) {
     let t = app.tokens;
     heading(app, ui, "Steps");
-    ui.label(egui::RichText::new(s("Each input gets its own project; then these run on it in order.")).size(10.5).color(t.text_dim));
+    note(ui, s("Each input gets its own project; then these run on it in order."), META, t.text_dim);
     let n = list.len();
     for (i, step) in list.iter().enumerate() {
         let label = step.label.clone().unwrap_or_else(|| step.describe());
@@ -279,7 +279,7 @@ fn steps(app: &mut FilmcraftApp, ui: &mut egui::Ui, ctx: &egui::Context, v: &mut
             if let Some(plugin) = step.plugin_action.as_ref().map(|a| a.plugin.clone()).filter(|_| matches!(source, Source::NotInstalled)) {
                 let r = ui.add_enabled(false, egui::Button::new(format!("{}. {label}", i + 1)));
                 app.auto.add_response(&format!("bashcut.batch.step.{i}"), &r, &label);
-                let r = ui.label(egui::RichText::new(s("Plugin not installed")).size(10.5).color(t.text_dim));
+                let r = note(ui, s("Plugin not installed"), META, t.text_dim);
                 app.auto.add_response(&format!("bashcut.batch.step.{i}.notInstalled"), &r, s("Plugin not installed"));
                 if button(app, ui, &format!("bashcut.batch.step.{i}.install"), s("Install"), true)
                     && let Err(e) = super::plugins::invoke(app, ctx, "install", &json!({"plugin": plugin}))
@@ -307,7 +307,7 @@ fn steps(app: &mut FilmcraftApp, ui: &mut egui::Ui, ctx: &egui::Context, v: &mut
         });
         if let Some(missing) = step.missing() {
             let why = f("Fill in: {fields}", &[("fields", &missing_titles(&source, missing).join(", "))]);
-            let r = ui.label(egui::RichText::new(&why).size(10.5).color(t.danger));
+            let r = note(ui, &why, META, t.danger);
             app.auto.add_response(&format!("bashcut.batch.step.{i}.error"), &r, &why);
         }
         let Some((at, text)) = v.editing.clone().filter(|(e, _)| *e == i) else { continue };
@@ -493,7 +493,7 @@ fn outputs(app: &mut FilmcraftApp, ui: &mut egui::Ui, ctx: &egui::Context, v: &m
     let t = app.tokens;
     heading(app, ui, "Outputs");
     if list.is_empty() {
-        ui.label(egui::RichText::new(s("No exports: the projects are the result.")).size(10.5).color(t.text_dim));
+        note(ui, s("No exports: the projects are the result."), META, t.text_dim);
     }
     for (i, o) in list.iter().enumerate() {
         ui.horizontal(|ui| {
@@ -518,7 +518,7 @@ fn outputs(app: &mut FilmcraftApp, ui: &mut egui::Ui, ctx: &egui::Context, v: &m
                 })
                 .collect()
         };
-        ui.label(egui::RichText::new(s("Output profiles")).size(10.5).color(t.text_dim));
+        note(ui, s("Output profiles"), META, t.text_dim);
         for (id, name) in entries(app, "bashcut.profiles.list", "profiles", "id") {
             if button(app, ui, &format!("bashcut.batch.output.profile.{id}"), &name, true) {
                 call(app, ctx, v, "addOutput", json!({"profile": id}));
@@ -526,7 +526,7 @@ fn outputs(app: &mut FilmcraftApp, ui: &mut egui::Ui, ctx: &egui::Context, v: &m
             }
         }
         ui.separator();
-        ui.label(egui::RichText::new(s("Export presets")).size(10.5).color(t.text_dim));
+        note(ui, s("Export presets"), META, t.text_dim);
         for (id, name) in entries(app, "export.presets.list", "presets", "name") {
             if button(app, ui, &format!("bashcut.batch.output.preset.{id}"), &name, true) {
                 call(app, ctx, v, "addOutput", json!({"preset": id}));
@@ -613,10 +613,10 @@ fn queue(app: &mut FilmcraftApp, ui: &mut egui::Ui, ctx: &egui::Context, v: &mut
     );
     let r = ui.add(egui::ProgressBar::new(overall).desired_height(8.0).animate(running && book.status == Status::Running));
     app.auto.add_response("bashcut.batch.progress", &r, &summary);
-    ui.label(egui::RichText::new(format!("{} · {summary}", s(status_label(book.status)))).size(10.5).color(t.text_dim));
+    note(ui, format!("{} · {summary}", s(status_label(book.status))), META, t.text_dim);
     // the runner waits (low disk) without failing anything: say so, or the queue looks stuck
     if let Some(why) = book.paused.as_ref().filter(|_| running) {
-        let r = ui.label(egui::RichText::new(f("Waiting: {why}", &[("why", why)])).size(10.5).color(t.text_dim));
+        let r = note(ui, f("Waiting: {why}", &[("why", why)]), META, t.text_dim);
         app.auto.add_response("bashcut.batch.paused", &r, why);
     }
     ui.horizontal(|ui| {
@@ -655,12 +655,12 @@ fn item_row(app: &mut FilmcraftApp, ui: &mut egui::Ui, ctx: &egui::Context, v: &
             let current = item.steps.iter().find(|s| s.status == Status::Running).map(|s| s.label.as_str()).unwrap_or_default();
             let r = ui.add(egui::ProgressBar::new(batch::item_progress(item, memory, now)).desired_height(6.0));
             app.auto.add_response(&format!("{id}.progress"), &r, current);
-            ui.label(egui::RichText::new(current).size(10.5).color(t.text_dim));
+            note(ui, current, META, t.text_dim);
         }
         // a step marked done by hand keeps its old error in the book; the item is fine now
         let error = item.error.as_ref().or_else(|| item.steps.iter().rev().find_map(|s| s.error.as_ref())).filter(|_| item.status != Status::Done);
         if let Some(e) = error {
-            let r = ui.label(egui::RichText::new(&e.message).size(10.5).color(t.danger));
+            let r = note(ui, &e.message, META, t.danger);
             app.auto.add_response(&format!("{id}.error"), &r, &e.message);
         }
         for (n, out) in item.outputs().iter().enumerate() {
@@ -669,7 +669,7 @@ fn item_row(app: &mut FilmcraftApp, ui: &mut egui::Ui, ctx: &egui::Context, v: &
             }
         }
         if item.status == Status::NeedsAttention {
-            ui.label(egui::RichText::new(s("This step needs you: open the project, finish it by hand, then click Mark done.")).size(10.5).color(t.text_dim));
+            note(ui, s("This step needs you: open the project, finish it by hand, then click Mark done."), META, t.text_dim);
         }
         if item.status.is_final() {
             ui.horizontal(|ui| {

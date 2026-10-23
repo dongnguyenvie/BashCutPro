@@ -21,7 +21,7 @@ use serde_json::{Value, json};
 
 use super::plugins;
 use super::strings::{f, s};
-use super::widgets::small_button;
+use super::widgets::{META, NOTE, note, small_button};
 use crate::FilmcraftApp;
 
 pub const RESOURCES: &str = "bashcut.resources";
@@ -372,7 +372,7 @@ pub fn draw(app: &mut FilmcraftApp, ui: &mut egui::Ui) {
     let plugin = if p.online { RESOURCES } else { LIBRARY };
     if !installed(app, &ctx, plugin) {
         let name = if p.online { s("Online Resources") } else { s("Library") };
-        ui.label(egui::RichText::new(f("Install the {plugin} plugin to use this tab.", &[("plugin", name)])).size(11.0).color(t.text_dim));
+        note(ui, f("Install the {plugin} plugin to use this tab.", &[("plugin", name)]), NOTE, t.text_dim);
         if small_button(app, ui, "bashcut.library.install", s("Open Plugins"), true) {
             super::State::update(&ctx, |st| st.show("plugins"));
         }
@@ -424,7 +424,7 @@ pub fn draw(app: &mut FilmcraftApp, ui: &mut egui::Ui) {
     if !p.searches.is_empty() {
         ui.horizontal(|ui| {
             ui.spinner();
-            ui.label(egui::RichText::new(s("Searching…")).size(11.0).color(t.text_dim));
+            note(ui, s("Searching…"), NOTE, t.text_dim);
         });
     }
     ui.add_space(4.0);
@@ -432,7 +432,7 @@ pub fn draw(app: &mut FilmcraftApp, ui: &mut egui::Ui) {
     let shown = if p.online { p.shown.clone() } else { p.mine_shown.clone() };
     let items = shown.as_ref().and_then(|k| p.results.get(k)).cloned().unwrap_or_default();
     if shown.is_some() && items.is_empty() && p.searches.is_empty() {
-        ui.label(egui::RichText::new(s("Nothing found.")).size(11.0).color(t.text_dim));
+        note(ui, s("Nothing found."), NOTE, t.text_dim);
     }
     let has_seq = app.session.active_sequence().is_some();
     for (i, item) in items.iter().enumerate() {
@@ -473,7 +473,7 @@ fn online_row(app: &mut FilmcraftApp, ui: &mut egui::Ui, ctx: &egui::Context, p:
             }
         }
         if !facts.is_empty() {
-            ui.label(egui::RichText::new(facts.join(" · ")).size(10.5).color(t.text_dim));
+            note(ui, facts.join(" · "), META, t.text_dim);
         }
         let licence = text(item, "license");
         let (lic, color) = if licence.is_empty() {
@@ -531,7 +531,7 @@ fn mine_row(app: &mut FilmcraftApp, ui: &mut egui::Ui, ctx: &egui::Context, p: &
         });
         let purpose = text(item, "purpose");
         if !purpose.is_empty() {
-            ui.label(egui::RichText::new(purpose).size(11.0).color(t.text_dim));
+            note(ui, purpose, NOTE, t.text_dim);
         }
         let licence = text(item, "license");
         if !licence.is_empty() {
