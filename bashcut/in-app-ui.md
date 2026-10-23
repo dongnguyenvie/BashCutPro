@@ -292,6 +292,25 @@ labels or subclips (§1 rule 1). A project opened in upstream FilmCraft still wo
   `bashcut_agent::format::FORMATS`, RC6; see [plugin-host.md](plugin-host.md)). The app writes a temporary MCP config for
   `<engine> mcp --bridge 127.0.0.1:<control port>` (`bashcutpro-cli`, else `bcpro` or `filmcraft-cli`) and starts the agent with the kit's skills available; with the
   control channel off (CC1: on by default) an agent that needs the app says so instead of starting.
+- **MCP server and permissions (AG7, checked with `claude` 2.1.309 on macOS)**: the config names the server
+  `bashcutpro` (`bashcut_agent::process::SERVER`), the name the agent kit's `bcp` plugin and `/bcp:setup` use, so
+  Claude Code's tools are `mcp__bashcutpro__*` (Codex: `-c mcp_servers.bashcutpro.*`). Claude Code also gets
+  `--strict-mcp-config`: in a real `claude -p` run with `--plugin-dir <kit>` the `system/init` event listed the
+  kit's own server as `plugin:bcp:bashcutpro` (tools `mcp__plugin_bcp_bashcutpro__*`) next to ours (`bashcutpro`,
+  source `dynamic`), plus the user's claude.ai connectors; with the flag only `bashcutpro` is left, while the
+  `bcp:*` skills and every plugin still load (`plugins`, `skills`). The user's other MCP servers are not offered to
+  the in-app agent; that is the price of one copy of the tools. No `--bare` (it skips the subscription login and
+  plugin discovery). Allowed without a prompt (`process::allowed_tools`): `mcp__bashcutpro` and the engine CLI
+  (`Bash(bashcutpro-cli *)`, `Bash(bcpro *)`, `Bash(bashcutpro *)`; `/bcp:setup` checks the engine with
+  `bashcutpro commands razor` and otherwise only calls the MCP tools). Nothing broader, no bypass mode: in print
+  mode anything else that needs approval is denied. The `system/init` event also carries `capabilities`
+  (`interrupt_receipt_v1`, `interrupt_cancel_queued_v1`, …), `tools`, `mcp_servers` and `plugins`.
+- **Working directory**: the project's folder, or `<data dir>/agent` (`~/Library/Application Support/BashCutPro/agent`
+  on macOS) for an unsaved project, never the app's folder or a checkout (a BashCutPro checkout's `.mcp.json` adds
+  `filmcraft` servers for development). Claude Code keeps its sessions per folder, so `--resume` finds them there.
+- **Batch agent steps** (`crates/bashcut-batch/src/agent.rs`) use the same server name and add
+  `--strict-mcp-config --permission-prompts none`: unattended, a call that would prompt is denied at once (checked:
+  it shows up in the `result`'s `permission_denials`) instead of waiting.
 - **Turn** (`crates/bashcut-agent`, `process.rs`): one child process per turn. The message plus a short context line
   (project, active sequence, selection, playhead) goes in as one stream-json user message, stdin closes, and events
   stream back into the transcript (`stream_json.rs`, `transcript.rs`). The next turn resumes the agent's session
@@ -316,7 +335,7 @@ labels or subclips (§1 rule 1). A project opened in upstream FilmCraft still wo
   `bashcut.gate.{approve, change, note}`.
 - **Phase 1 adapters**: Claude Code (`claude -p --output-format stream-json --input-format stream-json`) and Codex
   (`codex exec --json -` with the prompt on stdin, `resume <thread>` for later turns, the MCP server passed as `-c
-  mcp_servers.filmcraft.*`; `codex`, or `BASHCUT_CODEX`; events `codex-json`, #37); others as plugins.
+  mcp_servers.bashcutpro.*`; `codex`, or `BASHCUT_CODEX`; events `codex-json`, #37); others as plugins.
 
 ### 6a. Batch section in detail (#46)
 

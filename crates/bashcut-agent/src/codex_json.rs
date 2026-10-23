@@ -117,13 +117,13 @@ mod tests {
         assert_eq!(p.parse_line(r#"{"type":"turn.started"}"#), vec![]);
         assert_eq!(p.parse_line(r#"{"type":"item.completed","item":{"id":"i0","type":"reasoning","text":"hmm"}}"#), vec![]);
         let started = p.parse_line(
-            r#"{"type":"item.started","item":{"id":"i1","type":"mcp_tool_call","server":"filmcraft","tool":"command_execute","arguments":{"command":"edit.razor"},"status":"in_progress"}}"#,
+            r#"{"type":"item.started","item":{"id":"i1","type":"mcp_tool_call","server":"bashcutpro","tool":"command_execute","arguments":{"command":"edit.razor"},"status":"in_progress"}}"#,
         );
         assert!(
-            matches!(&started[..], [Event::ToolUse { id, name, input }] if id == "i1" && name == "mcp__filmcraft__command_execute" && input["command"] == "edit.razor")
+            matches!(&started[..], [Event::ToolUse { id, name, input }] if id == "i1" && name == "mcp__bashcutpro__command_execute" && input["command"] == "edit.razor")
         );
         let done = p.parse_line(
-            r#"{"type":"item.completed","item":{"id":"i1","type":"mcp_tool_call","server":"filmcraft","tool":"command_execute","arguments":{"command":"edit.razor"},"result":{"content":[{"type":"text","text":"ok"}]},"status":"completed"}}"#,
+            r#"{"type":"item.completed","item":{"id":"i1","type":"mcp_tool_call","server":"bashcutpro","tool":"command_execute","arguments":{"command":"edit.razor"},"result":{"content":[{"type":"text","text":"ok"}]},"status":"completed"}}"#,
         );
         assert_eq!(done, vec![Event::ToolResult { id: "i1".into(), text: "ok".into(), is_error: false }]);
         // a shell command seen only when completed: the call, then its result
@@ -135,7 +135,7 @@ mod tests {
         let f = p.parse_line(r#"{"type":"turn.failed","error":{"message":"quota"}}"#);
         assert!(matches!(&f[0], Event::Result { ok: false, text, .. } if text == "quota"));
         let e = p.parse_line(
-            r#"{"type":"item.completed","item":{"id":"i4","type":"mcp_tool_call","server":"filmcraft","tool":"t","error":{"message":"no such command"},"status":"failed"}}"#,
+            r#"{"type":"item.completed","item":{"id":"i4","type":"mcp_tool_call","server":"bashcutpro","tool":"t","error":{"message":"no such command"},"status":"failed"}}"#,
         );
         assert!(matches!(&e[..], [Event::ToolUse { .. }, Event::ToolResult { is_error: true, text, .. }] if text == "no such command"));
     }
@@ -160,7 +160,7 @@ mod tests {
         let mut p = Parser::default();
         let call = |id: &str, args: &str| {
             format!(
-                r#"{{"type":"item.started","item":{{"id":"{id}","type":"mcp_tool_call","server":"filmcraft","tool":"command_execute","arguments":{{"text":"{args}"}}}}}}"#
+                r#"{{"type":"item.started","item":{{"id":"{id}","type":"mcp_tool_call","server":"bashcutpro","tool":"command_execute","arguments":{{"text":"{args}"}}}}}}"#
             )
         };
         let big = p.parse_line(&call("big", &"y".repeat(9 * 1024)));

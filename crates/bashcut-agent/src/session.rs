@@ -166,7 +166,7 @@ impl Agent {
         self.set_project(ctx.project.as_deref());
         let argv = self.command_line(ctx)?;
         let message = if ctx.line.is_empty() { text.to_string() } else { format!("[{}]\n\n{text}", ctx.line) };
-        let cwd = ctx.project.as_deref().and_then(Path::parent).map(Path::to_path_buf).unwrap_or_else(std::env::temp_dir);
+        let cwd = ctx.project.as_deref().and_then(Path::parent).map(Path::to_path_buf).unwrap_or_else(unsaved_cwd);
         let mut env = self.agent.env.clone();
         env.push(("BASHCUT_AGENT_HOST".into(), "1".into()));
         if let Some(side) = ctx.project.as_deref().map(crate::sidecar) {
@@ -336,4 +336,11 @@ impl Agent {
             _ => err(format!("unknown command bashcut.agent.{name}")),
         }
     }
+}
+
+/// Where an unsaved project's turn runs: `agent` in the app's data folder (else the temp dir), never
+/// the app's own folder or a checkout (whose `.mcp.json` and `CLAUDE.md` the agent would load).
+fn unsaved_cwd() -> PathBuf {
+    let dir = bashcut_dirs::data_dir().map(|d| d.join("agent"));
+    dir.filter(|d| std::fs::create_dir_all(d).is_ok()).unwrap_or_else(std::env::temp_dir)
 }
