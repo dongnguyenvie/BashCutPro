@@ -196,6 +196,17 @@ no "cannot be opened" / "downloaded from the internet" warning that blocks it.
   CLI zip 18.0 MB; the app, DMG and CLI zip notarized Accepted with no issues, app and DMG stapled, `spctl` accepted
   both (source=Notarized Developer ID). Opened from a quarantined DMG copy, macOS showed only the usual "downloaded
   from the Internet … Apple checked it for malicious software and none was detected" Open prompt, then the app ran.
+- Notes from the v0.12.0 builds:
+  - Windows: WiX needs `DOTNET_ROOT` exported (for a user-level .NET, `%USERPROFILE%\.dotnet`); without it the first
+    run fails with "hostfxr.dll not found". Set it and run again.
+  - Linux via podman: the podman VM needs at least 8 GB RAM (`podman machine set --memory 8192`); with 3.7 GB the
+    release build is OOM-killed.
+  - Windows smoke (`smoke.ps1`): set `CARGO_PROFILE_RELEASE_DEBUG=line-tables-only` for the release build, or the ISA
+    check misnames 2 failures.
+  - Builds ship without craft-fonts (no Japanese UI/title glyphs) unless `CRAFT_FONTS_DIR` points at a
+    [craft-fonts](https://github.com/storytold/craft-fonts) checkout when you package. Upstream is making this
+    explicit: `CRAFT_FONTS_REQUIRED` fails the build without it
+    ([storytold/filmcraft#2646](https://github.com/storytold/filmcraft/pull/2646)). Set it for release builds.
 - Codec patents: for a paid build prefer the OS encoders (VideoToolbox, Media Foundation) and get legal advice before
   selling.
 
