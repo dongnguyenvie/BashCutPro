@@ -3179,3 +3179,34 @@ fn looks_stars_and_batch_save_fit_a_narrow_panel() {
     assert!(d.harness.state().ui_error.is_none(), "{:?}", d.harness.state().ui_error);
     let _ = std::fs::remove_dir_all(&data);
 }
+
+/// SY7: a plugin run or an agent gets the window's session token only for the window's own control
+/// address; any other bridge gets none. The port and the token are process-wide, so the check runs in a
+/// child of this test binary that launches on a port and holds a known `FILMCRAFT_CONTROL_TOKEN`.
+#[test]
+fn control_token_goes_only_with_the_windows_own_bridge() {
+    use filmcraft_ui_egui::bashcut_ui::{control, plugins};
+    const CHILD: &str = "BASHCUT_UI_TEST_TOKEN_CHILD";
+    let token = "cd".repeat(32);
+    if std::env::var_os(CHILD).is_none() {
+        let exe = std::env::current_exe().unwrap();
+        let out = std::process::Command::new(exe)
+            .args(["--exact", "control_token_goes_only_with_the_windows_own_bridge", "--nocapture", "--test-threads=1"])
+            .env(CHILD, "1")
+            .env(control::ENV, "off")
+            .env(bashcut_dirs::token::ENV, &token)
+            .output()
+            .unwrap();
+        let log = format!("{}{}", String::from_utf8_lossy(&out.stdout), String::from_utf8_lossy(&out.stderr));
+        assert!(out.status.success() && log.contains("1 passed"), "{log}");
+        return;
+    }
+    // before the launch hook ran there is no own address
+    assert_eq!(plugins::control_token_for(Some("127.0.0.1:9876")), None);
+    assert_eq!(control::launch_port(Some(9876), None), Some(9876));
+    assert_eq!(plugins::control_token_for(Some("127.0.0.1:9876")), Some(token.clone()), "its own launched port");
+    assert_eq!(plugins::control_token_for(Some("127.0.0.1:9877")), None, "another port");
+    assert_eq!(plugins::control_token_for(Some("10.0.0.1:9876")), None, "another host");
+    assert_eq!(plugins::control_token_for(Some("localhost:9876")), None, "only the exact address the window published");
+    assert_eq!(plugins::control_token_for(None), None, "no bridge");
+}

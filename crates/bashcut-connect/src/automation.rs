@@ -77,8 +77,28 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "test ticket: token_for gives the token for a matching live address; None for another address, a dead pid or an invalid token"]
-    fn token_for_needs_address_pid_and_valid_token() {}
+    fn token_for_needs_address_pid_and_valid_token() {
+        let d = dir("token");
+        let token = "ab".repeat(32);
+        let put_with = |address: &str, token: serde_json::Value, pid: u32| {
+            put(&d, serde_json::json!({"schema": SCHEMA, "address": address, "token": token, "pid": pid}));
+        };
+        let me = std::process::id();
+        put_with("127.0.0.1:9876", token.clone().into(), me);
+        assert_eq!(token_for(&d, "127.0.0.1:9876"), Some(token.clone()));
+        assert_eq!(token_for(&d, "127.0.0.1:9877"), None, "another address");
+        put_with("127.0.0.1:9876", token.clone().into(), u32::MAX - 7);
+        assert_eq!(token_for(&d, "127.0.0.1:9876"), None, "dead pid");
+        for bad in [serde_json::json!("short"), serde_json::json!("z".repeat(64)), serde_json::Value::Null] {
+            put_with("127.0.0.1:9876", bad, me);
+            assert_eq!(token_for(&d, "127.0.0.1:9876"), None);
+        }
+        std::fs::write(file(&d), r#"{"schema":"bashcut-automation/1","address":"127.0.0.1:9876","pid":1}"#).unwrap();
+        assert_eq!(token_for(&d, "127.0.0.1:9876"), None, "a file from an older build has no token");
+        std::fs::remove_file(file(&d)).unwrap();
+        assert_eq!(token_for(&d, "127.0.0.1:9876"), None, "no file");
+        let _ = std::fs::remove_dir_all(&d);
+    }
 
     #[test]
     fn a_live_window_is_found() {

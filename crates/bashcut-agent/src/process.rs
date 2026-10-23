@@ -564,10 +564,6 @@ pub fn write_mcp_config(cli: &str, bridge: &str) -> Result<PathBuf> {
 
 #[cfg(test)]
 mod tests {
-    #[test]
-    #[ignore = "test ticket: a turn/live launch with Context.control_token and a bridge has FILMCRAFT_CONTROL_TOKEN in env, and the MCP config file holds no token"]
-    fn control_token_reaches_the_agent_env() {}
-
     use super::*;
 
     #[test]

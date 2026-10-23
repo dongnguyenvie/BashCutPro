@@ -121,3 +121,61 @@ fn headless_mcp_answers_as_bashcutpro() {
         assert!(!text.contains("FilmCraft") && !text.contains("filmcraft-cli "), "{name} names FilmCraft");
     }
 }
+
+/// SY3: with `--bridge <window>` and no `FILMCRAFT_CONTROL_TOKEN`, the engine re-runs itself with the
+/// token `automation.json` holds for that address, so its request line carries it; a caller that
+/// already has a token keeps its own.
+#[test]
+fn bridge_requests_carry_the_window_token() {
+    use std::net::TcpListener;
+    use std::sync::mpsc;
+
+    let window_token = "ab".repeat(32);
+    let own_token = "cd".repeat(32);
+    // (env token the caller has, token the first request line must carry)
+    for (tag, env, want) in [("file", None, &window_token), ("env", Some(&own_token), &own_token)] {
+        let d = Scratch::new(tag);
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let addr = listener.local_addr().unwrap().to_string();
+        let file = d.0.join("bashcut/automation.json");
+        std::fs::create_dir_all(file.parent().unwrap()).unwrap();
+        let body = json!({"schema": "bashcut-automation/1", "address": addr, "token": window_token, "pid": std::process::id(), "project": null});
+        std::fs::write(&file, body.to_string()).unwrap();
+
+        // a fake window: reads request lines, answers each with an empty result
+        let (tx, rx) = mpsc::channel::<Value>();
+        std::thread::spawn(move || {
+            for stream in listener.incoming().flatten() {
+                let tx = tx.clone();
+                std::thread::spawn(move || {
+                    let mut out = stream.try_clone().unwrap();
+                    for line in BufReader::new(stream).lines().map_while(Result::ok) {
+                        let Ok(req) = serde_json::from_str::<Value>(&line) else { continue };
+                        let _ = tx.send(req.clone());
+                        if writeln!(out, "{}", json!({"id": req["id"], "ok": true, "result": []})).is_err() {
+                            break;
+                        }
+                    }
+                });
+            }
+        });
+
+        let mut cmd = Command::new(env!("CARGO_BIN_EXE_bashcutpro-cli"));
+        cmd.args(["commands", "--bridge", &addr])
+            .env("BASHCUTPRO_DATA_DIR", &d.0)
+            .env_remove("FILMCRAFT_DATA_DIR")
+            .env_remove("BASHCUT_TOKEN_REEXEC")
+            .env_remove("FILMCRAFT_CONTROL_TOKEN")
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null());
+        if let Some(t) = env {
+            cmd.env("FILMCRAFT_CONTROL_TOKEN", t);
+        }
+        let mut child = cmd.spawn().expect("spawn bashcutpro-cli");
+        let req = rx.recv_timeout(std::time::Duration::from_secs(30)).unwrap_or_else(|_| panic!("{tag}: the CLI sent no request to the fake window"));
+        let _ = child.kill();
+        let _ = child.wait();
+        assert_eq!(req["token"], json!(want), "{tag}: {req}");
+    }
+}

@@ -114,12 +114,23 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "test ticket: bridge_of reads --bridge X and --bridge=X, None when absent"]
-    fn bridge_of_reads_both_spellings() {}
+    fn bridge_of_reads_both_spellings() {
+        assert_eq!(bridge_of(&v(&["exec", "x", "--bridge", "127.0.0.1:1"])).as_deref(), Some("127.0.0.1:1"));
+        assert_eq!(bridge_of(&v(&["exec", "--bridge=127.0.0.1:2", "x"])).as_deref(), Some("127.0.0.1:2"));
+        assert_eq!(bridge_of(&v(&["exec", "x"])), None);
+        assert_eq!(bridge_of(&v(&["exec", "--bridge"])), None, "a flag with no value");
+        assert_eq!(bridge_of(&[]), None);
+    }
 
     #[test]
-    #[ignore = "test ticket: token_needed is None with the env or guard set, without a bridge or lookup hit; else the token"]
-    fn token_needed_decides() {}
+    fn token_needed_decides() {
+        let hit = |addr: &str| (addr == "127.0.0.1:1").then(|| "tok".to_string());
+        assert_eq!(token_needed(false, false, Some("127.0.0.1:1"), hit).as_deref(), Some("tok"));
+        assert_eq!(token_needed(true, false, Some("127.0.0.1:1"), hit), None, "the caller gave a token");
+        assert_eq!(token_needed(false, true, Some("127.0.0.1:1"), hit), None, "the re-executed process");
+        assert_eq!(token_needed(false, false, None, |_| panic!("no bridge, no lookup")), None);
+        assert_eq!(token_needed(false, false, Some("127.0.0.1:2"), hit), None, "nothing known for that address");
+    }
 
     #[test]
     fn bridge_defaults_to_the_running_app() {
