@@ -1,9 +1,10 @@
 //! BashCutPro's agent sessions (fork-only; design: `bashcut/in-app-ui.md` §6, UI: `bashcut_ui/agent_panel.rs`).
 //!
-//! An agent (Claude Code, or an agent plugin) runs as a child process, one per turn: the user's
-//! message plus a context line goes in as the agent's event format writes it (a row of
-//! [`format::FORMATS`]: Claude Code's stream-json or Codex's JSON), events stream back into a
-//! [`Transcript`], and the next turn resumes the agent's session. The agent edits through
+//! An agent (Claude Code, or an agent plugin) runs as a child process: one per conversation for a
+//! live format (Claude Code's stream-json: each message is one more stdin line, [`process::Live`]),
+//! one per turn otherwise (Codex, [`Turn`]). The user's message plus a context line goes in as the
+//! agent's event format writes it (a row of [`format::FORMATS`]), events stream back into a
+//! [`Transcript`], and a new process resumes the agent's session. The agent edits through
 //! `bashcutpro-cli mcp --bridge <app>` (a temporary MCP config), so its edits land in History like any
 //! other command. Gates come from `<project>.fcproj.bashcut/plan.json`; conversations are kept in
 //! `<project>.fcproj.bashcut/conversations/`. Depends on `bashcut-dirs` and `bashcut-manifest` only.
@@ -21,7 +22,7 @@ pub mod stream_json;
 pub mod transcript;
 
 pub use plan::Gate;
-pub use process::{AgentSpec, Turn, TurnEnd};
+pub use process::{AgentSpec, Live, Turn, TurnEnd};
 pub use session::{Agent, Context, Status};
 pub use store::Conversation;
 pub use stream_json::Event;

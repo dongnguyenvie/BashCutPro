@@ -76,7 +76,6 @@ fn turns_resume_and_are_kept() {
     assert!(agent.send("  ", &ctx).is_err());
     agent.send("cut the intro", &ctx).unwrap();
     assert_eq!(agent.status, Status::Running);
-    assert!(agent.send("again", &ctx).is_err(), "one turn at a time");
     run(&mut agent);
     assert_eq!(agent.status, Status::Idle);
     assert_eq!(agent.conversation.session, "sess-1");
@@ -145,6 +144,14 @@ fn failure_and_stop_end_the_turn() {
     assert!(matches!(agent.conversation.transcript.items.last(), Some(Item::Notice { message }) if message == "Stopped."));
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+#[test]
+#[ignore = "test ticket: a fake stream-json agent that keeps reading stdin answers 3 messages (2 sent mid-turn, shown queued until its isReplay echo) with one process"]
+fn live_agent_keeps_one_process_for_three_messages() {}
+
+#[test]
+#[ignore = "test ticket: killing the live agent between turns restarts it with --resume <session_id> on the next message; exiting before reading restarts once and writes the message again"]
+fn live_agent_restarts_with_resume_after_kill() {}
 
 #[test]
 fn claude_code_needs_the_bridge() {

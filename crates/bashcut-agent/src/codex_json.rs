@@ -44,7 +44,7 @@ impl Parser {
         match v.get("type").and_then(Value::as_str).unwrap_or_default() {
             "thread.started" => {
                 self.thread = clip(&text(&v, "thread_id"), 128);
-                vec![Event::Init { session: self.thread.clone(), model: String::new() }]
+                vec![Event::Init { session: self.thread.clone(), model: String::new(), capabilities: Vec::new() }]
             }
             "item.started" => self.item(v.get("item").unwrap_or(&Value::Null), false),
             "item.completed" => self.item(v.get("item").unwrap_or(&Value::Null), true),
@@ -113,7 +113,10 @@ mod tests {
     #[test]
     fn parses_a_turn() {
         let mut p = Parser::default();
-        assert_eq!(p.parse_line(r#"{"type":"thread.started","thread_id":"th-1"}"#), vec![Event::Init { session: "th-1".into(), model: String::new() }]);
+        assert_eq!(
+            p.parse_line(r#"{"type":"thread.started","thread_id":"th-1"}"#),
+            vec![Event::Init { session: "th-1".into(), model: String::new(), capabilities: Vec::new() }]
+        );
         assert_eq!(p.parse_line(r#"{"type":"turn.started"}"#), vec![]);
         assert_eq!(p.parse_line(r#"{"type":"item.completed","item":{"id":"i0","type":"reasoning","text":"hmm"}}"#), vec![]);
         let started = p.parse_line(

@@ -1,7 +1,8 @@
 //! Claude Code's stream-json (`claude -p --output-format stream-json --input-format stream-json
-//! --verbose`): one JSON object per line. We read `system/init`, `assistant` (text and tool_use
-//! blocks), `user` (tool_result blocks) and `result`; anything else is ignored. The same format is
-//! the default `events` of agent plugins.
+//! --verbose`): one JSON object per line. We read `system/init` (session, model, `capabilities`),
+//! `assistant` (text and tool_use blocks), `user` (tool_result blocks, and the `isReplay` echo of a
+//! message Claude took from stdin with `--replay-user-messages`) and `result`; anything else is
+//! ignored. The same format is the default `events` of agent plugins.
 
 use serde_json::{Value, json};
 
@@ -13,14 +14,24 @@ pub const FORMAT: &str = bashcut_manifest::CLAUDE_STREAM_JSON;
 pub const MAX_TEXT: usize = 32 * 1024;
 /// Longest tool input kept (as JSON text).
 const MAX_INPUT: usize = 8 * 1024;
+/// `capabilities` kept from `system/init`, and the longest one.
+const MAX_CAPABILITIES: usize = 64;
+const MAX_CAPABILITY: usize = 64;
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum Event {
-    /// The agent's session started (`--resume` takes this id next turn).
+    /// The agent's session started (`--resume` takes this id next turn). Claude Code sends one per
+    /// turn of a live session.
     Init {
         session: String,
         model: String,
+        /// What the agent supports (`interrupt_receipt_v1`, …): feature-detect from it, unknown
+        /// values are kept and ignored.
+        capabilities: Vec<String>,
     },
+    /// The agent took the next message from stdin (Claude Code's `isReplay` echo): a queued message
+    /// is now being worked on.
+    Picked,
     /// Assistant text.
     Text(String),
     ToolUse {
@@ -66,8 +77,9 @@ pub fn parse_line(line: &str) -> Vec<Event> {
     let text = |v: &Value, k: &str| v.get(k).and_then(Value::as_str).unwrap_or_default().to_string();
     match v.get("type").and_then(Value::as_str).unwrap_or_default() {
         "system" if v.get("subtype").and_then(Value::as_str) == Some("init") => {
-            vec![Event::Init { session: text(&v, "session_id"), model: text(&v, "model") }]
+            vec![Event::Init { session: text(&v, "session_id"), model: text(&v, "model"), capabilities: capabilities(v.get("capabilities")) }]
         }
+        "user" if v.get("isReplay").and_then(Value::as_bool) == Some(true) => vec![Event::Picked],
         "assistant" => blocks(&v)
             .iter()
             .filter_map(|b| match b.get("type").and_then(Value::as_str) {
@@ -103,6 +115,12 @@ pub fn parse_line(line: &str) -> Vec<Event> {
         "error" => vec![Event::Notice(clip(&v.get("error").map(|e| content_text(Some(e))).unwrap_or_else(|| text(&v, "message")), 2048))],
         _ => Vec::new(),
     }
+}
+
+/// The strings of `system/init`'s `capabilities`, capped.
+fn capabilities(v: Option<&Value>) -> Vec<String> {
+    let Some(Value::Array(a)) = v else { return Vec::new() };
+    a.iter().filter_map(Value::as_str).take(MAX_CAPABILITIES).map(|c| clip(c, MAX_CAPABILITY)).collect()
 }
 
 fn blocks(v: &Value) -> Vec<Value> {
@@ -142,7 +160,7 @@ mod tests {
     #[test]
     fn parses_a_turn() {
         let init = parse_line(r#"{"type":"system","subtype":"init","session_id":"s1","model":"m","tools":[]}"#);
-        assert_eq!(init, vec![Event::Init { session: "s1".into(), model: "m".into() }]);
+        assert_eq!(init, vec![Event::Init { session: "s1".into(), model: "m".into(), capabilities: Vec::new() }]);
         let a = parse_line(
             r#"{"type":"assistant","message":{"content":[{"type":"text","text":"Cutting."},{"type":"tool_use","id":"t1","name":"mcp__bashcutpro__command_execute","input":{"command":"edit.razor"}}]}}"#,
         );
@@ -172,6 +190,10 @@ mod tests {
         );
         assert!(matches!(&parse_line(&input)[0], Event::ToolUse { input, .. } if input["truncated"] == true));
     }
+
+    #[test]
+    #[ignore = "test ticket: system/init capabilities parsed (strings kept, non-strings skipped, capped at 64), isReplay user line is Picked"]
+    fn init_capabilities_and_replay_are_parsed() {}
 
     #[test]
     fn user_message_round_trips() {

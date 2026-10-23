@@ -1,15 +1,22 @@
-//! The agent the app keeps: the chosen agent, the open conversation, the running turn, and the
+//! The agent the app keeps: the chosen agent, the open conversation, its agent process, and the
 //! project's gates. The UI calls [`Agent::poll`] each frame; [`Agent::command`] serves the
 //! `bashcut.agent.*` command ids, so the panel, shortcuts, the control channel and MCP share it.
+//!
+//! A live agent (Claude Code, AG2) keeps one process per conversation: a message sent while it
+//! works is written at once and shown as queued until the agent takes it; the turn ends at its
+//! `result`. The process is closed when the conversation, agent or project changes, after
+//! [`IDLE_CLOSE`] idle, when the panel is hidden while idle, and at app exit; the next message starts
+//! it again with `--resume`. Codex keeps one process per message.
 
+use std::collections::VecDeque;
 use std::path::{Path, PathBuf};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use serde::Serialize;
 use serde_json::{Value, json};
 
 use crate::plan::{self, Gate};
-use crate::process::{AgentSpec, Turn, TurnEnd, TurnEvent, mcp_config_path, write_mcp_config};
+use crate::process::{AgentSpec, Live, Turn, TurnEnd, TurnEvent, mcp_config_path, write_mcp_config};
 use crate::store::{self, Conversation};
 use crate::stream_json::Event;
 use crate::transcript::Item;
@@ -17,6 +24,28 @@ use crate::{Error, Result, err};
 
 /// Longest message sent.
 pub const MAX_MESSAGE: usize = 64 * 1024;
+/// A live agent idle this long is closed (its next message resumes the session in a new process).
+pub const IDLE_CLOSE: Duration = Duration::from_secs(30 * 60);
+/// At app exit, how long to wait for a live agent to end after its stdin closed.
+const EXIT_WAIT: Duration = Duration::from_secs(3);
+
+/// A message written to the live agent and not taken yet.
+struct Pending {
+    /// As written (with the context line), to write again after a restart.
+    message: String,
+    /// What the user typed, when it was sent while the agent worked (shown as queued, added to the
+    /// transcript when the agent takes it); `None`: already in the transcript.
+    queued: Option<String>,
+}
+
+/// Where and how the live agent runs, to restart it.
+#[derive(Clone, PartialEq)]
+struct Launch {
+    cwd: PathBuf,
+    env: Vec<(String, String)>,
+    /// The MCP config it was given: another one (new engine or bridge) restarts an idle agent.
+    mcp: Option<PathBuf>,
+}
 
 #[derive(Clone, Debug, PartialEq, Serialize)]
 #[serde(tag = "state", rename_all = "camelCase")]
@@ -56,6 +85,27 @@ pub struct Agent {
     /// Events received from the agent so far (all turns): the panel notes when it last changed
     /// and hints at a blocked agent after a long silence (AG1).
     events: u64,
+    /// The live agent's process, kept between messages.
+    live: Option<Live>,
+    launch: Option<Launch>,
+    /// Messages written to the live agent and not taken yet, oldest first.
+    pending: VecDeque<Pending>,
+    /// The live agent took a message and has not sent its `result` yet.
+    in_turn: bool,
+    /// When the current turn started (the timeout runs from here).
+    busy_since: Option<Instant>,
+    /// When the live agent became idle ([`IDLE_CLOSE`]).
+    idle_since: Option<Instant>,
+    timed_out: bool,
+    /// Automatic restarts since the agent last answered (at most one: an agent that exits before
+    /// reading its message is started again with `--resume` and the message written again).
+    restarts: u8,
+    /// Queued messages the agent never read (it failed or was stopped), for the message box.
+    unsent: Vec<String>,
+    /// `capabilities` of the live agent's last `system/init` (AG3/AG4 feature-detect from them).
+    pub capabilities: Vec<String>,
+    /// Claude Code refused one of our flags (`unknown option`): too old for a live session.
+    outdated: bool,
 }
 
 impl Agent {
@@ -63,11 +113,68 @@ impl Agent {
         let agents = if agents.is_empty() { vec![AgentSpec::claude_code(None)] } else { agents };
         let agent = agents.first().cloned().unwrap_or_else(|| AgentSpec::claude_code(None));
         let conversation = Conversation::new(&agent.id);
-        Agent { agents, agent, conversation, status: Status::Idle, sidecar: None, turn: None, mcp_config: None, events: 0 }
+        Agent {
+            agents,
+            agent,
+            conversation,
+            status: Status::Idle,
+            sidecar: None,
+            turn: None,
+            mcp_config: None,
+            events: 0,
+            live: None,
+            launch: None,
+            pending: VecDeque::new(),
+            in_turn: false,
+            busy_since: None,
+            idle_since: None,
+            timed_out: false,
+            restarts: 0,
+            unsent: Vec::new(),
+            capabilities: Vec::new(),
+            outdated: false,
+        }
     }
 
+    /// A turn runs (or a live agent has messages it has not answered).
     pub fn is_running(&self) -> bool {
-        self.turn.is_some()
+        self.turn.is_some() || self.busy()
+    }
+
+    /// The live agent has a message it has not answered.
+    fn busy(&self) -> bool {
+        self.in_turn || !self.pending.is_empty()
+    }
+
+    /// The current agent keeps one process per conversation, so Send works while it runs.
+    pub fn is_live(&self) -> bool {
+        crate::format::find(&self.agent.events).is_ok_and(|f| f.live)
+    }
+
+    /// Messages sent while the agent worked that it has not taken yet, oldest first.
+    pub fn queued(&self) -> Vec<String> {
+        self.pending.iter().filter_map(|p| p.queued.clone()).collect()
+    }
+
+    /// Queued messages the agent never read since the last call (for the message box).
+    pub fn take_unsent(&mut self) -> Vec<String> {
+        std::mem::take(&mut self.unsent)
+    }
+
+    /// Claude Code is too old for a live session (it refused one of our flags).
+    pub fn outdated(&self) -> bool {
+        self.outdated
+    }
+
+    /// Close the live agent if it is idle (panel hidden, project or conversation changed).
+    pub fn end_session(&mut self) {
+        if self.busy() {
+            return;
+        }
+        if let Some(mut l) = self.live.take() {
+            l.close();
+        }
+        self.idle_since = None;
     }
 
     /// How many events the agent has sent so far; unchanged while it is silent.
@@ -91,6 +198,7 @@ impl Agent {
             return;
         }
         self.save();
+        self.end_session();
         self.sidecar = side;
         let latest = self.sidecar.as_deref().and_then(|s| store::list(s).first().and_then(|c| store::load(s, &c.id).ok()));
         self.conversation = latest.unwrap_or_else(|| Conversation::new(&self.agent.id));
@@ -115,6 +223,7 @@ impl Agent {
             return err("stop the running turn first");
         }
         self.save();
+        self.end_session();
         self.conversation = Conversation::new(&self.agent.id);
         self.status = Status::Idle;
         Ok(())
@@ -127,6 +236,7 @@ impl Agent {
         let side = self.sidecar.clone().ok_or_else(|| Error("save the project first: conversations are kept next to it".into()))?;
         let c = store::load(&side, id)?;
         self.save();
+        self.end_session();
         if let Some(a) = self.agents.iter().find(|a| a.id == c.agent) {
             self.agent = a.clone();
         }
@@ -151,7 +261,7 @@ impl Agent {
         }
     }
 
-    /// Start a turn with `text`.
+    /// Send `text`: a live agent gets it at once (queued while it works), else a turn starts.
     pub fn send(&mut self, text: &str, ctx: &Context) -> Result<()> {
         let text = text.trim();
         if text.is_empty() {
@@ -160,8 +270,14 @@ impl Agent {
         if text.len() > MAX_MESSAGE {
             return err("message too long");
         }
-        if self.is_running() {
+        // an end already waiting is taken first, so the message never goes to a process that exited
+        self.poll();
+        let live = self.is_live();
+        if self.turn.is_some() || (!live && self.is_running()) {
             return err("the agent is still working: wait or stop it");
+        }
+        if self.status == Status::Stopping {
+            return err("the agent is stopping: wait a moment");
         }
         self.set_project(ctx.project.as_deref());
         let argv = self.command_line(ctx)?;
@@ -173,6 +289,10 @@ impl Agent {
         env.push(("BASHCUT_IN_APP_AGENT".into(), "1".into()));
         if let Some(side) = ctx.project.as_deref().map(crate::sidecar) {
             env.push(("BASHCUT_PROJECT_SIDECAR".into(), side.to_string_lossy().into_owned()));
+        }
+        if live {
+            let launch = Launch { cwd, env, mcp: self.mcp_config.clone() };
+            return self.send_live(text, message, &argv, launch);
         }
         let turn = Turn::start(&argv, &cwd, &env, &message, &self.agent.events, Duration::from_secs(self.agent.timeout_secs.max(1)))?;
         self.conversation.transcript.push(Item::User { text: text.to_string() });
@@ -204,15 +324,69 @@ impl Agent {
         self.agent.command_line(mcp.as_deref(), session)
     }
 
+    /// Write `message` to the live agent, starting it (with `argv`) when there is none.
+    fn send_live(&mut self, text: &str, message: String, argv: &[String], launch: Launch) -> Result<()> {
+        let busy = self.busy();
+        if !busy && self.launch.as_ref().is_some_and(|l| *l != launch) {
+            // another engine, bridge or folder: a fresh process (resuming the session)
+            self.end_session();
+        }
+        if self.live.as_ref().is_none_or(Live::is_finished) {
+            self.start_live(argv, &launch)?;
+        }
+        self.launch = Some(launch);
+        let Some(live) = &self.live else { return err("the agent did not start") };
+        live.send(&message)?;
+        if busy {
+            self.pending.push_back(Pending { message, queued: Some(text.to_string()) });
+        } else {
+            self.conversation.transcript.push(Item::User { text: text.to_string() });
+            self.pending.push_back(Pending { message, queued: None });
+            self.busy_since = Some(Instant::now());
+            self.idle_since = None;
+            self.timed_out = false;
+            self.status = Status::Running;
+        }
+        Ok(())
+    }
+
+    fn start_live(&mut self, argv: &[String], launch: &Launch) -> Result<()> {
+        let live = Live::start(argv, &launch.cwd, &launch.env, &self.agent.events)?;
+        self.live = Some(live);
+        self.in_turn = false;
+        Ok(())
+    }
+
+    /// Start the live agent again (resuming its session) and write what it had not taken.
+    fn restart_live(&mut self) -> Result<()> {
+        let launch = self.launch.clone().ok_or_else(|| Error("the agent cannot be restarted".into()))?;
+        let session = Some(self.conversation.session.as_str()).filter(|s| !s.is_empty());
+        let argv = self.agent.command_line(launch.mcp.as_deref(), session)?;
+        self.start_live(&argv, &launch)?;
+        let Some(live) = &self.live else { return err("the agent did not start") };
+        for p in &self.pending {
+            live.send(&p.message)?;
+        }
+        Ok(())
+    }
+
     pub fn stop(&mut self) {
         if let Some(t) = &self.turn {
             t.stop();
             self.status = Status::Stopping;
+        } else if self.busy()
+            && let Some(l) = &self.live
+        {
+            l.interrupt();
+            self.status = Status::Stopping;
         }
     }
 
-    /// Take the running turn's events; `true` while a turn runs.
+    /// Take the agent's events; `true` while a turn runs (or a live agent has unanswered messages).
     pub fn poll(&mut self) -> bool {
+        if self.live.is_some() || self.busy() {
+            return self.poll_live();
+        }
         let Some(turn) = &mut self.turn else { return false };
         let events = turn.poll();
         let mut ended = None;
@@ -253,6 +427,139 @@ impl Agent {
         false
     }
 
+    fn poll_live(&mut self) -> bool {
+        let events = self.live.as_mut().map(Live::poll).unwrap_or_default();
+        let mut ended = None;
+        for e in events {
+            self.events = self.events.wrapping_add(1);
+            match e {
+                TurnEvent::Agent(ev) => self.live_event(ev),
+                TurnEvent::Ended(end) => ended = Some(end),
+            }
+        }
+        if let Some(end) = ended {
+            self.live_ended(end);
+        } else if self.live.is_none() && self.busy() {
+            // nothing will answer (cannot happen; never leave the panel busy)
+            self.live_ended(TurnEnd::Failed("the agent ended unexpectedly".into()));
+        }
+        let timeout = Duration::from_secs(self.agent.timeout_secs.max(1));
+        if self.busy() && !self.timed_out && self.busy_since.is_some_and(|t| t.elapsed() > timeout) {
+            self.timed_out = true;
+            if let Some(l) = &self.live {
+                l.interrupt();
+            }
+        }
+        if !self.busy() && self.idle_since.is_some_and(|t| t.elapsed() > IDLE_CLOSE) {
+            self.end_session();
+        }
+        self.busy()
+    }
+
+    fn live_event(&mut self, ev: Event) {
+        match &ev {
+            Event::Init { session, capabilities, .. } => {
+                if !session.is_empty() {
+                    self.conversation.session = session.clone();
+                }
+                self.capabilities = capabilities.clone();
+            }
+            Event::Picked => {
+                self.take_next();
+                self.in_turn = true;
+                self.restarts = 0;
+            }
+            Event::Result { ok, session, .. } => {
+                if !session.is_empty() {
+                    self.conversation.session = session.clone();
+                }
+                // an agent without the echo: the result answers the oldest message
+                if !self.in_turn {
+                    self.take_next();
+                }
+                self.in_turn = false;
+                self.restarts = 0;
+                // the interrupt's own error result is not news: "Stopped." follows
+                if !*ok && self.status == Status::Stopping {
+                    return;
+                }
+                self.conversation.transcript.apply(&ev);
+                if self.busy() {
+                    self.busy_since = Some(Instant::now());
+                } else {
+                    if self.status == Status::Running {
+                        self.status = Status::Idle;
+                    }
+                    self.busy_since = None;
+                    self.idle_since = Some(Instant::now());
+                    self.save();
+                }
+                return;
+            }
+            _ => {}
+        }
+        self.conversation.transcript.apply(&ev);
+    }
+
+    /// The oldest pending message was taken: a queued one joins the transcript.
+    fn take_next(&mut self) {
+        if let Some(Pending { queued: Some(text), .. }) = self.pending.pop_front() {
+            self.conversation.transcript.push(Item::User { text });
+        }
+    }
+
+    fn live_ended(&mut self, end: TurnEnd) {
+        self.live = None;
+        self.in_turn = false;
+        self.idle_since = None;
+        let busy = !self.pending.is_empty();
+        let stopping = self.status == Status::Stopping;
+        if busy && !stopping && !self.timed_out && end == TurnEnd::Done && self.restarts == 0 {
+            // it exited before reading what was written (or between turns): again, resuming
+            self.restarts = 1;
+            match self.restart_live() {
+                Ok(()) => return,
+                Err(e) => return self.live_failed(e.0),
+            }
+        }
+        let timed_out = std::mem::take(&mut self.timed_out);
+        if !busy && !stopping && !timed_out {
+            // an idle agent that exited: the next message starts it again
+            if let TurnEnd::Failed(m) = end {
+                log::warn!("bashcut agent ended between turns: {m}");
+            }
+            return;
+        }
+        if stopping || (end == TurnEnd::Stopped && !timed_out) {
+            self.unsent.extend(self.pending.drain(..).filter_map(|p| p.queued));
+            self.busy_since = None;
+            self.status = Status::Idle;
+            self.conversation.transcript.push(Item::Notice { message: "Stopped.".into() });
+            self.save();
+            return;
+        }
+        let message = match end {
+            _ if timed_out => "the agent took too long and was stopped".to_string(),
+            TurnEnd::Failed(m) => m,
+            _ => "the agent ended before answering".to_string(),
+        };
+        self.live_failed(message);
+    }
+
+    /// The live agent failed with messages unanswered: show why, give back what it never read.
+    fn live_failed(&mut self, message: String) {
+        if self.agent.id == "claude-code" && message.contains("unknown option") {
+            self.outdated = true;
+        }
+        self.live = None;
+        self.in_turn = false;
+        self.unsent.extend(self.pending.drain(..).filter_map(|p| p.queued));
+        self.busy_since = None;
+        self.conversation.transcript.push(Item::Error { message: message.clone() });
+        self.status = Status::Failed { message };
+        self.save();
+    }
+
     /// The gate waiting for the user, if the project has a plan.
     pub fn gate(&self) -> Option<Gate> {
         self.sidecar.as_deref().and_then(plan::pending)
@@ -274,9 +581,15 @@ impl Agent {
         self.send(&message, ctx)
     }
 
-    /// Remove the temporary MCP config (app exit).
+    /// End the agent and remove the temporary MCP config (app exit): a live agent's stdin is closed and
+    /// it gets [`EXIT_WAIT`] to end (SIGINT, then kill, past that).
     pub fn shutdown(&mut self) {
         self.stop();
+        if let Some(mut l) = self.live.take() {
+            l.close_and_wait(EXIT_WAIT);
+        }
+        self.pending.clear();
+        self.in_turn = false;
         self.save();
         if let Some(p) = self.mcp_config.take() {
             let _ = std::fs::remove_file(p);
@@ -288,6 +601,9 @@ impl Agent {
             "agent": {"id": self.agent.id, "name": self.agent.name},
             "agents": self.agents.iter().map(|a| json!({"id": a.id, "name": a.name})).collect::<Vec<_>>(),
             "status": self.status,
+            "live": self.live.is_some(),
+            "queued": self.queued(),
+            "capabilities": self.capabilities,
             "conversation": {"id": self.conversation.id, "title": self.conversation.title(), "items": self.conversation.transcript.items.len(), "session": self.conversation.session},
             "gate": self.gate().map(|g| json!({"stage": g.stage, "summary": g.summary, "evidence": g.evidence_lines()})),
             "project": self.sidecar.is_some(),
