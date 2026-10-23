@@ -462,8 +462,27 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "test ticket: init slash_commands become SlashCommand (skill flag from skills; terminal_slash_commands, __ names, duplicates, non-strings, over-long names dropped; capped at MAX_COMMANDS; missing field: empty)"]
-    fn init_slash_commands_are_parsed() {}
+    fn init_slash_commands_are_parsed() {
+        let cmds = |line: &Value| match parse_line(&line.to_string()).as_slice() {
+            [Event::Init { commands, .. }] => commands.clone(),
+            other => panic!("not one Init: {other:?}"),
+        };
+        let sc = |name: &str, skill: bool| SlashCommand { name: name.to_string(), skill };
+        let line = json!({"type": "system", "subtype": "init", "session_id": "s", "model": "m",
+            "slash_commands": ["bcp:setup", "/compact", "doctor", "__internal", "bcp:setup", 5, null, "has space", "", "x".repeat(MAX_COMMAND + 1), "bcp:review"],
+            "skills": ["bcp:setup", "bcp:review"],
+            "terminal_slash_commands": ["doctor"]});
+        let got = cmds(&line);
+        assert_eq!(got, vec![sc("bcp:setup", true), sc("compact", false), sc("bcp:review", true)], "{got:?}");
+        // capped
+        let many: Vec<String> = (0..MAX_COMMANDS + 20).map(|i| format!("c{i}")).collect();
+        let got = cmds(&json!({"type": "system", "subtype": "init", "slash_commands": many}));
+        assert_eq!(got.len(), MAX_COMMANDS);
+        assert_eq!(got[0], sc("c0", false));
+        // missing field, or not an array: empty
+        assert!(cmds(&json!({"type": "system", "subtype": "init", "session_id": "s"})).is_empty());
+        assert!(cmds(&json!({"type": "system", "subtype": "init", "slash_commands": "compact"})).is_empty());
+    }
 
     #[test]
     fn init_plugin_names_are_parsed() {
