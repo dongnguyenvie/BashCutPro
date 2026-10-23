@@ -94,6 +94,7 @@ Claude Code hoặc Codex chạy trong cửa sổ dòng lệnh cũng điều khi�
 2. Mở BashCutPro như bình thường. Kênh điều khiển tự bật (chỉ trong máy này, 127.0.0.1) và cửa sổ báo cho trợ lý biết
    nơi tìm nó. Muốn chặn trợ lý, bỏ chọn **Cho phép trợ lý AI điều khiển BashCutPro** trong mục Trợ lý (áp dụng ở lần
    mở sau), hoặc đặt `BASHCUT_CONTROL=0`. `--control <port>` vẫn dùng được để chọn cổng cố định.
+   Kênh điều khiển được bảo vệ bằng mã phiên BashCutPro tạo mỗi lần mở; agent mở từ BashCutPro tự nhận mã này.
 3. Ra lệnh cho trợ lý trong cửa sổ dòng lệnh; nó tự kết nối vào cửa sổ đang mở. Khi không có cửa sổ nào mở, nó làm việc
    thẳng trên tệp dự án, và từ chối mở một dự án mà cửa sổ đang mở.
 

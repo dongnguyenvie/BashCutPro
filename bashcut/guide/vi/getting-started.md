@@ -35,7 +35,9 @@ cần chừng 10 GB đĩa trống. Các bước dưới đây dành cho macOS; t
    `bashcutpro-cli` kèm số phiên bản.
 
 Với bản tự dựng, bước thiết lập lần đầu bên dưới là `bash bashcut/packaging/share/bashcut-setup.sh`, và bạn mở ứng dụng
-bằng `target/debug/filmcraft --control 9876`.
+bằng `target/debug/filmcraft --control 9876`. Muốn script của bạn tự kết nối cổng đó, hãy
+`export FILMCRAFT_CONTROL_TOKEN=<64 hex>` trước khi mở ứng dụng và gửi mã này ở trường `"token"` (xem
+`docs/control-protocol.md` của upstream); ứng dụng cũng ghi mã vào `automation.json`.
 
 Nếu bạn sửa mã nguồn, hãy dùng `cargo xtask dev --features whisper -- --control 9876`: lệnh này dựng lại ứng dụng cùng
 mọi công cụ dòng lệnh của nó rồi mở ứng dụng. `cargo run -p filmcraft` chỉ dựng lại ứng dụng, nên trợ lý AI, plugin,

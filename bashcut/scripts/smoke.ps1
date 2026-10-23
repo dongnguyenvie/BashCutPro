@@ -182,8 +182,26 @@ if ($Port -eq 0) {
     while (Test-PortOpen $Port) { $Port++ }
 }
 
-# One request on a fresh connection; returns the reply line ("" on failure).
+# The window's control channel needs a session token (FILMCRAFT_CONTROL_TOKEN, 64 hex). Use the caller's, else make
+# one before the launch (the app inherits it); every request below carries it. Never printed.
+$script:Token = $env:FILMCRAFT_CONTROL_TOKEN
+if (-not $script:Token) {
+    $bytes = New-Object byte[] 32
+    try {
+        $rng = [Security.Cryptography.RandomNumberGenerator]::Create()
+        $rng.GetBytes($bytes)
+        $rng.Dispose()
+    } catch {
+        for ($i = 0; $i -lt 32; $i++) { $bytes[$i] = [byte](Get-Random -Maximum 256) }
+    }
+    $script:Token = -join ($bytes | ForEach-Object { '{0:x2}' -f $_ })
+}
+$env:FILMCRAFT_CONTROL_TOKEN = $script:Token
+
+# One request on a fresh connection; returns the reply line ("" on failure). The session token goes into the JSON
+# line of every request (ui.inspect, ui.elements, ui.screenshot, app.quit).
 function Send-Request([string]$json, [int]$seconds = 30) {
+    $json = '{"token":"' + $script:Token + '",' + $json.Substring(1)
     $c = New-Object Net.Sockets.TcpClient
     try {
         $c.Connect("127.0.0.1", $Port)

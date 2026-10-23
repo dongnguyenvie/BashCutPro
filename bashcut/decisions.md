@@ -72,7 +72,7 @@ decides something; don't change an old one, add a new one that supersedes it.
 - **Decided (owner):** make agents "just work". The app starts its control channel at launch with no flag: port 9876
   when free, else a free one, bound to **127.0.0.1 only**. Discovery is the existing
   `<data dir>/bashcut/automation.json` (`address`, `pid`, `project`; removed on close; readers skip a dead pid), so
-  `bashcut-mcp`, plugins and the Agent section needed no new reader; no separate `control.json`. No prompt, no token.
+  `bashcut-mcp`, plugins and the Agent section needed no new reader; no separate `control.json`. No prompt (the token came later, see "Control token (PLS1)").
 - **Opt-out:** the Agent section's "Allow AI agents to control BashCutPro" (default on; off writes
   `<data dir>/bashcut/agents-off`) or `BASHCUT_CONTROL=0`. Applies at the next start: the server is created with the
   window. `--control <port>` / `FILMCRAFT_CONTROL_PORT` still win.
@@ -80,7 +80,7 @@ decides something; don't change an old one, add a new one that supersedes it.
   read and write the project files and the data folder), so the channel adds no new reach for remote attackers. The
   server refuses non-JSON lines (browser `fetch` junk) and caps lines and connections (upstream `control_server.rs`).
   On a shared multi-user machine other local users can reach a loopback port: they should turn the setting off.
-- **Rules out:** binding any non-loopback address; a mandatory token or a confirmation prompt.
+- **Rules out:** binding any non-loopback address; a confirmation prompt. (A token was ruled out here; upstream #2764 made it mandatory, see "Control token (PLS1)".)
 
 ## 2026-10-23: Linux packages use the app id `com.birchapps.bashcutpro` (SB4)
 
@@ -408,3 +408,17 @@ decides something; don't change an old one, add a new one that supersedes it.
   window repainting while hidden and still not answer when the OS gives the window no frames; the cap always
   answers. A reply after 11 s goes to a dropped channel, so a click that lands late still happens: agents should
   `ui.focus {}` and check state rather than blindly repeat a click.
+
+## 2026-10-23: Control token (PLS1)
+
+- **Decided:** upstream #2764 requires a session token on the control channel. The window takes
+  `FILMCRAFT_CONTROL_TOKEN` when it is valid (64 hex), else makes a random one per launch (32 random bytes, hex), and
+  publishes it only in the owner-only `automation.json` (`"token"`). Our CLI, MCP, agents and plugins pick it up
+  (children of the app get the env; `bashcutpro-cli` reads `automation.json` when the address matches and the pid is
+  alive); a raw client sends `"token"` itself. A token the user set in the env wins, so upstream-style setups keep
+  working.
+- **Why:** it follows upstream rather than keeping a fork-only open channel, and it keeps other local users and
+  other programs off the port without a prompt.
+- **Owner-visible:** upstream's docs advise against putting the token in shared files. Ours is not shared: it is
+  per user, 0600 (the per-user data dir on Windows), and `automation.json` is already the discovery file.
+- **Replaces:** the "no password, no prompt" line of CC1 and the old `agent-connect.md` section.

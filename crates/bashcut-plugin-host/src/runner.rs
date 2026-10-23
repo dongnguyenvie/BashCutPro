@@ -311,10 +311,6 @@ pub fn parse_result(stdout: &str) -> Option<PluginResult> {
 
 #[cfg(test)]
 mod tests {
-    #[test]
-    #[ignore = "test ticket: a run with RunContext.control_token and a bridge has FILMCRAFT_CONTROL_TOKEN in its env, none without a token or a bridge"]
-    fn control_token_reaches_the_run_env() {}
-
     use super::*;
 
     #[test]

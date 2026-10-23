@@ -39,15 +39,41 @@ pub fn generate() -> Option<String> {
 
 #[cfg(test)]
 mod tests {
-    #[test]
-    #[ignore = "test ticket: valid accepts 64 hex digits, rejects other lengths and non-hex"]
-    fn valid_is_64_hex() {}
+    use super::*;
+
+    const GOOD: &str = "0123456789abcdefABCDEF0123456789abcdef0123456789abcdef0123456789";
 
     #[test]
-    #[ignore = "test ticket: choose prefers a valid env token and ignores an invalid one"]
-    fn choose_prefers_valid_env() {}
+    fn valid_is_64_hex() {
+        assert_eq!(GOOD.len(), 64);
+        assert!(valid(GOOD));
+        assert!(valid(&"a".repeat(64)));
+        assert!(!valid(""));
+        assert!(!valid(&"a".repeat(63)), "too short");
+        assert!(!valid(&"a".repeat(65)), "too long");
+        assert!(!valid(&format!("{}g", "a".repeat(63))), "non-hex digit");
+        assert!(!valid(&format!("{} ", "a".repeat(63))), "space");
+        assert!(!valid(&format!("{}é", "a".repeat(62))), "multi-byte char of the right byte length");
+    }
 
     #[test]
-    #[ignore = "test ticket: generate gives 64 hex digits and two calls differ"]
-    fn generate_is_random_hex() {}
+    fn choose_prefers_valid_env() {
+        let env = "b".repeat(64);
+        let got = choose(Some(&env), || panic!("a valid env token needs no generated one"));
+        assert_eq!(got.as_deref(), Some(env.as_str()));
+        for bad in ["", "short", &"z".repeat(64)] {
+            assert_eq!(choose(Some(bad), || Some("c".repeat(64))), Some("c".repeat(64)), "{bad:?} is ignored");
+        }
+        assert_eq!(choose(None, || Some("d".repeat(64))), Some("d".repeat(64)));
+        assert_eq!(choose(None, || None), None, "no env and no randomness: no token");
+    }
+
+    #[test]
+    #[cfg(not(target_arch = "wasm32"))]
+    fn generate_is_random_hex() {
+        let (a, b) = (generate().unwrap(), generate().unwrap());
+        assert!(valid(&a) && valid(&b));
+        assert_eq!(a, a.to_ascii_lowercase());
+        assert_ne!(a, b);
+    }
 }

@@ -16,7 +16,57 @@ const CONNECT: Duration = Duration::from_millis(300);
 
 pub fn with_default_bridge(args: Vec<String>) -> Vec<String> {
     let off = std::env::var("BASHCUT_BRIDGE").is_ok_and(|v| v.trim().eq_ignore_ascii_case("off"));
-    bridged(args, off, bashcut_dirs::data_dir)
+    let args = bridged(args, off, bashcut_dirs::data_dir);
+    // the control channel wants the window's session token in FILMCRAFT_CONTROL_TOKEN, which this
+    // process can't set (no `set_var`): run ourselves once more with it
+    if let Some(code) = reexec_with_token(&args) {
+        std::process::exit(code);
+    }
+    args
+}
+
+/// The value of `--bridge X` / `--bridge=X`.
+pub fn bridge_of(args: &[String]) -> Option<String> {
+    let mut it = args.iter();
+    while let Some(a) = it.next() {
+        if a == "--bridge" {
+            return it.next().cloned();
+        }
+        if let Some(v) = a.strip_prefix("--bridge=") {
+            return Some(v.to_string());
+        }
+    }
+    None
+}
+
+/// Run this program again with the window's session token in the environment, when the arguments
+/// (without the program name) bridge to a window whose token `automation.json` knows and the
+/// caller gave none. Returns the child's exit code, or `None` when there is nothing to do.
+pub fn reexec_with_token(args: &[String]) -> Option<i32> {
+    let bridge = bridge_of(args);
+    let token =
+        token_needed(std::env::var_os("FILMCRAFT_CONTROL_TOKEN").is_some(), std::env::var_os("BASHCUT_TOKEN_REEXEC").is_some(), bridge.as_deref(), |addr| {
+            bashcut_dirs::data_dir().and_then(|d| bashcut_connect::automation::token_for(&d, addr))
+        })?;
+    let run = || -> std::io::Result<std::process::ExitStatus> {
+        std::process::Command::new(std::env::current_exe()?).args(args).env("FILMCRAFT_CONTROL_TOKEN", token).env("BASHCUT_TOKEN_REEXEC", "1").status()
+    };
+    match run() {
+        Ok(status) => Some(status.code().unwrap_or(1)),
+        Err(e) => {
+            crate::diag(format_args!("bashcutpro-cli: could not pass the control token: {e}"));
+            None
+        }
+    }
+}
+
+/// The token to pass on: none when the env already has one, this is the re-executed process, there
+/// is no bridge or `lookup` finds nothing for its address.
+fn token_needed(env_set: bool, guard_set: bool, bridge: Option<&str>, lookup: impl FnOnce(&str) -> Option<String>) -> Option<String> {
+    if env_set || guard_set {
+        return None;
+    }
+    lookup(bridge?)
 }
 
 /// [`with_default_bridge`] with `BASHCUT_BRIDGE=off` and the data dir (read only when needed) passed in.
@@ -61,6 +111,25 @@ mod tests {
         let json = serde_json::json!({"schema": bashcut_connect::automation::SCHEMA, "address": addr, "token": null, "pid": pid, "project": null});
         std::fs::write(file, json.to_string()).unwrap();
         (d, listener, addr)
+    }
+
+    #[test]
+    fn bridge_of_reads_both_spellings() {
+        assert_eq!(bridge_of(&v(&["exec", "x", "--bridge", "127.0.0.1:1"])).as_deref(), Some("127.0.0.1:1"));
+        assert_eq!(bridge_of(&v(&["exec", "--bridge=127.0.0.1:2", "x"])).as_deref(), Some("127.0.0.1:2"));
+        assert_eq!(bridge_of(&v(&["exec", "x"])), None);
+        assert_eq!(bridge_of(&v(&["exec", "--bridge"])), None, "a flag with no value");
+        assert_eq!(bridge_of(&[]), None);
+    }
+
+    #[test]
+    fn token_needed_decides() {
+        let hit = |addr: &str| (addr == "127.0.0.1:1").then(|| "tok".to_string());
+        assert_eq!(token_needed(false, false, Some("127.0.0.1:1"), hit).as_deref(), Some("tok"));
+        assert_eq!(token_needed(true, false, Some("127.0.0.1:1"), hit), None, "the caller gave a token");
+        assert_eq!(token_needed(false, true, Some("127.0.0.1:1"), hit), None, "the re-executed process");
+        assert_eq!(token_needed(false, false, None, |_| panic!("no bridge, no lookup")), None);
+        assert_eq!(token_needed(false, false, Some("127.0.0.1:2"), hit), None, "nothing known for that address");
     }
 
     #[test]

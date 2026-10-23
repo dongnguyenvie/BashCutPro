@@ -204,6 +204,10 @@ mod tests {
         assert_eq!(v["address"], "127.0.0.1:9876");
         assert_eq!(v["pid"], std::process::id());
         assert!(v["project"].is_null());
+        // SY2: the file carries the window's session token, the one the control channel requires
+        let token = super::super::control::launch_token().expect("this machine has randomness");
+        assert!(bashcut_dirs::token::valid(&token));
+        assert_eq!(v["token"], json!(token));
         #[cfg(unix)]
         {
             use std::os::unix::fs::PermissionsExt;
