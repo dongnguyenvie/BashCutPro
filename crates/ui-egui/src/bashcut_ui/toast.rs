@@ -12,7 +12,7 @@ use bashcut_plugin_host::{JobKind, JobState};
 use egui::{Align2, vec2};
 
 use super::strings::{f, s};
-use super::widgets::button;
+use super::widgets::{NOTE, button, note_text};
 use super::{State, plugins, runs_panel};
 use crate::FilmcraftApp;
 
@@ -142,7 +142,7 @@ pub fn status_line(app: &mut FilmcraftApp, ui: &mut egui::Ui, id: &str, msg: Opt
         if r.clicked() {
             ui.ctx().data_mut(|d| d.insert_temp(dismissed_key, msg.to_string()));
         }
-        let r = ui.add(egui::Label::new(egui::RichText::new(msg).size(11.0).color(color)).wrap());
+        let r = ui.add(egui::Label::new(note_text(msg, NOTE, color)).wrap());
         app.auto.add_response(id, &r, msg);
     });
 }

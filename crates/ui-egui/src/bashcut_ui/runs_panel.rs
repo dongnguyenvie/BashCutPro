@@ -11,7 +11,7 @@ use serde_json::{Value, json};
 use super::batch;
 use super::plugins;
 use super::strings::{f, s};
-use super::widgets::{META, NOTE, button, note};
+use super::widgets::{META, NOTE, button, code_text, note, note_text, wrapped_note};
 use crate::FilmcraftApp;
 
 /// `result.data` keys whose values are files a run wrote (`bashcut/plugin-host.md` §Results): a
@@ -230,7 +230,7 @@ fn job_row(app: &mut FilmcraftApp, ui: &mut egui::Ui, j: &Job, log_open: bool, f
         // State first from the right, so a long title truncates instead of running under it.
         ui.horizontal(|ui| {
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                ui.label(egui::RichText::new(s(state_label(j.state))).size(11.0).color(state_color(j.state, &t)));
+                note(ui, s(state_label(j.state)), NOTE, state_color(j.state, &t));
                 ui.with_layout(egui::Layout::left_to_right(egui::Align::Center), |ui| {
                     ui.add(egui::Label::new(egui::RichText::new(&j.title).color(t.text)).truncate()).on_hover_text(&j.title);
                 });
@@ -246,11 +246,11 @@ fn job_row(app: &mut FilmcraftApp, ui: &mut egui::Ui, j: &Job, log_open: bool, f
         }
         match &error {
             Some(e) => {
-                let r = ui.add(egui::Label::new(egui::RichText::new(e).size(11.0).color(t.danger)).wrap().selectable(true));
+                let r = wrapped_note(ui, e, NOTE, t.danger);
                 app.auto.add_response(&format!("{id}.error"), &r, e);
             }
             None if !j.message.is_empty() => {
-                ui.add(egui::Label::new(egui::RichText::new(&j.message).size(11.0).color(t.text_dim)).wrap().selectable(true));
+                wrapped_note(ui, &j.message, NOTE, t.text_dim);
             }
             None => {}
         }
@@ -286,13 +286,13 @@ fn job_row(app: &mut FilmcraftApp, ui: &mut egui::Ui, j: &Job, log_open: bool, f
                     acts.push(Act::Reveal(p.clone()));
                 }
                 let name = std::path::Path::new(p).file_name().map_or_else(|| p.clone(), |n| n.to_string_lossy().into_owned());
-                ui.add(egui::Label::new(egui::RichText::new(name).size(10.5).color(t.text_dim)).truncate()).on_hover_text(p);
+                ui.add(egui::Label::new(note_text(name, META, t.text_dim)).truncate()).on_hover_text(p);
             });
         }
         if log_open {
             let text: String = j.log.iter().map(String::as_str).collect::<Vec<_>>().join("\n");
             egui::ScrollArea::vertical().id_salt(("bashcut.runs.log", j.id)).max_height(160.0).show(ui, |ui| {
-                ui.add(egui::Label::new(egui::RichText::new(text).monospace().size(10.5).color(t.text_dim)).selectable(true));
+                ui.add(egui::Label::new(code_text(text, META, t.text_dim)).selectable(true));
             });
         }
     });

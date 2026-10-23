@@ -14,9 +14,30 @@ use crate::theme::Tokens;
 
 /// The dock keeps at least this much width (px); the panel gives way below it.
 const MIN_DOCK: f32 = 320.0;
+/// Height of the header (px).
 const HEADER: f32 = 30.0;
 /// Width of the resize grip on the panel's left edge.
 const GRIP: f32 = 6.0;
+/// Header buttons (pop out, close): size, centre of the close button from the right edge, and
+/// from the close button's left edge to the pop-out button's centre (px).
+const HEADER_BUTTON: f32 = 20.0;
+const CLOSE_X: f32 = 16.0;
+const POP_X: f32 = 14.0;
+/// Inset of an icon inside a header button (px).
+const ICON_INSET: f32 = 4.0;
+/// Body insets; the title lines up with the body's left edge (px).
+const PAD_LEFT: f32 = 10.0;
+const PAD_TOP: f32 = 6.0;
+const PAD_RIGHT: f32 = 8.0;
+const PAD_BOTTOM: f32 = 6.0;
+/// Space under a section's blurb (px).
+const BLURB_GAP: f32 = 6.0;
+/// Gap left between the dock and the panel (px).
+const SEAM: f32 = 1.0;
+/// A popped-out window the first time: gap to the rail, distance from the top, height (px).
+const WINDOW_GAP: f32 = 16.0;
+const WINDOW_TOP: f32 = 56.0;
+const WINDOW_HEIGHT: f32 = 520.0;
 
 pub fn window_id(section: &str) -> egui::Id {
     egui::Id::new(("bashcut.window", section))
@@ -49,11 +70,11 @@ pub fn show(app: &mut FilmcraftApp, ui: &mut egui::Ui, area: Rect, sec: &Section
 
     // header: title, pop out, close
     let head = Rect::from_min_size(rect.min, vec2(rect.width(), HEADER));
-    painter.text(pos2(head.min.x + 10.0, head.center().y), Align2::LEFT_CENTER, s(sec.title), Tokens::semibold(13.0), t.text);
+    painter.text(pos2(head.min.x + PAD_LEFT, head.center().y), Align2::LEFT_CENTER, s(sec.title), Tokens::semibold(13.0), t.text);
     painter.line_segment([pos2(head.min.x, head.max.y), pos2(head.max.x, head.max.y)], Stroke::new(1.0, t.separator));
     app.auto.add("bashcut.panel.title", head, s(sec.title));
-    let close = Rect::from_center_size(pos2(head.max.x - 16.0, head.center().y), vec2(20.0, 20.0));
-    let pop = Rect::from_center_size(pos2(close.min.x - 14.0, head.center().y), vec2(20.0, 20.0));
+    let close = Rect::from_center_size(pos2(head.max.x - CLOSE_X, head.center().y), vec2(HEADER_BUTTON, HEADER_BUTTON));
+    let pop = Rect::from_center_size(pos2(close.min.x - POP_X, head.center().y), vec2(HEADER_BUTTON, HEADER_BUTTON));
     if header_button(app, ui, pop, Icon::Fullscreen, "bashcut.panel.popout", s("Pop out")) {
         st.pop_out(sec.id);
     }
@@ -62,13 +83,13 @@ pub fn show(app: &mut FilmcraftApp, ui: &mut egui::Ui, area: Rect, sec: &Section
     }
 
     // body
-    let inner = Rect::from_min_max(pos2(rect.min.x + 10.0, head.max.y + 6.0), pos2(rect.max.x - 8.0, rect.max.y - 6.0));
+    let inner = Rect::from_min_max(pos2(rect.min.x + PAD_LEFT, head.max.y + PAD_TOP), pos2(rect.max.x - PAD_RIGHT, rect.max.y - PAD_BOTTOM));
     let mut child = ui.new_child(egui::UiBuilder::new().max_rect(inner).id_salt(("bashcut.panel", sec.id)));
     child.set_clip_rect(inner.intersect(ui.clip_rect()));
     body(app, &mut child, sec);
     app.auto.add(&format!("bashcut.panel.{}", sec.id), rect, s(sec.title));
 
-    Rect::from_min_max(area.min, pos2(rect.min.x - 1.0, area.max.y))
+    Rect::from_min_max(area.min, pos2(rect.min.x - SEAM, area.max.y))
 }
 
 fn header_button(app: &mut FilmcraftApp, ui: &mut egui::Ui, r: Rect, icon: Icon, id: &str, tip: &str) -> bool {
@@ -77,7 +98,7 @@ fn header_button(app: &mut FilmcraftApp, ui: &mut egui::Ui, r: Rect, icon: Icon,
     if resp.hovered() {
         ui.painter().rect_filled(r, t.radius_sm, t.hover);
     }
-    icons::paint(ui.painter(), r.shrink(4.0), icon, if resp.hovered() { t.tab_text_active } else { t.icon });
+    icons::paint(ui.painter(), r.shrink(ICON_INSET), icon, if resp.hovered() { t.tab_text_active } else { t.icon });
     app.auto.add_response(id, &resp, tip);
     resp.on_hover_text(tip).clicked()
 }
@@ -85,7 +106,7 @@ fn header_button(app: &mut FilmcraftApp, ui: &mut egui::Ui, r: Rect, icon: Icon,
 /// A section's content: its blurb, then what its `draw` shows, scrolling.
 fn body(app: &mut FilmcraftApp, ui: &mut egui::Ui, sec: &Section) {
     note(ui, s(sec.blurb), NOTE, app.tokens.text_dim);
-    ui.add_space(6.0);
+    ui.add_space(BLURB_GAP);
     egui::ScrollArea::vertical().id_salt(("bashcut.scroll", sec.id)).auto_shrink([false, false]).show(ui, |ui| (sec.draw)(app, ui));
 }
 
@@ -104,8 +125,8 @@ pub fn floating(app: &mut FilmcraftApp, ctx: &egui::Context, st: &mut State) {
             // first time: where the docked panel was, clear of the header and the rail
             None => {
                 let screen = ctx.content_rect();
-                let x = (screen.max.x - super::rail::WIDTH - st.width - 16.0).max(screen.min.x);
-                window.default_pos(pos2(x, screen.min.y + 56.0)).default_size(vec2(st.width, 520.0))
+                let x = (screen.max.x - super::rail::WIDTH - st.width - WINDOW_GAP).max(screen.min.x);
+                window.default_pos(pos2(x, screen.min.y + WINDOW_TOP)).default_size(vec2(st.width, WINDOW_HEIGHT))
             }
         };
         let shown = window.open(&mut open).min_width(MIN_WIDTH).collapsible(false).show(ctx, |ui| {

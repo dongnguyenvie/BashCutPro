@@ -22,6 +22,16 @@ const BUTTON: f32 = 28.0;
 const STEP: f32 = 34.0;
 /// Radius of an activity dot (px).
 const DOT: f32 = 3.5;
+/// Space above the first button (px).
+const TOP: f32 = 6.0;
+/// Inset of an icon inside its button (px).
+const ICON_INSET: f32 = 6.0;
+/// The open section's accent bar: distance from the rail's right edge, inset from the button's
+/// top and bottom (px).
+const BAR_X: f32 = 2.0;
+const BAR_INSET: f32 = 4.0;
+/// Max width of a button's tooltip (px).
+const TIP_WIDTH: f32 = 260.0;
 
 /// News on a section's icon.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -80,7 +90,7 @@ pub fn show(app: &mut FilmcraftApp, ui: &mut egui::Ui, rect: Rect, st: &mut Stat
         badges.push(sec.badge.and_then(|b| b(&ctx, st, shown)).filter(|_| !shown));
     }
     for (i, sec) in SECTIONS.iter().enumerate() {
-        let top = rect.min.y + 6.0 + STEP * i as f32;
+        let top = rect.min.y + TOP + STEP * i as f32;
         if top + BUTTON > rect.max.y {
             break;
         }
@@ -91,7 +101,7 @@ pub fn show(app: &mut FilmcraftApp, ui: &mut egui::Ui, rect: Rect, st: &mut Stat
         let popped = st.popped.iter().any(|p| p == sec.id);
         if open {
             painter.rect_filled(r, t.radius_sm, t.pill_active_bg);
-            painter.line_segment([pos2(rect.max.x - 2.0, r.min.y + 4.0), pos2(rect.max.x - 2.0, r.max.y - 4.0)], Stroke::new(2.0, t.accent));
+            painter.line_segment([pos2(rect.max.x - BAR_X, r.min.y + BAR_INSET), pos2(rect.max.x - BAR_X, r.max.y - BAR_INSET)], Stroke::new(2.0, t.accent));
         } else if resp.hovered() {
             painter.rect_filled(r, t.radius_sm, t.hover);
         }
@@ -102,7 +112,7 @@ pub fn show(app: &mut FilmcraftApp, ui: &mut egui::Ui, rect: Rect, st: &mut Stat
         } else {
             t.icon
         };
-        icons::paint(&painter, r.shrink(6.0), sec.icon, color);
+        icons::paint(&painter, r.shrink(ICON_INSET), sec.icon, color);
         let badge = badges.get(i).copied().flatten();
         if let Some(b) = badge {
             let fill = if b == Badge::Failed { t.danger } else { t.accent };
@@ -118,7 +128,7 @@ pub fn show(app: &mut FilmcraftApp, ui: &mut egui::Ui, rect: Rect, st: &mut Stat
         app.auto.add_response(&id, &resp, &label);
         let keys = shortcut(app, sec);
         let resp = resp.on_hover_ui(|ui| {
-            ui.set_max_width(260.0);
+            ui.set_max_width(TIP_WIDTH);
             ui.label(egui::RichText::new(title).strong());
             ui.label(egui::RichText::new(s(sec.blurb)).size(11.0));
             match badge {
@@ -126,7 +136,7 @@ pub fn show(app: &mut FilmcraftApp, ui: &mut egui::Ui, rect: Rect, st: &mut Stat
                     note(ui, s("A run failed since you last looked."), NOTE, t.danger);
                 }
                 Some(Badge::Busy) => {
-                    ui.label(egui::RichText::new(s("Running now.")).size(11.0).color(t.accent));
+                    note(ui, s("Running now."), NOTE, t.accent);
                 }
                 None => {}
             }

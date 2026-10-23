@@ -228,28 +228,29 @@ impl State {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::bashcut_ui::{AGENT, PLUGINS, RUNS};
 
-    const KNOWN: &[&str] = &["agent", "plugins", "runs"];
+    const KNOWN: &[&str] = &[AGENT, PLUGINS, RUNS];
 
     #[test]
     fn toggle_pop_out_and_dock_back() {
         let mut st = State::default();
-        st.toggle("agent");
-        assert_eq!(st.open.as_deref(), Some("agent"));
-        st.toggle("agent");
+        st.toggle(AGENT);
+        assert_eq!(st.open.as_deref(), Some(AGENT));
+        st.toggle(AGENT);
         assert_eq!(st.open, None);
-        st.toggle("runs");
-        st.pop_out("runs");
+        st.toggle(RUNS);
+        st.pop_out(RUNS);
         assert_eq!(st.open, None);
-        assert_eq!(st.popped, vec!["runs".to_string()]);
-        assert!(st.on_screen("runs"), "popped out counts as on screen");
-        assert!(!st.on_screen("agent"));
-        st.show("runs");
+        assert_eq!(st.popped, vec![RUNS.to_string()]);
+        assert!(st.on_screen(RUNS), "popped out counts as on screen");
+        assert!(!st.on_screen(AGENT));
+        st.show(RUNS);
         assert_eq!(st.open, None, "a popped-out section stays floating");
-        st.dock_back("runs");
-        assert_eq!(st.open.as_deref(), Some("runs"));
+        st.dock_back(RUNS);
+        assert_eq!(st.open.as_deref(), Some(RUNS));
         assert!(st.popped.is_empty());
-        assert!(st.on_screen("runs"), "docked counts as on screen");
+        assert!(st.on_screen(RUNS), "docked counts as on screen");
     }
 
     #[test]
@@ -266,11 +267,11 @@ mod tests {
 
     #[test]
     fn hostile_values_are_sanitized() {
-        let mut st: State = serde_json::from_str(r#"{"width":1e30,"open":"nope","popped":["x","runs","runs"],"language":"verylonglang"}"#).unwrap();
+        let mut st: State = serde_json::from_str(r#"{"width":1e30,"open":"nope","popped":["x",RUNS,RUNS],"language":"verylonglang"}"#).unwrap();
         st.sanitize(KNOWN);
         assert_eq!(st.width, MAX_WIDTH);
         assert_eq!(st.open, None);
-        assert_eq!(st.popped, vec!["runs".to_string()]);
+        assert_eq!(st.popped, vec![RUNS.to_string()]);
         assert_eq!(st.language, None);
         let mut st = State { width: f32::NAN, ..State::default() };
         st.sanitize(KNOWN);
@@ -283,12 +284,12 @@ mod tests {
         let laptop = Some(egui::vec2(1512.0, 982.0));
         let desk = Some(egui::vec2(3840.0, 2160.0));
         let mut st = State::default();
-        st.remember_window("runs", laptop, egui::Rect::from_min_size(egui::pos2(10.4, 20.0), egui::vec2(300.0, 500.0)));
-        st.remember_window("runs", desk, egui::Rect::from_min_size(egui::pos2(2000.0, 100.0), egui::vec2(400.0, 600.0)));
-        assert_eq!(st.window_rect("runs", laptop), Some(egui::Rect::from_min_size(egui::pos2(10.0, 20.0), egui::vec2(300.0, 500.0))));
-        assert_eq!(st.window_rect("runs", desk).map(|r| r.min.x), Some(2000.0));
-        assert_eq!(st.window_rect("runs", None), None);
-        assert_eq!(window_key("runs", Some(egui::vec2(f32::NAN, 1.0))), "runs@0x0");
+        st.remember_window(RUNS, laptop, egui::Rect::from_min_size(egui::pos2(10.4, 20.0), egui::vec2(300.0, 500.0)));
+        st.remember_window(RUNS, desk, egui::Rect::from_min_size(egui::pos2(2000.0, 100.0), egui::vec2(400.0, 600.0)));
+        assert_eq!(st.window_rect(RUNS, laptop), Some(egui::Rect::from_min_size(egui::pos2(10.0, 20.0), egui::vec2(300.0, 500.0))));
+        assert_eq!(st.window_rect(RUNS, desk).map(|r| r.min.x), Some(2000.0));
+        assert_eq!(st.window_rect(RUNS, None), None);
+        assert_eq!(window_key(RUNS, Some(egui::vec2(f32::NAN, 1.0))), "runs@0x0");
         // a hostile file: bad numbers, unknown sections and too many entries are dropped
         let mut st: State =
             serde_json::from_str(r#"{"windows":{"runs@1x1":[1e30,0,300,300],"nope@1x1":[0,0,300,300],"agent@1x1":[0,0,10,300],"plugins@1x1":[5,5,300,300]}}"#)
@@ -296,7 +297,7 @@ mod tests {
         st.sanitize(KNOWN);
         assert_eq!(st.windows.keys().collect::<Vec<_>>(), vec!["plugins@1x1"]);
         for i in 0..(MAX_WINDOWS + 5) {
-            st.remember_window("runs", Some(egui::vec2(i as f32 + 1.0, 1.0)), egui::Rect::from_min_size(egui::pos2(0.0, 0.0), egui::vec2(300.0, 300.0)));
+            st.remember_window(RUNS, Some(egui::vec2(i as f32 + 1.0, 1.0)), egui::Rect::from_min_size(egui::pos2(0.0, 0.0), egui::vec2(300.0, 300.0)));
         }
         assert!(st.windows.len() <= MAX_WINDOWS);
     }
@@ -304,11 +305,11 @@ mod tests {
     #[test]
     fn saves_and_loads_through_the_data_dir() {
         let dir = std::env::temp_dir().join(format!("bashcut-ui-state-{}", std::process::id()));
-        let mut st = State { open: Some("plugins".into()), width: 400.0, ..State::default() };
+        let mut st = State { open: Some(PLUGINS.into()), width: 400.0, ..State::default() };
         st.save_if_changed(Some(&dir));
         let mut back = State::default();
         back.load_once(Some(&dir), KNOWN);
-        assert_eq!(back.open.as_deref(), Some("plugins"));
+        assert_eq!(back.open.as_deref(), Some(PLUGINS));
         assert_eq!(back.width, 400.0);
         let _ = std::fs::remove_dir_all(&dir);
     }

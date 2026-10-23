@@ -17,7 +17,7 @@ use filmcraft_render::Image;
 use serde_json::{Value, json};
 
 use super::strings::{f, s};
-use super::widgets::{NOTE, note};
+use super::widgets::{META, NOTE, note};
 use crate::FilmcraftApp;
 
 const THUMB_W: usize = 128;
@@ -358,7 +358,7 @@ fn card(
                         toggle_favourite(p, look.id, None);
                     }
                     if is_current {
-                        ui.label(egui::RichText::new(s("Applied")).size(10.5).color(t.accent));
+                        note(ui, s("Applied"), META, t.accent);
                     }
                 });
                 note(ui, look.purpose, NOTE, t.text_dim);
