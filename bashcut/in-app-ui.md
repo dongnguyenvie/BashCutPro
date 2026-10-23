@@ -274,6 +274,12 @@ preview need an HTTP image loader / player (later, or through plugin views #37).
   (library kinds, palette kinds, kit recipe titles and summaries) are listed explicitly, and a key may appear only
   once (a later row would silently replace an earlier one). The palette shows recipe titles and summaries in the UI
   language; plugin manifest text uses the manifest's own `i18n` (`plugin-host.md`, incl. choice labels).
+  The `bashcut-agent` crate stays English (it has no UI); the Agent panel shows its errors and notices through
+  `strings::agent` (VI4): a plain row for fixed messages (`Stopped.`, `nothing to send`, …), else one of the
+  `strings::AGENT_MESSAGES` templates for the `format!` ones (`cannot start `{program}`: {error}`, `the agent
+  exited with status {code}: {output}`, …; a nested `{error}` is translated too). The agent's own words (its
+  stderr, a sign-in message, an error event) and OS error text stay as written. A new message in the crate needs
+  its row or template.
 - **Theme and icons**: upstream `Tokens` (dark/light follow upstream); our icons are drawn in `bashcut_ui` (no
   edit to upstream's `icons.rs` enum).
 

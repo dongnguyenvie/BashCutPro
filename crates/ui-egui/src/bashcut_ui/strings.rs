@@ -58,6 +58,85 @@ pub fn f(text: &str, args: &[(&str, &str)]) -> String {
     crate::i18n::fmt(s(text), args)
 }
 
+/// The bashcut-agent crate's messages that carry a value (VI4): the crate builds them in English
+/// with `format!`, so the panel matches them back to these templates. Longer forms first; the
+/// fixed ones are plain catalog rows. `{error}` is translated again when it is one of ours.
+pub const AGENT_MESSAGES: [&str; 12] = [
+    "the agent exited with status {code}: {output}",
+    "the agent exited with status {code}",
+    "the agent was killed: {output}",
+    "cannot start the agent thread: {error}",
+    "cannot start `{program}`: {error}",
+    "agent `{id}` has no command",
+    "agent `{id}`: {error}",
+    "no agent `{id}`",
+    "event format `{name}` is not supported (use {formats})",
+    "event format `{name}` has no live session",
+    "conversation {id}: {error}",
+    "plan.json: {error}",
+];
+
+/// A bashcut-agent error or notice in our language: a catalog row, else an [`AGENT_MESSAGES`]
+/// template it matches, else unchanged (the agent's own words stay as it wrote them).
+pub fn agent(text: &str) -> String {
+    agent_at(text, 0)
+}
+
+fn agent_at(text: &str, depth: u8) -> String {
+    let own = s(text);
+    if own != text {
+        return own.to_string();
+    }
+    for template in AGENT_MESSAGES {
+        let Some(mut args) = captures(template, text) else { continue };
+        if depth < 2 {
+            for (name, value) in &mut args {
+                if *name == "error" {
+                    *value = agent_at(value, depth + 1);
+                }
+            }
+        }
+        let args: Vec<(&str, &str)> = args.iter().map(|(n, v)| (*n, v.as_str())).collect();
+        return f(template, &args);
+    }
+    text.to_string()
+}
+
+/// The `{name}` values that make `template` read `text`; `None` when it does not match. A value is
+/// never empty; a name followed by more text takes the shortest value that fits.
+fn captures<'t>(template: &'t str, text: &str) -> Option<Vec<(&'t str, String)>> {
+    let (head, mut tail) = template.split_once('{').unwrap_or((template, ""));
+    let mut rest = text.strip_prefix(head)?;
+    if tail.is_empty() {
+        return rest.is_empty().then(Vec::new);
+    }
+    let mut out = Vec::new();
+    loop {
+        let (name, after) = tail.split_once('}')?;
+        let (literal, next) = after.split_once('{').unwrap_or((after, ""));
+        let value = if next.is_empty() {
+            // the last value runs to the template's closing text
+            let v = rest.strip_suffix(literal)?;
+            rest = "";
+            v
+        } else {
+            let first = rest.chars().next()?.len_utf8();
+            let at = rest.get(first..)?.find(literal)? + first;
+            let v = rest.get(..at)?;
+            rest = rest.get(at + literal.len()..)?;
+            v
+        };
+        if value.is_empty() {
+            return None;
+        }
+        out.push((name, value.to_string()));
+        if next.is_empty() {
+            return Some(out);
+        }
+        tail = next;
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -195,6 +274,9 @@ mod tests {
         for k in super::super::palette::Kind::ALL {
             keys.push(("palette.rs".into(), k.label().into()));
         }
+        for template in AGENT_MESSAGES {
+            keys.push(("strings.rs".into(), template.into()));
+        }
         for line in super::super::agent_panel::QUIET_LINES {
             keys.push(("agent_panel.rs".into(), line.into()));
         }
@@ -224,6 +306,14 @@ mod tests {
         assert!(dups.is_empty(), "keys listed more than once in strings/vi.tsv: {dups:?}");
         assert_eq!(duplicates("# c\nSave\tLưu\nSave…\tLưu…\nSave\tGhi\n"), ["Save"]);
     }
+
+    #[test]
+    #[ignore = "test ticket: agent() translates fixed rows, AGENT_MESSAGES templates with values (nested {error}, multi-byte values) and leaves the agent's own text unchanged"]
+    fn agent_messages_translate_through_templates() {}
+
+    #[test]
+    #[ignore = "test ticket: every err(\"…\") / Error(\"…\") / Notice literal the bashcut-agent crate can show in the panel has a vi.tsv row or an AGENT_MESSAGES template"]
+    fn every_agent_crate_message_has_a_vietnamese_row() {}
 
     #[test]
     fn literal_reads_escapes_and_continuations() {
