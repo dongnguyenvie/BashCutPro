@@ -233,6 +233,13 @@ try {
 # ------------------------------------------------------------------------------------------------ CLI and MCP
 # Run a program with a time limit; stdout goes to $outFile. Returns the exit code (124 = timed out).
 function Invoke-Limited([string]$exe, [string[]]$argv, [string]$outFile, [string]$inFile = "", [int]$seconds = 60) {
+    # the CLI checks test the engine itself, not the app launched above (CC3); the child inherits it
+    $bridge = $env:BASHCUT_BRIDGE
+    $env:BASHCUT_BRIDGE = "off"
+    try { return Invoke-LimitedOnce $exe $argv $outFile $inFile $seconds } finally { $env:BASHCUT_BRIDGE = $bridge }
+}
+
+function Invoke-LimitedOnce([string]$exe, [string[]]$argv, [string]$outFile, [string]$inFile, [int]$seconds) {
     $p = @{ FilePath = $exe; ArgumentList = $argv; PassThru = $true; NoNewWindow = $true; RedirectStandardOutput = $outFile; RedirectStandardError = "$outFile.err" }
     if ($inFile) { $p.RedirectStandardInput = $inFile }
     $q = Start-Process @p

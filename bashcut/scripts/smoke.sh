@@ -165,6 +165,8 @@ else
 fi
 
 # ---------------------------------------------------------------------------------------------- CLI and MCP
+# The CLI checks test the engine itself: without this, `commands` would bridge to the app launched above (CC3).
+export BASHCUT_BRIDGE=off
 # Run a command with a time limit (macOS has no `timeout`); its output goes to $2.
 run_limited() {
   local secs="$1" file="$2"; shift 2

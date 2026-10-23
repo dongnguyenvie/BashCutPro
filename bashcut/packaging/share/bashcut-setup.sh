@@ -49,11 +49,12 @@ cli="$(find_tool bashcutpro || find_tool filmcraft-cli || true)"
 echo "BashCutPro setup: data folder $data, command line (bashcutpro) ${cli:-not found}"
 mkdir -p "$data/bashcut/profiles" "$data/bashcut/templates" "$data/bashcut/looks"
 
+# looks and profiles are written by the headless engine, not the open app (BASHCUT_BRIDGE=off, CC3)
 if [ "$skip_looks" = 0 ] && [ -n "$cli" ] && ask "Write the look pack (.cube LUTs) to $data/bashcut/looks?"; then
-  "$cli" exec bashcut.looks.export "dir=$data/bashcut/looks" >/dev/null && echo "  looks written" || echo "  looks: failed (skipped)"
+  BASHCUT_BRIDGE=off "$cli" exec bashcut.looks.export "dir=$data/bashcut/looks" >/dev/null && echo "  looks written" || echo "  looks: failed (skipped)"
 fi
 if [ "$skip_profiles" = 0 ] && [ -n "$cli" ] && ask "Add the output profiles (TikTok, Reels, Shorts, YouTube…) as export presets?"; then
-  "$cli" exec bashcut.profiles.compile >/dev/null && echo "  export presets \"BashCut …\" added" || echo "  profiles: failed (skipped)"
+  BASHCUT_BRIDGE=off "$cli" exec bashcut.profiles.compile >/dev/null && echo "  export presets \"BashCut …\" added" || echo "  profiles: failed (skipped)"
 fi
 if [ "$skip_kit" = 0 ]; then
   agents=""

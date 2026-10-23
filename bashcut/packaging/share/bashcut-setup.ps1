@@ -37,6 +37,9 @@ if (-not $cli) { $cli = Find-Tool 'filmcraft-cli' }
 Write-Output "BashCutPro setup: data folder $data, command line (bashcutpro) $(if ($cli) { $cli } else { 'not found' })"
 foreach ($d in 'profiles', 'templates', 'looks') { New-Item -ItemType Directory -Force -Path (Join-Path $data "bashcut\$d") | Out-Null }
 
+# looks and profiles are written by the headless engine, not the open app (CC3); restored below
+$bridge = $env:BASHCUT_BRIDGE
+$env:BASHCUT_BRIDGE = 'off'
 if (-not $SkipLooks -and $cli -and (Ask "Write the look pack (.cube LUTs) to $data\bashcut\looks?")) {
   try {
     & $cli exec bashcut.looks.export "dir=$(Join-Path $data 'bashcut\looks')" | Out-Null
@@ -51,6 +54,7 @@ if (-not $SkipProfiles -and $cli -and (Ask 'Add the output profiles (TikTok, Ree
     if ($LASTEXITCODE -eq 0) { Write-Output '  export presets "BashCut ..." added' } else { Write-Output '  profiles: failed (skipped)' }
   } catch { Write-Output "  profiles: failed (skipped): $_" }
 }
+$env:BASHCUT_BRIDGE = $bridge
 if (-not $SkipKit) {
   $agents = @(@('claude', 'codex') | Where-Object { Get-Command $_ -ErrorAction SilentlyContinue })
   if ($agents.Count -gt 0) { Write-Output "Agent CLIs: $($agents -join ', ')" } else { Write-Output 'Agent CLIs: none found (install Claude Code or Codex to drive BashCutPro with an agent)' }

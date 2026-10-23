@@ -55,7 +55,8 @@ impl Env for RealEnv {
     }
 
     fn run(&self, program: &str, args: &[&str]) -> Option<Output> {
-        let out = Command::new(program).args(args).output().ok()?;
+        // the engine probes (`commands`, `exec`) check the engine itself, not the open app (CC3)
+        let out = Command::new(program).args(args).env("BASHCUT_BRIDGE", "off").output().ok()?;
         Some(Output {
             code: out.status.code(),
             stdout: String::from_utf8_lossy(&out.stdout).into_owned(),

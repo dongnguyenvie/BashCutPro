@@ -220,7 +220,9 @@ fn find_cli(a: &Args) -> String {
 fn serve(argv: &[String], roots: Option<&Roots>, cwd: &Path) -> Result<u8, String> {
     let (program, args) = argv.split_first().ok_or("empty command line")?;
     let mut cmd = Command::new(program);
-    cmd.args(args).stderr(Stdio::inherit());
+    // `decide` already chose bridge or headless: the engine must not add its own default bridge
+    // (CC2) to a headless `mcp` with no project (CC3)
+    cmd.args(args).env("BASHCUT_BRIDGE", "off").stderr(Stdio::inherit());
     let Some(roots) = roots else {
         let status = cmd.stdin(Stdio::inherit()).stdout(Stdio::inherit()).status().map_err(|e| format!("{program}: {e}"))?;
         return Ok(exit_code(status.code()));
