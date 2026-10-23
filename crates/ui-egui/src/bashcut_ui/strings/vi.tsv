@@ -384,7 +384,6 @@ no gate is waiting	Không có bước duyệt nào đang chờ
 bad session id	Mã phiên không hợp lệ
 empty agent command	Lệnh của trợ lý đang trống
 cannot write to the agent	Không gửi được dữ liệu cho trợ lý
-the agent has ended	Trợ lý đã thoát
 agent host thread failed	Luồng chạy trợ lý bị lỗi
 skipped an event larger than 1 MB	Đã bỏ qua một sự kiện lớn hơn 1 MB
 the agent was killed	Trợ lý đã bị buộc dừng
