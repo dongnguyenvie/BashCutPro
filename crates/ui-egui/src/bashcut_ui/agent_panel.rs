@@ -17,6 +17,10 @@
 //! AG6: when the latest turn ended on a sign-in or account problem ([`bashcut_agent::Item::Auth`],
 //! decoded from the event stream only), a readiness line says so with Sign in, and the agent's own
 //! message stays selectable under it.
+//!
+//! AG9: when the live session's `system/init` lists no `bcp` plugin, a readiness line says the
+//! BashCutPro skills are not installed, with the kit's install commands and Install kit (a terminal
+//! the user starts; never automatic), and Open in Terminal passes the app's MCP server instead.
 
 use bashcut_agent::{Gate, Item, Status};
 use serde_json::{Value, json};
@@ -86,6 +90,10 @@ struct Snapshot {
     outdated: bool,
     /// The sign-in or account problem the latest turn ended on (category, the agent's message).
     auth: Option<(String, String)>,
+    /// Claude Code's last `system/init` listed no [`terminal::KIT_PLUGIN`] (unknown before one: `false`).
+    kit_missing: bool,
+    /// The engine and bridge address, for the terminal's MCP config when the kit is missing.
+    mcp: Option<(String, String)>,
 }
 
 impl Snapshot {
@@ -138,6 +146,8 @@ pub fn draw(app: &mut FilmcraftApp, ui: &mut egui::Ui) {
             queued: a.queued(),
             outdated: a.outdated(),
             auth: a.conversation.transcript.auth_problem().map(|(c, m)| (c.to_string(), m.to_string())),
+            kit_missing: a.agent.id == "claude-code" && a.plugins.as_ref().is_some_and(|p| !p.iter().any(|n| n == terminal::KIT_PLUGIN)),
+            mcp: c.cli.clone().zip(c.bridge.clone()),
         };
         let gate = if check_gate && !a.is_running() { Some(a.gate()) } else { None };
         (snap, gate, a.take_unsent())
@@ -280,6 +290,9 @@ fn readiness(app: &mut FilmcraftApp, ui: &mut egui::Ui, ctx: &egui::Context, sna
     if let Some((category, message)) = &snap.auth {
         auth_line(app, ui, snap, category, message);
     }
+    if snap.kit_missing {
+        kit_line(app, ui, snap);
+    }
     let handoff = terminal_row(app, ui, snap);
     if !hints::control_on() {
         let line = s("Control channel off: the agent cannot edit the open project.");
@@ -333,6 +346,37 @@ fn auth_line(app: &mut FilmcraftApp, ui: &mut egui::Ui, snap: &Snapshot, categor
     }
 }
 
+/// The agent kit's install commands, as the agent-kit README gives them (shown selectable).
+fn kit_commands() -> String {
+    format!("claude plugin marketplace add {}\nclaude plugin install {}", terminal::KIT_MARKETPLACE, terminal::KIT_INSTALL)
+}
+
+/// "BashCutPro skills are not installed" (AG9): Install kit…, and the commands to run by hand.
+fn kit_line(app: &mut FilmcraftApp, ui: &mut egui::Ui, snap: &Snapshot) {
+    let t = app.tokens;
+    ui.horizontal_wrapped(|ui| {
+        let line = s("BashCutPro skills are not installed");
+        let r = note(ui, line, NOTE, t.danger).on_hover_text(s("The BashCutPro kit (bcp plugin for Claude Code) brings the /bcp: recipes and skills."));
+        app.auto.add_response("bashcut.agent.ready.kit", &r, line);
+        let program = snap.resume.as_ref().and_then(|a| a.first()).cloned();
+        if let Some(program) = program
+            && hover_button(
+                app,
+                ui,
+                "bashcut.agent.installKit",
+                s("Install kit…"),
+                s("Open a terminal that installs the BashCutPro kit (bcp plugin) for Claude Code."),
+            )
+        {
+            let hint = s("Installing the BashCutPro kit for Claude Code. When it finishes, close this window and start a New conversation in BashCutPro.");
+            open_terminal(app, &snap.cwd(), &terminal::kit_job(terminal::Os::current(), &program), Some(hint));
+        }
+    });
+    let cmds = kit_commands();
+    let r = ui.add(egui::Label::new(code_text(&cmds, NOTE, t.text_dim)).selectable(true).wrap());
+    app.auto.add_response("bashcut.agent.ready.kit.commands", &r, &cmds);
+}
+
 fn hover_button(app: &mut FilmcraftApp, ui: &mut egui::Ui, id: &str, label: &str, hover: &str) -> bool {
     let r = ui.add(egui::Button::new(label).small()).on_hover_text(hover);
     app.auto.add_response(id, &r, label);
@@ -351,9 +395,23 @@ fn terminal_row(app: &mut FilmcraftApp, ui: &mut egui::Ui, snap: &Snapshot) -> O
             let program = argv.first().cloned().unwrap_or_default();
             sign_in_button(app, ui, &program, snap.project.as_deref());
         }
-        clicked.then(|| (argv.clone(), snap.cwd()))
+        clicked.then(|| (terminal_argv(argv, snap), snap.cwd()))
     })
     .inner
+}
+
+/// `argv` plus, while the kit is missing (no `bashcutpro` server in the terminal), the app's own (AG9).
+fn terminal_argv(argv: &[String], snap: &Snapshot) -> Vec<String> {
+    let mut argv = argv.to_vec();
+    if snap.kit_missing
+        && let Some((cli, bridge)) = &snap.mcp
+    {
+        match terminal::terminal_mcp_config(cli, bridge) {
+            Ok(path) => argv.extend(["--mcp-config".to_string(), path.to_string_lossy().into_owned()]),
+            Err(e) => log::warn!("bashcut terminal MCP config: {e}"),
+        }
+    }
+    argv
 }
 
 /// Sign in: `claude` in a terminal with a hint to type `/login` (AG6 shows it when auth fails).
@@ -465,7 +523,9 @@ fn examples(app: &mut FilmcraftApp, ui: &mut egui::Ui) -> Option<String> {
     let mut picked = None;
     ui.add_space(4.0);
     for (id, name, _) in super::palette::RECIPES.iter().filter(|(id, ..)| EXAMPLES.contains(id)) {
-        if button(app, ui, &format!("bashcut.agent.example.{id}"), s(name), true) {
+        let r = ui.button(s(name)).on_hover_text(s("Needs the BashCutPro kit (bcp plugin) for Claude Code."));
+        app.auto.add_response(&format!("bashcut.agent.example.{id}"), &r, s(name));
+        if r.clicked() {
             picked = Some(format!("Use the bcp:{id} recipe on this project."));
         }
     }

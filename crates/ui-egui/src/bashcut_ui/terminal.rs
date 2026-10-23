@@ -7,6 +7,10 @@
 //! the PowerShell script travels base64-encoded (`-EncodedCommand`), so spaces, Vietnamese letters,
 //! `;`, `%` or quotes in a path stay one word. Each launcher is started through
 //! [`bashcut_dirs::child::spawn`] and reaped on a background thread.
+//!
+//! AG9: Install kit runs the agent-kit README's two `claude plugin` commands ([`kit_job`]), and
+//! when the live session showed no kit, Open in Terminal passes the app's MCP server from a config
+//! kept in the data folder ([`terminal_mcp_config`]) so the terminal agent still reaches the app.
 
 use std::path::Path;
 use std::process::Command;
@@ -16,6 +20,11 @@ use bashcut_dirs::child;
 /// The official installers (user-started only, never automatic).
 pub const INSTALL_UNIX: &str = "curl -fsSL https://claude.ai/install.sh | bash";
 pub const INSTALL_WINDOWS: &str = "irm https://claude.ai/install.ps1 | iex";
+
+/// The agent kit's Claude Code plugin (`/bcp:<recipe>` skills) and its marketplace (agent-kit README).
+pub const KIT_PLUGIN: &str = "bcp";
+pub const KIT_MARKETPLACE: &str = "dongnguyenvie/bashcutpro-agent-kit";
+pub const KIT_INSTALL: &str = "bcp@bashcutpro-agent-kit";
 
 /// The OS a launch is built for (a parameter so every branch is testable on any OS).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -205,6 +214,31 @@ pub fn install_job(os: Os) -> Job {
     Job::Script(if os == Os::Windows { INSTALL_WINDOWS } else { INSTALL_UNIX }.to_string())
 }
 
+/// The kit's install for `program` (`claude`, or `BASHCUT_CLAUDE`, quoted): add the marketplace, then
+/// install the plugin when that worked. User-started only, never automatic.
+pub fn kit_job(os: Os, program: &str) -> Job {
+    let add = ["plugin", "marketplace", "add", KIT_MARKETPLACE];
+    let install = ["plugin", "install", KIT_INSTALL];
+    Job::Script(if os == Os::Windows {
+        let p = ps_quote(program);
+        format!("& {p} {}; if ($LASTEXITCODE -eq 0) {{ & {p} {} }}", add.join(" "), install.join(" "))
+    } else {
+        let p = sh_quote(program);
+        format!("{p} {} && {p} {}", add.join(" "), install.join(" "))
+    })
+}
+
+/// The MCP config Open in Terminal passes when the kit is missing: the app's server
+/// ([`bashcut_agent::process::SERVER`]: `<engine> mcp --bridge <address>`) in the data folder, so
+/// it outlives the live session's temp copy. Rewritten on each click (the port can change).
+pub fn terminal_mcp_config(cli: &str, bridge: &str) -> Result<std::path::PathBuf, String> {
+    let dir = bashcut_dirs::data_dir().ok_or("no data folder")?;
+    let path = dir.join("agent").join("terminal-mcp.json");
+    let v = serde_json::json!({"mcpServers": {bashcut_agent::process::SERVER: {"command": cli, "args": ["mcp", "--bridge", bridge]}}});
+    bashcut_dirs::fs::write_atomic(&path, v.to_string().as_bytes()).map_err(|e| e.0)?;
+    Ok(path)
+}
+
 /// The agent program followed by its resume arguments for `session` (when the id looks like one).
 pub fn resume_argv(program: &str, resume_args: &[String], session: &str) -> Vec<String> {
     let mut v = vec![program.to_string()];
@@ -228,4 +262,8 @@ mod tests {
     #[test]
     #[ignore = "test ticket: resume_argv drops a session id with shell characters"]
     fn resume_argv_keeps_only_safe_session_ids() {}
+
+    #[test]
+    #[ignore = "test ticket: kit_job quotes the program and runs marketplace add then plugin install, per OS"]
+    fn kit_job_adds_marketplace_then_installs_bcp() {}
 }

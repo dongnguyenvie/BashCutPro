@@ -1,5 +1,5 @@
 //! Claude Code's stream-json (`claude -p --output-format stream-json --input-format stream-json
-//! --verbose`): one JSON object per line. We read `system/init` (session, model, `capabilities`),
+//! --verbose`): one JSON object per line. We read `system/init` (session, model, `capabilities`, plugin names),
 //! `assistant` (text and tool_use blocks), `user` (tool_result blocks, and the `isReplay` echo of a
 //! message Claude took from stdin with `--replay-user-messages`) and `result`; anything else is
 //! ignored. The same format is the default `events` of agent plugins.
@@ -34,6 +34,8 @@ pub enum Event {
         /// What the agent supports (`interrupt_receipt_v1`, …): feature-detect from it, unknown
         /// values are kept and ignored.
         capabilities: Vec<String>,
+        /// Names of the Claude Code plugins it loaded (AG9: `bcp` is the BashCutPro kit).
+        plugins: Vec<String>,
     },
     /// The agent took the next message from stdin (Claude Code's `isReplay` echo): a queued message
     /// is now being worked on.
@@ -115,7 +117,12 @@ pub fn parse_line(line: &str) -> Vec<Event> {
     let text = |v: &Value, k: &str| v.get(k).and_then(Value::as_str).unwrap_or_default().to_string();
     match v.get("type").and_then(Value::as_str).unwrap_or_default() {
         "system" if v.get("subtype").and_then(Value::as_str) == Some("init") => {
-            vec![Event::Init { session: text(&v, "session_id"), model: text(&v, "model"), capabilities: capabilities(v.get("capabilities")) }]
+            vec![Event::Init {
+                session: text(&v, "session_id"),
+                model: text(&v, "model"),
+                capabilities: capabilities(v.get("capabilities")),
+                plugins: plugins(v.get("plugins")),
+            }]
         }
         "user" if v.get("isReplay").and_then(Value::as_bool) == Some(true) => vec![Event::Picked],
         "system" if v.get("subtype").and_then(Value::as_str) == Some("api_retry") => match auth_error(&v) {
@@ -181,6 +188,12 @@ fn capabilities(v: Option<&Value>) -> Vec<String> {
     a.iter().filter_map(Value::as_str).take(MAX_CAPABILITIES).map(|c| clip(c, MAX_CAPABILITY)).collect()
 }
 
+/// The `name`s of `system/init`'s `plugins` (`[{"name", "path", "source", "version"}]`), capped.
+fn plugins(v: Option<&Value>) -> Vec<String> {
+    let Some(Value::Array(a)) = v else { return Vec::new() };
+    a.iter().filter_map(|p| p.get("name").and_then(Value::as_str)).take(MAX_CAPABILITIES).map(|n| clip(n, MAX_CAPABILITY)).collect()
+}
+
 fn blocks(v: &Value) -> Vec<Value> {
     match v.get("message").and_then(|m| m.get("content")) {
         Some(Value::Array(a)) => a.iter().take(256).cloned().collect(),
@@ -229,7 +242,7 @@ mod tests {
     #[test]
     fn parses_a_turn() {
         let init = parse_line(r#"{"type":"system","subtype":"init","session_id":"s1","model":"m","tools":[]}"#);
-        assert_eq!(init, vec![Event::Init { session: "s1".into(), model: "m".into(), capabilities: Vec::new() }]);
+        assert_eq!(init, vec![Event::Init { session: "s1".into(), model: "m".into(), capabilities: Vec::new(), plugins: Vec::new() }]);
         let a = parse_line(
             r#"{"type":"assistant","message":{"content":[{"type":"text","text":"Cutting."},{"type":"tool_use","id":"t1","name":"mcp__bashcutpro__command_execute","input":{"command":"edit.razor"}}]}}"#,
         );
@@ -263,6 +276,10 @@ mod tests {
     #[test]
     #[ignore = "test ticket: system/init capabilities parsed (strings kept, non-strings skipped, capped at 64), isReplay user line is Picked"]
     fn init_capabilities_and_replay_are_parsed() {}
+
+    #[test]
+    #[ignore = "test ticket: system/init plugins keep each name (bcp among others), entries without a name skipped, capped"]
+    fn init_plugin_names_are_parsed() {}
 
     #[test]
     #[ignore = "test ticket: authentication_failed / oauth_org_not_allowed / billing_error from assistant, system/api_retry and a failed 'Not logged in' result decode to Event::Auth; other api_retry errors and successful results do not"]

@@ -36,8 +36,10 @@ Under the header, **Open in Terminal** opens a terminal window in the project's 
 program the panel uses, resuming the panel's conversation (`claude --resume <id>`, or `codex resume <id>`): you get
 the full Claude Code screen (its own permission prompts, `/` commands, history) on the same conversation. Come back
 to the panel and press **Send** to keep going here. The terminal session talks to the open window through the agent
-kit's tools; the panel's own tool connection is not passed along. So that only one of them writes the conversation,
-the panel first ends its own session (stopping a running turn); the transcript then says "Continued in Terminal."
+kit's tools; the panel's own tool connection is not passed along, except when the kit is missing (below): then
+the terminal session gets the app's own tool connection, so it still reaches the open window. So that only one of
+them writes the conversation, the panel first ends its own session (stopping a running turn); the transcript then
+says "Continued in Terminal."
 The first time in a folder, Claude Code asks whether you trust it: choose **Yes, I trust this folder**.
 
 - **Sign in…** opens `claude` in a terminal: type `/login` and follow the steps in your browser. You sign in with
@@ -49,6 +51,12 @@ The first time in a folder, Claude Code asks whether you trust it: choose **Yes,
 - When Claude Code is not installed, the "not found" line has an **Install** button. It opens a terminal running the
   official installer (`curl -fsSL https://claude.ai/install.sh | bash` on macOS and Linux,
   `irm https://claude.ai/install.ps1 | iex` in PowerShell on Windows). Nothing is installed until you press it.
+- When Claude Code runs without the BashCutPro kit (its `bcp` plugin, which brings the `/bcp:` recipes and skills),
+  the panel says **BashCutPro skills are not installed** after the first message, with the two commands to install
+  it (`claude plugin marketplace add dongnguyenvie/bashcutpro-agent-kit`, then
+  `claude plugin install bcp@bashcutpro-agent-kit`) and an **Install kit…** button that runs them in a terminal.
+  Nothing is installed until you press it. When it finishes, press **New**: the line goes away once the new
+  conversation's first message shows the kit. The recipe buttons of an empty conversation need the kit too.
 
 The terminal is Terminal on macOS, Windows Terminal (else a PowerShell window) on Windows, and your desktop's
 default terminal (else GNOME Terminal, Konsole or xterm) on Linux.
