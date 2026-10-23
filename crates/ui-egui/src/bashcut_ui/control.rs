@@ -34,6 +34,20 @@ pub const ENV: &str = "BASHCUT_CONTROL";
 /// checked on the UI thread, which runs no frames while the window is minimised (Windows) or covered (macOS), so
 /// the server thread enforces it and the agent is never left waiting upstream's 60 s request timeout.
 pub const UI_WAIT: Duration = Duration::from_secs(11);
+/// FX32: control input (a click, a key) drained in a pass where the window is minimised or covered is lost:
+/// the pass runs `logic` only, no `ui`, so no widget sees it, yet `logic` then answers `ok: true`. A plugin
+/// button clicked that way "did nothing". While the window is not visible this takes the queued events out of
+/// `queue`, so they wait (and `logic` keeps the request open, raises the window, and the server thread ends it
+/// with [`NOT_IN_FRONT`] after [`UI_WAIT`]); [`release`] puts them back after the hook's drain.
+pub fn hold_while_hidden(raw_input: &egui::RawInput, queue: &mut Vec<egui::Event>) -> Vec<egui::Event> {
+    if raw_input.viewport().visible() == Some(false) { std::mem::take(queue) } else { Vec::new() }
+}
+
+/// Put back what [`hold_while_hidden`] took, ahead of anything queued since.
+pub fn release(held: Vec<egui::Event>, queue: &mut Vec<egui::Event>) {
+    queue.splice(0..0, held);
+}
+
 /// The reply when no frame came in time.
 pub const NOT_IN_FRONT: &str =
     "window not in front: no frame was drawn within 11 s (another app covers BashCutPro, or it is minimised); call ui.focus {} and try again";
@@ -415,4 +429,9 @@ mod tests {
             assert_eq!(held.method, method);
         }
     }
+
+    /// FX32: control input is not drained while the window is hidden (no `ui` pass would see it).
+    #[test]
+    #[ignore = "test ticket: hold_while_hidden keeps queued events while viewport minimised/occluded, release restores order, visible/unknown drains"]
+    fn control_input_waits_while_the_window_is_hidden() {}
 }

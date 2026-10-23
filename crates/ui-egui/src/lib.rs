@@ -2113,6 +2113,7 @@ impl eframe::App for FilmcraftApp {
             // in a background window without activating it or taking the user's OS keyboard.
             raw_input.focused = true;
         }
+        let held = bashcut_ui::control::hold_while_hidden(raw_input, &mut self.synthetic); // BashCutPro: a hidden window runs no ui, so control input waits for a frame that draws (bashcut/extending-upstream.md)
         if !self.synthetic.is_empty() {
             // Pointer events go one per frame so egui sees press → moves → release as a real drag
             // (all in one frame reads as a click); key/text runs go together up to a key release.
@@ -2132,6 +2133,7 @@ impl eframe::App for FilmcraftApp {
                 raw_input.events.push(event);
             }
         }
+        bashcut_ui::control::release(held, &mut self.synthetic); // BashCutPro: gives the held control input back (bashcut/extending-upstream.md)
     }
 
     fn logic(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
