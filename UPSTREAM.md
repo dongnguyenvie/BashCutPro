@@ -25,7 +25,7 @@ Newest first. Add a row after every merge from upstream (`upstream.sh merge` pri
 One entry per sync: what came in, what conflicted, what it cost. Newest first.
 
 **2026-10-23, upstream/main `c5c16939` (88 commits past `dd525c93`).** `upstream.sh merge c5c16939 --no-check
---branch upstream-sync/2026-10-23` (the default tag v0.12.0 was 46 commits behind). **88 commits, 2 conflicts**:
+--branch upstream-sync/2026-10-23`, merged as PR #394 (the default tag v0.12.0 was 46 commits behind). **88 commits, 2 conflicts**:
 `Cargo.lock` (took upstream's, `cargo check --workspace` re-adds our entries) and `crates/ui-egui/src/control.rs`
 (both sides kept: our `modal::guard!` line first, then upstream's `let count = …` block). Fixes on top of the merge:
 upstream's new `.github/workflows/ci.yml` `on:` set to `workflow_dispatch` only (no GitHub Actions; covered by the
