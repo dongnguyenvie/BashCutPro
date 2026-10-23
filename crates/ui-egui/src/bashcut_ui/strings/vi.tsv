@@ -458,3 +458,67 @@ Start a message to load skills	Gửi một tin nhắn để tải danh sách k�
 skill	kỹ năng
 command	lệnh
 ↑/↓ to pick, Enter or Tab to insert, Esc to close	↑/↓ để chọn, Enter hoặc Tab để chèn, Esc để đóng
+Focus Agent	Chuyển đến Trợ lý
+Toggle Section	Bật/tắt mục
+Close Side Panel	Đóng bảng bên
+Side Panel Width	Độ rộng bảng bên
+Pop Out Section	Tách mục thành cửa sổ
+Dock Section Back	Gắn mục trở lại
+BashCutPro Language	Ngôn ngữ BashCutPro
+Rail State	Trạng thái thanh bên
+List Plugins	Liệt kê plugin
+Check Plugin Registry	Kiểm tra kho plugin
+Install Plugin	Cài plugin
+Update Plugin	Cập nhật plugin
+Remove Plugin	Gỡ plugin
+Plugin Settings	Cài đặt plugin
+Store Plugin Secret	Lưu khóa bí mật của plugin
+Run Plugin Action	Chạy thao tác plugin
+List Runs	Liệt kê tác vụ
+Run Details	Chi tiết tác vụ
+Cancel Run	Hủy tác vụ
+Clear Finished Runs	Xóa tác vụ đã xong
+Send Run to Agent	Gửi tác vụ cho Trợ lý
+Plugin Form	Biểu mẫu plugin
+Press Plugin Form Button	Bấm nút biểu mẫu plugin
+Close Command Palette	Đóng bảng lệnh
+Search Command Palette	Tìm trong bảng lệnh
+Run from Command Palette	Chạy từ bảng lệnh
+Start Recipe with the Agent	Bắt đầu công thức với Trợ lý
+Favourite Look	Màu phim yêu thích
+Preview Looks on Current Frame	Xem trước màu phim trên khung hình hiện tại
+Looks Panel State	Trạng thái bảng Màu phim
+Search the Library	Tìm trong Thư viện
+Library Results	Kết quả Thư viện
+Place a Library Result	Đặt kết quả Thư viện vào timeline
+Add a Library Result to the Bin	Thêm kết quả Thư viện vào thùng
+Library Credit Lines	Dòng ghi nguồn Thư viện
+Library State	Trạng thái Thư viện
+Batch State	Trạng thái Hàng loạt
+Batch Draft	Bản nháp Hàng loạt
+Clear Batch Draft	Xóa bản nháp Hàng loạt
+Add Batch Inputs	Thêm tệp đầu vào Hàng loạt
+Remove Batch Input	Gỡ tệp đầu vào Hàng loạt
+Clear Batch Inputs	Xóa các tệp đầu vào Hàng loạt
+Add Batch Step	Thêm bước Hàng loạt
+Change Batch Step	Sửa bước Hàng loạt
+Remove Batch Step	Gỡ bước Hàng loạt
+Move Batch Step	Di chuyển bước Hàng loạt
+Add Batch Output	Thêm đầu ra Hàng loạt
+Remove Batch Output	Gỡ đầu ra Hàng loạt
+Batch Settings	Cài đặt Hàng loạt
+Run Batch	Chạy Hàng loạt
+Cancel Batch	Hủy Hàng loạt
+Retry Batch Items	Thử lại các mục Hàng loạt
+Mark Batch Items Done	Đánh dấu các mục Hàng loạt đã xong
+Open Batch Item	Mở mục Hàng loạt
+Reveal Batch Output	Hiện đầu ra Hàng loạt
+List Batch Presets	Liệt kê mẫu Hàng loạt
+Save Batch Preset	Lưu mẫu Hàng loạt
+Load Batch Preset	Tải mẫu Hàng loạt
+Delete Batch Preset	Xóa mẫu Hàng loạt
+Recent Batches	Hàng loạt gần đây
+Open Batch Job	Mở tác vụ Hàng loạt
+Start Batch From Preset or Recent	Bắt đầu Hàng loạt từ mẫu hoặc lượt gần đây
+Run on Many Files	Chạy trên nhiều tệp
+Learned Batch Step Times	Thời gian đã học của các bước Hàng loạt

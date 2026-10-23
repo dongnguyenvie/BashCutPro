@@ -146,6 +146,24 @@ fn captures<'t>(template: &'t str, text: &str) -> Option<Vec<(&'t str, String)>>
 mod tests {
     use super::*;
 
+    /// VI6: every bashcut.* command label, and every menu path part but upstream's own Window menu, has a Vietnamese row.
+    #[test]
+    fn vietnamese_catalog_translates_every_command_label() {
+        let vi = catalog("vi").unwrap();
+        let mut missing = Vec::new();
+        for c in super::super::commands() {
+            if !c.id.starts_with("bashcut.") {
+                continue;
+            }
+            for text in std::iter::once(c.label.as_str()).chain(c.menu.iter().map(|m| m.as_str()).filter(|m| *m != "Window")) {
+                if !vi.contains_key(text) && !missing.contains(&text.to_string()) {
+                    missing.push(text.to_string());
+                }
+            }
+        }
+        assert!(missing.is_empty(), "no Vietnamese row for: {missing:#?}");
+    }
+
     #[test]
     fn vietnamese_catalog_translates_every_section_title() {
         let vi = catalog("vi").unwrap();
