@@ -8,6 +8,8 @@
 //! of the text gets [`rename`], which only touches the program name as a word (`filmcraft-cli`
 //! followed by a space or `:`), so a future `filmcraft-cli/1` schema, `filmcraft-cli-…` file name or
 //! other protocol string keeps upstream's spelling.
+//!
+//! On Windows it also embeds the BashCutPro icon and version info (`bashcut-winres`, PK4).
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -175,5 +177,7 @@ fn main() -> Result<(), String> {
         let text = rename(&body.join("\n")) + "\n";
         fs::write(out.join(file), text).map_err(|e| format!("bashcutpro-cli: can't write {file}: {e}"))?;
     }
-    Ok(())
+    // PK4: the BashCutPro icon and VERSIONINFO; one resource for both exes, so `bcpro.exe` names
+    // `bashcutpro.exe` as its original file name
+    bashcut_winres::embed("bashcutpro.exe", "BashCutPro command line")
 }

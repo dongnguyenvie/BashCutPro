@@ -32,6 +32,15 @@ while IFS= read -r f; do sh_files+=("$f"); done < <(git ls-files -- "${dirs[@]/%
 while IFS= read -r f; do py_files+=("$f"); done < <(git ls-files -- "${dirs[@]/%//*.py}")
 while IFS= read -r f; do ps_files+=("$f"); done < <(git ls-files -- "${dirs[@]/%//*.ps1}")
 
+# PK4: bashcut/.gitattributes keeps these LF, but a Windows checkout made before it (44e1d3b4) keeps its CRLF copies
+crlf=()
+# (tr, not grep: Git Bash's grep drops the CR before a line end)
+for f in "${sh_files[@]}"; do if [ -n "$(tr -cd '\r' <"$f")" ]; then crlf+=("$f"); fi; done
+if [ "${#crlf[@]}" -gt 0 ]; then
+    echo "FAIL  CRLF line endings in ${crlf[*]}"
+    echo "      re-check them out as LF once (commit your changes to them first): bashcut/scripts/README.md, Line endings"
+    failed=1
+fi
 for f in "${sh_files[@]}"; do run "bash -n $f" bash -n "$f"; done
 if command -v shellcheck >/dev/null 2>&1; then
     run "shellcheck (${#sh_files[@]} files)" shellcheck -x -s bash "${sh_files[@]}"

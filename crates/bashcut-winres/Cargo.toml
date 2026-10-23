@@ -1,0 +1,15 @@
+[package]
+name = "bashcut-winres"
+description = "BashCutPro build helper: the icon and version info (VERSIONINFO) of our Windows command-line tools"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+publish = false
+
+[lints]
+workspace = true
+
+# Only a build-dependency of our apps; `winresource` only on Windows hosts, like apps/filmcraft.
+[target.'cfg(windows)'.dependencies]
+winresource = "0.1"

@@ -46,3 +46,7 @@ filmcraft-ogg = { workspace = true }
 filmcraft-automation = { workspace = true }
 serde_json = { workspace = true }
 tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
+
+# the icon and VERSIONINFO of the Windows exes (build.rs, PK4)
+[build-dependencies]
+bashcut-winres = { path = "../../crates/bashcut-winres" }

@@ -18,3 +18,7 @@ path = "src/main.rs"
 bashcut-connect = { path = "../../crates/bashcut-connect" }
 bashcut-dirs = { path = "../../crates/bashcut-dirs" }
 serde_json = { workspace = true }
+
+# the icon and VERSIONINFO of the Windows exe (build.rs, PK4)
+[build-dependencies]
+bashcut-winres = { path = "../../crates/bashcut-winres" }

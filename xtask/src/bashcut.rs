@@ -25,11 +25,12 @@ const LAYERS: &[(&str, u8)] = &[
     ("bashcut-agent", 4),
     ("bashcut-batch", 4),
     ("bashcut-connect", 4),
-    // apps
+    // apps, and the build helper only their build scripts use (Windows icon + VERSIONINFO, PK4)
     ("bashcutpro-cli", 6),
     ("bashcut-batch-cli", 6),
     ("bashcut-doctor", 6),
     ("bashcut-mcp", 6),
+    ("bashcut-winres", 6),
 ];
 
 /// The layer of one of our crates, or `None` for any other crate.

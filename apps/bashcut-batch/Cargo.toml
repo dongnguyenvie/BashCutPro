@@ -20,3 +20,7 @@ bashcut-dirs = { path = "../../crates/bashcut-dirs" }
 serde_json = { workspace = true }
 # Ctrl+C asks the running job to cancel, so its steps (in their own process groups) are stopped
 ctrlc = "3.4"
+
+# the icon and VERSIONINFO of the Windows exe (build.rs, PK4)
+[build-dependencies]
+bashcut-winres = { path = "../../crates/bashcut-winres" }
