@@ -90,7 +90,20 @@ Size: **S** < 1 h, **M** half a day, **L** more. **Beh.** = whether the proposed
 
 ## Refactors done in RV2
 
-See the PR list in the RV2 report; each fix marked **done** RV2 above.
+Each fix marked **done** RV2 above; all behaviour-neutral, gated with fmt, clippy `-D warnings` on the touched
+crates and the upstream footprint (speed mode: no new tests; existing ones unchanged).
+
+| PR | What |
+|---|---|
+| #269 | This review |
+| #270 | Engine lookup in `bashcut_dirs::engine` (D1 for batch and the UI), identity `cli::engine` inlined (X1), README (T1) |
+| #272 | `bashcut-dirs` workspace lints (I8), `bashcut_dirs::PLUGINS_DIR` (D8) |
+| #274 | Batch: `run_engine` (D13), `HashSet` dedup (S7), `bashcut_dirs::data_dir` directly (D7), docs/help (T2, T4) |
+| #275 | Engine: `data::round_to` / `data::secs` (D10), `data::base` (D12) |
+| #277 | Agent: one `capped_input` (D5, part) |
+
+Waiting for CC1 (it edits the same files): RC1 (mcp lookup), RC11 (`pid_alive`, connect `default_data_dir`), and
+`PLUGINS_DIR` in `bashcut-plugin-host`.
 
 ## Proposed tickets (prefix RC)
 
