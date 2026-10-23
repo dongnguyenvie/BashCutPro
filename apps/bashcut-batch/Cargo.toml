@@ -18,3 +18,5 @@ path = "src/main.rs"
 bashcut-batch = { path = "../../crates/bashcut-batch" }
 bashcut-dirs = { path = "../../crates/bashcut-dirs" }
 serde_json = { workspace = true }
+# Ctrl+C asks the running job to cancel, so its steps (in their own process groups) are stopped
+ctrlc = "3.4"

@@ -25,7 +25,8 @@ USAGE
   bashcut-batch retry <job> [--items a,b] [--done]
                                  reopen failed / tripped / cancelled items (or the named ones) and run;
                                  --done: their failed step was finished by hand (a hand-off), go on after it
-  bashcut-batch cancel <job>      ask the job's runner to stop (running steps are killed)
+  bashcut-batch cancel <job>      ask the job's runner to stop (running steps are killed with what they
+                                 started); Ctrl+C on run / resume / retry does the same, twice quits at once
   bashcut-batch status <job> [--wait] [--timeout S]
                                  the job book; --wait blocks until no runner holds the job
   bashcut-batch list <projects-folder>
@@ -146,11 +147,11 @@ fn real_main(a: &Args) -> Result<u8, Fail> {
         Some("run") => {
             let p = load_pipeline(a, 1)?;
             let job = Job::create(&p, a.opt("--id")).map_err(usage)?;
-            finish(a, &job, bashcut_batch::run(&job, &options(a)?))
+            run(a, &job)
         }
         Some("resume") => {
             let job = open_job(a)?;
-            finish(a, &job, bashcut_batch::run(&job, &options(a)?))
+            run(a, &job)
         }
         Some("retry") => {
             let job = open_job(a)?;
@@ -160,7 +161,7 @@ fn real_main(a: &Args) -> Result<u8, Fail> {
             if n == 0 {
                 let _ = writeln!(std::io::stderr(), "bashcut-batch: no item to retry; resuming");
             }
-            finish(a, &job, bashcut_batch::run(&job, &options(a)?))
+            run(a, &job)
         }
         Some("cancel") => {
             let job = open_job(a)?;
@@ -232,6 +233,29 @@ fn real_main(a: &Args) -> Result<u8, Fail> {
         }
         Some(other) => Err(usage(format!("unknown subcommand {other:?} (bashcut-batch help)"))),
     }
+}
+
+/// Run `job` to its end. Ctrl+C asks it to cancel (as `bashcut-batch cancel`): the runner stops its
+/// steps with their process groups and saves the book; a second Ctrl+C quits at once.
+fn run(a: &Args, job: &Job) -> Result<u8, Fail> {
+    let opts = options(a)?;
+    let target = job.clone();
+    let mut asked = false;
+    let handler = ctrlc::set_handler(move || {
+        if asked {
+            let _ = writeln!(std::io::stderr(), "bashcut-batch: quitting; steps may still be running (bashcut-batch resume reports them)");
+            std::process::exit(130);
+        }
+        asked = true;
+        let _ = writeln!(std::io::stderr(), "bashcut-batch: cancelling (stopping the running steps); Ctrl+C again to quit at once");
+        if let Err(e) = target.request_cancel() {
+            let _ = writeln!(std::io::stderr(), "bashcut-batch: {e}");
+        }
+    });
+    if let Err(e) = handler {
+        let _ = writeln!(std::io::stderr(), "bashcut-batch: Ctrl+C will not cancel cleanly: {e}");
+    }
+    finish(a, job, bashcut_batch::run(job, &opts))
 }
 
 fn finish(a: &Args, job: &Job, r: Result<Summary, String>) -> Result<u8, Fail> {

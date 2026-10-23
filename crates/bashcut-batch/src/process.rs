@@ -1,10 +1,16 @@
 //! Child processes: start one with its output in log files, wait with a timeout and a cancel
 //! check, and tell whether a process id is alive (for the runner lock and the tripwire).
+//!
+//! A step runs in its own process group (Unix) and a stop goes through the shared supervisor's
+//! [`bashcut_dirs::child::terminate`]: what an agent started (python, ffmpeg) ends with it on cancel,
+//! timeout or over the memory cap, and on Windows the kill takes the whole tree (RC13). The batch
+//! keeps its own spawn because its output goes to log files, not to pipes.
 
 use crate::book::{Category, ErrorInfo};
+use bashcut_dirs::child;
 use std::io::{Read, Seek, SeekFrom};
 use std::path::{Path, PathBuf};
-use std::process::{Command, Stdio};
+use std::process::{Child, Command, Stdio};
 use std::time::{Duration, Instant};
 
 /// A process to run for one step.
@@ -53,7 +59,8 @@ pub fn run(spec: &Spec, poll: Duration, started: &mut dyn FnMut(u32), cancelled:
 }
 
 /// Start `spec`, report its pid through `started` and wait, also asking `watch` with the pid every `poll`: `Some(why)` stops the process
-/// ([`Ended::OverLimit`]). The timeout counts only time the machine was awake.
+/// ([`Ended::OverLimit`]). The timeout counts only time the machine was awake. Every stop takes the
+/// process's group (Unix) or tree (Windows) with it ([`stop`]).
 pub fn run_watched(
     spec: &Spec,
     poll: Duration,
@@ -76,6 +83,12 @@ pub fn run_watched(
     for (k, v) in &spec.env {
         cmd.env(k, v);
     }
+    // its own group, so a stop also ends its grandchildren (as `child::spawn` with `group: true`)
+    #[cfg(unix)]
+    {
+        use std::os::unix::process::CommandExt;
+        cmd.process_group(0);
+    }
     let mut child = cmd.spawn().map_err(|e| ErrorInfo::new(Category::Spawn, format!("{program}: {e}")))?;
     let pid = child.id();
     started(pid);
@@ -90,28 +103,56 @@ pub fn run_watched(
             Ok(Some(status)) => return Ok(Ended::Exited(status.code())),
             Ok(None) => {}
             Err(e) => {
-                let _ = child.kill();
-                let _ = child.wait();
+                stop(&mut child);
                 return Err(ErrorInfo::new(Category::Crashed, format!("{program}: {e}")));
             }
         }
         if cancelled() {
-            let _ = child.kill();
-            let _ = child.wait();
+            stop(&mut child);
             return Ok(Ended::Cancelled);
         }
         if spec.timeout.is_some_and(|t| awake >= t) {
-            let _ = child.kill();
-            let _ = child.wait();
+            stop(&mut child);
             return Ok(Ended::TimedOut);
         }
         if let Some(why) = watch(pid) {
-            let _ = child.kill();
-            let _ = child.wait();
+            stop(&mut child);
             return Ok(Ended::OverLimit(why));
         }
         std::thread::sleep(poll);
     }
+}
+
+/// Stop a step: TERM to its group (on Windows the tree is killed at once), [`child::GRACE`] to
+/// exit, then KILL, so a grandchild that ignores TERM or outlives the step goes too.
+fn stop(c: &mut Child) {
+    child::terminate(c, false);
+    let until = Instant::now() + child::GRACE;
+    let mut exited = false;
+    while Instant::now() < until {
+        if let Ok(Some(_)) | Err(_) = c.try_wait() {
+            exited = true;
+            break;
+        }
+        std::thread::sleep(Duration::from_millis(20));
+    }
+    if exited {
+        // reaped: signal only the group (its id is not reused while a member lives), never the pid
+        kill_group(c.id());
+    } else {
+        child::terminate(c, true);
+    }
+    let _ = c.wait();
+}
+
+/// KILL whatever is left in the process group `pgid` (Unix; on Windows the tree kill already did it).
+fn kill_group(pgid: u32) {
+    #[cfg(unix)]
+    {
+        let _ = Command::new("kill").args(["-KILL", "--", &format!("-{pgid}")]).stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null()).status();
+    }
+    #[cfg(not(unix))]
+    let _ = pgid;
 }
 
 /// The last `max` bytes of a file as text (lossy), trimmed.
@@ -171,6 +212,90 @@ mod tests {
         assert_eq!(tail_raw(&p, 0), "");
         assert_eq!(tail_raw(&p.with_extension("missing"), 8), "");
         let _ = std::fs::remove_file(&p);
+    }
+
+    /// A fake agent that starts a grandchild (its tool process), writes the grandchild's pid to a
+    /// file and waits for it; `stop` decides when the step is stopped, from the elapsed time.
+    fn grandchild_run(name: &str, argv: impl Fn(&Path) -> Vec<String>, timeout: Option<Duration>, stop: impl Fn(Duration) -> bool) -> (Ended, u32) {
+        let dir = std::env::temp_dir().join(format!("bashcut-batch-group-{name}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let pid_file = dir.join("grandchild.pid");
+        let spec = Spec { argv: argv(&pid_file), timeout, log: dir.join("step"), ..Spec::default() };
+        let read_pid = || std::fs::read_to_string(&pid_file).ok().and_then(|s| s.trim().parse::<u32>().ok());
+        let start = Instant::now();
+        // only stop once the grandchild is running
+        let ended = run(&spec, Duration::from_millis(20), &mut |_| {}, &|| read_pid().is_some() && stop(start.elapsed())).unwrap();
+        let pid = read_pid().unwrap_or_else(|| panic!("no grandchild pid; stderr: {}", tail(&err_path(&spec.log), 400)));
+        let _ = std::fs::remove_dir_all(&dir);
+        (ended, pid)
+    }
+
+    /// The grandchild is gone within a few seconds (once orphaned, init reaps it).
+    fn assert_gone(pid: u32, what: &str) {
+        let start = Instant::now();
+        while crate::pid_alive(pid) && start.elapsed() < Duration::from_secs(5) {
+            std::thread::sleep(Duration::from_millis(50));
+        }
+        assert!(!crate::pid_alive(pid), "{what}: grandchild {pid} still running");
+    }
+
+    #[cfg(unix)]
+    fn sh_agent(script: &'static str) -> impl Fn(&Path) -> Vec<String> {
+        move |pid_file: &Path| vec!["sh".into(), "-c".into(), script.replace("{pid}", &pid_file.display().to_string())]
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn cancel_and_timeout_end_the_grandchildren() {
+        let agent = "sleep 30 & echo $! > '{pid}'; wait";
+        let (ended, pid) = grandchild_run("cancel", sh_agent(agent), None, |_| true);
+        assert_eq!(ended, Ended::Cancelled);
+        assert_gone(pid, "cancel");
+
+        let (ended, pid) = grandchild_run("timeout", sh_agent(agent), Some(Duration::from_millis(300)), |_| false);
+        assert_eq!(ended, Ended::TimedOut);
+        assert_gone(pid, "timeout");
+
+        // a grandchild that ignores TERM (and outlives the agent, which exits on TERM) is killed after the grace
+        let stubborn = "(trap '' TERM; while :; do sleep 1; done) & echo $! > '{pid}'; wait";
+        let start = Instant::now();
+        let (ended, pid) = grandchild_run("stubborn", sh_agent(stubborn), None, |_| true);
+        assert_eq!(ended, Ended::Cancelled);
+        assert_gone(pid, "TERM ignored");
+        assert!(start.elapsed() < bashcut_dirs::child::GRACE + Duration::from_secs(5), "{:?}", start.elapsed());
+
+        // over the memory cap: the same stop
+        let dir = std::env::temp_dir().join(format!("bashcut-batch-group-over-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let pid_file = dir.join("grandchild.pid");
+        let spec = Spec { argv: sh_agent(agent)(&pid_file), log: dir.join("step"), ..Spec::default() };
+        let read_pid = || std::fs::read_to_string(&pid_file).ok().and_then(|s| s.trim().parse::<u32>().ok());
+        let ended = run_watched(&spec, Duration::from_millis(20), &mut |_| {}, &|| false, &mut |_| read_pid().map(|_| "over".to_string())).unwrap();
+        assert_eq!(ended, Ended::OverLimit("over".into()));
+        assert_gone(read_pid().unwrap(), "over the cap");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn cancel_and_timeout_end_the_grandchildren() {
+        // the fake agent starts ping (its tool process), writes its pid and waits for it
+        let agent = |pid_file: &Path| {
+            let script = format!(
+                "$p = Start-Process -FilePath ping -ArgumentList '-n','60','127.0.0.1' -PassThru -NoNewWindow; \
+                 Set-Content -Encoding ascii -Path '{}' -Value $p.Id; Wait-Process -Id $p.Id",
+                pid_file.display()
+            );
+            vec!["powershell".into(), "-NoProfile".into(), "-NonInteractive".into(), "-Command".into(), script]
+        };
+        let (ended, pid) = grandchild_run("cancel", agent, None, |_| true);
+        assert_eq!(ended, Ended::Cancelled);
+        assert_gone(pid, "cancel");
+
+        let (ended, pid) = grandchild_run("timeout", agent, Some(Duration::from_secs(3)), |_| false);
+        assert_eq!(ended, Ended::TimedOut);
+        assert_gone(pid, "timeout");
     }
 
     #[test]
