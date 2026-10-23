@@ -286,9 +286,87 @@ class GenerateTest(unittest.TestCase):
         self.assertNotIn("bcpro", bins)
         self.assertFalse([b for b in bins if b.lower() == "bashcutpro"])
 
-    @unittest.skip("test ticket: bcpro is a symlink to bashcutpro-cli in the Linux and FreeBSD stage, nfpm, install.sh, both Flatpak manifests, the macOS app and CLI zip, a real file on Windows; docs in usr/share/doc/bashcutpro; the metainfo's first <p> is a sentence of 80+ chars")
     def test_bcpro_is_a_link_and_linux_docs_and_metainfo_are_ours(self):
-        pass
+        # PK3 + NM2: bcpro is a relative symlink to bashcutpro-cli wherever a package can hold one, a real file on
+        # Windows; Linux and FreeBSD docs go to share/doc/bashcutpro; the metainfo opens with a real sentence (SB4)
+        generate.generate(ROOT, self.out)
+        links = {
+            "linux/package.sh": 'ln -s bashcutpro-cli "$STAGE/usr/bin/bcpro"\n',
+            "freebsd/package.sh": 'ln -s bashcutpro-cli "$STAGE/bin/bcpro"\n',
+            "linux/install.sh": 'if [ -L "$source_dir/bin/bcpro" ]; then ln -sfn -- bashcutpro-cli "$prefix/bin/bcpro"; fi\n',
+            "linux/flatpak/%s.yml" % generate.APP_ID: "- ln -s bashcutpro-cli /app/bin/bcpro\n",
+            "linux/flatpak/%s.bundle.yml" % generate.APP_ID: "- ln -s bashcutpro-cli /app/bin/bcpro\n",
+        }
+        for rel, line in links.items():
+            text = self.read(rel)
+            self.assertIn(line, text, rel)
+            self.assertNotRegex(text, r"\b(cp|install)\b[^\n]*\bbcpro\b", rel + ": bcpro is never a copy")
+        mac = self.read("macos/package.sh")
+        self.assertIn('ln -s bashcutpro-cli "$APP/Contents/MacOS/bcpro"\n', mac)
+        self.assertIn('ln -s bashcutpro-cli "$CLI_DIR/bcpro"\n', mac)
+        # the app's tools are copied and signed one by one: bcpro (a link) is not among them
+        self.assertNotIn("bcpro", mac.split("APP_BINS=", 1)[1].split("\n", 1)[0])
+        # nfpm packs the staged link as it is (type: symlink wrote a bad mtime, PK3)
+        nfpm = self.read("linux/nfpm.yaml")
+        entry = nfpm.split("  - src: ${STAGE}/usr/bin/bcpro\n", 1)[1].split("  - src:", 1)[0]
+        self.assertEqual(entry, "    dst: /usr/bin/bcpro\n")
+        # Windows has no links in a zip or MSI: bcpro.exe is its own file
+        ps1 = self.read("windows/package.ps1")
+        self.assertIn("foreach ($b in 'bcpro', ", ps1)
+        self.assertIn('<File Id="BcproExe" Source="$(var.BinDir)\\bcpro.exe"', self.read("windows/filmcraft.wxs"))
+        # docs
+        linux = self.read("linux/package.sh")
+        self.assertIn('copy_docs "$STAGE/usr/share/doc/bashcutpro"\n', linux)
+        self.assertIn('copy_docs "$STAGE/share/doc/bashcutpro"\n', self.read("freebsd/package.sh"))
+        for rel in ("linux/package.sh", "freebsd/package.sh", "linux/flatpak/%s.bundle.yml" % generate.APP_ID):
+            self.assertNotIn("doc/filmcraft", self.read(rel), rel)
+        # the metainfo's first paragraph is a sentence, not a fragment
+        meta = xml.dom.minidom.parseString(self.read("linux/%s.metainfo.xml.in" % generate.APP_ID).replace("@VERSION@", "1").replace("@DATE@", "2026-01-01"))
+        first = " ".join(meta.getElementsByTagName("description")[0].getElementsByTagName("p")[0].firstChild.data.split())
+        self.assertGreaterEqual(len(first), 80, first)
+        self.assertTrue(first.startswith("BashCutPro ") and first.endswith("."), first)
+
+    def test_macos_cli_zip_has_no_appledouble_and_the_banner_names_bashcutpro(self):
+        # PV3: the CLI zip is made without resource forks and extended attributes (no `._*` entries), and the
+        # package banner names BashCutPro
+        generate.generate(ROOT, self.out)
+        mac = self.read("macos/package.sh")
+        zips = [l for l in mac.splitlines() if l.startswith("ditto -c -k") and "$CLI_ZIP" in l]
+        self.assertEqual(zips, ['ditto -c -k --norsrc --noextattr --keepParent "$CLI_DIR" "$CLI_ZIP"'])
+        self.assertIn('echo "==> BashCutPro $VERSION for macOS (', mac)
+        self.assertNotIn('echo "==> FilmCraft', mac)
+        if sys.platform == "darwin" and shutil.which("ditto") and shutil.which("xattr"):
+            # the flags really leave a file's extended attributes out
+            src = os.path.join(self.tmp, "cli")
+            os.makedirs(src)
+            tool = os.path.join(src, "bashcutpro-cli")
+            with open(tool, "w", encoding="utf-8") as fh:
+                fh.write("#!/bin/sh\n")
+            subprocess.run(["xattr", "-w", "com.example.test", "1", tool], check=True)
+            out = os.path.join(self.tmp, "cli.zip")
+            subprocess.run(["ditto", "-c", "-k", "--norsrc", "--noextattr", "--keepParent", src, out], check=True)
+            import zipfile
+
+            names = zipfile.ZipFile(out).namelist()
+            self.assertIn("cli/bashcutpro-cli", names)
+            self.assertFalse([n for n in names if "/._" in n or n.startswith("._") or "__MACOSX" in n], names)
+
+    def test_appimage_and_flatpak_start_the_installed_app(self):
+        # NM2: the AppImage's AppRun, the desktop file's Exec and both Flatpak manifests' command name the same
+        # installed app, bashcutpro
+        generate.generate(ROOT, self.out)
+        import re
+
+        linux = self.read("linux/package.sh")
+        apprun = re.findall(r'ln -s usr/bin/(\S+) "\$APPDIR/AppRun"', linux)
+        self.assertEqual(apprun, ["bashcutpro"])
+        self.assertIn('install -Dm755 "$BIN/filmcraft" "$STAGE/usr/bin/bashcutpro"\n', linux)
+        exe = re.findall(r"^Exec=(\S+)", self.read("linux/%s.desktop" % generate.APP_ID), re.M)
+        self.assertEqual(exe, ["bashcutpro"])
+        for rel in ("linux/flatpak/%s.yml" % generate.APP_ID, "linux/flatpak/%s.bundle.yml" % generate.APP_ID):
+            text = self.read(rel)
+            self.assertEqual(re.findall(r"^command: (\S+)$", text, re.M), ["bashcutpro"], rel)
+            self.assertIn("/app/bin/bashcutpro\n", text, rel)
 
     def test_the_output_is_deterministic(self):
         # same input, byte-identical tree (bashcut/scripts/README.md): two runs into different folders
@@ -337,6 +415,80 @@ class GenerateTest(unittest.TestCase):
             out = fh.read()
         self.assertIn("bashcut-batch", out)
         self.assertNotIn("\n", out.replace("\r\n", ""))
+
+
+@unittest.skipIf(os.name == "nt" or not shutil.which("bash"), "bashcut-setup.sh runs on macOS / Linux / FreeBSD")
+class SetupScriptTest(unittest.TestCase):
+    """bashcut/packaging/share/bashcut-setup.sh run from a fake install, every program in it a recording stand-in."""
+
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp(prefix="bashcut-setup-")
+        self.log = os.path.join(self.tmp, "ran.log")
+
+    def tearDown(self):
+        shutil.rmtree(self.tmp, ignore_errors=True)
+
+    def fake(self, path, name):
+        # a program that appends "<name> <args>" to the log
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(path, "w", encoding="utf-8") as fh:
+            fh.write('#!/bin/sh\necho "%s $*" >>"%s"\n' % (name, self.log))
+        os.chmod(path, 0o755)
+
+    def run_setup(self, setup_dir):
+        os.makedirs(setup_dir, exist_ok=True)
+        script = os.path.join(setup_dir, "bashcut-setup.sh")
+        shutil.copy(os.path.join(HERE, "share", "bashcut-setup.sh"), script)
+        env = {"PATH": "/usr/bin:/bin", "HOME": self.tmp, "BASHCUTPRO_DATA_DIR": os.path.join(self.tmp, "data")}
+        r = subprocess.run(["bash", script, "--yes", "--skip-kit"], capture_output=True, text=True, env=env, timeout=60)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        ran = ""
+        if os.path.exists(self.log):
+            with open(self.log, encoding="utf-8") as fh:
+                ran = fh.read()
+        return r.stdout, ran
+
+    def test_linux_layout_runs_the_engine_not_the_gui_beside_it(self):
+        # PV2 / NM2: share/bashcutpro/bashcut-setup.sh with bin/bashcutpro (the app) and bin/bashcutpro-cli beside
+        # it: looks, profiles and the doctor's --cli use bashcutpro-cli, the app never starts
+        prefix = os.path.join(self.tmp, "usr")
+        for name in ("bashcutpro", "bcpro", "filmcraft-cli"):
+            self.fake(os.path.join(prefix, "bin", name), name)
+        self.fake(os.path.join(prefix, "bin", "bashcutpro-cli"), "cli")
+        self.fake(os.path.join(prefix, "bin", "bashcut-doctor"), "doctor")
+        out, ran = self.run_setup(os.path.join(prefix, "share", "bashcutpro"))
+        cli = os.path.join(prefix, "bin", "bashcutpro-cli")
+        self.assertIn("command line (bashcutpro-cli) %s\n" % cli, out)
+        self.assertNotIn("/../", out, "printed without ../..")
+        self.assertIn("cli exec bashcut.looks.export dir=", ran)
+        self.assertIn("cli exec bashcut.profiles.compile", ran)
+        self.assertIn("doctor --cli %s" % cli, ran)
+        for other in ("bashcutpro ", "bcpro ", "filmcraft-cli "):
+            self.assertNotIn("\n" + other, "\n" + ran, other + "ran")
+
+    def test_macos_app_layout_never_takes_the_app_executable(self):
+        # #187: Resources/bashcut/bashcut-setup.sh with Contents/MacOS/BashCutPro (the app) and bashcutpro-cli
+        macos = os.path.join(self.tmp, "BashCutPro.app", "Contents", "MacOS")
+        self.fake(os.path.join(macos, "BashCutPro"), "gui")
+        self.fake(os.path.join(macos, "bashcutpro-cli"), "cli")
+        out, ran = self.run_setup(os.path.join(self.tmp, "BashCutPro.app", "Contents", "Resources", "bashcut"))
+        self.assertIn("command line (bashcutpro-cli) %s\n" % os.path.join(macos, "bashcutpro-cli"), out)
+        self.assertIn("cli exec bashcut.looks.export", ran)
+        self.assertNotIn("gui", ran)
+
+    def test_falls_back_to_bcpro_and_never_to_the_gui(self):
+        prefix = os.path.join(self.tmp, "usr")
+        self.fake(os.path.join(prefix, "bin", "bashcutpro"), "gui")
+        self.fake(os.path.join(prefix, "bin", "bcpro"), "bcpro")
+        out, ran = self.run_setup(os.path.join(prefix, "share", "bashcutpro"))
+        self.assertIn("command line (bashcutpro-cli) %s\n" % os.path.join(prefix, "bin", "bcpro"), out)
+        self.assertIn("bcpro exec bashcut.looks.export", ran)
+        # only the app: no engine, nothing runs
+        os.remove(os.path.join(prefix, "bin", "bcpro"))
+        os.remove(self.log)
+        out, ran = self.run_setup(os.path.join(prefix, "share", "bashcutpro"))
+        self.assertIn("command line (bashcutpro-cli) not found\n", out)
+        self.assertEqual(ran, "")
 
 
 if __name__ == "__main__":

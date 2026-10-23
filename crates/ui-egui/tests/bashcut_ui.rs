@@ -1849,3 +1849,84 @@ fn batch_plugin_steps_save_no_machine_paths() {
     assert!(env.get("BASHCUTPRO_CLI").is_none(), "no engine path in the saved step: {step}");
     let _ = std::fs::remove_dir_all(&data);
 }
+
+/// A silent agent for [`a_silent_agent_gets_the_quiet_hint_until_it_speaks`]: says nothing until
+/// `speak` appears next to it, then one assistant line; ends once `stop` appears.
+const QUIET_AGENT: &str = r#"
+import json, os, sys, time
+here = os.path.dirname(os.path.abspath(__file__))
+spoke = False
+for _ in range(1200):
+    if os.path.exists(os.path.join(here, "stop")):
+        break
+    if not spoke and os.path.exists(os.path.join(here, "speak")):
+        print(json.dumps({"type": "assistant", "message": {"content": [{"type": "text", "text": "Looking."}]}}), flush=True)
+        spoke = True
+    time.sleep(0.05)
+print(json.dumps({"type": "result", "subtype": "success", "is_error": False, "result": "Done.", "session_id": "s1"}), flush=True)
+"#;
+
+/// AG1: a running agent that sends nothing for 30 s gets `bashcut.agent.quiet` (both languages);
+/// its next event clears it. The clock jumps ahead instead of waiting (each harness frame is also
+/// 0.25 s of egui time, so the checks keep a margin around the 30 s).
+#[test]
+fn a_silent_agent_gets_the_quiet_hint_until_it_speaks() {
+    if !has_python() || cfg!(windows) {
+        eprintln!("python3 not found: skipped");
+        return;
+    }
+    let data = std::env::temp_dir().join(format!("bashcut-ui-quiet-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&data);
+    let plugin = data.join("bashcut-plugins").join("test.quiet");
+    std::fs::create_dir_all(&plugin).unwrap();
+    std::fs::write(plugin.join("agent.py"), QUIET_AGENT).unwrap();
+    let manifest = json!({
+        "schema": "bashcut-plugin/1", "id": "test.quiet", "name": "Quiet", "version": "0.1.0", "summary": "test agent",
+        "kind": "agent", "entry": {"command": ["python3", plugin.join("agent.py").to_string_lossy()]}, "output": "bashcut-result/1",
+        "agent": {"args": []},
+        "actions": [{"id": "noop", "title": "Noop", "args": ["noop"], "needs": "none", "params": []}]
+    });
+    std::fs::write(plugin.join("bashcut-plugin.json"), manifest.to_string()).unwrap();
+    let mut d = Driver::with_data(&data, |_| {});
+    d.click("bashcut.rail.agent");
+    let agents = d.exec("bashcut.agent.agents", json!({}));
+    assert!(agents.as_array().is_some_and(|a| a.iter().any(|a| a["id"] == json!("test.quiet"))), "{agents}");
+    d.exec("bashcut.agent.use", json!({"agent": "test.quiet"}));
+    d.exec("bashcut.agent.send", json!({"text": "cut the intro"}));
+    assert_eq!(d.exec("bashcut.agent.state", json!({}))["status"]["state"], json!("running"));
+    d.frames(5);
+    assert!(d.element("bashcut.agent.quiet").is_null(), "no hint before 30 s");
+
+    let jump = |d: &mut Driver, secs: f64| {
+        let t = d.harness.ctx.input(|i| i.time);
+        d.harness.input_mut().time = Some(t + secs);
+        d.frames(3);
+    };
+    jump(&mut d, 20.0);
+    assert!(d.element("bashcut.agent.quiet").is_null(), "20 s is not yet quiet");
+    jump(&mut d, 11.0);
+    let hint = d.element("bashcut.agent.quiet");
+    let en = hint["label"].as_str().unwrap_or_default().to_string();
+    assert!(en.starts_with("No output for 30 s"), "{hint}");
+    d.exec("bashcut.ui.setLanguage", json!({"language": "vi"}));
+    d.frames(2);
+    let vi = d.element("bashcut.agent.quiet");
+    assert!(vi["label"].as_str().is_some_and(|l| l.starts_with("Không có phản hồi sau 30 giây")), "{vi}");
+    d.exec("bashcut.ui.setLanguage", json!({"language": null}));
+
+    // the agent speaks: the hint goes (over 30 s after the send, so the silence counts from the
+    // event), and comes back 30 s after it
+    std::fs::write(plugin.join("speak"), b"").unwrap();
+    let gone = d.wait_element("bashcut.agent.quiet", Value::is_null);
+    assert!(gone.is_null(), "an event clears the hint: {gone}");
+    assert_eq!(d.exec("bashcut.agent.state", json!({}))["status"]["state"], json!("running"), "still working");
+    jump(&mut d, 31.0);
+    assert!(!d.element("bashcut.agent.quiet").is_null(), "quiet again 30 s after the last event");
+
+    std::fs::write(plugin.join("stop"), b"").unwrap();
+    let st = d.wait(|d| d.exec("bashcut.agent.state", json!({})), |s| s["status"]["state"] != json!("running"));
+    assert_ne!(st["status"]["state"], json!("running"), "{st}");
+    assert!(d.element("bashcut.agent.quiet").is_null(), "no hint once the turn ended");
+    assert!(d.harness.state().ui_error.is_none(), "{:?}", d.harness.state().ui_error);
+    let _ = std::fs::remove_dir_all(&data);
+}

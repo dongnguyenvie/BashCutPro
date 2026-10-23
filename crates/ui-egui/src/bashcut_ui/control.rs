@@ -227,8 +227,10 @@ mod tests {
         let (port, off) = decide(None, None, allowed(Some(&d)), || free_port(DEFAULT_PORT));
         assert_eq!(off, Off::No);
         let port = port.unwrap();
-        // stands in for upstream's control server (same bind)
-        let server = TcpListener::bind((LOOPBACK, port)).unwrap();
+        // stands in for upstream's control server (same bind); 9876 can be taken between the probe
+        // and this bind (a BashCutPro window on this machine), then any free port stands in (T12: flaky)
+        let server = TcpListener::bind((LOOPBACK, port)).or_else(|_| TcpListener::bind((LOOPBACK, 0))).unwrap();
+        let port = server.local_addr().unwrap().port();
         let t = std::thread::spawn(move || {
             let (mut c, _) = server.accept().unwrap();
             let mut line = String::new();

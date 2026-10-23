@@ -26,6 +26,15 @@ when the window closes, only by the window it names, also when it is ended by SI
 `bashcut_dirs::signal`, Unix; the process then exits with 130). A window that crashed or was killed (SIGKILL) leaves the file behind, so readers also
 check that `pid` is alive and that the address (loopback only) accepts a connection.
 
+The SIGINT / SIGTERM handler skips nothing upstream does (T12): upstream has no signal handling, so before AG1
+the signal ended the process at once and no Rust code ran. The handler does the same plus removing this file.
+Unsaved edits are not saved on the way out. They stay in the recovery journal (`<data dir>/Recovery/<session>/`,
+`cleanExit: false`; the OS releases its lock) and the next launch offers them, as after a crash. Proof on macOS
+(2026-10-23, `cargo xtask dev -- --control PORT` with a throwaway `BASHCUTPRO_DATA_DIR`): two `file.newBin`, then
+`kill -TERM`. The exit code was 130, `automation.json` was gone, `snapshot.fcproj` (revision 4) was kept, and
+the next launch's `file.recoveryList` listed that session. Edits made inside the journal's 1 s debounce before
+the signal are lost, as they were before AG1.
+
 Two windows (FX7, `decisions.md`): the first one started keeps the file. The other checks every 3 s and claims the
 file once it is missing, malformed, or names a process that is gone or whose address no longer answers. When the
 first window quits, agents reach the second one within a few seconds.

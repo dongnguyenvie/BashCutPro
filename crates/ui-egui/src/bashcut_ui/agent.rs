@@ -48,10 +48,15 @@ fn install_dirs(home: Option<&Path>) -> Vec<PathBuf> {
 /// first install folder holding it, run with that folder first on its `PATH` (an npm install is a
 /// `#!/usr/bin/env node` script whose `node` sits next to it).
 fn installed(spec: fn(Option<String>) -> AgentSpec, env: &str, name: &str) -> AgentSpec {
-    let set = std::env::var(env).ok().filter(|p| !p.trim().is_empty());
-    let path = std::env::var_os("PATH");
+    let set = std::env::var(env).ok();
     let home = std::env::var_os("HOME").map(PathBuf::from);
-    match set.or_else(|| locate(name, path.as_deref(), &install_dirs(home.as_deref())).map(|p| p.to_string_lossy().into_owned())) {
+    installed_in(spec, set, name, std::env::var_os("PATH"), &install_dirs(home.as_deref()))
+}
+
+/// [`installed`] with the variable's value, `PATH` and the install folders given.
+fn installed_in(spec: fn(Option<String>) -> AgentSpec, set: Option<String>, name: &str, path: Option<std::ffi::OsString>, dirs: &[PathBuf]) -> AgentSpec {
+    let set = set.filter(|p| !p.trim().is_empty());
+    match set.or_else(|| locate(name, path.as_deref(), dirs).map(|p| p.to_string_lossy().into_owned())) {
         Some(program) => {
             let dir = Path::new(&program).parent().map(Path::to_path_buf);
             let mut s = spec(Some(program));
@@ -177,7 +182,47 @@ pub fn commands() -> Vec<CommandInfo> {
 
 #[cfg(test)]
 mod tests {
+    use super::*;
+
+    /// PV3: `claude` in `~/.local/bin` with a login `PATH` resolves to that file and puts its folder
+    /// first on the child's `PATH`; found on `PATH`, or `BASHCUT_CLAUDE` set, keeps the given program.
     #[test]
-    #[ignore = "test ticket: claude in ~/.local/bin with a login PATH resolves to that path and puts its folder first on the child PATH; on PATH or BASHCUT_CLAUDE set keeps the given program"]
-    fn agent_program_found_outside_the_login_path() {}
+    #[cfg(unix)]
+    fn agent_program_found_outside_the_login_path() {
+        let home = std::env::temp_dir().join(format!("bashcut-agent-locate-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&home);
+        let bin = home.join(".local/bin");
+        std::fs::create_dir_all(&bin).unwrap();
+        std::fs::write(bin.join("claude"), "#!/bin/sh\n").unwrap();
+        let dirs = install_dirs(Some(&home));
+        assert_eq!(dirs.first(), Some(&bin), "~/.local/bin is looked at first");
+        let path_of = |s: &AgentSpec| s.env.iter().find(|(k, _)| k == "PATH").map(|(_, v)| v.clone());
+
+        // the login PATH of an app opened from the Finder: found in ~/.local/bin
+        let login = Some(std::ffi::OsString::from("/usr/bin:/bin:/usr/sbin:/sbin"));
+        let s = installed_in(AgentSpec::claude_code, None, "claude", login.clone(), &dirs);
+        assert_eq!(s.argv.first().map(String::as_str), Some(&*bin.join("claude").to_string_lossy()), "{:?}", s.argv);
+        let child: Vec<PathBuf> = std::env::split_paths(&path_of(&s).unwrap_or_default()).collect();
+        assert_eq!(child.first(), Some(&bin), "its folder first: {child:?}");
+        assert!(child.contains(&PathBuf::from("/usr/bin")), "the rest of PATH stays: {child:?}");
+
+        // on PATH: the bare name, PATH untouched
+        let on_path = Some(std::env::join_paths([bin.clone(), PathBuf::from("/usr/bin")]).unwrap());
+        let s = installed_in(AgentSpec::claude_code, None, "claude", on_path, &dirs);
+        assert_eq!(s.argv, AgentSpec::claude_code(None).argv, "bare name");
+        assert_eq!(path_of(&s), None);
+
+        // BASHCUT_CLAUDE wins over the install folder; blank is unset
+        let s = installed_in(AgentSpec::claude_code, Some("/opt/x/claude".into()), "claude", login.clone(), &dirs);
+        assert_eq!(s.argv.first().map(String::as_str), Some("/opt/x/claude"));
+        assert_eq!(path_of(&s).and_then(|p| std::env::split_paths(&p).next()), Some(PathBuf::from("/opt/x")));
+        let s = installed_in(AgentSpec::claude_code, Some("  ".into()), "claude", login.clone(), &dirs);
+        assert_eq!(s.argv.first().map(String::as_str), Some(&*bin.join("claude").to_string_lossy()), "blank is unset");
+
+        // nowhere: the bare name, so the panel says it is missing
+        std::fs::remove_file(bin.join("claude")).unwrap();
+        let s = installed_in(AgentSpec::claude_code, None, "claude", login, &dirs);
+        assert_eq!(s.argv, AgentSpec::claude_code(None).argv);
+        let _ = std::fs::remove_dir_all(&home);
+    }
 }
