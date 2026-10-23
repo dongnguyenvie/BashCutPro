@@ -4,5 +4,7 @@
 
 #[path = "../bridge_default.rs"]
 mod bridge_default;
+#[path = "../mcp_brand.rs"]
+mod mcp_brand;
 
 include!(concat!(env!("OUT_DIR"), "/main.rs"));

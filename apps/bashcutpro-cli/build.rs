@@ -38,7 +38,15 @@ const ANCHORS: &[(&str, &str, &str)] = &[
         "Args::parse(std::env::args_os().skip(1).map(|a| a.to_string_lossy().into_owned()))",
         "Args::parse(bridge_default::with_default_bridge(std::env::args_os().skip(1).map(|a| a.to_string_lossy().into_owned()).collect()))",
     ),
+    // BR4: the MCP server answers as BashCutPro (`src/mcp_brand.rs`).
+    ("main.rs", "if let Err(e) = server.serve_stdio().await {", "if let Err(e) = mcp_brand::serve_stdio(server).await {"),
 ];
+
+/// BR4: upstream's MCP server, and the lines of it that may name the app: the server info and
+/// `INSTRUCTIONS` (rewritten as a whole by `src/mcp_brand.rs`) and the `TEXTS` it swaps exactly.
+const MCP_SERVER: &str = "../../crates/automation/src/server.rs";
+const MCP_NAMED: &[&str] = &["Implementation::new(\"filmcraft\"", "const INSTRUCTIONS: &str = \""];
+include!("src/mcp_texts.rs");
 
 /// CC2: the subcommands that get a default `--bridge`, and the ones whose arm mentions the bridge
 /// but stay headless. Together they must be exactly upstream's `match cmd` arms that call
@@ -89,6 +97,26 @@ fn deps(manifest: &str) -> Vec<String> {
     out
 }
 
+/// Fails when upstream's MCP server has a line naming FilmCraft that `src/mcp_brand.rs` doesn't
+/// rewrite, or lost one it does (its tests and comments aside).
+fn mcp_names(server_rs: &str) -> Result<(), String> {
+    let code = server_rs.split("#[cfg(test)]").next().unwrap_or_default();
+    let known = |l: &str| MCP_NAMED.iter().any(|k| l.contains(k)) || TEXTS.iter().any(|(from, _)| l.contains(from));
+    for line in code.lines().map(str::trim).filter(|l| !l.starts_with("//")) {
+        let names = line.contains("FilmCraft") || line.contains("filmcraft-cli ") || line.contains("\"filmcraft\"");
+        if names && !known(line) {
+            return Err(format!("bashcutpro-cli: {MCP_SERVER} names FilmCraft in a line src/mcp_brand.rs doesn't rewrite: {line:?}; update src/mcp_texts.rs"));
+        }
+    }
+    let missing = MCP_NAMED.iter().copied().chain(TEXTS.iter().map(|(from, _)| *from)).find(|k| !code.contains(k));
+    match missing {
+        Some(k) => {
+            Err(format!("bashcutpro-cli: {k:?} not found in {MCP_SERVER} (upstream changed its MCP text; update src/mcp_texts.rs / MCP_NAMED in build.rs)"))
+        }
+        None => Ok(()),
+    }
+}
+
 /// The subcommands of upstream's `match cmd { … }` (arms at 8 spaces) whose body reaches the bridge.
 fn bridge_arms(main_rs: &str) -> Result<Vec<String>, String> {
     let start =
@@ -131,6 +159,9 @@ fn main() -> Result<(), String> {
     println!("cargo:rerun-if-changed=build.rs");
     println!("cargo:rerun-if-changed={UPSTREAM}/Cargo.toml");
     println!("cargo:rerun-if-changed={UPSTREAM}/src");
+    println!("cargo:rerun-if-changed={MCP_SERVER}");
+    println!("cargo:rerun-if-changed=src/mcp_texts.rs");
+    mcp_names(&read(Path::new(MCP_SERVER))?.replace("\r\n", "\n"))?;
 
     // our own `bashcut-*` crates (CC2: `bashcut-connect`, `bashcut-dirs`) are on top of upstream's list
     let theirs = deps(&read(&up.join("Cargo.toml"))?);

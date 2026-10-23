@@ -292,6 +292,16 @@ labels or subclips (§1 rule 1). A project opened in upstream FilmCraft still wo
   `bashcut_agent::format::FORMATS`, RC6; see [plugin-host.md](plugin-host.md)). The app writes a temporary MCP config for
   `<engine> mcp --bridge 127.0.0.1:<control port>` (`bashcutpro-cli`, else `bcpro` or `filmcraft-cli`) and starts the agent with the kit's skills available; with the
   control channel off (CC1: on by default) an agent that needs the app says so instead of starting.
+- **The server calls itself BashCutPro (BR4)**: upstream's MCP server (`filmcraft_automation::FilmcraftMcp`) answers
+  `initialize` with `serverInfo.name = "filmcraft"` and "FilmCraft video editor" in `instructions`, and two tool
+  results name FilmCraft (the `ui_screenshot` note, the "drives the live app" hint); all of it goes into the agent's
+  context. `bashcutpro-cli mcp` (and `bcpro mcp`) runs that server through `apps/bashcutpro-cli/src/mcp_brand.rs`,
+  which rewrites the outgoing lines: `serverInfo.name` `bashcutpro`, "FilmCraft" → "BashCutPro" in `instructions` and
+  in every tool `title`/`description` of `tools/list`, and the exact texts in `src/mcp_texts.rs`; everything else
+  passes through unchanged. Tool names, `filmcraft://` resource URIs and command ids are a protocol and keep upstream's
+  spelling. No upstream edit: `build.rs` swaps the `serve_stdio()` call by anchor and fails the build when
+  `crates/automation/src/server.rs` grows a FilmCraft string outside that list or loses one in it (tests and comments
+  aside). `filmcraft-cli mcp` (the last engine fallback) still says FilmCraft.
 - **MCP server and permissions (AG7, checked with `claude` 2.1.309 on macOS)**: the config names the server
   `bashcutpro` (`bashcut_agent::process::SERVER`), the name the agent kit's `bcp` plugin and `/bcp:setup` use, so
   Claude Code's tools are `mcp__bashcutpro__*` (Codex: `-c mcp_servers.bashcutpro.*`). Claude Code also gets
