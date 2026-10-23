@@ -56,6 +56,13 @@ pub fn serve_screenshot(
     Ok(Some(wait_reply(reply, SCREENSHOT_WAIT)))
 }
 
+/// Hook at the top of upstream's `ui.focus {}` (FX17): un-minimise the window first. Upstream's
+/// `ViewportCommand::Focus` alone leaves a minimised window minimised on Windows, so the [`NOT_IN_FRONT`]
+/// advice would not help there.
+pub fn restore(ctx: &egui::Context) {
+    ctx.send_viewport_cmd(egui::ViewportCommand::Minimized(false));
+}
+
 /// The UI's reply, or [`NOT_IN_FRONT`] after `timeout`. A late reply goes to a dropped receiver (harmless).
 fn wait_reply(reply: &Receiver<Value>, timeout: Duration) -> Value {
     reply.recv_timeout(timeout).unwrap_or_else(|_| json!({"ok": false, "error": NOT_IN_FRONT}))

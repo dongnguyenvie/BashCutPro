@@ -330,3 +330,8 @@ decides something; don't change an old one, add a new one that supersedes it.
   app's per-frame `logic`, and a covered macOS window runs no frames until something wakes it, so neither the raise
   nor the deadline ever ran. The server thread does not depend on frames. 11 s leaves upstream's own 10.25 s reply
   first whenever frames do run; a reply that comes later goes to a dropped channel (the PNG is still written).
+- **Windows (02, 2026-10-23):** a window behind other apps keeps drawing, so `ui.screenshot` works there (0.4 s); a
+  minimised one stops like the covered macOS window and hung the same way (now 11.0 s and the error). Upstream's
+  `ui.focus {}` sends only `ViewportCommand::Focus`, which leaves a minimised window minimised on Windows, so a
+  one-line hook (`bashcut_ui::control::restore`) sends `Minimized(false)` first; the error's advice then works on
+  every OS.
