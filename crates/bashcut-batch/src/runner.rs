@@ -710,7 +710,8 @@ fn plugin_step(sh: &Shared, idx: usize, s: usize, ctx: &Ctx, key: &str, p: &Proc
     }
     let argv = crate::python::resolve(p.argv.iter().map(|a| ctx.vars.expand(a)).collect());
     let mut env: Vec<(String, String)> = p.env.iter().map(|(k, v)| (k.clone(), ctx.vars.expand(v))).collect();
-    env.extend(item_env(sh, ctx));
+    // the step's own env wins over the item's data folder (FX9)
+    env.extend(item_env(sh, ctx).into_iter().filter(|(k, _)| !(k == "BASHCUTPRO_DATA_DIR" && p.env.contains_key(k))));
     let spec = Spec { argv, cwd: Some(ctx.dir.clone()), env, timeout, log: ctx.dir.join(key) };
     let ended = spawn(sh, idx, s, &spec)?;
     outcome(ended, &spec.log, key).map(|()| Vec::new())
@@ -978,8 +979,14 @@ fn engine_env(opts: &Options) -> Vec<(String, String)> {
     env
 }
 
+/// Placeholders and paths for a step's process (plugin, agent). Starts with `BASHCUTPRO_DATA_DIR`
+/// (FX9: `--data-dir`, else the app's data folder), so plugins on a portable install or with
+/// `--data-dir` read and write the folder the engine uses; the options' env may override it.
 fn item_env(sh: &Shared, ctx: &Ctx) -> Vec<(String, String)> {
-    let mut env = engine_env(sh.opts);
+    // the same variable the plugin host sets (`bashcut_manifest::settings::DATA_DIR_ENV`)
+    let mut env: Vec<(String, String)> =
+        data_dir(sh.opts).filter(|d| !d.as_os_str().is_empty()).map(|d| ("BASHCUTPRO_DATA_DIR".to_string(), path_arg(&d))).into_iter().collect();
+    env.extend(engine_env(sh.opts));
     env.extend([
         ("BASHCUT_PROJECT".into(), ctx.project.to_string_lossy().into_owned()),
         ("BASHCUT_FILMCRAFT_CLI".into(), cli(sh)),

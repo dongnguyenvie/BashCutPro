@@ -66,6 +66,17 @@ Agent section offers them next to Claude Code ([in-app-ui.md](in-app-ui.md) §6)
 `"agent": {"args": ["exec", "--json"], "mcpConfig": ["-c", "mcp_servers.filmcraft.command={mcpCommand}", "-c",
 "mcp_servers.filmcraft.args={mcpArgs}"], "resume": ["resume", "{session}"], "prompt": ["-"], "events": "codex-json"}`.
 
+### Data folder in the child's environment (FX9)
+
+Every plugin child gets `BASHCUTPRO_DATA_DIR=<the app's data folder>` ([`bashcut_dirs::data_dir`]): action runs,
+agent plugins (`Host::agents()`), engine hooks (all through `bashcut_manifest::settings::env_for`, which puts
+`settings::DATA_DIR_ENV` first) and batch plugin/agent steps (`bashcut-batch` `item_env`: `--data-dir`, else the app's
+folder). Plugins resolve their folder as `BASHCUTPRO_DATA_DIR` → `FILMCRAFT_DATA_DIR` → per-OS default (plugins #69)
+and cannot see the app's executable folder, so without it a portable install (`<exe dir>/data`, `portable.txt`)
+would have its plugins write to `%APPDATA%\BashCutPro`. A value the user exported is never changed: `data_dir()`
+already prefers it, so the child gets the same value. A manifest setting whose `env` is `BASHCUTPRO_DATA_DIR`, or a
+batch step's own `env` entry, still wins (it comes later / the item value is dropped).
+
 ## Touch points in upstream files (the whole core change)
 
 | File | Change |

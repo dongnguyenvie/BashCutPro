@@ -609,3 +609,7 @@ fn engine_children_get_the_data_dir_and_every_child_the_bridge_off() {
         assert_eq!(bridge.as_deref(), Some("off"), "{argv:?}");
     }
 }
+
+#[test]
+#[ignore = "test ticket: a plugin step (and an agent step) sees BASHCUTPRO_DATA_DIR = --data-dir, else the app's data folder; a step's own env value for it wins"]
+fn step_children_get_the_data_dir() {}
