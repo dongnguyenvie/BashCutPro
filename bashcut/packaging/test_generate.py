@@ -418,6 +418,14 @@ class GenerateTest(unittest.TestCase):
         self.assertIn("bashcut-batch", out)
         self.assertNotIn("\n", out.replace("\r\n", ""))
 
+    @unittest.skip("test ticket: fresh_credits bumps the mtime of contributors.json and people.toml in a fake root and returns the contributor count (FX20)")
+    def test_fresh_credits_forces_the_build_script_to_rerun(self):
+        pass
+
+    @unittest.skip("test ticket: fresh_credits fails with the path when contributors.json is missing, malformed or has no contributors, or people.toml is missing (FX20)")
+    def test_fresh_credits_fails_without_contributors(self):
+        pass
+
 
 @unittest.skipIf(os.name == "nt" or not shutil.which("bash"), "bashcut-setup.sh runs on macOS / Linux / FreeBSD")
 class SetupScriptTest(unittest.TestCase):

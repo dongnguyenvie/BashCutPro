@@ -345,3 +345,23 @@ decides something; don't change an old one, add a new one that supersedes it.
   `crates/ui-egui/Cargo.toml` dependency line. Behaviour unchanged.
 - **Why:** BR5 and BR6 had two copies that could drift. A new crate rather than `bashcut-dirs` (no serde, "data
   folder" scope) or `bashcut-manifest` (plugin manifests; ui-egui has no direct line to it either).
+
+## 2026-10-23: the About credits build script reads its checkout at run time (FX20)
+
+- **Decided:** `crates/ui-egui/build.rs` finds `contributors/` through the run-time `CARGO_MANIFEST_DIR` (one recorded
+  carried edit, `UPSTREAM.md`) instead of `env!("CARGO_MANIFEST_DIR")`. Every packaging run (`generate.py`, called by
+  `packaging/env.sh` and the Windows `package.ps1` hook) checks that `contributors/contributors.json` parses and lists
+  contributors and that `people.toml` exists, then bumps both files' mtimes so cargo reruns the build script for the
+  release build.
+- **Why (mechanism):** cargo hashes a path package by its path relative to the workspace, so every checkout of this
+  repo that shares one `CARGO_TARGET_DIR` (01's Orca worktrees `~/orca/workspaces/BashCutPro/bc-*` and the main
+  checkout) gets the same `target/<profile>/build/filmcraft-ui-egui-<hash>/` folders. The build-script binary is
+  compiled once and reused, and `env!` had compiled the first checkout's absolute path into it. When cargo later reran
+  the script for another checkout, it read the first checkout's `contributors/`; once that worktree was removed the
+  script found nothing, wrote empty `credits.rs` tables and printed warnings naming the deleted path (seen in TA7:
+  `bc-w3/contributors/*.json missing`), and About showed no contributors. Cargo also tracks the `rerun-if-changed`
+  files by mtime only (relative to the package, newer than the last run), so a checkout whose files are older than
+  another checkout's last run reuses that run's `credits.rs`; the packaging mtime bump closes that for releases.
+- **Left as is:** a dev build in a second checkout with older, different `contributors/` files can still show the
+  other checkout's credits until either file is touched (`touch contributors/*`); a separate `CARGO_TARGET_DIR` per
+  checkout avoids it entirely.

@@ -83,6 +83,10 @@ Profiles, templates and looks are built into the binaries (`bashcut.profiles.*`,
    `nfpm.yaml`, the WiX source and the Linux tarball installer, copy `share/`. A substitution that no longer matches
    upstream's text fails the packaging run with the file and line to update; it never ships silently without our tools.
 4. `BASHCUT_PACKAGING_PLAIN=1` packages upstream's files unchanged (for comparing).
+5. `generate.py` also checks the About credits (`contributors/contributors.json` parses and lists contributors,
+   `people.toml` exists; otherwise the run fails) and bumps both files' mtimes, so the release build reruns
+   `crates/ui-egui/build.rs` even when a shared `CARGO_TARGET_DIR` holds that script's output from another checkout
+   (FX20, [decisions.md](../decisions.md)).
 
 Branding itself is still a carried edit of `packaging/**` (see `UPSTREAM.md`); moving it into `generate.py` as more
 substitutions over upstream's original text is the #39 follow-up and fits the same mechanism.

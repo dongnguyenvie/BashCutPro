@@ -18,6 +18,7 @@ bashcut/packaging/README.md.
 """
 
 import argparse
+import json
 import os
 import shutil
 import sys
@@ -580,6 +581,28 @@ def linux_app_id(root, out):
         raise Fail("%s: no %s.* icons to ship as %s" % (src, UPSTREAM_ID, APP_ID))
 
 
+def fresh_credits(root):
+    """Check the About credits and make cargo rerun crates/ui-egui/build.rs for this package (FX20).
+
+    The build script bakes contributors/ into the app. With a shared CARGO_TARGET_DIR cargo can reuse its output
+    from another checkout (it reruns only when a tracked file is newer than the last run), so bump both mtimes.
+    """
+    path = os.path.join(root, "contributors", "contributors.json")
+    try:
+        with open(path, encoding="utf-8") as fh:
+            rows = json.load(fh).get("contributors")
+    except (OSError, ValueError, AttributeError) as e:
+        raise Fail("%s: %s; the About window would show no contributors" % (path, e))
+    if not isinstance(rows, list) or not rows:
+        raise Fail("%s: no contributors; the About window would show none" % path)
+    for name in ("contributors.json", "people.toml"):
+        other = os.path.join(root, "contributors", name)
+        if not os.path.isfile(other):
+            raise Fail("%s: missing; About would show contributors by username only" % other)
+        os.utime(other, None)
+    return len(rows)
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     here = os.path.dirname(os.path.abspath(__file__))
@@ -588,10 +611,12 @@ def main(argv=None):
     args = ap.parse_args(argv)
     try:
         n = generate(os.path.abspath(args.root), os.path.abspath(args.out))
+        credits = fresh_credits(os.path.abspath(args.root))
     except Fail as e:
         print("bashcut packaging: %s" % e, file=sys.stderr)
         return 1
     print("bashcut packaging: %d additions written to %s" % (n, args.out), file=sys.stderr)
+    print("bashcut packaging: %d contributors for the About window (build script forced to rerun)" % credits, file=sys.stderr)
     return 0
 
 
