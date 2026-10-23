@@ -27,7 +27,7 @@ fn bridged(args: Vec<String>, off: bool, data_dir: impl FnOnce() -> Option<PathB
     let Some(live) = data_dir().and_then(|d| bashcut_connect::automation::live(&d, CONNECT)) else {
         return args;
     };
-    crate::diag(format_args!("bashcutpro: using the running BashCutPro at {} (BASHCUT_BRIDGE=off for headless)", live.address));
+    crate::diag(format_args!("bashcutpro-cli: using the running BashCutPro at {} (BASHCUT_BRIDGE=off for headless)", live.address));
     let mut out = args;
     out.extend(["--bridge".to_string(), live.address]);
     out

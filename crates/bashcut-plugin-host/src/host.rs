@@ -145,7 +145,7 @@ pub use crate::manifest::AgentLaunch;
 pub struct RunContext {
     /// `127.0.0.1:<port>` of the app's control channel, when it serves one.
     pub bridge: Option<String>,
-    /// The engine next to the app (`bashcutpro`, else `filmcraft-cli`, #154), passed as `--cli` and
+    /// The engine next to the app (`bashcutpro-cli`, else `bcpro` or `filmcraft-cli`, #154), passed as `--cli` and
     /// as `BASHCUTPRO_CLI`.
     pub cli: Option<String>,
     /// The running build's command ids (checked against `app.commands`); empty skips the check.

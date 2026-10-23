@@ -1,5 +1,5 @@
 //! `bashcut-batch`: run BashCutPro batch pipelines headless (#45). Each input becomes its own
-//! project; up to `concurrency` items run at once, each step in its own `filmcraft-cli` process; the
+//! project; up to `concurrency` items run at once, each step in its own engine (`bashcutpro-cli`) process; the
 //! job book in `<projectsFolder>/.bashcut-batch/<id>/` survives restarts. Output is JSON.
 
 #![cfg_attr(not(test), deny(clippy::unwrap_used, clippy::expect_used, clippy::panic, clippy::unimplemented, clippy::todo, clippy::unreachable))]
@@ -13,7 +13,7 @@ use std::process::ExitCode;
 use std::time::{Duration, Instant};
 
 const HELP: &str = "\
-bashcut-batch: BashCutPro batch pipelines through the bashcutpro engine (headless; the app need not be open)
+bashcut-batch: BashCutPro batch pipelines through the bashcutpro-cli engine (headless; the app need not be open)
 
 USAGE
   bashcut-batch run <pipeline.json> [--id ID] [--input PATH]... [--projects DIR] [--outputs DIR] [RUN OPTIONS]
@@ -41,14 +41,14 @@ USAGE
 
 RUN OPTIONS
   --cli PATH          the engine to use (default: $BASHCUTPRO_CLI, $BASHCUT_FILMCRAFT_CLI or
-                      $FILMCRAFT_CLI, else bashcutpro, bcpro or filmcraft-cli next to this program,
+                      $FILMCRAFT_CLI, else bashcutpro-cli, bcpro or filmcraft-cli next to this program,
                       else the same on PATH)
   --concurrency N     items at once (overrides the pipeline; free RAM and cores may allow fewer)
   --no-keep-awake     let the machine sleep while the batch runs
   --agent-concurrency N
                       agent steps at once, across items (overrides the pipeline's agentConcurrency)
   --mcp PATH          bashcut-mcp for agent steps (default: $BASHCUT_MCP, else the one next to this
-                      program; without it agents get bashcutpro mcp, writes not limited)
+                      program; without it agents get bashcutpro-cli mcp, writes not limited)
   --data-dir DIR      BashCutPro data dir: presets, and --data-dir for the engine
   --kit DIR           the agent kit (bashcutpro-agent-kit): `{kit}` in steps, and agent steps get its
                       skills and scripts (default: $BASHCUT_KIT, else <data dir>/bashcut-kit if there)

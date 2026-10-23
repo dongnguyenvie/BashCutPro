@@ -8,8 +8,8 @@ So a long unattended run does not fail on setup. Rules: [extending-upstream.md](
 
 | Check (`id`) | Fails / warns when | Fix it prints |
 |---|---|---|
-| `cli`, `cli.commands` | the engine (`--cli`, else the shared `bashcut_dirs::engine` lookup: `BASHCUTPRO_CLI`, `BASHCUT_FILMCRAFT_CLI`, `FILMCRAFT_CLI`, then `bashcutpro` / `bcpro` / `filmcraft-cli` next to the doctor, then on `PATH`, else `filmcraft-cli`; RC2) does not start; the build lacks `bashcut.profiles.*`, `bashcut.template.instantiate`, `bashcut.audio.polish` | install / rebuild (kit `bcp:setup`) |
-| `speech` | `transcript.models` says the CLI has no speech-to-text (built without `whisper`) or the default model is not downloaded (warn): the batch presets and caption skills start by transcribing | build with `--features whisper`; `bashcutpro exec transcript.downloadModel` |
+| `cli`, `cli.commands` | the engine (`--cli`, else the shared `bashcut_dirs::engine` lookup: `BASHCUTPRO_CLI`, `BASHCUT_FILMCRAFT_CLI`, `FILMCRAFT_CLI`, then `bashcutpro-cli` / `bcpro` / `filmcraft-cli` next to the doctor, then on `PATH`, else `filmcraft-cli`; RC2) does not start; the build lacks `bashcut.profiles.*`, `bashcut.template.instantiate`, `bashcut.audio.polish` | install / rebuild (kit `bcp:setup`) |
+| `speech` | `transcript.models` says the CLI has no speech-to-text (built without `whisper`) or the default model is not downloaded (warn): the batch presets and caption skills start by transcribing | build with `--features whisper`; `bashcutpro-cli exec transcript.downloadModel` |
 | `kit` | no kit clone (`BASHCUTPRO_KIT_DIR` / `--kit`) and no installed `bcp-*` skills in `~/.agents/skills` or `~/.claude/skills` | install the kit |
 | `plugin.<id>` | a Python plugin's interpreter (its `entry`, per OS) is missing or older than `runtime.version` | install that Python |
 | `model.<id>` | a downloaded file's size or SHA-256 differs from `models.json` (`BASHCUT_MODELS_MANIFEST`, else `<data dir>/bashcut-plugins/models.json`; cache `BASHCUT_MODELS_DIR`, else `<data dir>/bashcut-models`, the plugins' download cache, not the engine's `<data dir>/models`) | delete and re-download |

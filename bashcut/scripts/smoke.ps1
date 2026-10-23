@@ -2,14 +2,14 @@
 BashCutPro smoke check (#54) for Windows builds. macOS / Linux: smoke.sh.
 
 Launches the built app with --control, waits for its window, takes ui.screenshot, checks the window title says
-BashCutPro, runs `filmcraft-cli commands razor` and an MCP command_list, quits the app; then scans the x86-64 release
+BashCutPro, runs `bashcutpro-cli commands razor` (or `filmcraft-cli`) and an MCP command_list, quits the app; then scans the x86-64 release
 binaries for AVX / AVX2 / AVX-512 instructions outside the allowed (runtime-dispatched) functions.
 Exits non-zero on any failure and never reports success without having launched the app.
 
   powershell -ExecutionPolicy Bypass -File bashcut\scripts\smoke.ps1 -App target\release\filmcraft.exe
   powershell -ExecutionPolicy Bypass -File bashcut\scripts\smoke.ps1 -IsaOnly target\release\filmcraft.exe,target\release\filmcraft-cli.exe
 
-Options: -Cli <path> (default: filmcraft-cli.exe, bashcutpro.exe or bcpro.exe next to the app, else on PATH), -Port N (a free port from 19000), -Timeout S (60),
+Options: -Cli <path> (default: bashcutpro-cli.exe, bcpro.exe or filmcraft-cli.exe next to the app, else on PATH), -Port N (a free port from 19000), -Timeout S (60),
          -Out DIR (target\smoke), -ExpectTitle TEXT (BashCutPro), -NoIsa, -IsaAllow FILE (bashcut\scripts\isa-allow.txt)
 Needs for the scan: llvm-objdump (PATH, or `rustup component add llvm-tools`) or dumpbin (Visual Studio).
 Windows PowerShell 5.1 or PowerShell 7.
@@ -158,8 +158,8 @@ if (-not $App) { [Console]::Error.WriteLine("smoke: -App <path to the built app>
 if (-not (Test-Path $App -PathType Leaf)) { Fail "launch: $App is not a file"; Write-Summary ""; exit 1 }
 $App = (Resolve-Path $App).Path
 if (-not $Cli) {
-    # filmcraft-cli, or BashCutPro's bashcutpro / bcpro (-p bashcutpro-cli), next to the app, else on PATH
-    $names = @("filmcraft-cli", "bashcutpro", "bcpro")
+    # the engine lookup order (bashcut_dirs::engine, NM1): bashcutpro-cli, bcpro, filmcraft-cli; next to the app, else on PATH
+    $names = @("bashcutpro-cli", "bcpro", "filmcraft-cli")
     foreach ($n in $names) {
         $cand = Join-Path (Split-Path $App) "$n.exe"
         if (Test-Path $cand -PathType Leaf) { $Cli = $cand; break }
@@ -270,7 +270,7 @@ function Invoke-LimitedOnce([string]$exe, [string[]]$argv, [string]$outFile, [st
 }
 
 if (-not $Cli -or -not (Test-Path $Cli)) {
-    Fail "cli: filmcraft-cli / bashcutpro not found (pass -Cli)"
+    Fail "cli: bashcutpro-cli / bcpro / filmcraft-cli not found (pass -Cli)"
 } else {
     try {
         $razor = Join-Path $Out "cli-razor.txt"

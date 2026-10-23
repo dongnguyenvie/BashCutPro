@@ -40,7 +40,7 @@ const MAX_MESSAGE: usize = 600;
 
 #[derive(Clone, Debug)]
 pub struct Options {
-    /// The engine to run: `bashcutpro` or `filmcraft-cli` ([`crate::cli`]).
+    /// The engine to run: `bashcutpro-cli`, `bcpro` or `filmcraft-cli` ([`crate::cli`]).
     pub cli: PathBuf,
     /// Overrides the pipeline's `concurrency`.
     pub concurrency: Option<usize>,
@@ -951,7 +951,7 @@ fn speech_next_step(detail: &str) -> Option<String> {
         let rest = detail.get(start.saturating_add(PREFIX.len())..).unwrap_or_default();
         let model = rest.split('`').next().filter(|m| !m.is_empty() && rest.contains("` is not downloaded"))?;
         return Some(format!(
-            "Next: download it once with `bashcutpro exec transcript.downloadModel model={model}` (or Text panel > Transcribe in the app), then retry the batch; `bashcut-doctor` checks it"
+            "Next: download it once with `bashcutpro-cli exec transcript.downloadModel model={model}` (or Text panel > Transcribe in the app), then retry the batch; `bashcut-doctor` checks it"
         ));
     }
     detail.contains("speech-to-text is not available in this build").then(|| {
@@ -1107,7 +1107,7 @@ mod tests {
         let choices = || Choices { kit: Some(kit.clone()), ..Choices::default() };
 
         let o = Options::resolve(Choices {
-            cli: Some(PathBuf::from("bin").join("bashcutpro")),
+            cli: Some(PathBuf::from("bin").join("bashcutpro-cli")),
             data_dir: Some(PathBuf::from("data")),
             mcp: Some(PathBuf::from("tools").join("bashcut-mcp")),
             concurrency: Some(pipeline::MAX_CONCURRENCY),
@@ -1116,7 +1116,7 @@ mod tests {
             ..choices()
         })
         .unwrap();
-        assert_eq!(o.cli, cwd.join("bin").join("bashcutpro"));
+        assert_eq!(o.cli, cwd.join("bin").join("bashcutpro-cli"));
         assert_eq!(o.data_dir, Some(cwd.join("data")));
         assert_eq!(o.mcp, Some(cwd.join("tools").join("bashcut-mcp")));
         assert_eq!(o.kit.as_deref(), Some(kit.as_path()));
@@ -1124,10 +1124,14 @@ mod tests {
         assert_eq!(o.speech_model, None, "a blank model is no model");
         assert!(o.keep_awake);
 
-        let o =
-            Options::resolve(Choices { cli: Some(PathBuf::from("bashcutpro")), speech_model: Some("whisper-small".into()), no_keep_awake: true, ..choices() })
-                .unwrap();
-        assert_eq!(o.cli, PathBuf::from("bashcutpro"), "a bare name is looked up on PATH");
+        let o = Options::resolve(Choices {
+            cli: Some(PathBuf::from("bashcutpro-cli")),
+            speech_model: Some("whisper-small".into()),
+            no_keep_awake: true,
+            ..choices()
+        })
+        .unwrap();
+        assert_eq!(o.cli, PathBuf::from("bashcutpro-cli"), "a bare name is looked up on PATH");
         assert_eq!((o.data_dir, o.speech_model.as_deref(), o.keep_awake), (None, Some("whisper-small"), false));
 
         // a kit named by a relative path comes back absolute
@@ -1157,7 +1161,7 @@ mod tests {
             serde_json::json!({"schema": pipeline::SCHEMA, "inputs": ["a.mp4"], "projectsFolder": "out", "steps": [{"command": "captions.auto"}]}).to_string();
         let p = Pipeline::parse(&text, &dir).unwrap();
         let job = Job::create(&p, Some("t")).unwrap();
-        let opts = Options::new("bashcutpro");
+        let opts = Options::new("bashcutpro-cli");
         let sh = Shared {
             job: &job,
             pipeline: &p,

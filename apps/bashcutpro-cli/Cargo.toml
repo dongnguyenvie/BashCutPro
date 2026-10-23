@@ -1,6 +1,6 @@
 [package]
 name = "bashcutpro-cli"
-description = "bashcutpro (alias bcpro): upstream filmcraft-cli built under the BashCutPro name; build.rs generates the source from apps/filmcraft-cli"
+description = "bashcutpro-cli (alias bcpro): upstream filmcraft-cli built under the BashCutPro name; build.rs generates the source from apps/filmcraft-cli"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -13,7 +13,7 @@ workspace = true
 
 # Tests on: `src/bridge_default.rs` has unit tests (T5); upstream's copied tests run with them.
 [[bin]]
-name = "bashcutpro"
+name = "bashcutpro-cli"
 path = "src/main.rs"
 
 # The short alias: the same program under a second name (#154).

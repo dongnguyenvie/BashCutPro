@@ -6,7 +6,7 @@
 //!
 //! No workspace dependencies: the engine (through a one-line hook in `autosave::default_data_dir`),
 //! `bashcut-batch`, `bashcut-connect`, `bashcut-doctor` and the UI all ask [`data_dir`]. [`engine`] is
-//! the one engine-binary lookup (`bashcutpro` → `bcpro` → `filmcraft-cli`); [`pid_alive`] the one
+//! the one engine-binary lookup (`bashcutpro-cli` → `bcpro` → `filmcraft-cli`); [`pid_alive`] the one
 //! "does this process run" check (`bashcut-connect`, `bashcut-batch`); [`fs`] the one `read_capped` /
 //! `write_atomic` / `clip` and message error of every BashCutPro crate (RC4); [`Os`] the one OS mapping (RC5);
 //! [`child`] the one child-process supervisor (plugin runs, agent turns, hooks, key store; RC3).

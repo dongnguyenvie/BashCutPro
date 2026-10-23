@@ -87,7 +87,7 @@ Rules that keep it out of upstream's way:
 | Path | Layer | What |
 |---|---|---|
 | `crates/bashcut-plugin-host/` | L4 (no workspace deps) | manifests (`bashcut-plugin/1`), registry (`bashcut-registry/1`), install into `<data dir>/bashcut-plugins/`, runner (spawn with connect args, stderr progress, `bashcut-result/1` parse, cancel, timeout, capped output), view model (`bashcut-view/1`). No egui, no OS crates; testable headless. |
-| `crates/bashcut-agent/` | L4 (no workspace deps) | agent sessions: start an agent CLI as a child process with an MCP config pointing at the app (`<engine> mcp --bridge 127.0.0.1:<control port>`, engine `bashcutpro`, else `filmcraft-cli`), parse its event stream into a transcript model (message, tool call, gate, error), stop, resume; conversations saved in the project sidecar (§5). Adapters per agent (Claude Code `stream-json`, Codex) behind one trait. |
+| `crates/bashcut-agent/` | L4 (no workspace deps) | agent sessions: start an agent CLI as a child process with an MCP config pointing at the app (`<engine> mcp --bridge 127.0.0.1:<control port>`, engine `bashcutpro-cli`, else `bcpro` or `filmcraft-cli`), parse its event stream into a transcript model (message, tool call, gate, error), stop, resume; conversations saved in the project sidecar (§5). Adapters per agent (Claude Code `stream-json`, Codex) behind one trait. |
 | `crates/bashcut-batch/`, `apps/bashcut-batch/` | L4 (no workspace deps) / app | batch pipelines, parallel headless items through `filmcraft-cli`, job book, presets (#45). `apps/*` glob: no upstream edit. |
 | `crates/bashcut-analysis/` | L3 | read-only measurements for the engine gaps in [skill-needs.md](skill-needs.md): loudness (wraps `filmcraft-audio-dsp` BS.1770), beats / tempo (wraps `audio-dsp`'s remix onset analysis), black / frozen frames (its own frame-difference math over frames the engine adapter decodes). Depends only on `audio-dsp` (L1), so the engine (L4) can depend on it without a same-layer edge; pure functions, wasm-safe. |
 | `crates/engine/src/bashcut/` | (engine) | `mod.rs` with `commands() -> Vec<CommandSpec>`: `bashcut.audio.loudness`, `bashcut.audio.beats`, `bashcut.review.pictureChecks`, … They read the `Session`, call `bashcut-analysis`, return JSON. Headless MCP gets them for free because they are engine commands. |
@@ -290,7 +290,7 @@ labels or subclips (§1 rule 1). A project opened in upstream FilmCraft still wo
   in `bashcut-plugin.json`, with an `agent` section: `args`, `mcpConfig` (`{config}`, or `{mcpCommand}`/`{mcpArgs}`),
   `resume` (`{session}`), `prompt`, `timeoutSecs` and `events`: `claude-stream-json` or `codex-json`, the rows of
   `bashcut_agent::format::FORMATS`, RC6; see [plugin-host.md](plugin-host.md)). The app writes a temporary MCP config for
-  `<engine> mcp --bridge 127.0.0.1:<control port>` (`bashcutpro`, else `filmcraft-cli`) and starts the agent with the kit's skills available; with the
+  `<engine> mcp --bridge 127.0.0.1:<control port>` (`bashcutpro-cli`, else `bcpro` or `filmcraft-cli`) and starts the agent with the kit's skills available; with the
   control channel off (CC1: on by default) an agent that needs the app says so instead of starting.
 - **Turn** (`crates/bashcut-agent`, `process.rs`): one child process per turn. The message plus a short context line
   (project, active sequence, selection, playhead) goes in as one stream-json user message, stdin closes, and events

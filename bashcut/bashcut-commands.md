@@ -1,7 +1,7 @@
 # BashCutPro engine commands (`bashcut.*`)
 
 Our own engine commands (29), in listing order; upstream's are in [commands.md](commands.md). Generated from
-`bashcutpro commands bashcut --json` (debug build, `main` 2026-10-23); `bashcutpro describe <id>` prints one. Every
+`bashcutpro-cli commands bashcut --json` (debug build, `main` 2026-10-23); `bashcutpro-cli describe <id>` prints one. Every
 one has no menu and no shortcut, returns typed errors (`notFound: …`) and states its units in `params`. Regenerate
 after adding or renaming one (RC12; `bashcut::tests::bashcut_commands_doc_matches_the_engine` fails until you do):
 

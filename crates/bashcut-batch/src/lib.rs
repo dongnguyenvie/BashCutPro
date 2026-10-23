@@ -3,7 +3,7 @@
 //! A pipeline (`bashcut-batch/1`, [`pipeline`]) lists inputs, how each item's project starts,
 //! steps (engine commands, plugin actions, agent skills) and outputs. [`Job::create`] turns it into
 //! a job book with one item, and one project, per input; [`run`] works through the items in
-//! parallel, each step in its own engine (`bashcutpro`) process, and can stop, be cancelled and resume
+//! parallel, each step in its own engine (`bashcutpro-cli`) process, and can stop, be cancelled and resume
 //! (see [`book`] for the tripwire). Only workspace dependency: `bashcut-dirs` (data folder, engine
 //! lookup, `fs` helpers); it drives the CLI, not the engine.
 

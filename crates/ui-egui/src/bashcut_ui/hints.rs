@@ -35,7 +35,7 @@ pub fn python_found() -> bool {
     *FOUND.get_or_init(|| if cfg!(windows) { starts("py", &["-3", "--version"]) } else { starts("python3", &["--version"]) })
 }
 
-/// The engine (`bashcutpro` or `filmcraft-cli`) that plugins, batches and agents call starts.
+/// The engine (`bashcutpro-cli`, `bcpro` or `filmcraft-cli`) that plugins, batches and agents call starts.
 pub fn cli_found() -> bool {
     static FOUND: OnceLock<bool> = OnceLock::new();
     *FOUND.get_or_init(|| starts(&bashcut_batch::cli::default_cli().to_string_lossy(), &["--version"]))
@@ -86,7 +86,7 @@ pub fn friendly(err: &str) -> String {
     } else if err.contains("cannot start `claude`") {
         "Claude Code was not found: install it and sign in (run claude in a terminal), then try again."
     } else if err.contains("no_cli") {
-        "The BashCutPro engine (bashcutpro or filmcraft-cli) was not found next to the app: reinstall BashCutPro or build it."
+        "The BashCutPro engine (bashcutpro-cli) was not found next to the app: reinstall BashCutPro or build it."
     } else if err.contains("needs the open project") {
         "This action edits the open project, so it needs the control channel: start BashCutPro with --control 9876."
     } else {

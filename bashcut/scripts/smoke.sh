@@ -2,11 +2,11 @@
 # BashCutPro smoke check (#54) for macOS and Linux builds. Windows: smoke.ps1.
 #
 # Launches the built app with --control, waits for its window, takes ui.screenshot, checks the window title says
-# BashCutPro, runs `filmcraft-cli commands razor` and an MCP command_list, quits the app; then scans x86-64 release
+# BashCutPro, runs `bashcutpro-cli commands razor` (or `filmcraft-cli`) and an MCP command_list, quits the app; then scans x86-64 release
 # binaries for AVX / AVX2 / AVX-512 instructions outside the allowed (runtime-dispatched) functions.
 # Exits non-zero on any failure and never reports success without having launched the app.
 #
-#   bashcut/scripts/smoke.sh --app target/release/filmcraft [--cli target/release/filmcraft-cli]
+#   bashcut/scripts/smoke.sh --app target/release/filmcraft [--cli target/release/bashcutpro-cli]
 #   bashcut/scripts/smoke.sh --app dist/BashCutPro.app            # the executable inside the bundle
 #   bashcut/scripts/smoke.sh --isa-only target/release/filmcraft target/release/filmcraft-cli
 #
@@ -87,11 +87,12 @@ if [ -d "$app" ] && [ -d "$app/Contents/MacOS" ]; then
 fi
 if [ -z "$exe" ] || [ ! -x "$exe" ]; then fail "launch: $app is not an executable or an .app bundle"; echo "smoke: 0 passed, 1 failed"; exit 1; fi
 if [ -z "$cli" ]; then
-  # filmcraft-cli, or BashCutPro's bashcutpro / bcpro (-p bashcutpro-cli), next to the app, else on PATH
-  for name in filmcraft-cli bashcutpro bcpro; do
+  # the engine lookup order (bashcut_dirs::engine, NM1): bashcutpro-cli, bcpro, filmcraft-cli; next to the app, else
+  # on PATH (never plain bashcutpro: that is the Linux GUI)
+  for name in bashcutpro-cli bcpro filmcraft-cli; do
     if [ -x "$(dirname "$exe")/$name" ] && [ -f "$(dirname "$exe")/$name" ]; then cli="$(dirname "$exe")/$name"; break; fi
   done
-  for name in filmcraft-cli bashcutpro bcpro; do
+  for name in bashcutpro-cli bcpro filmcraft-cli; do
     [ -n "$cli" ] && break
     cli="$(command -v "$name" || true)"
   done
@@ -187,7 +188,7 @@ run_limited() {
 }
 
 if [ -z "$cli" ] || [ ! -x "$cli" ]; then
-  fail "cli: filmcraft-cli / bashcutpro not found (pass --cli)"
+  fail "cli: bashcutpro-cli / bcpro / filmcraft-cli not found (pass --cli)"
 else
   if run_limited 60 "$out/cli-razor.txt" "$cli" commands razor && grep -qi razor "$out/cli-razor.txt"; then
     pass "cli: commands razor ($(wc -l <"$out/cli-razor.txt" | tr -d ' ') line(s))"

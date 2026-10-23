@@ -1,5 +1,5 @@
 //! `bashcut-mcp` as a program: which engine it starts with no `--cli` (the shared
-//! `bashcut_dirs::engine` lookup: variables, then `bashcutpro` / `bcpro` / `filmcraft-cli` next to it),
+//! `bashcut_dirs::engine` lookup: variables, then `bashcutpro-cli` / `bcpro` / `filmcraft-cli` next to it),
 //! `--headless` with a live window, and the `BASHCUT_BRIDGE=off` it gives the engine. The process
 //! environment is set per child (`Command::env`), never in this process. The serve cases skip when
 //! neither `python3` nor `python` runs.
@@ -65,14 +65,17 @@ fn the_engine_is_found_like_bashcut_dirs_engine() {
     std::fs::copy(bin, &copy).unwrap();
     let empty = d.join("empty");
     std::fs::create_dir_all(&empty).unwrap();
-    assert_eq!(argv0(command(&copy, &d, &[]).env("PATH", &empty)), exe("filmcraft-cli"), "nothing found: filmcraft-cli");
+    assert_eq!(argv0(command(&copy, &d, &[]).env("PATH", &empty)), exe("bashcutpro-cli"), "nothing found: the fallback name");
+    // the Linux GUI `bashcutpro` beside it is not the engine (NM1)
+    std::fs::write(app.join(exe("bashcutpro")), b"").unwrap();
+    assert_eq!(argv0(command(&copy, &d, &[]).env("PATH", &empty)), exe("bashcutpro-cli"), "bashcutpro is the GUI");
     std::fs::write(app.join(exe("bcpro")), b"").unwrap();
     assert_eq!(Path::new(&argv0(command(&copy, &d, &[]).env("PATH", &empty))), app.join(exe("bcpro")));
     // the Pro name beats the alias
-    std::fs::write(app.join(exe("bashcutpro")), b"").unwrap();
-    assert_eq!(Path::new(&argv0(command(&copy, &d, &[]).env("PATH", &empty))), app.join(exe("bashcutpro")));
+    std::fs::write(app.join(exe("bashcutpro-cli")), b"").unwrap();
+    assert_eq!(Path::new(&argv0(command(&copy, &d, &[]).env("PATH", &empty))), app.join(exe("bashcutpro-cli")));
     // on PATH when nothing is beside it
-    for n in ["bcpro", "bashcutpro"] {
+    for n in ["bcpro", "bashcutpro-cli"] {
         std::fs::remove_file(app.join(exe(n))).unwrap();
     }
     std::fs::write(empty.join(exe("bcpro")), b"").unwrap();

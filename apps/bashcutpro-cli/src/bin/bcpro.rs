@@ -1,4 +1,4 @@
-//! `bcpro`: the short alias of `bashcutpro` (#154), the same generated program.
+//! `bcpro`: the short alias of `bashcutpro-cli` (#154), the same generated program.
 
 #![cfg_attr(not(test), deny(clippy::unwrap_used, clippy::expect_used, clippy::panic, clippy::unimplemented, clippy::todo, clippy::unreachable))]
 

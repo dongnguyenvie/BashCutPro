@@ -4,7 +4,7 @@
 //! message plus a context line goes in as the agent's event format writes it (a row of
 //! [`format::FORMATS`]: Claude Code's stream-json or Codex's JSON), events stream back into a
 //! [`Transcript`], and the next turn resumes the agent's session. The agent edits through
-//! `bashcutpro mcp --bridge <app>` (a temporary MCP config), so its edits land in History like any
+//! `bashcutpro-cli mcp --bridge <app>` (a temporary MCP config), so its edits land in History like any
 //! other command. Gates come from `<project>.fcproj.bashcut/plan.json`; conversations are kept in
 //! `<project>.fcproj.bashcut/conversations/`. Depends on `bashcut-dirs` and `bashcut-manifest` only.
 //!

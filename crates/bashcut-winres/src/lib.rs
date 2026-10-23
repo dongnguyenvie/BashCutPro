@@ -1,5 +1,5 @@
 //! Windows only: the BashCutPro icon and version info (VERSIONINFO) for our command-line tools
-//! (`bashcutpro`, `bcpro`, `bashcut-doctor`, `bashcut-batch`, `bashcut-mcp`; PK4), the way
+//! (`bashcutpro-cli`, `bcpro`, `bashcut-doctor`, `bashcut-batch`, `bashcut-mcp`; PK4), the way
 //! `apps/filmcraft/build.rs` does it for the app, so Explorer, the file properties and the
 //! installer show BashCutPro with the package version instead of a bare exe.
 //!

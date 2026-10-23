@@ -6,10 +6,10 @@ Windows và Linux. Bản gốc tiếng Anh: [Getting started](../en/getting-star
 ## 1. Cài đặt
 
 Cài BashCutPro từ gói cài cho hệ điều hành của bạn (macOS `.app`, bộ cài hoặc bản zip di động cho Windows, gói Linux).
-Mỗi gói kèm dòng lệnh `bashcutpro` (tên ngắn `bcpro`; nó chạy bộ máy `filmcraft-cli` nằm cạnh nó) và ba chương trình
+Mỗi gói kèm dòng lệnh `bashcutpro-cli` (tên ngắn `bcpro`; đây chính là bộ máy mà ứng dụng dùng) và ba chương trình
 phụ: `bashcut-doctor` (kiểm tra máy), `bashcut-batch` (chạy hàng loạt) và `bashcut-mcp` (cho trợ lý AI kết nối vào cửa
 sổ đang mở), cùng một tập lệnh thiết lập lần đầu.
-Khi BashCutPro đang mở, `bashcutpro exec …` (và `run`, `inspect`, `mcp`, …) làm việc trên cửa sổ đang mở; thêm
+Khi BashCutPro đang mở, `bashcutpro-cli exec …` (và `run`, `inspect`, `mcp`, …) làm việc trên cửa sổ đang mở; thêm
 `--project`, hoặc đặt `BASHCUT_BRIDGE=off`, để dùng bộ máy mà không cần cửa sổ.
 
 ### Chưa có gói cài? Tự dựng từ mã nguồn
@@ -26,12 +26,13 @@ cần chừng 10 GB đĩa trống. Các bước dưới đây dành cho macOS; t
 4. Dựng ứng dụng và các công cụ dòng lệnh, kèm chuyển giọng nói thành chữ:
 
    ```sh
-   cargo build -p filmcraft -p filmcraft-cli -p bashcutpro-cli -p bashcut-doctor -p bashcut-batch-cli -p bashcut-mcp \
-     --features filmcraft/whisper,filmcraft-cli/whisper
+   cargo build -p filmcraft -p bashcutpro-cli -p bashcut-doctor -p bashcut-batch-cli -p bashcut-mcp \
+     --features filmcraft/whisper,bashcutpro-cli/whisper
    ```
 
 5. Cho terminal này tìm thấy các công cụ: `export PATH="$PWD/target/debug:$PATH"` (thêm dòng đó, với đường dẫn đầy đủ,
-   vào `~/.zshrc` để giữ lại). Khi đó `bashcutpro --version` trả lời `filmcraft-cli 0.9.0`, tức bộ máy mà nó chạy.
+   vào `~/.zshrc` để giữ lại). Khi đó `bashcutpro-cli --version` (hoặc `bcpro --version`) trả lời
+   `bashcutpro-cli` kèm số phiên bản.
 
 Với bản tự dựng, bước thiết lập lần đầu bên dưới là `bash bashcut/packaging/share/bashcut-setup.sh`, và bạn mở ứng dụng
 bằng `target/debug/filmcraft --control 9876`.
@@ -60,10 +61,10 @@ có Claude Code hoặc Codex, và cuối cùng chạy kiểm tra máy (`bashcut-
 `--skip-looks`, `--skip-profiles`, `--skip-kit`, `--skip-doctor` để bỏ một bước.
 
 **Mô hình giọng nói.** Phụ đề, các thiết lập sẵn của Hàng loạt và bước dựng thô của trợ lý đều bắt đầu bằng việc chuyển
-giọng nói thành chữ, nên máy cần có một mô hình giọng nói. Tải một lần: `bashcutpro exec transcript.downloadModel` tải
+giọng nói thành chữ, nên máy cần có một mô hình giọng nói. Tải một lần: `bashcutpro-cli exec transcript.downloadModel` tải
 **whisper-base** (khoảng 290 MB), mô hình mặc định. Sau đó `bashcut-doctor` báo `[ok] speech`. Chưa tải thì việc chép
 lời dừng với thông báo *the speech model `whisper-base` is not downloaded*. Mô hình nhỏ hơn **whisper-tiny** (khoảng
-150 MB: `bashcutpro exec transcript.downloadModel model=whisper-tiny`) nhanh hơn nhưng kém chính xác hơn. Muốn dùng nó
+150 MB: `bashcutpro-cli exec transcript.downloadModel model=whisper-tiny`) nhanh hơn nhưng kém chính xác hơn. Muốn dùng nó
 thì chọn trong **Cài đặt ▸ Media Analysis & Transcription ▸ Speech model**.
 
 ## 3. Mở ứng dụng

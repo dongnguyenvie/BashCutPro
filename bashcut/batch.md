@@ -1,7 +1,7 @@
 # Batch runner (`bashcut-batch`)
 
 Issue #45. Batch runs are first-class and headless: every input becomes its own project, up to `concurrency` items
-run at once, each step in its own engine (`bashcutpro`) process, and the job book survives the runner, the app or the
+run at once, each step in its own engine (`bashcutpro-cli`) process, and the job book survives the runner, the app or the
 machine stopping. BashCut ran items one at a time inside the open app; here the app does not need to be open.
 
 | Path | What |
@@ -61,7 +61,7 @@ library.
   applies the profile's loudness and caption rules) or `preset`, `format`, `settings` (ExportSettings JSON).
 - **description**: one line shown by `presets list`.
 - **placeholders** in params, argv, env and output names: `{input}`, `{media}`, `{name}`, `{project}`, `{itemDir}`,
-  `{outputs}`, `{cli}` (the engine in use: `bashcutpro` or `filmcraft-cli`) and `{plugins}` (`<data dir>/bashcut-plugins`, where the plugin
+  `{outputs}`, `{cli}` (the engine in use: `bashcutpro-cli`, `bcpro` or `filmcraft-cli`) and `{plugins}` (`<data dir>/bashcut-plugins`, where the plugin
   host installs plugins: `{plugins}/bashcut.translate-captions/plugin.py`), `{python}` (the interpreter for kit scripts: `$BASHCUT_PYTHON`, else on Windows the first of
   `python3` / `python` / `py` that runs, else `python3`; #223), `{kit}` (the agent kit, `--kit`; empty without
   one, see [Agent steps](#agent-steps)); `{prompt}`, `{session}`, `{mcpConfig}` in
@@ -81,10 +81,10 @@ Each item has the steps `create`, `step-1`…, `export-1`…:
 | plugin / agent | its argv in the item folder (agent: in the project's folder), env `BASHCUT_PROJECT`, `BASHCUTPRO_CLI` and `BASHCUT_FILMCRAFT_CLI` (the engine), `BASHCUT_BATCH_ITEM`, `BASHCUT_BATCH_JOB`, `BASHCUT_BRIDGE=off` |
 | export | `<cli> export <out> --project … --preset … --compact`; with a profile, `<cli> run` on one `bashcut.profiles.apply {profile, path, wait: true}` line |
 
-`<cli>` is the engine (`bashcutpro` first, `bashcut_dirs::engine`); every engine row goes through one helper,
+`<cli>` is the engine (`bashcutpro-cli` first, `bashcut_dirs::engine`); every engine row goes through one helper,
 `runner::run_engine` (adds `--data-dir`, logs to `<itemDir>/<key>`). Every engine process, and every plugin /
 agent step, gets `BASHCUT_BRIDGE=off`, so the engine stays headless on the item's project even while a BashCutPro
-window is open (since CC2 a bare `bashcutpro exec` would otherwise talk to that window).
+window is open (since CC2 a bare `bashcutpro-cli exec` would otherwise talk to that window).
 
 Exit statuses map to error categories: 0 ok, 1 `command` (`offlineMedia` for an export that drew placeholders), 2
 `usage`, 3 `handoff` (item `needsAttention`; once a person or agent has done that step, `retry --items <name>
@@ -182,8 +182,8 @@ bashcut-batch presets install ../bashcutpro-plugins/packs/batch    # the built-i
 
 Output is JSON; exit 0 when every item is done, 1 when the job ended failed, stopped, cancelled or needing
 attention, 2 on usage errors. The engine is `--cli`, else `$BASHCUTPRO_CLI` (or the older `$BASHCUT_FILMCRAFT_CLI`,
-then `$FILMCRAFT_CLI`), else `bashcutpro` or `filmcraft-cli` next to `bashcut-batch`, else the same on `PATH`
-(`crates/bashcut-batch/src/cli.rs`, #154). `bashcutpro` is the engine itself (generated from
+then `$FILMCRAFT_CLI`), else `bashcutpro-cli`, `bcpro` or `filmcraft-cli` next to `bashcut-batch`, else the same on `PATH`
+(`crates/bashcut-batch/src/cli.rs`, #154, NM1). `bashcutpro-cli` is the engine itself (generated from
 `filmcraft-cli`, SB2), so the memory watch and Cancel reach it directly on every OS.
 
 **Stopping a step (FX8).** Each step runs in its own process group on Unix (`process.rs::run_watched`), and

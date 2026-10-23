@@ -3,6 +3,22 @@
 Newest first. Each entry: what was decided, why, and what it rules out. Add an entry when the owner
 decides something; don't change an old one, add a new one that supersedes it.
 
+## 2026-10-23: The CLI is `bashcutpro-cli` (+ `bcpro`); naming follows upstream (NM1)
+
+- **Decided (owner):** names follow upstream FilmCraft's `filmcraft` (GUI) / `filmcraft-cli` (CLI) pair. The GUI is
+  `BashCutPro.app/Contents/MacOS/BashCutPro`, `bashcutpro.exe`, `/usr/bin/bashcutpro`; the CLI is `bashcutpro-cli`
+  with the alias `bcpro` on every OS (`bashcutpro-cli.exe` + `bcpro.exe`; on Linux `bcpro` is a symlink).
+  `apps/bashcutpro-cli` builds the bins `bashcutpro-cli` and `bcpro` (no bin named `bashcutpro` any more); its
+  `build.rs` says `bashcutpro-cli` in usage, help, version and errors. Upstream's source still builds the GUI as
+  `filmcraft`; packaging renames it (NM2).
+- **Lookup** (`bashcut_dirs::engine`, every consumer): `BASHCUTPRO_CLI`, `BASHCUT_FILMCRAFT_CLI`, `FILMCRAFT_CLI`
+  (names unchanged), then `bashcutpro-cli` → `bcpro` → `filmcraft-cli` next to the program, then on `PATH`, else
+  `bashcutpro-cli` (`FALLBACK`). Exact-file-name matching stays (T6a).
+- **Why:** on Linux `/usr/bin/bashcutpro` is the GUI, so a CLI of the same name cannot exist there; the `-cli`
+  suffix matches upstream and needs no case trick inside the macOS bundle (#187).
+- **Rules out:** a CLI binary named `bashcutpro`, and plain `bashcutpro` in the engine lookup (it would find the GUI).
+  Supersedes the names in SB2 and #154 below.
+
 ## 2026-10-23: `bashcutpro --bridge` defaults to the open BashCutPro (CC2)
 
 - **Decided:** `bashcutpro`/`bcpro` add `--bridge <address>` from `<data dir>/bashcut/automation.json` (CC1; read with

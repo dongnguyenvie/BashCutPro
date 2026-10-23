@@ -292,7 +292,7 @@ pub fn mcp_config_path(cli: &str, bridge: &str) -> PathBuf {
     std::env::temp_dir().join(format!("bashcut-agent-mcp-{}-{:016x}.json", std::process::id(), h.finish()))
 }
 
-/// A temporary MCP config for this app: `<engine> mcp --bridge <address>` (`bashcutpro` or `filmcraft-cli`) as server `filmcraft`.
+/// A temporary MCP config for this app: `<engine> mcp --bridge <address>` (`bashcutpro-cli`, `bcpro` or `filmcraft-cli`) as server `filmcraft`.
 /// Written to the temp dir (it holds no secret) at [`mcp_config_path`] and removed by the caller when the session ends.
 pub fn write_mcp_config(cli: &str, bridge: &str) -> Result<PathBuf> {
     let v = serde_json::json!({"mcpServers": {"filmcraft": {"command": cli, "args": ["mcp", "--bridge", bridge]}}});

@@ -1,6 +1,6 @@
-//! Generates the `bashcutpro` source from upstream `apps/filmcraft-cli/src` (SB2,
+//! Generates the `bashcutpro-cli` source from upstream `apps/filmcraft-cli/src` (SB2,
 //! `bashcut/decisions.md`): copies it into `OUT_DIR` with the user-visible name changed
-//! (`filmcraft-cli` → `bashcutpro`, "FilmCraft" → "BashCutPro" in the help). Command ids, JSON
+//! (`filmcraft-cli` → `bashcutpro-cli`, "FilmCraft" → "BashCutPro" in the help). Command ids, JSON
 //! fields, MCP tool names and `FILMCRAFT_*` variables are a protocol and stay as they are.
 //!
 //! The anchors are tripwires: every one must be found, else the build fails, so when upstream
@@ -18,12 +18,12 @@ const UPSTREAM: &str = "../filmcraft-cli";
 
 /// (file, text that must be there, its replacement); applied before [`rename`].
 const ANCHORS: &[(&str, &str, &str)] = &[
-    ("main.rs", "filmcraft-cli: drive FilmCraft from the shell", "bashcutpro: drive BashCutPro from the shell"),
-    ("main.rs", "USAGE\n  filmcraft-cli [OPTIONS]", "USAGE\n  bashcutpro [OPTIONS]"),
+    ("main.rs", "filmcraft-cli: drive FilmCraft from the shell", "bashcutpro-cli: drive BashCutPro from the shell"),
+    ("main.rs", "USAGE\n  filmcraft-cli [OPTIONS]", "USAGE\n  bashcutpro-cli [OPTIONS]"),
     ("main.rs", "FilmCraft data directory", "BashCutPro data directory"),
-    ("main.rs", "outln!(\"filmcraft-cli {}\", env!(\"CARGO_PKG_VERSION\"))", "outln!(\"bashcutpro {}\", env!(\"CARGO_PKG_VERSION\"))"),
-    ("main.rs", "\"filmcraft-cli: {msg}\\nRun `filmcraft-cli help` for usage.\"", "\"bashcutpro: {msg}\\nRun `bashcutpro help` for usage.\""),
-    ("main.rs", "diag(format_args!(\"filmcraft-cli: {msg}\"))", "diag(format_args!(\"bashcutpro: {msg}\"))"),
+    ("main.rs", "outln!(\"filmcraft-cli {}\", env!(\"CARGO_PKG_VERSION\"))", "outln!(\"bashcutpro-cli {}\", env!(\"CARGO_PKG_VERSION\"))"),
+    ("main.rs", "\"filmcraft-cli: {msg}\\nRun `filmcraft-cli help` for usage.\"", "\"bashcutpro-cli: {msg}\\nRun `bashcutpro-cli help` for usage.\""),
+    ("main.rs", "diag(format_args!(\"filmcraft-cli: {msg}\"))", "diag(format_args!(\"bashcutpro-cli: {msg}\"))"),
     (
         "main.rs",
         "send commands to the running app (`filmcraft --control PORT`)
@@ -54,7 +54,7 @@ const MODS: &[&str] = &["args", "probe"];
 const INNER_ATTR: &str =
     "#![cfg_attr(not(test), deny(clippy::unwrap_used, clippy::expect_used, clippy::panic, clippy::unimplemented, clippy::todo, clippy::unreachable))]";
 
-/// `filmcraft-cli` → `bashcutpro` where it is the program name in text (`filmcraft-cli help`,
+/// `filmcraft-cli` → `bashcutpro-cli` where it is the program name in text (`filmcraft-cli help`,
 /// `filmcraft-cli: …`), not part of a longer token.
 fn rename(text: &str) -> String {
     const FROM: &str = "filmcraft-cli";
@@ -64,7 +64,7 @@ fn rename(text: &str) -> String {
         let (before, after) = rest.split_at(i);
         let tail = after.get(FROM.len()..).unwrap_or_default();
         out.push_str(before);
-        out.push_str(if tail.starts_with([' ', ':']) { "bashcutpro" } else { FROM });
+        out.push_str(if tail.starts_with([' ', ':']) { "bashcutpro-cli" } else { FROM });
         rest = tail;
     }
     out.push_str(rest);
@@ -178,6 +178,6 @@ fn main() -> Result<(), String> {
         fs::write(out.join(file), text).map_err(|e| format!("bashcutpro-cli: can't write {file}: {e}"))?;
     }
     // PK4: the BashCutPro icon and VERSIONINFO; one resource for both exes, so `bcpro.exe` names
-    // `bashcutpro.exe` as its original file name
-    bashcut_winres::embed("bashcutpro.exe", "BashCutPro command line")
+    // `bashcutpro-cli.exe` as its original file name
+    bashcut_winres::embed("bashcutpro-cli.exe", "BashCutPro command line")
 }
