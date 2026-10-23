@@ -27,11 +27,12 @@ done
 
 here="$(cd "$(dirname "$0")" && pwd)"
 # the tools sit next to this script (CLI zip), in ../../MacOS (macOS app: Resources/bashcut) or in ../../bin (Linux / FreeBSD share/);
+# printed without ../.. (PV2: doctor's fix lines showed share/bashcutpro/../../bin/...);
 # find -name matches the exact case (exact file names, T6a; on a Mac volume a case-insensitive match is the app itself, #187)
 find_tool() {
   local t="$1" d
   for d in "$here" "$here/../../MacOS" "$here/../../bin" "$here/../../../bin"; do
-    if [ -x "$d/$t" ] && [ -n "$(find "$d" -maxdepth 1 -name "$t" -print 2>/dev/null)" ]; then printf '%s\n' "$d/$t"; return 0; fi
+    if [ -x "$d/$t" ] && [ -n "$(find "$d" -maxdepth 1 -name "$t" -print 2>/dev/null)" ]; then printf '%s/%s\n' "$(cd "$d" && pwd)" "$t"; return 0; fi
   done
   command -v "$t" 2>/dev/null
 }
