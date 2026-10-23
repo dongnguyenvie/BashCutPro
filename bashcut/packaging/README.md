@@ -130,6 +130,16 @@ and `bashcut-doctor --json`.
   section turn (Claude Code added a marker) and bridged `bcpro inspect sequence` / `bcpro exec clip.rename` with no
   `--project`, both shown in the open window. Still upstream's: the zip's `README.md` (FilmCraft's) and the
   `FilmCraft Previews` folder next to a saved project.
+- Linux (PV2 run 2026-10-23, after NM2; aarch64 in podman, Ubuntu 22.04 for `package.sh`, Debian trixie for
+  `flatpak-bundle.sh`): needs `nfpm` (deb/rpm), `zsync` (AppImage `.zsync`), `desktop-file-utils` and `appstream`
+  (validation); `appimagetool` downloads itself. Output 0.10.0: deb 45.4 MB, rpm 46.2 MB, tar.gz 43.8 MB, AppImage
+  40.9 MB (+ `.zsync`), flatpak 28.2 MB. Every format carries `bin/bashcutpro` (the app), `bashcutpro-cli`,
+  `bcpro -> bashcutpro-cli`, `bashcut-doctor`, `bashcut-batch`, `bashcut-mcp`, no `filmcraft*` file; desktop
+  `Exec=bashcutpro %F`, `TryExec=bashcutpro`, AppImage `AppRun -> usr/bin/bashcutpro`, Flatpak `command=bashcutpro`;
+  desktop-file-validate clean, `appstreamcli validate` passes (one info: 22.04's appstream 0.15 does not know
+  `<developer>`). The flatpak bundle needs flatpak-builder 1.4+ (Ubuntu 22.04's 1.2 calls `appstream-compose`, which
+  the 25.08 SDK no longer has). Still upstream's: the app's own `--version` / usage text says `filmcraft`
+  (`apps/filmcraft/src/main.rs`).
 - Codec patents: for a paid build prefer the OS encoders (VideoToolbox, Media Foundation) and get legal advice before
   selling.
 
