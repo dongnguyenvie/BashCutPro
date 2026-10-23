@@ -274,6 +274,12 @@ mod tests {
         for k in super::super::palette::Kind::ALL {
             keys.push(("palette.rs".into(), k.label().into()));
         }
+        // single strings kept in a const
+        keys.push(("agent_panel.rs".into(), super::super::agent_panel::OUTDATED_LINE.into()));
+        keys.push(("control.rs".into(), super::super::control::ALLOW.into()));
+        keys.push(("control.rs".into(), super::super::control::RESTART.into()));
+        keys.push(("hints.rs".into(), super::super::hints::CONTROL_OFF.into()));
+        keys.push(("hints.rs".into(), super::super::hints::HOW_TO_TURN_ON.into()));
         for template in AGENT_MESSAGES {
             keys.push(("strings.rs".into(), template.into()));
         }
