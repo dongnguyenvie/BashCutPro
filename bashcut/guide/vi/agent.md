@@ -35,8 +35,9 @@ Dưới tiêu đề, **Mở trong Terminal** mở một cửa sổ terminal ở 
 Trợ lý đang dùng và tiếp tục cuộc trò chuyện của nó (`claude --resume <id>`, hoặc `codex resume <id>`): bạn có đầy đủ
 màn hình Claude Code (hỏi quyền, lệnh `/`, lịch sử) trên cùng cuộc trò chuyện. Quay lại mục Trợ lý và bấm **Gửi** để
 tiếp tục ở đây. Phiên trong terminal điều khiển cửa sổ đang mở qua công cụ của bộ agent kit; kết nối công cụ riêng của
-mục Trợ lý không được chuyển sang. Để chỉ một bên ghi vào cuộc trò chuyện, mục Trợ lý đóng phiên của mình trước (dừng
-lượt đang chạy); bản ghi sau đó hiện "Đã chuyển sang tiếp tục trong Terminal."
+mục Trợ lý không được chuyển sang, trừ khi chưa cài bộ công cụ (xem bên dưới): khi đó phiên terminal nhận kết nối
+công cụ của ứng dụng, nên vẫn điều khiển được cửa sổ đang mở. Để chỉ một bên ghi vào cuộc trò chuyện, mục Trợ lý đóng
+phiên của mình trước (dừng lượt đang chạy); bản ghi sau đó hiện "Đã chuyển sang tiếp tục trong Terminal."
 Lần đầu ở một thư mục, Claude Code hỏi bạn có tin thư mục đó không: chọn **Yes, I trust this folder**.
 
 - **Đăng nhập…** mở `claude` trong terminal: gõ `/login` rồi làm theo các bước trong trình duyệt. Bạn đăng nhập bằng
@@ -48,6 +49,12 @@ Lần đầu ở một thư mục, Claude Code hỏi bạn có tin thư mục đ
 - Khi chưa cài Claude Code, dòng "không tìm thấy" có nút **Cài đặt**. Nút này mở terminal chạy trình cài đặt chính
   thức (`curl -fsSL https://claude.ai/install.sh | bash` trên macOS và Linux, `irm https://claude.ai/install.ps1 | iex`
   trong PowerShell trên Windows). Không có gì được cài cho đến khi bạn bấm.
+- Khi Claude Code chạy mà chưa có bộ công cụ BashCutPro (plugin `bcp`, mang theo các công thức `/bcp:` và kỹ năng),
+  sau tin nhắn đầu tiên bảng hiện dòng **Chưa cài kỹ năng BashCutPro**, kèm hai lệnh để cài
+  (`claude plugin marketplace add dongnguyenvie/bashcutpro-agent-kit`, rồi
+  `claude plugin install bcp@bashcutpro-agent-kit`) và nút **Cài bộ công cụ…** chạy chúng trong terminal. Không có gì
+  được cài cho đến khi bạn bấm. Cài xong, bấm **Mới**: dòng này biến mất khi tin nhắn đầu tiên của cuộc trò chuyện mới
+  thấy bộ công cụ. Các nút công thức của cuộc trò chuyện trống cũng cần bộ công cụ.
 
 Terminal là Terminal trên macOS, Windows Terminal (không có thì một cửa sổ PowerShell) trên Windows, và terminal mặc
 định của màn hình nền (không có thì GNOME Terminal, Konsole hoặc xterm) trên Linux.

@@ -1968,3 +1968,7 @@ fn a_control_channel_client_keeps_the_hidden_agent_alive() {}
 #[test]
 #[ignore = "test ticket: clicking bashcut.agent.terminal while a fake live agent works shows bashcut.agent.handoff ('Ending the in-app session…', vi too), stops and closes it, then opens the terminal job and the transcript ends with 'Continued in Terminal.' (vi: 'Đã chuyển sang tiếp tục trong Terminal.')"]
 fn open_in_terminal_ends_the_live_agent_first() {}
+
+#[test]
+#[ignore = "test ticket: a fake claude-code live turn whose system/init plugins lack bcp shows bashcut.agent.ready.kit ('BashCutPro skills are not installed', vi too) with bashcut.agent.installKit and the commands; with a bcp plugin, or before any init, the line is absent"]
+fn a_session_without_the_bcp_plugin_shows_the_kit_line() {}

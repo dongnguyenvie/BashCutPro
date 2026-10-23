@@ -124,6 +124,8 @@ pub struct Agent {
     unsent: Vec<String>,
     /// `capabilities` of the live agent's last `system/init` (AG3/AG4 feature-detect from them).
     pub capabilities: Vec<String>,
+    /// Plugin names of the live agent's last `system/init` (`None` before one arrived; AG9 reads `bcp`).
+    pub plugins: Option<Vec<String>>,
     /// Claude Code refused one of our flags (`unknown option`): too old for a live session.
     outdated: bool,
     /// The Stop in flight as an interrupt request (AG3).
@@ -164,6 +166,7 @@ impl Agent {
             restarts: 0,
             unsent: Vec::new(),
             capabilities: Vec::new(),
+            plugins: None,
             outdated: false,
             interrupting: None,
             requests: 0,
@@ -591,11 +594,12 @@ impl Agent {
 
     fn live_event(&mut self, ev: Event) {
         match &ev {
-            Event::Init { session, capabilities, .. } => {
+            Event::Init { session, capabilities, plugins, .. } => {
                 if !session.is_empty() {
                     self.conversation.session = session.clone();
                 }
                 self.capabilities = capabilities.clone();
+                self.plugins = Some(plugins.clone());
             }
             Event::Auth { .. } => self.auth_failed = true,
             Event::Control { request, ok } => {
@@ -767,6 +771,7 @@ impl Agent {
             "live": self.live.is_some(),
             "queued": self.queued(),
             "capabilities": self.capabilities,
+            "plugins": self.plugins,
             "conversation": {"id": self.conversation.id, "title": self.conversation.title(), "items": self.conversation.transcript.items.len(), "session": self.conversation.session},
             "gate": self.gate().map(|g| json!({"stage": g.stage, "summary": g.summary, "evidence": g.evidence_lines()})),
             "project": self.sidecar.is_some(),

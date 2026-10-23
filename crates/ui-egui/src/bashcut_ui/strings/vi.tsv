@@ -358,3 +358,9 @@ the agent ended unexpectedly	Trợ lý thoát bất ngờ
 {agent} account problem: {category}	{agent} gặp vấn đề tài khoản: {category}
 Continued in Terminal.	Đã chuyển sang tiếp tục trong Terminal.
 Ending the in-app session before the terminal opens…	Đang đóng phiên trong ứng dụng trước khi mở Terminal…
+BashCutPro skills are not installed	Chưa cài kỹ năng BashCutPro
+The BashCutPro kit (bcp plugin for Claude Code) brings the /bcp: recipes and skills.	Bộ công cụ BashCutPro (plugin bcp cho Claude Code) mang theo các công thức /bcp: và kỹ năng.
+Install kit…	Cài bộ công cụ…
+Open a terminal that installs the BashCutPro kit (bcp plugin) for Claude Code.	Mở cửa sổ dòng lệnh để cài bộ công cụ BashCutPro (plugin bcp) cho Claude Code.
+Installing the BashCutPro kit for Claude Code. When it finishes, close this window and start a New conversation in BashCutPro.	Đang cài bộ công cụ BashCutPro cho Claude Code. Khi xong, đóng cửa sổ này và bắt đầu cuộc trò chuyện Mới trong BashCutPro.
+Needs the BashCutPro kit (bcp plugin) for Claude Code.	Cần bộ công cụ BashCutPro (plugin bcp) cho Claude Code.
