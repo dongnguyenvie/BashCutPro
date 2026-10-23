@@ -89,6 +89,10 @@ class GenerateTest(unittest.TestCase):
         for rel in ("linux/flatpak/%s.yml" % generate.APP_ID, "linux/flatpak/%s.bundle.yml" % generate.APP_ID):
             self.assertNotIn("FilmCraft", self.read(rel), rel)
 
+    @unittest.skip("test ticket: the Windows copy prints BashCutPro and portable.txt names %APPDATA%\\BashCutPro")
+    def test_windows_copy_names_bashcutpro(self):
+        pass
+
     def test_linux_packages_use_our_app_id(self):
         # SB4: desktop file, metainfo, MIME file, icons and Flatpak are com.birchapps.bashcutpro, never FilmCraft's
         generate.generate(ROOT, self.out)

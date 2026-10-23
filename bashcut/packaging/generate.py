@@ -222,6 +222,17 @@ SUBS = [
         + '\n      <Component Id="BashcutSetup">\n        <File Id="BashcutSetupPs1" Source="$(var.BinDir)\\bashcut-setup.ps1" KeyPath="yes" />\n      </Component>\n',
         1,
     ),
+    # PK1: what the Windows copy prints and writes into portable.txt names BashCutPro and its own %APPDATA% folder
+    # (bashcut_dirs::data_dir); the app exe keeps upstream's name filmcraft.exe
+    ("windows/package.ps1", 'Write-Output "FilmCraft $Version for Windows', 'Write-Output "BashCutPro $Version for Windows', 1),
+    (
+        "windows/package.ps1",
+        "  'FilmCraft portable: preferences, presets, logs and crash recovery are kept in the data folder',\n"
+        "  'next to filmcraft.exe. Delete this file to use %APPDATA%\\FilmCraft instead.'\n",
+        "  'BashCutPro portable: preferences, presets, logs and crash recovery are kept in the data folder',\n"
+        "  'next to filmcraft.exe. Delete this file to use %APPDATA%\\BashCutPro instead.'\n",
+        1,
+    ),
     # SB5: the Linux copy names BashCutPro where it tells the user what it installs or builds
     ("linux/install.sh", "  echo 'Installs FilmCraft and", "  echo 'Installs BashCutPro and", 1),
     ("linux/install.sh", "printf 'Installed FilmCraft in ", "printf 'Installed BashCutPro in ", 1),

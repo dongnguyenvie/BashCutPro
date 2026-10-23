@@ -89,6 +89,14 @@ and `bashcut-doctor --json`.
 - Package on each OS (`packaging/<os>/package.sh`, `packaging/windows/package.ps1`), then `bashcut/scripts/smoke.sh` /
   `smoke.ps1` on mac 01 and geekomT ([smoke.md](../smoke.md)); install the package, launch with the rail, run a
   2-item batch.
+- Windows (PK1, first real run 2026-10-23): needs WiX v5 (`dotnet tool install --global wix --version 5.0.2`; a
+  user-level .NET from `dotnet-install.ps1` works with `DOTNET_ROOT` set). Run it with `pwsh` (PowerShell 7): Windows
+  PowerShell 5.1's `Compress-Archive` writes the portable zip's paths with backslashes (`unzip` warns). Without
+  signing secrets every binary and the MSI stay unsigned (a warning, not an error). Output in `dist/release/`:
+  `bashcutpro-<v>-windows-x64.msi` (product BashCutPro, Birch Apps, its own UpgradeCode, `Program Files\BashCutPro`,
+  Start menu shortcut BashCutPro) and `bashcutpro-<v>-windows-x64-portable.zip`. Both carry the app as
+  `filmcraft.exe` (VERSIONINFO and icon BashCutPro) next to `bashcutpro.exe`, `bcpro.exe`, `bashcut-doctor.exe`,
+  `bashcut-batch.exe`, `bashcut-mcp.exe`, `bashcut-setup.ps1`; no `filmcraft-cli.exe`.
 - Codec patents: for a paid build prefer the OS encoders (VideoToolbox, Media Foundation) and get legal advice before
   selling.
 
