@@ -333,3 +333,6 @@ Not supported by BashCutPro's encoders yet	Bộ mã hóa của BashCutPro chưa 
 Not supported in BashCutPro yet	BashCutPro chưa hỗ trợ
 BashCutPro always composites in linear light	BashCutPro luôn ghép hình trong không gian ánh sáng tuyến tính
 Shows the version, community links and credits in a BashCutPro window.	Hiện phiên bản, liên kết cộng đồng và ghi công trong một cửa sổ BashCutPro.
+BashCutPro Help…	Trợ giúp BashCutPro…
+BashCutPro could not start its window: {error}	BashCutPro không mở được cửa sổ: {error}
+Updating the graphics driver usually fixes this.	Cập nhật driver đồ họa thường sẽ khắc phục lỗi này.

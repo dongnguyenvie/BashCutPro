@@ -38,6 +38,7 @@ pub fn install(app: &FilmcraftApp, ctx: egui::Context) -> (Receiver<String>, Men
     let mut titles: Vec<(String, Submenu)> = Vec::new();
     let bar = Menu::new();
     let app_menu = Submenu::new("FilmCraft", true);
+    app_menu.set_text(filmcraft_ui_egui::bashcut_brand::NAME); // BashCutPro: app menu title (bashcut/extending-upstream.md)
     let [settings_label, hide_label, hide_others_label, quit_label] = NATIVE_APP_MENU;
     // FilmCraft ▸ Settings ▸ <category> (Premiere's app-menu layout; General is Cmd+,)
     let settings = Submenu::new(app.ui.language.tr(settings_label), true);
