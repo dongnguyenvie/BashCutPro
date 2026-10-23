@@ -316,3 +316,17 @@ decides something; don't change an old one, add a new one that supersedes it.
   translated by `strings/vi.tsv`, never by upstream's catalogs (extending-upstream.md §3). The crash test still
   reads a process-wide slot: any new failing test in `filmcraft-ui-egui --lib` can make it fail too, so look at the
   other failures first.
+
+## 2026-10-23: `ui.screenshot` gives up after 11 s on the server thread (FX17)
+
+- **Decided:** upstream's control server answers `ui.screenshot` through `bashcut_ui::control::serve_screenshot`
+  (one-line `bashcut_cli::screenshot_first!` hook in `apps/filmcraft/src/control_server.rs`): the request is sent as
+  before, and when the UI thread has not replied within 11 s the server replies `{"ok": false, "error": "window not in
+  front: no frame was drawn within 11 s …; call ui.focus {} and try again"}`. Every other method keeps upstream's
+  60 s wait. The app still does not activate itself for a screenshot (docs/control-protocol.md "Focus": only an
+  explicit `ui.focus {}` does), so the agent is told to call it rather than the app taking the user's keyboard.
+- **Why:** after Open in Terminal / Sign in… put Terminal in front (TM1, macOS), `ui.screenshot` hung for upstream's
+  60 s request timeout. The documented 10 s give-up (`SCREENSHOT_TIMEOUT_S`, plus 0.25 s settle) is checked in the
+  app's per-frame `logic`, and a covered macOS window runs no frames until something wakes it, so neither the raise
+  nor the deadline ever ran. The server thread does not depend on frames. 11 s leaves upstream's own 10.25 s reply
+  first whenever frames do run; a reply that comes later goes to a dropped channel (the PNG is still written).
