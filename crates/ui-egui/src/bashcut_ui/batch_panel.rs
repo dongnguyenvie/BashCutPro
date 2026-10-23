@@ -12,7 +12,7 @@ use super::batch;
 use super::palette::{self, Item};
 use super::plugins_panel::{Spec, field, gated_button, param_title, param_value, required, value_text};
 use super::strings::{f, s};
-use super::widgets::{META, NOTE, button, code_note, note, note_text};
+use super::widgets::{META, NOTE, button, close_button, code_note, note, note_text};
 use crate::FilmcraftApp;
 use crate::native_dialogs::FileDialog;
 use bashcut_batch::book::now_ms;
@@ -214,7 +214,7 @@ fn inputs(app: &mut FilmcraftApp, ui: &mut egui::Ui, ctx: &egui::Context, v: &mu
             ui.horizontal(|ui| {
                 let r = ui.label(egui::RichText::new(file_name(path)).color(t.text)).on_hover_text(path);
                 app.auto.add_response(&format!("bashcut.batch.input.{i}"), &r, path);
-                if button(app, ui, &format!("bashcut.batch.input.{i}.remove"), "✕", true) {
+                if close_button(app, ui, &format!("bashcut.batch.input.{i}.remove"), s("Remove")) {
                     call(app, ctx, v, "removeInput", json!({"index": i}));
                 }
             });
@@ -291,7 +291,7 @@ fn steps(app: &mut FilmcraftApp, ui: &mut egui::Ui, ctx: &egui::Context, v: &mut
                 v.form = None;
             }
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                if button(app, ui, &format!("bashcut.batch.step.{i}.remove"), "✕", true) {
+                if close_button(app, ui, &format!("bashcut.batch.step.{i}.remove"), s("Remove")) {
                     call(app, ctx, v, "removeStep", json!({"index": i}));
                     v.editing = None;
                 }
@@ -514,7 +514,7 @@ fn outputs(app: &mut FilmcraftApp, ui: &mut egui::Ui, ctx: &egui::Context, v: &m
     }
     for (i, o) in list.iter().enumerate() {
         ui.horizontal(|ui| {
-            if button(app, ui, &format!("bashcut.batch.output.{i}.remove"), "✕", true) {
+            if close_button(app, ui, &format!("bashcut.batch.output.{i}.remove"), s("Remove")) {
                 call(app, ctx, v, "removeOutput", json!({"index": i}));
             }
             let what = o.preset.clone().or_else(|| o.format.clone()).unwrap_or_default();
@@ -592,7 +592,7 @@ fn settings(app: &mut FilmcraftApp, ui: &mut egui::Ui, ctx: &egui::Context, v: &
     // buttons from the right, so a long folder truncates instead of pushing them out
     ui.horizontal(|ui| {
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-            if !draft.projects_folder.is_empty() && button(app, ui, "bashcut.batch.projects.reset", "✕", true) {
+            if !draft.projects_folder.is_empty() && close_button(app, ui, "bashcut.batch.projects.reset", s("Remove")) {
                 call(app, ctx, v, "set", json!({"projectsFolder": ""}));
             }
             if button(app, ui, "bashcut.batch.projects.choose", s("Choose…"), true) {
@@ -719,7 +719,7 @@ fn presets(app: &mut FilmcraftApp, ui: &mut egui::Ui, ctx: &egui::Context, v: &m
             if button(app, ui, &format!("bashcut.batch.preset.{name}"), name, true) {
                 call(app, ctx, v, "loadPreset", json!({"name": name}));
             }
-            if button(app, ui, &format!("bashcut.batch.preset.{name}.delete"), "✕", true) {
+            if close_button(app, ui, &format!("bashcut.batch.preset.{name}.delete"), s("Remove")) {
                 call(app, ctx, v, "deletePreset", json!({"name": name}));
             }
         });

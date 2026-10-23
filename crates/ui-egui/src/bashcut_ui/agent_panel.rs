@@ -36,7 +36,7 @@ use super::agent;
 use super::hints::{self, HOW_TO_TURN_ON};
 use super::strings::{f, s};
 use super::terminal;
-use super::widgets::{CODE, META, NOTE, button, code_note, code_text, note, scroll_clear_of_bar, strong_note};
+use super::widgets::{CODE, META, NOTE, button, close_button, code_note, code_text, note, scroll_clear_of_bar, strong_note};
 use crate::FilmcraftApp;
 
 /// The pending gate is re-read from `plan.json` this often (seconds), not every frame.
@@ -209,9 +209,7 @@ pub fn draw(app: &mut FilmcraftApp, ui: &mut egui::Ui) {
                         note(ui, s("Removing…"), META, t.text_dim);
                         return;
                     }
-                    let r = ui.add(egui::Button::new("✕").small().frame(false)).on_hover_text(s("Remove this message from the queue"));
-                    app.auto.add_response(&format!("{id}.cancel"), &r, "✕");
-                    if r.clicked() {
+                    if close_button(app, ui, &format!("{id}.cancel"), s("Remove this message from the queue")) {
                         call(app, &ctx, &mut v, "cancel", json!({"index": i}));
                     }
                 });
@@ -651,11 +649,11 @@ fn tool_group(app: &mut FilmcraftApp, ui: &mut egui::Ui, at: usize, key: &str, g
     let failed = group.iter().any(|g| matches!(g, Item::Tool { is_error: true, .. }));
     let waiting = group.iter().any(|g| matches!(g, Item::Tool { output: None, .. }));
     let mark = if failed {
-        "✗"
+        "×"
     } else if waiting {
         "…"
     } else {
-        "✓"
+        "•"
     };
     let title = if group.len() > 1 { format!("{mark} {key} ×{}", group.len()) } else { format!("{mark} {key}") };
     let head = egui::CollapsingHeader::new(code_text(&title, META, t.text_dim)).id_salt(("bashcut.agent.tool", at)).show(ui, |ui| {

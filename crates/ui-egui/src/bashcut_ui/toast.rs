@@ -12,7 +12,7 @@ use bashcut_plugin_host::{JobKind, JobState};
 use egui::{Align2, vec2};
 
 use super::strings::{f, s};
-use super::widgets::{NOTE, button, note_text};
+use super::widgets::{NOTE, button, close_button, note_text};
 use super::{State, plugins, runs_panel};
 use crate::FilmcraftApp;
 
@@ -86,7 +86,7 @@ pub fn show(app: &mut FilmcraftApp, ctx: &egui::Context, runs_visible: bool) {
 
 /// The toast's sentence, in our language.
 pub fn text(ok: bool, title: &str) -> String {
-    if ok { f("✓ {action} finished", &[("action", title)]) } else { f("✕ {action} failed", &[("action", title)]) }
+    if ok { f("{action} finished", &[("action", title)]) } else { f("{action} failed", &[("action", title)]) }
 }
 
 fn draw(app: &mut FilmcraftApp, ctx: &egui::Context, ts: &mut Toasts) {
@@ -106,9 +106,7 @@ fn draw(app: &mut FilmcraftApp, ctx: &egui::Context, ts: &mut Toasts) {
                     if button(app, ui, &format!("{id}.show"), s("Show"), true) {
                         open = Some(toast.job);
                     }
-                    let r = ui.small_button("✕").on_hover_text(s("Dismiss"));
-                    app.auto.add_response(&format!("{id}.dismiss"), &r, s("Dismiss"));
-                    if r.clicked() {
+                    if close_button(app, ui, &format!("{id}.dismiss"), s("Dismiss")) {
                         gone.push(toast.job);
                     }
                 });
@@ -125,7 +123,7 @@ fn draw(app: &mut FilmcraftApp, ctx: &egui::Context, ts: &mut Toasts) {
     ts.shown.retain(|t| !gone.contains(&t.job));
 }
 
-/// A panel-top status line with ✕: once dismissed it stays hidden until `msg` changes (or the
+/// A panel-top status line with a close button: once dismissed it stays hidden until `msg` changes (or the
 /// status clears and comes back). `None` draws nothing and forgets the dismissal.
 pub fn status_line(app: &mut FilmcraftApp, ui: &mut egui::Ui, id: &str, msg: Option<&str>, color: egui::Color32) {
     let dismissed_key = egui::Id::new(("bashcut.status.dismissed", id));
@@ -137,9 +135,7 @@ pub fn status_line(app: &mut FilmcraftApp, ui: &mut egui::Ui, id: &str, msg: Opt
         return;
     }
     ui.horizontal(|ui| {
-        let r = ui.small_button("✕").on_hover_text(s("Dismiss"));
-        app.auto.add_response(&format!("{id}.dismiss"), &r, s("Dismiss"));
-        if r.clicked() {
+        if close_button(app, ui, &format!("{id}.dismiss"), s("Dismiss")) {
             ui.ctx().data_mut(|d| d.insert_temp(dismissed_key, msg.to_string()));
         }
         let r = ui.add(egui::Label::new(note_text(msg, NOTE, color)).wrap());

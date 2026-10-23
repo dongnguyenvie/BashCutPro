@@ -2781,3 +2781,9 @@ fn control_channel_commands_name_no_filmcraft() {
     assert_eq!(export["label"], json!("Selection as BashCutPro Project…"));
     d.no_ui_error();
 }
+
+/// FX24: the queued-message, dismiss and remove buttons are painted icons with a non-empty tooltip
+/// label, not a ✕ font glyph (an empty box without CRAFT_FONTS_DIR).
+#[test]
+#[ignore = "test ticket: queued/dismiss/remove close buttons register a non-empty label and no ✕ text"]
+fn close_buttons_are_icons_with_a_label() {}
