@@ -3,6 +3,17 @@
 Newest first. Each entry: what was decided, why, and what it rules out. Add an entry when the owner
 decides something; don't change an old one, add a new one that supersedes it.
 
+## 2026-10-23: No Dependabot version updates (DB1)
+
+- **Decided (owner rule: no GitHub-hosted runners):** remove upstream's `.github/dependabot.yml`, recorded as a
+  `deletes` row in `UPSTREAM.md` Carried edits (on a modify/delete conflict keep the deletion). Open Dependabot PRs
+  were closed. `bashcutpro-plugins` and `bashcutpro-agent-kit` have no Dependabot config and Dependabot security
+  updates are off on all three repos. Upstream's `workflow_dispatch` workflows are untouched.
+- **Why:** every scheduled "Dependabot Updates" run used a GitHub-hosted runner. Dependency bumps arrive through
+  upstream syncs or by hand.
+- **Rules out:** re-adding `dependabot.yml` or turning on Dependabot security/version update PRs without a
+  self-hosted runner.
+
 ## 2026-10-23: The CLI is `bashcutpro-cli` (+ `bcpro`); naming follows upstream (NM1)
 
 - **Decided (owner):** names follow upstream FilmCraft's `filmcraft` (GUI) / `filmcraft-cli` (CLI) pair. The GUI is
