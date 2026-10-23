@@ -77,18 +77,18 @@ macro_rules! window_failed_first {
 }
 pub(crate) use window_failed_first;
 
-/// First line of upstream's control-server request (FX17): `ui.screenshot` is sent and answered within 11 s by
-/// [`filmcraft_ui_egui::bashcut_ui::control::serve_screenshot`] (macro so the hook stays one line); any other
-/// request falls through to upstream's send and 60 s wait.
-macro_rules! screenshot_first {
+/// First line of upstream's control-server request (FX17, FX19): `ui.screenshot`, `ui.click`, `ui.key`… are sent and
+/// answered within 11 s by [`filmcraft_ui_egui::bashcut_ui::control::serve_ui`] (macro so the hook stays one line);
+/// `ui.focus`, `ui.menu.invoke` and every other request fall through to upstream's send and 60 s wait.
+macro_rules! ui_first {
     ($req:ident, $tx:expr, $ctx:expr, $reply:expr) => {
-        let $req = match filmcraft_ui_egui::bashcut_ui::control::serve_screenshot($req, $tx, $ctx, $reply) {
+        let $req = match filmcraft_ui_egui::bashcut_ui::control::serve_ui($req, $tx, $ctx, $reply) {
             Ok(reply) => return reply,
             Err(req) => req,
         };
     };
 }
-pub(crate) use screenshot_first;
+pub(crate) use ui_first;
 
 #[cfg(test)]
 mod tests {

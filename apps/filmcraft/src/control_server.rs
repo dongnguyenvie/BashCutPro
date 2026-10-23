@@ -72,7 +72,7 @@ fn serve(stream: TcpStream, tx: &Sender<ControlRequest>, ctx: &egui::Context) {
     let Ok(read) = stream.try_clone() else { return };
     serve_lines(read, stream, |method, params| {
         let (req, rrx) = ControlRequest::new(method, params);
-        crate::bashcut_cli::screenshot_first!(req, tx, ctx, &rrx); // BashCutPro: ui.screenshot fails after 11 s, not 60 s, when the window is covered (bashcut/extending-upstream.md)
+        crate::bashcut_cli::ui_first!(req, tx, ctx, &rrx); // BashCutPro: ui.* requests fail after 11 s, not 60 s, when the window draws no frames (bashcut/extending-upstream.md)
         tx.send(req).ok()?;
         ctx.request_repaint();
         Some(rrx.recv_timeout(Duration::from_secs(60)).unwrap_or_else(|_| json!({"ok": false, "error": "timeout"})))

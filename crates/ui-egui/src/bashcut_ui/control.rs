@@ -8,7 +8,7 @@
 //! - Opt-out: the setting "Allow AI agents to control BashCutPro" (Agent section; off writes
 //!   `<data dir>/bashcut/agents-off`), or `BASHCUT_CONTROL=0`. An explicit `--control` still wins.
 //!   The server starts with the window, so a change applies at the next start.
-//! - `ui.screenshot` gives up after [`SCREENSHOT_WAIT`] on the server thread (FX17, [`serve_screenshot`]).
+//! - `ui.screenshot`, `ui.click`, `ui.key`… give up after [`UI_WAIT`] on the server thread (FX17, FX19, [`serve_ui`]).
 
 use std::net::{Ipv4Addr, TcpListener};
 use std::path::{Path, PathBuf};
@@ -29,31 +29,45 @@ pub const DEFAULT_PORT: u16 = 9876;
 /// `BASHCUT_CONTROL=0` (or `off`, `false`, `no`) keeps the channel off.
 pub const ENV: &str = "BASHCUT_CONTROL";
 
-/// Longest wait for a `ui.screenshot` reply (FX17): upstream's own 10 s give-up (plus its 0.25 s settle) runs
-/// on the UI thread, which stops while another app's window covers ours (macOS stops the frame loop), so
+/// Longest wait for a `ui.*` reply on the server thread (FX17 for `ui.screenshot`, FX19 for the rest): upstream's
+/// own give-ups (screenshot 10 s plus its 0.25 s settle, the 3 s Retry deadline, the wait for synthetic input) are
+/// checked on the UI thread, which runs no frames while the window is minimised (Windows) or covered (macOS), so
 /// the server thread enforces it and the agent is never left waiting upstream's 60 s request timeout.
-pub const SCREENSHOT_WAIT: Duration = Duration::from_secs(11);
+pub const UI_WAIT: Duration = Duration::from_secs(11);
 /// The reply when no frame came in time.
 pub const NOT_IN_FRONT: &str =
     "window not in front: no frame was drawn within 11 s (another app covers BashCutPro, or it is minimised); call ui.focus {} and try again";
 
-/// Hook in upstream's control server (`serve`, apps/filmcraft/src/control_server.rs): a `ui.screenshot`
-/// request is sent and answered here within [`SCREENSHOT_WAIT`] (`Ok(None)` when the app is gone); any
-/// other request comes back as `Err` for upstream's wait.
-pub fn serve_screenshot(
+/// The requests [`serve_ui`] caps: every `ui.*` request needs frames to be answered. Not `ui.focus` (it is the
+/// way out, and [`NOT_IN_FRONT`] would tell it to call itself) and not `ui.menu.invoke` (runs any command, like
+/// `engine.execute`, which may take longer); both keep upstream's 60 s.
+pub fn capped(method: &str) -> bool {
+    method.starts_with("ui.") && !matches!(method, "ui.focus" | "ui.menu.invoke")
+}
+
+/// Hook in upstream's control server (`serve`, apps/filmcraft/src/control_server.rs): a [`capped`] request is
+/// sent and answered here within [`UI_WAIT`] (`Ok(None)` when the app is gone); any other request comes back as
+/// `Err` for upstream's wait.
+pub fn serve_ui(req: ControlRequest, tx: &Sender<ControlRequest>, ctx: &egui::Context, reply: &Receiver<Value>) -> Result<Option<Value>, ControlRequest> {
+    serve_within(req, tx, ctx, reply, UI_WAIT)
+}
+
+/// [`serve_ui`] with the wait as a parameter (tests use a short one).
+fn serve_within(
     req: ControlRequest,
     tx: &Sender<ControlRequest>,
     ctx: &egui::Context,
     reply: &Receiver<Value>,
+    wait: Duration,
 ) -> Result<Option<Value>, ControlRequest> {
-    if req.method != "ui.screenshot" {
+    if !capped(&req.method) {
         return Err(req);
     }
     if tx.send(req).is_err() {
         return Ok(None);
     }
     ctx.request_repaint();
-    Ok(Some(wait_reply(reply, SCREENSHOT_WAIT)))
+    Ok(Some(wait_reply(reply, wait)))
 }
 
 /// Hook at the top of upstream's `ui.focus {}` (FX17): un-minimise the window first. Upstream's
@@ -307,31 +321,69 @@ mod tests {
         assert!(t0.elapsed() < Duration::from_secs(5));
         assert_eq!(v["ok"], false);
         assert!(v["error"].as_str().unwrap().contains("call ui.focus {}"), "{v}");
-        assert!(SCREENSHOT_WAIT >= Duration::from_secs(10) && SCREENSHOT_WAIT < Duration::from_secs(60));
+        assert!(UI_WAIT >= Duration::from_secs(10) && UI_WAIT < Duration::from_secs(60));
     }
 
-    /// A reply in time is passed through; other methods go back to upstream's wait untouched.
+    /// A reply in time is passed through; `ui.focus`, `ui.menu.invoke` and non-`ui.*` methods go back to
+    /// upstream's wait untouched.
     #[test]
     fn screenshot_reply_passes_through_and_other_methods_are_left_to_upstream() {
         let (tx, rx) = channel::<ControlRequest>();
         let ctx = egui::Context::default();
-        let (req, reply) = ControlRequest::new("ui.click", json!({"id": "x"}));
-        let back = serve_screenshot(req, &tx, &ctx, &reply).err().unwrap();
-        assert_eq!(back.method, "ui.click");
+        for method in ["ui.focus", "ui.menu.invoke", "engine.execute", "bashcut.agent.send"] {
+            let (req, reply) = ControlRequest::new(method, json!({}));
+            let back = serve_ui(req, &tx, &ctx, &reply).err().unwrap();
+            assert_eq!(back.method, method);
+        }
         assert!(rx.try_recv().is_err(), "not sent");
         let ui = std::thread::spawn(move || {
-            let req = rx.recv().unwrap();
-            assert_eq!(req.method, "ui.screenshot");
-            req.reply.send(json!({"ok": true, "result": {"path": "p.png"}})).unwrap();
+            for method in ["ui.screenshot", "ui.click"] {
+                let req = rx.recv().unwrap();
+                assert_eq!(req.method, method);
+                req.reply.send(json!({"ok": true, "result": method})).unwrap();
+            }
         });
-        let (req, reply) = ControlRequest::new("ui.screenshot", json!({}));
-        let v = serve_screenshot(req, &tx, &ctx, &reply).ok().flatten().unwrap();
-        assert_eq!(v["ok"], true);
+        for method in ["ui.screenshot", "ui.click"] {
+            let (req, reply) = ControlRequest::new(method, json!({"id": "x"}));
+            let v = serve_ui(req, &tx, &ctx, &reply).ok().flatten().unwrap();
+            assert_eq!(v, json!({"ok": true, "result": method}));
+        }
         ui.join().unwrap();
         // app gone: no reply line
         let (dead_tx, dead_rx) = channel::<ControlRequest>();
         drop(dead_rx);
         let (req, reply) = ControlRequest::new("ui.screenshot", json!({}));
-        assert!(matches!(serve_screenshot(req, &dead_tx, &ctx, &reply), Ok(None)));
+        assert!(matches!(serve_ui(req, &dead_tx, &ctx, &reply), Ok(None)));
+    }
+
+    /// FX19: every frame-bound `ui.*` request is capped (upstream's Retry deadline and input wait run on frames),
+    /// the way out and arbitrary commands are not.
+    #[test]
+    fn frame_bound_ui_requests_are_capped() {
+        for method in ["ui.click", "ui.move", "ui.drag", "ui.scroll", "ui.key", "ui.type", "ui.elements", "ui.inspect", "ui.set", "ui.screenshot"] {
+            assert!(capped(method), "{method}");
+        }
+        for method in ["ui.focus", "ui.menu.invoke", "engine.execute", "engine.commands", "app.quit", "bashcut.agent.send", "uix"] {
+            assert!(!capped(method), "{method}");
+        }
+    }
+
+    /// FX19: a `ui.click` / `ui.key` the UI thread receives but never answers (minimised window: the Retry
+    /// deadline and the input wait run on frames that never come) gets the "call ui.focus" error from the server
+    /// thread instead of upstream's 60 s timeout.
+    #[test]
+    fn click_and_key_without_a_frame_fail_with_ui_focus_hint() {
+        for method in ["ui.click", "ui.key"] {
+            let (tx, rx) = channel::<ControlRequest>();
+            let ctx = egui::Context::default();
+            let (req, reply) = ControlRequest::new(method, json!({"id": "bashcut.rail.agent"}));
+            let t0 = std::time::Instant::now();
+            let v = serve_within(req, &tx, &ctx, &reply, Duration::from_millis(50)).ok().flatten().unwrap();
+            assert!(t0.elapsed() < Duration::from_secs(5));
+            assert_eq!(v, json!({"ok": false, "error": NOT_IN_FRONT}));
+            // the request reached the UI channel and is still held there, unanswered
+            let held = rx.try_recv().unwrap();
+            assert_eq!(held.method, method);
+        }
     }
 }
