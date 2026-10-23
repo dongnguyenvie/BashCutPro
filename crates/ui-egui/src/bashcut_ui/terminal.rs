@@ -251,19 +251,168 @@ pub fn resume_argv(program: &str, resume_args: &[String], session: &str) -> Vec<
 
 #[cfg(test)]
 mod tests {
-    #[test]
-    #[ignore = "test ticket: per-OS command lines quote folders with spaces, quotes and Vietnamese letters as one word"]
-    fn launches_quote_folder_and_program_per_os() {}
+    use super::*;
+
+    /// A folder with spaces, both quotes, `;`, `%` and Vietnamese letters.
+    const DIR: &str = "/Users/me/Phim của tôi/it's \"Đà Lạt\"; 100%";
+
+    /// The words a POSIX shell reads from `line`: single quotes, `\` outside quotes, whitespace and
+    /// an unquoted `;` as its own word only (enough for what [`sh_line`] writes).
+    fn sh_words(line: &str) -> Vec<String> {
+        let mut words = Vec::new();
+        let mut word: Option<String> = None;
+        let mut chars = line.chars();
+        while let Some(c) = chars.next() {
+            match c {
+                '\'' => {
+                    let w = word.get_or_insert_with(String::new);
+                    for q in chars.by_ref() {
+                        if q == '\'' {
+                            break;
+                        }
+                        w.push(q);
+                    }
+                }
+                '\\' => word.get_or_insert_with(String::new).extend(chars.next()),
+                c if c.is_whitespace() => words.extend(word.take()),
+                ';' => {
+                    words.extend(word.take());
+                    words.push(";".into());
+                }
+                c => word.get_or_insert_with(String::new).push(c),
+            }
+        }
+        words.extend(word);
+        words
+    }
+
+    /// Standard base64 back to bytes (`None` on a character outside the alphabet).
+    fn unbase64(text: &str) -> Option<Vec<u8>> {
+        const ABC: &str = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+        let mut bits = 0u32;
+        let mut n = 0;
+        let mut out = Vec::new();
+        for c in text.trim_end_matches('=').chars() {
+            bits = (bits << 6) | ABC.find(c)? as u32;
+            n += 6;
+            if n >= 8 {
+                n -= 8;
+                out.push((bits >> n) as u8);
+            }
+        }
+        Some(out)
+    }
+
+    /// The script a `-EncodedCommand` argument carries (UTF-16LE).
+    fn decoded(arg: &str) -> String {
+        let bytes = unbase64(arg).unwrap();
+        assert_eq!(bytes.len() % 2, 0);
+        let units: Vec<u16> = bytes.chunks(2).map(|b| u16::from_le_bytes([b[0], b[1]])).collect();
+        String::from_utf16(&units).unwrap()
+    }
+
+    fn job() -> Job {
+        Job::Program(vec!["/opt/my tools/it's/claude".into(), "--resume".into(), "abc-1".into()])
+    }
 
     #[test]
-    #[ignore = "test ticket: -EncodedCommand decodes back to the PowerShell script (base64 of UTF-16LE)"]
-    fn powershell_script_round_trips_through_base64() {}
+    fn launches_quote_folder_and_program_per_os() {
+        let dir = Path::new(DIR);
+        let hint = "Gõ /login; xong thì đóng cửa sổ 'này'";
+        let program_words = ["/opt/my tools/it's/claude", "--resume", "abc-1"];
+
+        // macOS: osascript gets the line as its argument (not AppleScript source); a shell reads it back word for word
+        let mac = launches(Os::Mac, dir, &job(), Some(hint));
+        assert_eq!(mac.len(), 1);
+        let (program, args) = &mac[0];
+        assert_eq!(program, "osascript");
+        assert!(args.iter().rev().skip(1).all(|a| !a.contains("Phim")), "the folder is only in the last argument: {args:?}");
+        let words = sh_words(args.last().unwrap());
+        assert_eq!(words[..2], ["cd", DIR], "{words:?}");
+        assert!(words.iter().any(|w| w == hint), "the hint is one word: {words:?}");
+        assert!(words.windows(3).any(|w| w == program_words), "program and args are one word each: {words:?}");
+        assert!(!words.iter().any(|w| w.contains("SHELL")), "Terminal keeps its own shell open");
+
+        // Linux: every terminal runs `sh -c <line>`; the line keeps the window open afterwards
+        let linux = launches(Os::Linux, dir, &job(), None);
+        let names: Vec<&str> = linux.iter().map(|(p, _)| p.as_str()).collect();
+        assert_eq!(names, ["x-terminal-emulator", "gnome-terminal", "konsole", "xterm"]);
+        for (program, args) in &linux {
+            let line = args.last().unwrap();
+            assert_eq!(args[args.len() - 3..args.len() - 1], ["sh", "-c"], "{program}: {args:?}");
+            let words = sh_words(line);
+            assert_eq!(words[..2], ["cd", DIR], "{program}: {words:?}");
+            assert!(words.windows(3).any(|w| w == program_words), "{program}: {words:?}");
+            assert!(line.ends_with("; exec \"${SHELL:-/bin/sh}\""), "{program}: {line}");
+        }
+        assert!(linux[1].1.contains(&format!("--working-directory={DIR}")), "gnome-terminal gets the folder as one argument");
+        assert!(linux[2].1.windows(2).any(|w| w == ["--workdir", DIR]), "konsole gets the folder as one argument");
+
+        // Windows: the folder is only the working directory; the script travels as base64
+        let win = launches(Os::Windows, Path::new(r"C:\Users\Tôi\Phim của tôi; 100% 'x'"), &job(), Some(hint));
+        assert_eq!(win.len(), 2);
+        let (wt, wt_args) = &win[0];
+        assert_eq!(wt, "wt.exe");
+        assert_eq!(wt_args[..6], ["-d", ".", "powershell.exe", "-NoLogo", "-NoExit", "-EncodedCommand"]);
+        let (cmd, cmd_args) = &win[1];
+        assert_eq!(cmd, "cmd.exe");
+        assert_eq!(cmd_args[..7], ["/c", "start", "\"\"", "powershell.exe", "-NoLogo", "-NoExit", "-EncodedCommand"]);
+        for (program, args) in &win {
+            assert_eq!(args.iter().position(|a| a == "-EncodedCommand").map(|i| i + 2), Some(args.len()), "{program}: the script is the last word");
+            assert!(args.iter().all(|a| !a.contains("Phim") && !a.contains(';') && !a.contains('%') && !a.contains(' ')), "{program}: {args:?}");
+            let script = decoded(args.last().unwrap());
+            assert_eq!(script, "Write-Host 'Gõ /login; xong thì đóng cửa sổ ''này'''\nWrite-Host ''\n& '/opt/my tools/it''s/claude' '--resume' 'abc-1'");
+        }
+    }
 
     #[test]
-    #[ignore = "test ticket: resume_argv drops a session id with shell characters"]
-    fn resume_argv_keeps_only_safe_session_ids() {}
+    fn powershell_script_round_trips_through_base64() {
+        // RFC 4648 §10 vectors
+        for (plain, coded) in [("", ""), ("f", "Zg=="), ("fo", "Zm8="), ("foo", "Zm9v"), ("foob", "Zm9vYg=="), ("fooba", "Zm9vYmE="), ("foobar", "Zm9vYmFy")] {
+            assert_eq!(base64(plain.as_bytes()), coded);
+            assert_eq!(unbase64(coded).unwrap(), plain.as_bytes());
+        }
+        let script = ps_script(&install_job(Os::Windows), Some("Đang cài Claude Code; 100% \"xong\" 'ngay' 🎬"));
+        assert!(script.ends_with(INSTALL_WINDOWS), "{script}");
+        let args = powershell_args(&script);
+        assert_eq!(args[..3], ["-NoLogo", "-NoExit", "-EncodedCommand"]);
+        assert_eq!(args.len(), 4);
+        assert_eq!(decoded(&args[3]), script);
+        // UTF-16LE: 2 bytes per unit (a surrogate pair for the emoji)
+        assert_eq!(args[3].len(), (script.encode_utf16().count() * 2).div_ceil(3) * 4);
+    }
 
     #[test]
-    #[ignore = "test ticket: kit_job quotes the program and runs marketplace add then plugin install, per OS"]
-    fn kit_job_adds_marketplace_then_installs_bcp() {}
+    fn resume_argv_keeps_only_safe_session_ids() {
+        let resume = vec!["--resume".to_string(), "{session}".to_string()];
+        let id = "0b6c3f1e-9d2a-4c55-b1e8_x";
+        assert_eq!(resume_argv("claude", &resume, id), ["claude", "--resume", id]);
+        assert_eq!(resume_argv("codex", &["resume".to_string(), "{session}".to_string()], "abc"), ["codex", "resume", "abc"]);
+        let long = "a".repeat(129);
+        for bad in ["", "a b", "a;rm -rf ~", "$(touch x)", "`id`", "a'b", "a\"b", "a|b", "a&b", "x\ny", "phiên-ệ", "../x", "a%PATH%", long.as_str()] {
+            assert_eq!(resume_argv("claude", &resume, bad), ["claude"], "{bad:?} is dropped");
+        }
+        assert_eq!(resume_argv("claude", &resume, &"a".repeat(128)).len(), 3, "128 characters is still an id");
+        // at most 16 resume arguments
+        let many: Vec<String> = (0..40).map(|i| format!("--x{i}")).collect();
+        assert_eq!(resume_argv("claude", &many, "abc").len(), 17);
+    }
+
+    #[test]
+    fn kit_job_adds_marketplace_then_installs_bcp() {
+        let windows = kit_job(Os::Windows, r"C:\Program Files\it's\claude.exe");
+        let expected = r"& 'C:\Program Files\it''s\claude.exe' plugin marketplace add dongnguyenvie/bashcutpro-agent-kit; if ($LASTEXITCODE -eq 0) { & 'C:\Program Files\it''s\claude.exe' plugin install bcp@bashcutpro-agent-kit }";
+        assert_eq!(windows, Job::Script(expected.into()));
+        for os in [Os::Mac, Os::Linux] {
+            let Job::Script(line) = kit_job(os, "/opt/my tools/it's/claude") else { panic!("a script") };
+            assert_eq!(
+                line,
+                r"'/opt/my tools/it'\''s/claude' plugin marketplace add dongnguyenvie/bashcutpro-agent-kit && '/opt/my tools/it'\''s/claude' plugin install bcp@bashcutpro-agent-kit"
+            );
+            // install runs only when add succeeded (`&&`), the program one word each time
+            let program = "/opt/my tools/it's/claude";
+            assert_eq!(sh_words(&line), [program, "plugin", "marketplace", "add", KIT_MARKETPLACE, "&&", program, "plugin", "install", KIT_INSTALL]);
+        }
+        assert!(KIT_INSTALL.starts_with(&format!("{KIT_PLUGIN}@")));
+    }
 }

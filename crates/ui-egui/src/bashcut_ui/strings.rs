@@ -311,15 +311,71 @@ mod tests {
         let dups = duplicates(include_str!("strings/vi.tsv"));
         assert!(dups.is_empty(), "keys listed more than once in strings/vi.tsv: {dups:?}");
         assert_eq!(duplicates("# c\nSave\tLưu\nSave…\tLưu…\nSave\tGhi\n"), ["Save"]);
+        // TA4: a key that starts another one is not a duplicate (a prefix grep reads
+        // "Command Palette" / "Command Palette…", "Running" / "Running…", "Save" / "Save settings" as twice)
+        assert!(duplicates("Command Palette\tBảng lệnh\nCommand Palette…\tBảng lệnh…\nRunning\tĐang chạy\nRunning…\tĐang chạy…\n").is_empty());
     }
 
     #[test]
-    #[ignore = "test ticket: agent() translates fixed rows, AGENT_MESSAGES templates with values (nested {error}, multi-byte values) and leaves the agent's own text unchanged"]
-    fn agent_messages_translate_through_templates() {}
+    fn agent_messages_translate_through_templates() {
+        set_language(Some("vi"));
+        // a fixed row
+        assert_eq!(agent("stop the running turn first"), "Hãy dừng lượt đang chạy trước");
+        // a template with values, the longer form before the shorter one
+        assert_eq!(agent("the agent exited with status 1: lỗi: không đọc được tệp"), "Trợ lý thoát với mã 1: lỗi: không đọc được tệp");
+        assert_eq!(agent("the agent exited with status 137"), "Trợ lý thoát với mã 137");
+        // multi-byte values, also next to the template's own text
+        assert_eq!(agent("no agent `trợ-lý-ệ`"), "Không có trợ lý `trợ-lý-ệ`");
+        assert_eq!(agent("cannot start `C:\\Phim của tôi\\claude.exe`: không tìm thấy"), "Không chạy được `C:\\Phim của tôi\\claude.exe`: không tìm thấy");
+        // a nested {error} that is one of ours is translated too, twice deep at most
+        assert_eq!(agent("agent `x`: no agent `y`"), "Trợ lý `x`: Không có trợ lý `y`");
+        assert_eq!(agent("cannot start the agent thread: the agent has ended"), "Không khởi động được luồng trợ lý: Trợ lý đã thoát");
+        assert_eq!(agent("agent `a`: agent `b`: agent `c`: no agent `d`"), "Trợ lý `a`: Trợ lý `b`: Trợ lý `c`: no agent `d`");
+        // the agent's own words, and a template with an empty value, stay as they are
+        assert_eq!(agent("Here is your rough cut."), "Here is your rough cut.");
+        assert_eq!(agent("no agent ``"), "no agent ``");
+        assert_eq!(agent("the agent exited with status "), "the agent exited with status ");
+        assert_eq!(agent(""), "");
+        set_language(Some("en"));
+        assert_eq!(agent("agent `x`: no agent `y`"), "agent `x`: no agent `y`");
+        set_language(None);
+        assert_eq!(captures("no agent `{id}`", "no agent `a`b`"), Some(vec![("id", "a`b".to_string())]));
+        assert_eq!(captures("plan.json: {error}", "plan.json"), None);
+    }
+
+    /// The plain literals the bashcut-agent crate shows as an error or notice: `err("…")`,
+    /// `Error("…"`, `Notice("…"` and `Notice { message: "…"`, outside its test modules.
+    fn agent_crate_messages() -> Vec<(String, String)> {
+        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../bashcut-agent/src");
+        let mut v = Vec::new();
+        for path in std::fs::read_dir(&dir).unwrap().map(|e| e.unwrap().path()).filter(|p| p.extension().is_some_and(|x| x == "rs")) {
+            let text = std::fs::read_to_string(&path).unwrap();
+            let code = text.split("#[cfg(test)]").next().unwrap_or_default();
+            let file = path.file_name().unwrap().to_string_lossy().into_owned();
+            for call in ["err(", "Error(", "Notice(", "Notice { message: "] {
+                for (i, _) in code.match_indices(call) {
+                    if code[..i].chars().next_back().is_some_and(|c| c.is_alphanumeric() || c == '_') {
+                        continue;
+                    }
+                    v.extend(literal(&code[i + call.len()..]).map(|m| (file.clone(), m)));
+                }
+            }
+        }
+        v
+    }
 
     #[test]
-    #[ignore = "test ticket: every err(\"…\") / Error(\"…\") / Notice literal the bashcut-agent crate can show in the panel has a vi.tsv row or an AGENT_MESSAGES template"]
-    fn every_agent_crate_message_has_a_vietnamese_row() {}
+    fn every_agent_crate_message_has_a_vietnamese_row() {
+        let messages = agent_crate_messages();
+        for known in ["stop the running turn first", "the agent has ended", "Stopped.", "Continued in Terminal.", "skipped an event larger than 1 MB"] {
+            assert!(messages.iter().any(|(_, m)| m == known), "the scan missed {known:?}: {messages:?}");
+        }
+        let gaps = untranslated(messages);
+        assert!(gaps.is_empty(), "bashcut-agent messages with no row in strings/vi.tsv:\n{gaps}");
+        // and every template is a row
+        let gaps = untranslated(AGENT_MESSAGES.iter().map(|t| ("strings.rs".to_string(), t.to_string())).collect());
+        assert!(gaps.is_empty(), "templates with no row in strings/vi.tsv:\n{gaps}");
+    }
 
     #[test]
     fn literal_reads_escapes_and_continuations() {

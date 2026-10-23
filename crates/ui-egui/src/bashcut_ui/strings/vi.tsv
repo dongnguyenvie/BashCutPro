@@ -439,3 +439,13 @@ Request Gate Changes	Yêu cầu sửa bước này
 Install BashCutPro Kit	Cài bộ công cụ BashCutPro
 Install kit works with Claude Code once it is installed.	Cài bộ công cụ chỉ dùng được khi đã cài Claude Code.
 The BashCutPro kit is already installed.	Bộ công cụ BashCutPro đã được cài.
+# bashcut-agent errors the VI4 list missed (TA4: strings::tests::every_agent_crate_message_has_a_vietnamese_row)
+no such gate	Không có bước duyệt này
+say what to change	Hãy nói cần sửa gì
+that gate was already answered	Bước duyệt này đã được trả lời
+answer: once, always or deny	answer phải là once, always hoặc deny
+which queued message? (index)	Tin nhắn nào trong hàng chờ? (cần index)
+no agent	Không có trợ lý
+no interrupt request	Trợ lý không hỗ trợ yêu cầu ngắt
+queued messages it cannot drop	Còn tin nhắn trong hàng chờ mà trợ lý không bỏ được
+conversation too large to save	Cuộc trò chuyện quá lớn để lưu
