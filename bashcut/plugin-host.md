@@ -88,7 +88,8 @@ without `PATH`. `settings::env_for` puts it right after the data folder, so agen
 an action run with an engine in its `RunContext` also passes it as `--cli` and uses it for `BASHCUTPRO_CLI` in place
 of the found one (`settings::env_for_engine`); batch steps get theirs from `item_env` (`--cli`). The order is the same
 everywhere (FX10): a manifest setting named `BASHCUTPRO_CLI`, then an engine the user exported, then the run's engine,
-then the one found next to the app or on `PATH`. No engine found: nothing is set and the plugin reports `no_cli`, which the panel shows as the friendly
+then the one found next to the app or on `PATH`. An action run's `--cli` (manifest `connect.cli`) is that same
+engine (`settings::cli_in` of the run's env, FX11), so an exported engine is not skipped by plugins that read `--cli` first. No engine found: nothing is set and the plugin reports `no_cli`, which the panel shows as the friendly
 "engine not found" hint (it matches the code, so older plugins' wording is recognised too).
 
 ## Touch points in upstream files (the whole core change)

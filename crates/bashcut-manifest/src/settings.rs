@@ -131,6 +131,12 @@ pub fn cli_env(engine: Option<&Path>) -> Option<(String, String)> {
     engine.filter(|e| !e.as_os_str().is_empty()).map(|e| (CLI_ENV.to_string(), e.to_string_lossy().into_owned()))
 }
 
+/// The engine an environment from [`env_for_engine`] gives the plugin (its last `BASHCUTPRO_CLI`, as the
+/// child sees it), so an action run's `--cli` argv follows the same order as its env (FX11).
+pub fn cli_in(env: &[(String, String)]) -> Option<&str> {
+    env.iter().rev().find(|(k, _)| k == CLI_ENV).map(|(_, v)| v.as_str()).filter(|v| !v.is_empty())
+}
+
 /// The run's engine for [`cli_env`]: an exported one over the run's own (empty paths ignored); `None`
 /// leaves it to [`bashcut_dirs::engine::found`].
 fn engine_for(exported: Option<&Path>, run: Option<&Path>) -> Option<PathBuf> {
@@ -412,5 +418,10 @@ mod tests {
         assert_eq!(engine_for(Some(export), None).as_deref(), Some(export));
         assert_eq!(engine_for(None, Some(Path::new(""))), None);
         assert_eq!(engine_for(None, None), None);
+        // FX11: argv --cli reads the env's last BASHCUTPRO_CLI (a manifest setting comes after the engine)
+        let env = [("BASHCUTPRO_CLI".to_string(), "/found".to_string()), ("X".into(), "y".into()), ("BASHCUTPRO_CLI".into(), "/setting".into())];
+        assert_eq!(cli_in(&env), Some("/setting"));
+        assert_eq!(cli_in(&env[1..2]), None);
+        assert_eq!(cli_in(&[("BASHCUTPRO_CLI".to_string(), String::new())]), None);
     }
 }
