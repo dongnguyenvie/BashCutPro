@@ -166,7 +166,8 @@ pub fn draw(app: &mut FilmcraftApp, ui: &mut egui::Ui) {
             live: a.is_live(),
             queued: a.queued_items(),
             outdated: a.outdated(),
-            auth: a.conversation.transcript.auth_problem().map(|(c, m)| (c.to_string(), m.to_string())),
+            // FX28: a program that is not found wins over an earlier sign-in problem
+            auth: a.conversation.transcript.auth_problem().filter(|_| hints::agent_found(&a.agent)).map(|(c, m)| (c.to_string(), m.to_string())),
             kit_missing: agent::kit_missing(a),
             permissions: a.permissions(),
             slash: a.agent.events == bashcut_agent::stream_json::FORMAT,
