@@ -221,8 +221,12 @@ fn check_speech(env: &dyn Env, cli: &str, r: &mut Report) {
     };
     if models.get("available").and_then(Value::as_bool) != Some(true) {
         r.findings.push(
-            Finding::new("speech", Level::Warn, "this engine (filmcraft-cli) has no speech-to-text: transcribing (captions, Vietsub and shorts presets) fails")
-                .fix("use a build with speech-to-text (cargo build -p bashcutpro-cli --features whisper)"),
+            Finding::new(
+                "speech",
+                Level::Warn,
+                format!("this engine ({cli}) has no speech-to-text: transcribing (captions, Vietsub and shorts presets) fails"),
+            )
+            .fix("use a build with speech-to-text (cargo build -p bashcutpro-cli --features whisper)"),
         );
         return;
     }
