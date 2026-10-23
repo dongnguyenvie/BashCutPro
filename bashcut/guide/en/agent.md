@@ -39,6 +39,10 @@ The first time in a folder, Claude Code asks whether you trust it: choose **Yes,
 
 - **Sign in…** opens `claude` in a terminal: type `/login` and follow the steps in your browser. You sign in with
   Claude Code's own login (a Claude subscription or an API key); BashCutPro never reads or stores it.
+- When a message fails because Claude Code is not signed in, the panel says **Claude Code is not signed in** under
+  the header, with **Sign in…** next to it and Claude Code's own message below (you can select and copy it). A
+  billing or organization problem with your Claude account shows as **account problem** instead. Sign in, then send
+  your message again: the line goes away with the next message.
 - When Claude Code is not installed, the "not found" line has an **Install** button. It opens a terminal running the
   official installer (`curl -fsSL https://claude.ai/install.sh | bash` on macOS and Linux,
   `irm https://claude.ai/install.ps1 | iex` in PowerShell on Windows). Nothing is installed until you press it.

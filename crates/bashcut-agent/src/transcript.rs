@@ -38,6 +38,12 @@ pub enum Item {
     Notice {
         message: String,
     },
+    /// AG6: the agent is not signed in or its account cannot be used ([`Event::Auth`]); the panel
+    /// shows a readiness line with Sign in while this is the latest turn's outcome.
+    Auth {
+        category: String,
+        message: String,
+    },
 }
 
 impl Item {
@@ -92,6 +98,20 @@ impl Transcript {
                     *err = *is_error;
                 }
             }
+            Event::Auth { category, message } => {
+                // the same problem reported again (retries, then the result) shows once
+                let item = Item::Auth { category: category.clone(), message: message.clone() };
+                match self.items.last_mut() {
+                    Some(Item::Auth { category: c, message: m }) if c == category => {
+                        if m.is_empty() {
+                            *m = message.clone();
+                        }
+                    }
+                    _ => self.push(item),
+                }
+            }
+            // the turn already ended on a sign-in problem: no generic error after it
+            Event::Result { ok: false, .. } if matches!(self.items.last(), Some(Item::Auth { .. })) => {}
             Event::Result { ok: false, text, .. } => {
                 let message = if text.is_empty() { "the agent stopped with an error".to_string() } else { text.clone() };
                 self.push(Item::Error { message });
@@ -99,6 +119,16 @@ impl Transcript {
             Event::Notice(m) => self.push(Item::Notice { message: m.clone() }),
             Event::Init { .. } | Event::Result { .. } | Event::Picked => {}
         }
+    }
+
+    /// The sign-in or account problem the latest turn ended on (category, message): the last
+    /// [`Item::Auth`] when no message was sent after it.
+    pub fn auth_problem(&self) -> Option<(&str, &str)> {
+        self.items.iter().rev().find_map(|i| match i {
+            Item::Auth { category, message } => Some(Some((category.as_str(), message.as_str()))),
+            Item::User { .. } => Some(None),
+            _ => None,
+        })?
     }
 
     /// The last assistant text (what the turn answered).

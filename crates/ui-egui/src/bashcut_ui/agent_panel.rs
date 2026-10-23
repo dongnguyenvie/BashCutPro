@@ -13,6 +13,10 @@
 //!
 //! AG5: Open in Terminal continues the conversation in the agent's own terminal UI, Sign in opens
 //! `claude` for `/login`, and a missing Claude Code gets an Install button ([`super::terminal`]).
+//!
+//! AG6: when the latest turn ended on a sign-in or account problem ([`bashcut_agent::Item::Auth`],
+//! decoded from the event stream only), a readiness line says so with Sign in, and the agent's own
+//! message stays selectable under it.
 
 use bashcut_agent::{Gate, Item, Status};
 use serde_json::{Value, json};
@@ -77,6 +81,8 @@ struct Snapshot {
     queued: Vec<String>,
     /// [`bashcut_agent::Agent::outdated`].
     outdated: bool,
+    /// The sign-in or account problem the latest turn ended on (category, the agent's message).
+    auth: Option<(String, String)>,
 }
 
 impl Snapshot {
@@ -128,6 +134,7 @@ pub fn draw(app: &mut FilmcraftApp, ui: &mut egui::Ui) {
             live: a.is_live(),
             queued: a.queued(),
             outdated: a.outdated(),
+            auth: a.conversation.transcript.auth_problem().map(|(c, m)| (c.to_string(), m.to_string())),
         };
         let gate = if check_gate && !a.is_running() { Some(a.gate()) } else { None };
         (snap, gate, a.take_unsent())
@@ -248,6 +255,9 @@ fn readiness(app: &mut FilmcraftApp, ui: &mut egui::Ui, ctx: &egui::Context, sna
         let r = note(ui, line, NOTE, t.danger);
         app.auto.add_response("bashcut.agent.ready.update", &r, line);
     }
+    if let Some((category, message)) = &snap.auth {
+        auth_line(app, ui, snap, category, message);
+    }
     terminal_row(app, ui, snap);
     if !hints::control_on() {
         let line = s("Control channel off: the agent cannot edit the open project.");
@@ -269,6 +279,37 @@ fn readiness(app: &mut FilmcraftApp, ui: &mut egui::Ui, ctx: &egui::Context, sna
     }
 }
 
+/// "Claude Code is not signed in" or "… account problem: billing" (AG6).
+fn auth_headline(agent: &str, category: &str) -> String {
+    let key = match category {
+        bashcut_agent::stream_json::NOT_SIGNED_IN => "{agent} is not signed in",
+        "billing_error" => "{agent} account problem: billing",
+        "oauth_org_not_allowed" => "{agent} account problem: this organization is not allowed",
+        _ => "{agent} account problem: {category}",
+    };
+    f(key, &[("agent", agent), ("category", category)])
+}
+
+/// The sign-in readiness line: headline, Sign in (Claude Code), and the agent's message, selectable.
+fn auth_line(app: &mut FilmcraftApp, ui: &mut egui::Ui, snap: &Snapshot, category: &str, message: &str) {
+    let t = app.tokens;
+    let line = auth_headline(&snap.agent.1, category);
+    ui.horizontal_wrapped(|ui| {
+        let r = note(ui, &line, NOTE, t.danger);
+        app.auto.add_response("bashcut.agent.ready.auth", &r, &line);
+        if snap.agent.0 == "claude-code"
+            && let Some(program) = snap.resume.as_ref().and_then(|a| a.first())
+        {
+            let program = program.clone();
+            sign_in_button(app, ui, &program, snap.project.as_deref());
+        }
+    });
+    if !message.is_empty() {
+        let r = ui.add(egui::Label::new(egui::RichText::new(message).size(NOTE).color(t.text_dim)).selectable(true).wrap());
+        app.auto.add_response("bashcut.agent.ready.auth.message", &r, message);
+    }
+}
+
 fn hover_button(app: &mut FilmcraftApp, ui: &mut egui::Ui, id: &str, label: &str, hover: &str) -> bool {
     let r = ui.add(egui::Button::new(label).small()).on_hover_text(hover);
     app.auto.add_response(id, &r, label);
@@ -283,7 +324,8 @@ fn terminal_row(app: &mut FilmcraftApp, ui: &mut egui::Ui, snap: &Snapshot) {
         if hover_button(app, ui, "bashcut.agent.terminal", s("Open in Terminal"), &tip) {
             open_terminal(app, &snap.cwd(), &Job::Program(argv.clone()), None);
         }
-        if snap.agent.0 == "claude-code" {
+        // the sign-in line has its own Sign in (AG6)
+        if snap.agent.0 == "claude-code" && snap.auth.is_none() {
             let program = argv.first().cloned().unwrap_or_default();
             sign_in_button(app, ui, &program, snap.project.as_deref());
         }
@@ -446,6 +488,11 @@ fn transcript(app: &mut FilmcraftApp, ui: &mut egui::Ui, items: &[Item]) {
             }
             Item::Notice { message } => {
                 note(ui, s(message), META, t.text_dim);
+            }
+            Item::Auth { category, message } => {
+                // the readiness line says what to do; here the agent's own words, selectable
+                let text = if message.is_empty() { category } else { message };
+                ui.add(egui::Label::new(egui::RichText::new(text).size(META).color(t.text_dim)).selectable(true).wrap());
             }
         }
         i += 1;

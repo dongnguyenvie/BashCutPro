@@ -1956,3 +1956,7 @@ fn help_menu_names_bashcutpro_and_opens_the_guide_in_both_languages() {
     d.exec("bashcut.ui.setLanguage", json!({"language": null}));
     assert!(d.harness.state().ui_error.is_none(), "{:?}", d.harness.state().ui_error);
 }
+
+#[test]
+#[ignore = "test ticket: a fake claude-code turn that prints an authentication_failed assistant line shows bashcut.agent.ready.auth ('Claude Code is not signed in', vi too) with bashcut.agent.signIn and the selectable message, no generic error; a new Send clears it"]
+fn a_sign_in_failure_shows_the_not_signed_in_line_with_sign_in() {}

@@ -3,6 +3,12 @@
 //! `assistant` (text and tool_use blocks), `user` (tool_result blocks, and the `isReplay` echo of a
 //! message Claude took from stdin with `--replay-user-messages`) and `result`; anything else is
 //! ignored. The same format is the default `events` of agent plugins.
+//!
+//! AG6: a sign-in or account problem becomes [`Event::Auth`], read only from the stream (never from
+//! credential files). Claude Code 2.1.309 with no login sends a synthetic `assistant` message with
+//! `"error": "authentication_failed"` and the text `Not logged in · Please run /login`, then a
+//! `result` with `is_error: true` and the same text; a rejected login mid-turn arrives as
+//! `system/api_retry` with the same `error` values.
 
 use serde_json::{Value, json};
 
@@ -54,6 +60,32 @@ pub enum Event {
     },
     /// Something we show but do not model (an unparsable line, an agent error message).
     Notice(String),
+    /// Claude Code is not signed in, or its account cannot be used: `category` is one of
+    /// [`AUTH_ERRORS`] (`authentication_failed` when the user has to sign in), `message` the
+    /// agent's own words (may be empty).
+    Auth {
+        category: String,
+        message: String,
+    },
+}
+
+/// The `error` values of `assistant` and `system/api_retry` events that mean "sign in" or "account
+/// problem" rather than a failed turn.
+pub const AUTH_ERRORS: [&str; 3] = [NOT_SIGNED_IN, "oauth_org_not_allowed", "billing_error"];
+/// The [`Event::Auth`] category of a missing or expired login.
+pub const NOT_SIGNED_IN: &str = "authentication_failed";
+
+/// The auth category in `v`'s `error` field, if it is one of [`AUTH_ERRORS`].
+fn auth_error(v: &Value) -> Option<&'static str> {
+    let e = v.get("error").and_then(Value::as_str)?;
+    AUTH_ERRORS.iter().copied().find(|c| *c == e)
+}
+
+/// A failed result's text that says the user is not logged in (`Not logged in · Please run /login`,
+/// `Invalid API key · Please run /login`).
+fn says_not_signed_in(text: &str) -> bool {
+    let t = text.to_ascii_lowercase();
+    t.contains("not logged in") || t.contains("please run /login") || t.contains("invalid api key")
 }
 
 /// The stateless [`crate::format::Decode`]r of this format.
@@ -80,6 +112,15 @@ pub fn parse_line(line: &str) -> Vec<Event> {
             vec![Event::Init { session: text(&v, "session_id"), model: text(&v, "model"), capabilities: capabilities(v.get("capabilities")) }]
         }
         "user" if v.get("isReplay").and_then(Value::as_bool) == Some(true) => vec![Event::Picked],
+        "system" if v.get("subtype").and_then(Value::as_str) == Some("api_retry") => match auth_error(&v) {
+            Some(category) => vec![Event::Auth { category: category.into(), message: String::new() }],
+            None => Vec::new(),
+        },
+        "assistant" if auth_error(&v).is_some() => {
+            let message = blocks(&v).iter().filter_map(|b| b.get("text").and_then(Value::as_str)).collect::<Vec<_>>().join("\n");
+            let category = auth_error(&v).unwrap_or(NOT_SIGNED_IN);
+            vec![Event::Auth { category: category.into(), message: clip(&message, 2048) }]
+        }
         "assistant" => blocks(&v)
             .iter()
             .filter_map(|b| match b.get("type").and_then(Value::as_str) {
@@ -104,13 +145,19 @@ pub fn parse_line(line: &str) -> Vec<Event> {
             if t.is_empty() && !ok {
                 t = text(&v, "subtype");
             }
-            vec![Event::Result {
+            let result = Event::Result {
                 ok,
                 text: clip(&t, MAX_TEXT),
                 session: text(&v, "session_id"),
                 cost_usd: v.get("total_cost_usd").and_then(Value::as_f64).filter(|c| c.is_finite()),
                 turns: v.get("num_turns").and_then(Value::as_u64),
-            }]
+            };
+            // the Auth event first, so the transcript shows the sign-in line instead of a generic error
+            let category = auth_error(&v).or_else(|| (!ok && says_not_signed_in(&t)).then_some(NOT_SIGNED_IN));
+            match category {
+                Some(category) => vec![Event::Auth { category: category.into(), message: clip(&t, 2048) }, result],
+                None => vec![result],
+            }
         }
         "error" => vec![Event::Notice(clip(&v.get("error").map(|e| content_text(Some(e))).unwrap_or_else(|| text(&v, "message")), 2048))],
         _ => Vec::new(),
@@ -194,6 +241,10 @@ mod tests {
     #[test]
     #[ignore = "test ticket: system/init capabilities parsed (strings kept, non-strings skipped, capped at 64), isReplay user line is Picked"]
     fn init_capabilities_and_replay_are_parsed() {}
+
+    #[test]
+    #[ignore = "test ticket: authentication_failed / oauth_org_not_allowed / billing_error from assistant, system/api_retry and a failed 'Not logged in' result decode to Event::Auth; other api_retry errors and successful results do not"]
+    fn auth_problems_decode_to_auth_events() {}
 
     #[test]
     fn user_message_round_trips() {

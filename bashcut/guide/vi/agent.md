@@ -38,6 +38,10 @@ Lần đầu ở một thư mục, Claude Code hỏi bạn có tin thư mục đ
 
 - **Đăng nhập…** mở `claude` trong terminal: gõ `/login` rồi làm theo các bước trong trình duyệt. Bạn đăng nhập bằng
   cách đăng nhập của chính Claude Code (gói Claude hoặc API key); BashCutPro không bao giờ đọc hay lưu nó.
+- Khi tin nhắn không gửi được vì Claude Code chưa đăng nhập, bảng hiện dòng **Claude Code chưa đăng nhập** dưới phần
+  đầu, kèm nút **Đăng nhập…** và thông báo gốc của Claude Code bên dưới (bạn có thể chọn và sao chép). Vấn đề thanh
+  toán hoặc tổ chức của tài khoản Claude hiện là **gặp vấn đề tài khoản**. Đăng nhập xong, gửi lại tin nhắn: dòng này
+  biến mất khi có tin nhắn mới.
 - Khi chưa cài Claude Code, dòng "không tìm thấy" có nút **Cài đặt**. Nút này mở terminal chạy trình cài đặt chính
   thức (`curl -fsSL https://claude.ai/install.sh | bash` trên macOS và Linux, `irm https://claude.ai/install.ps1 | iex`
   trong PowerShell trên Windows). Không có gì được cài cho đến khi bạn bấm.
