@@ -15,7 +15,7 @@ use std::time::SystemTime;
 use bashcut_plugin_host::view::{Row, View};
 use serde_json::{Map, Value};
 
-use super::widgets::button;
+use super::widgets::{NOTE, button, note};
 use crate::FilmcraftApp;
 
 /// Largest picture file read.
@@ -144,7 +144,7 @@ pub fn draw(app: &mut FilmcraftApp, ui: &mut egui::Ui, plugin: &str, dir: &Path,
                                 }
                             });
                             if !it.detail.is_empty() {
-                                ui.label(egui::RichText::new(&it.detail).size(11.0).color(t.text_dim));
+                                note(ui, &it.detail, NOTE, t.text_dim);
                             }
                             ui.add_space(2.0);
                         }
@@ -161,12 +161,12 @@ pub fn draw(app: &mut FilmcraftApp, ui: &mut egui::Ui, plugin: &str, dir: &Path,
                             app.auto.add_response(&row_id, &r, caption);
                         }
                         Err(e) => {
-                            let r = ui.label(egui::RichText::new(format!("{path}: {e}")).size(11.0).color(t.text_dim));
+                            let r = note(ui, format!("{path}: {e}"), NOTE, t.text_dim);
                             app.auto.add_response(&row_id, &r, caption);
                         }
                     }
                     if !caption.is_empty() {
-                        ui.label(egui::RichText::new(caption).size(11.0).color(t.text_dim));
+                        note(ui, caption, NOTE, t.text_dim);
                     }
                 }
                 Row::Progress { value, label } => {

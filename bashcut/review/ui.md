@@ -139,6 +139,9 @@ Behaviour-neutral, merged to `main`:
 - D4: `shared::temp` / `shared::put_temp` for every section's per-frame state (Agent, Batch,
   Looks, Library, Palette, Plugins, Runs, toasts, plugin views, rail `State`); unit test
   `shared::tests::temp_defaults_then_keeps_what_was_put`.
+- D1 (single-line sites): `widgets::note(ui, text, NOTE | META, colour)` with `NOTE` = 11 and
+  `META` = 10.5 replaces 57 hand-written `RichText::new(..).size(..).color(t.text_dim | t.danger)`
+  labels; each site keeps its size and colour, so nothing moves on screen.
 
 Everything else is below.
 
@@ -146,8 +149,8 @@ Everything else is below.
 
 | Key | Owns | Do | Acceptance | Touches same files as |
 |-----|------|----|------------|------------------------|
-| RU1 | `bashcut_ui/widgets.rs`, all `*_panel.rs`, `rail.rs`, `palette.rs`, `view.rs` | D1 (D2 done): `note` / `meta` / `error_note` helpers in `widgets.rs`; sweep every call site keeping its current size | no `RichText::new(..).size(..).color(t.text_dim)` left outside `widgets.rs`; screenshots unchanged; `bashcut_ui` tests green | RU2 |
-| RU2 | `widgets.rs`, `bashcut/in-app-ui.md` | I1: pick one size per role (UX decision), document the scale | doc section "Text"; one size per role in code | RU1 |
+| RU1 | `widgets.rs`, panels with multi-line `RichText` labels (agent_panel tool rows, batch_panel, runs_panel, looks cards) | D1 rest: route the remaining multi-line / monospace / `.strong()` small labels through `widgets` (add `code_note` for monospace 10/10.5) | every small dim label goes through `widgets`; clippy clean | RU2 |
+| RU2 | `widgets.rs`, `bashcut/in-app-ui.md`, call sites of `note` | I1: pick one size per role (UX decision: when is a line `NOTE` vs `META`; Batch uses `META` for notes the other panels draw as `NOTE`), document the scale | doc section "Text"; one size per role in code | RU1 |
 | RU4 | new `bashcut_ui/prefs.rs` (or in `shared.rs`), `looks_panel.rs`, `library_panel.rs`, `palette.rs`, `state.rs`, `batch.rs` | D5: one prefs store, atomic write (tmp + rename) | unit test: an interrupted write (tmp left behind) never truncates the real file; each panel's existing load/save tests green | — |
 | RU5 | `mod.rs`, other `invoke` fns, `strings/vi.tsv` | I3: decide whether `bashcut.*` command errors are translated; if yes, route through `s()`/`f()` with vi rows | decision in `bashcut/decisions.md`; errors in both languages | — |
 | RU6 | `mod.rs`, `rail.rs`, `state.rs` | S1 (S2 done): section badge / shortcut as `Section` fields, one module table for routing + `commands()` | adding a test-only section needs one `SECTIONS` row + its `draw`; `mod.rs:8` true again | RU1, RU7 (rail.rs) |

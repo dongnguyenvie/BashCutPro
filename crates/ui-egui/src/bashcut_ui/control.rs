@@ -14,6 +14,7 @@ use std::path::{Path, PathBuf};
 use std::sync::OnceLock;
 
 use super::strings::s;
+use super::widgets::{META, note};
 use crate::FilmcraftApp;
 
 /// The address the channel listens on: loopback only, never `0.0.0.0`.
@@ -148,7 +149,7 @@ pub fn setting(app: &mut FilmcraftApp, ui: &mut egui::Ui) {
     }
     let running = super::hints::control_on();
     if allowed(Some(&dir)) != running && off_reason() != Off::Env {
-        ui.label(egui::RichText::new(s(RESTART)).size(10.5).color(t.text_dim));
+        note(ui, s(RESTART), META, t.text_dim);
     }
 }
 
@@ -167,7 +168,7 @@ pub fn turn_on_button(app: &mut FilmcraftApp, ui: &mut egui::Ui, id: &str) {
             app.ui.status = e.to_string();
         }
     } else {
-        ui.label(egui::RichText::new(s(RESTART)).size(10.5).color(app.tokens.text_dim));
+        note(ui, s(RESTART), META, app.tokens.text_dim);
     }
 }
 

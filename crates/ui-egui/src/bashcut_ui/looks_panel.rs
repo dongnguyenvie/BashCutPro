@@ -17,6 +17,7 @@ use filmcraft_render::Image;
 use serde_json::{Value, json};
 
 use super::strings::{f, s};
+use super::widgets::{NOTE, note};
 use crate::FilmcraftApp;
 
 const THUMB_W: usize = 128;
@@ -215,7 +216,7 @@ pub fn draw(app: &mut FilmcraftApp, ui: &mut egui::Ui) {
     let r = ui.add(egui::TextEdit::singleline(&mut p.filter).hint_text(s("Search looks")).desired_width(f32::INFINITY));
     app.auto.add_response("bashcut.looks.filter", &r, &p.filter);
     ui.horizontal(|ui| {
-        ui.label(egui::RichText::new(s("Intensity")).size(11.0).color(t.text_dim));
+        note(ui, s("Intensity"), NOTE, t.text_dim);
         let mut pct = (p.intensity * 100.0).round();
         let r = ui.add(egui::Slider::new(&mut pct, 0.0..=looks::MAX_AMOUNT * 100.0).suffix("%").step_by(5.0));
         app.auto.add_response("bashcut.looks.intensity", &r, &format!("{pct:.0}"));
@@ -282,7 +283,7 @@ pub fn draw(app: &mut FilmcraftApp, ui: &mut egui::Ui) {
             1 => s("1 clip selected").to_string(),
             _ => f("{n} clips selected", &[("n", n.as_str())]),
         };
-        ui.label(egui::RichText::new(msg).size(11.0).color(t.text_dim));
+        note(ui, msg, NOTE, t.text_dim);
         if current.is_some() {
             let r = ui.small_button(s("Remove look"));
             app.auto.add_response("bashcut.looks.remove", &r, s("Remove look"));
@@ -306,7 +307,7 @@ pub fn draw(app: &mut FilmcraftApp, ui: &mut egui::Ui) {
     let mut pending = false;
     let list = shown(&p, pack);
     if list.is_empty() {
-        ui.label(egui::RichText::new(s("No look matches.")).size(11.0).color(t.text_dim));
+        note(ui, s("No look matches."), NOTE, t.text_dim);
     }
     for look in list {
         let amount = look.clamp(Some(p.intensity));
@@ -373,7 +374,7 @@ fn card(
                         ui.label(egui::RichText::new(s("Applied")).size(10.5).color(t.accent));
                     }
                 });
-                ui.label(egui::RichText::new(look.purpose).size(11.0).color(t.text_dim));
+                note(ui, look.purpose, NOTE, t.text_dim);
                 ui.label(egui::RichText::new(look.tags.join(" · ")).size(10.0).color(t.text_faint));
                 let apply = ui.add_enabled(can_apply, egui::Button::new(s("Apply")).small());
                 app.auto.add_response(&format!("{id}.apply"), &apply, s("Apply"));

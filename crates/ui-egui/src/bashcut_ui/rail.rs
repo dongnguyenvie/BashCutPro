@@ -10,6 +10,7 @@ use bashcut_plugin_host::JobState;
 use egui::{Rect, Sense, Stroke, pos2, vec2};
 
 use super::strings::{f, s};
+use super::widgets::{NOTE, note};
 use super::{SECTIONS, Section, State, batch, plugins};
 use crate::FilmcraftApp;
 use crate::icons;
@@ -112,7 +113,7 @@ pub fn show(app: &mut FilmcraftApp, ui: &mut egui::Ui, rect: Rect, st: &mut Stat
             ui.label(egui::RichText::new(s(sec.blurb)).size(11.0));
             match badge {
                 Some(Badge::Failed) => {
-                    ui.label(egui::RichText::new(s("A run failed since you last looked.")).size(11.0).color(t.danger));
+                    note(ui, s("A run failed since you last looked."), NOTE, t.danger);
                 }
                 Some(Badge::Busy) => {
                     ui.label(egui::RichText::new(s("Running now.")).size(11.0).color(t.accent));
@@ -120,7 +121,7 @@ pub fn show(app: &mut FilmcraftApp, ui: &mut egui::Ui, rect: Rect, st: &mut Stat
                 None => {}
             }
             if let Some(k) = &keys {
-                ui.label(egui::RichText::new(f("Shortcut: {keys}", &[("keys", k)])).size(11.0).color(t.text_dim));
+                note(ui, f("Shortcut: {keys}", &[("keys", k)]), NOTE, t.text_dim);
             }
         });
         if resp.clicked() {

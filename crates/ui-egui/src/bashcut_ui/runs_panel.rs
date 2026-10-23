@@ -11,7 +11,7 @@ use serde_json::{Value, json};
 use super::batch;
 use super::plugins;
 use super::strings::{f, s};
-use super::widgets::button;
+use super::widgets::{META, NOTE, button, note};
 use crate::FilmcraftApp;
 
 /// `result.data` keys whose values are files a run wrote (`bashcut/plugin-host.md` §Results): a
@@ -153,8 +153,8 @@ pub fn draw(app: &mut FilmcraftApp, ui: &mut egui::Ui) {
     let batch_row = batch_row(app, ui);
     if jobs.is_empty() {
         if !batch_row {
-            ui.label(egui::RichText::new(s("Nothing has run yet.")).size(11.0).color(t.text_dim));
-            ui.label(egui::RichText::new(s("Run a plugin action from Plugins and it shows up here.")).size(11.0).color(t.text_dim));
+            note(ui, s("Nothing has run yet."), NOTE, t.text_dim);
+            note(ui, s("Run a plugin action from Plugins and it shows up here."), NOTE, t.text_dim);
         }
         if button(app, ui, "bashcut.runs.openPlugins", s("Open Plugins"), true) {
             super::State::update(&ctx, |st| st.show("plugins"));
@@ -257,7 +257,7 @@ fn job_row(app: &mut FilmcraftApp, ui: &mut egui::Ui, j: &Job, log_open: bool, f
         }
         // elapsed_ms ticks while it runs (`Host::poll`), so a long run shows its time too
         let secs = format!("{:.1}", j.elapsed_ms as f64 / 1000.0);
-        ui.label(egui::RichText::new(f("{seconds} s", &[("seconds", &secs)])).size(10.5).color(t.text_dim));
+        note(ui, f("{seconds} s", &[("seconds", &secs)]), META, t.text_dim);
         ui.horizontal_wrapped(|ui| {
             if j.state.is_running() && button(app, ui, &format!("{id}.cancel"), s("Cancel"), true) {
                 acts.push(Act::Command("cancel", json!({"job": j.id})));
