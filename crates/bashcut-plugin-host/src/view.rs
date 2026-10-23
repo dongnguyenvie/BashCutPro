@@ -241,14 +241,7 @@ fn text(v: Option<&Value>, cap: usize) -> String {
 
 /// At most `cap` bytes, cut at a char boundary.
 fn clip(s: &str, cap: usize) -> String {
-    if s.len() <= cap {
-        return s.to_string();
-    }
-    let mut end = cap;
-    while end > 0 && !s.is_char_boundary(end) {
-        end -= 1;
-    }
-    s.get(..end).unwrap_or_default().to_string()
+    bashcut_dirs::fs::clip(s, cap, "")
 }
 
 #[cfg(test)]

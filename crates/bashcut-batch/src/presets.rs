@@ -3,8 +3,8 @@
 //! sit next to the user's export presets. A preset's relative paths resolve against the working
 //! folder when it runs; `run --input` / `--projects` replace its inputs and projects folder.
 
-use crate::book::write_atomic;
 use crate::pipeline::{self, Pipeline};
+use bashcut_dirs::fs::write_atomic;
 use std::path::{Path, PathBuf};
 
 pub fn presets_dir(data_dir: &Path) -> PathBuf {
