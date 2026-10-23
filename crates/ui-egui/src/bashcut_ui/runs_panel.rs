@@ -364,6 +364,31 @@ mod tests {
     }
 
     #[test]
+    fn a_long_error_keeps_4000_characters_in_any_script() {
+        for unit in ["ệ", "字", "a"] {
+            let long = unit.repeat(MAX_ERROR + 500);
+            let e = ResultError { code: String::new(), message: long.clone() };
+            let j = finished(JobState::Failed, Some(PluginResult { ok: false, error: Some(e), ..PluginResult::default() }), None);
+            let text = error_text(&j).unwrap();
+            assert_eq!(text.chars().count(), MAX_ERROR + 1, "{unit}: 4000 characters plus …");
+            assert!(text.ends_with('…'));
+            assert_eq!(text.trim_end_matches('…'), unit.repeat(MAX_ERROR));
+            // exactly at the limit: nothing cut
+            let e = ResultError { code: String::new(), message: unit.repeat(MAX_ERROR) };
+            let j = finished(JobState::Failed, Some(PluginResult { ok: false, error: Some(e), ..PluginResult::default() }), None);
+            assert_eq!(error_text(&j).unwrap(), unit.repeat(MAX_ERROR));
+        }
+        // each part is clipped on its own: a long plugin error and the host's error both show
+        let e = ResultError { code: "bad".into(), message: "ố".repeat(MAX_ERROR * 2) };
+        let j = finished(JobState::Crashed, Some(PluginResult { ok: false, error: Some(e), ..PluginResult::default() }), Some("killed"));
+        let text = error_text(&j).unwrap();
+        let lines: Vec<&str> = text.lines().collect();
+        assert_eq!(lines.len(), 2, "{}", lines.len());
+        assert_eq!(lines[0].chars().count(), MAX_ERROR + 1);
+        assert_eq!(lines[1], "killed");
+    }
+
+    #[test]
     fn result_paths_come_from_the_documented_keys() {
         let data = json!({"path": "/out/a.wav", "paths": ["/out/b.wav", "/out/a.wav", 3], "files": [{"path": "/out/c.srt"}], "outputs": "  ", "other": "/x"});
         let j = finished(JobState::Succeeded, Some(PluginResult { ok: true, data, ..PluginResult::default() }), None);

@@ -275,11 +275,55 @@ pub fn commands() -> Vec<CommandInfo> {
 
 #[cfg(test)]
 mod tests {
-    #[test]
-    #[ignore = "test ticket: CachedKeyStore serves a warmed key without calling the OS store again; set updates and delete clears the cache"]
-    fn cached_key_store_serves_warmed_keys() {}
+    use super::*;
+
+    /// A key no OS store holds: a lookup that reached the store would come back `None`.
+    const PLUGIN: &str = "test.bashcut-cache-never-stored";
 
     #[test]
-    #[ignore = "test ticket: a delete (or set) that lands while a warm read is in flight is not overwritten by that read (delete wins)"]
-    fn cached_key_store_write_beats_warm_read() {}
+    fn cached_key_store_serves_warmed_keys() {
+        let store = CachedKeyStore::default();
+        assert_eq!(store.cached(PLUGIN, "api_key"), None, "nothing read yet");
+        // what the warm thread does once the OS store answered
+        assert_eq!(store.remember_read(PLUGIN, "api_key", Some("sk-warm".into())).as_deref(), Some("sk-warm"));
+        // served from the cache: the OS store has no such key, so a second lookup would say None
+        assert_eq!(store.get(PLUGIN, "api_key").ok().flatten().as_deref(), Some("sk-warm"));
+        assert_eq!(store.get(PLUGIN, "api_key").ok().flatten().as_deref(), Some("sk-warm"));
+        // a warmed "not set" is cached too
+        store.remember_read(PLUGIN, "token", None);
+        assert_eq!(store.cached(PLUGIN, "token"), Some(None));
+        assert_eq!(store.get(PLUGIN, "token").ok(), Some(None));
+        // set (after the store took it) updates the cache, delete leaves `None` cached
+        store.remember(PLUGIN, "api_key", Some("sk-new".into()));
+        assert_eq!(store.get(PLUGIN, "api_key").ok().flatten().as_deref(), Some("sk-new"));
+        store.remember(PLUGIN, "api_key", None);
+        assert_eq!(store.get(PLUGIN, "api_key").ok(), Some(None));
+        // keys are per plugin and setting
+        assert_eq!(store.cached("test.other", "api_key"), None);
+    }
+
+    #[test]
+    fn cached_key_store_write_beats_warm_read() {
+        let store = std::sync::Arc::new(CachedKeyStore::default());
+        // the warm read started before the delete and answers after it: delete wins
+        store.remember(PLUGIN, "api_key", None);
+        assert_eq!(store.remember_read(PLUGIN, "api_key", Some("sk-old".into())), None);
+        assert_eq!(store.cached(PLUGIN, "api_key"), Some(None));
+        // the same for a set
+        store.remember(PLUGIN, "api_key", Some("sk-new".into()));
+        assert_eq!(store.remember_read(PLUGIN, "api_key", Some("sk-old".into())).as_deref(), Some("sk-new"));
+        assert_eq!(store.get(PLUGIN, "api_key").ok().flatten().as_deref(), Some("sk-new"));
+        // racing threads: every late read loses to the write that landed first
+        store.remember(PLUGIN, "race", None);
+        let readers: Vec<_> = (0..8)
+            .map(|i| {
+                let s = store.clone();
+                std::thread::spawn(move || s.remember_read(PLUGIN, "race", Some(format!("old-{i}"))))
+            })
+            .collect();
+        for r in readers {
+            assert_eq!(r.join().ok(), Some(None));
+        }
+        assert_eq!(store.cached(PLUGIN, "race"), Some(None));
+    }
 }

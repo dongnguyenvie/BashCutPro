@@ -810,6 +810,32 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "test ticket: step_label keeps a step's own label, else shows its kind's label in en and vi (\"3 commands\" / \"3 lệnh\"), \"invalid step\" for none; plugin_argv is empty for non-plugin steps"]
-    fn step_labels_come_from_the_kind_table() {}
+    fn step_labels_come_from_the_kind_table() {
+        use bashcut_batch::pipeline::{AgentStep, CommandLine, ProcessStep};
+        let line = |id: &str| CommandLine { id: id.into(), params: json!({}) };
+        let three = Step { commands: vec![line("a"), line("b"), line("c")], ..Step::default() };
+        let plugin = Step { plugin: Some(ProcessStep { argv: vec!["py".into(), "plugin.py".into()], ..ProcessStep::default() }), ..Step::default() };
+        let agent = Step { agent: Some(AgentStep { skill: "vlog-plan".into(), ..AgentStep::default() }), ..Step::default() };
+        let command = Step { command: Some("markers.add".into()), ..Step::default() };
+        let own = Step { label: Some("My step".into()), ..three.clone() };
+        let both = Step { command: Some("x".into()), ..plugin.clone() };
+
+        let langs = [(Some("en"), "3 commands", "agent: vlog-plan", "invalid step"), (Some("vi"), "3 lệnh", "trợ lý: vlog-plan", "bước không hợp lệ")];
+        for (lang, commands, skill, invalid) in langs {
+            super::super::strings::set_language(lang);
+            assert_eq!(step_label(&own), "My step", "its own label, in any language");
+            assert_eq!(step_label(&three), commands);
+            assert_eq!(step_label(&plugin), "plugin py");
+            assert_eq!(step_label(&agent), skill);
+            assert_eq!(step_label(&command), "markers.add");
+            assert_eq!(step_label(&Step::default()), invalid, "no kind");
+            assert_eq!(step_label(&both), invalid, "two kinds");
+        }
+        super::super::strings::set_language(None);
+
+        assert_eq!(plugin_argv(&plugin), ["py", "plugin.py"]);
+        for step in [&three, &agent, &command, &Step::default(), &both] {
+            assert!(plugin_argv(step).is_empty(), "{step:?}");
+        }
+    }
 }

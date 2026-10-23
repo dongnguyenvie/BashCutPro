@@ -8,6 +8,7 @@ use std::sync::mpsc::{Sender, channel};
 use std::time::Duration;
 
 use egui_kittest::Harness;
+use egui_kittest::kittest::Queryable;
 use filmcraft_engine::Session;
 use filmcraft_ui_egui::FilmcraftApp;
 use filmcraft_ui_egui::control::ControlRequest;
@@ -1379,3 +1380,210 @@ fn batch_status_line_dismisses() {
     assert!(d.harness.state().ui_error.is_none(), "{:?}", d.harness.state().ui_error);
     let _ = std::fs::remove_dir_all(&data);
 }
+
+/// CC1: the Agent section's "Allow AI agents" checkbox writes `<data>/bashcut/agents-off` and removes
+/// it again; Plugins' "Turn on" shows only when this window started with the channel off by that
+/// setting (`off_reason() == Setting`). The launch decision is process-wide, so that half runs in
+/// a child test process that makes it.
+#[test]
+fn agent_setting_writes_the_marker_and_turn_on_shows_only_when_the_setting_turned_it_off() {
+    use filmcraft_ui_egui::bashcut_ui::control;
+    const CHILD: &str = "BASHCUT_UI_TEST_AGENTS_OFF";
+    if std::env::var_os("FILMCRAFT_CONTROL_PORT").is_some() {
+        eprintln!("FILMCRAFT_CONTROL_PORT is set: skipped");
+        return;
+    }
+    let Some(data) = std::env::var_os(CHILD).map(std::path::PathBuf::from) else {
+        let data = std::env::temp_dir().join(format!("bashcut-ui-agents-off-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&data);
+        let marker = control::marker(&data);
+        let mut d = Driver::with_data(&data, |_| {});
+        d.click("bashcut.rail.agent");
+        assert_eq!(d.element("bashcut.agent.allowControl")["label"], json!(control::ALLOW));
+        assert!(!marker.exists(), "on by default");
+        d.click("bashcut.agent.allowControl");
+        assert!(marker.exists(), "unticked writes the marker");
+        // this window was not started by the launch hook: no reason to offer Turn on
+        assert_eq!(control::off_reason(), control::Off::No);
+        d.click("bashcut.rail.plugins");
+        assert!(d.has("bashcut.plugins.setup"));
+        assert!(!d.has("bashcut.plugins.turnOn"));
+        d.click("bashcut.rail.agent");
+        d.click("bashcut.agent.allowControl");
+        assert!(!marker.exists(), "ticked removes it");
+        assert!(d.harness.state().ui_error.is_none(), "{:?}", d.harness.state().ui_error);
+        drop(d);
+
+        let exe = std::env::current_exe().unwrap();
+        let out = std::process::Command::new(exe)
+            .args(["--exact", "agent_setting_writes_the_marker_and_turn_on_shows_only_when_the_setting_turned_it_off", "--nocapture", "--test-threads=1"])
+            .env(CHILD, &data)
+            .env_remove(control::ENV)
+            .output()
+            .unwrap();
+        let _ = std::fs::remove_dir_all(&data);
+        let log = format!("{}{}", String::from_utf8_lossy(&out.stdout), String::from_utf8_lossy(&out.stderr));
+        assert!(out.status.success() && log.contains("1 passed"), "{log}");
+        return;
+    };
+    // the child: launched with the setting off
+    control::set_allowed(&data, false).unwrap();
+    assert_eq!(control::launch_port(None, Some(&data)), None);
+    assert_eq!(control::off_reason(), control::Off::Setting);
+    let mut d = Driver::with_data(&data, |_| {});
+    d.click("bashcut.rail.plugins");
+    assert_eq!(d.element("bashcut.plugins.turnOn")["label"], json!("Turn on"));
+    d.exec("bashcut.ui.setLanguage", json!({"language": "vi"}));
+    assert_eq!(d.element("bashcut.plugins.turnOn")["label"], json!("Bật"));
+    d.exec("bashcut.ui.setLanguage", json!({"language": null}));
+    d.click("bashcut.plugins.turnOn");
+    assert!(!control::marker(&data).exists(), "Turn on removes the marker");
+    d.frames(2);
+    assert!(!d.has("bashcut.plugins.turnOn"), "then it says restart instead");
+    assert!(d.harness.query_by_label("Restart BashCutPro to apply.").is_some());
+    assert!(d.harness.state().ui_error.is_none(), "{:?}", d.harness.state().ui_error);
+}
+
+/// #281 moved every dim / danger line to `widgets::note`: Plugins, Batch and Agent still draw
+/// theirs, in English and Vietnamese.
+#[test]
+fn notes_still_render_in_plugins_batch_and_agent() {
+    if std::env::var_os("FILMCRAFT_CONTROL_PORT").is_some() {
+        eprintln!("FILMCRAFT_CONTROL_PORT is set: skipped");
+        return;
+    }
+    let data = std::env::temp_dir().join(format!("bashcut-ui-notes-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&data);
+    let mut d = Driver::with_data(&data, |_| {});
+    // (language, Plugins, Batch, Agent) lines with no automation id of their own
+    let rows = [
+        (
+            "en",
+            ["No plugins installed yet."],
+            [
+                "Drop files or folders here, or add them below.",
+                "Each input gets its own project; then these run on it in order.",
+                "Add files to run the batch.",
+            ],
+            "Control channel off: the agent cannot edit the open project.",
+        ),
+        (
+            "vi",
+            ["Chưa cài plugin nào."],
+            [
+                "Thả tệp hoặc thư mục vào đây, hoặc thêm ở bên dưới.",
+                "Mỗi đầu vào có dự án riêng; sau đó các bước này chạy lần lượt trên nó.",
+                "Thêm tệp để chạy batch.",
+            ],
+            "Kênh điều khiển đang tắt: trợ lý không sửa được dự án đang mở.",
+        ),
+    ];
+    for (lang, plugins, batch, agent) in rows {
+        d.exec("bashcut.ui.setLanguage", json!({"language": lang}));
+        d.exec("bashcut.ui.show.plugins", json!({}));
+        d.frames(2);
+        let setup = d.element("bashcut.plugins.setup");
+        assert!(setup["label"].as_str().is_some_and(|l| !l.is_empty()), "{lang}: {setup}");
+        for line in plugins {
+            assert!(d.harness.query_by_label(line).is_some(), "{lang}: Plugins shows {line}");
+        }
+        d.exec("bashcut.ui.show.batch", json!({}));
+        d.frames(2);
+        for line in batch {
+            assert!(d.harness.query_by_label(line).is_some(), "{lang}: Batch shows {line}");
+        }
+        d.exec("bashcut.ui.show.agent", json!({}));
+        d.frames(2);
+        assert_eq!(d.element("bashcut.agent.ready.control")["label"], json!(agent), "{lang}");
+        assert!(d.harness.query_by_label(agent).is_some(), "{lang}: drawn, not only registered");
+        if let Some(dir) = std::env::var_os("BASHCUT_UI_SHOTS").map(std::path::PathBuf::from) {
+            std::fs::create_dir_all(&dir).unwrap();
+            for sec in ["plugins", "batch", "agent"] {
+                d.exec(&format!("bashcut.ui.show.{sec}"), json!({}));
+                d.frames(3);
+                d.harness.render().unwrap().save(dir.join(format!("notes-{sec}-{lang}.png"))).unwrap();
+            }
+        }
+    }
+    d.exec("bashcut.ui.setLanguage", json!({"language": null}));
+    assert!(d.harness.state().ui_error.is_none(), "{:?}", d.harness.state().ui_error);
+    let _ = std::fs::remove_dir_all(&data);
+}
+
+/// UX9: a section's dot is hidden while it is on screen, docked or popped out, and comes back once
+/// it is closed.
+#[test]
+fn rail_dot_hides_while_its_section_is_docked_or_popped_out() {
+    let data = std::env::temp_dir().join(format!("bashcut-ui-dot-hidden-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&data);
+    let plugin = data.join("bashcut-plugins").join("test.slow");
+    std::fs::create_dir_all(&plugin).unwrap();
+    let manifest = json!({
+        "schema": "bashcut-plugin/1", "id": "test.slow", "name": "Slow", "version": "0.1.0", "summary": "test plugin",
+        "entry": {"command": ["sh", "-c", "sleep 6; exit 4"], "windows": ["powershell", "-NoProfile", "-Command", "Start-Sleep -Milliseconds 6000; exit 4"]}, "output": "bashcut-result/1",
+        "actions": [{"id": "go", "title": "Go", "args": [], "needs": "none"}]
+    });
+    std::fs::write(plugin.join("bashcut-plugin.json"), manifest.to_string()).unwrap();
+    let mut d = Driver::with_data(&data, |_| {});
+    let label_of = |d: &mut Driver, want: &str| {
+        let v = d.wait_element("bashcut.rail.runs", |e| e["label"] == json!(want));
+        v["label"].as_str().unwrap_or_default().to_string()
+    };
+    // the first-open registry check of Plugins ends first
+    d.click("bashcut.rail.plugins");
+    d.wait(|d| d.exec("bashcut.plugins.runs", json!({})), |r| !r.as_array().is_some_and(|r| r.iter().any(|j| j["state"] == json!("running"))));
+    d.exec("bashcut.ui.closePanel", json!({}));
+
+    let job = d.exec("bashcut.plugins.run", json!({"plugin": "test.slow", "action": "go"}))["job"].as_u64().expect("a job");
+    assert_eq!(label_of(&mut d, "Runs: running"), "Runs: running");
+    d.exec("bashcut.ui.show.runs", json!({}));
+    assert_eq!(label_of(&mut d, "Runs"), "Runs", "no dot while docked");
+    d.exec("bashcut.ui.popOut", json!({"section": "runs"}));
+    assert_eq!(d.state()["popped"], json!(["runs"]));
+    assert_eq!(label_of(&mut d, "Runs"), "Runs", "no dot while popped out");
+    d.exec("bashcut.ui.dockBack", json!({"section": "runs"}));
+    d.exec("bashcut.ui.closePanel", json!({}));
+    assert_eq!(d.exec("bashcut.plugins.job", json!({"job": job}))["state"], json!("running"), "still running: the test ran too slow");
+    assert_eq!(label_of(&mut d, "Runs: running"), "Runs: running", "back once closed");
+
+    assert_eq!(d.wait_job(job)["state"], json!("failed"));
+    assert_eq!(label_of(&mut d, "Runs: failed"), "Runs: failed");
+    d.exec("bashcut.ui.popOut", json!({"section": "runs"}));
+    assert_eq!(label_of(&mut d, "Runs"), "Runs", "popped out shows the failure: no dot");
+    d.exec("bashcut.ui.dockBack", json!({"section": "runs"}));
+    d.exec("bashcut.ui.closePanel", json!({}));
+    assert_eq!(label_of(&mut d, "Runs"), "Runs", "seen while popped out");
+    assert!(d.harness.state().ui_error.is_none(), "{:?}", d.harness.state().ui_error);
+    let _ = std::fs::remove_dir_all(&data);
+}
+
+/// The Agent rail button's tooltip names Focus Agent's keys (Cmd+Alt+Shift+A, shown the platform's
+/// way), in English and Vietnamese.
+#[test]
+fn agent_tooltip_names_its_shortcut() {
+    let mut d = Driver::demo();
+    let keys = filmcraft_ui_egui::menus::shortcut_text("Cmd+Alt+Shift+A");
+    let r = d.rect("bashcut.rail.agent").expect("rail button");
+    let center = egui::pos2(r[0] + r[2] / 2.0, r[1] + r[3] / 2.0);
+    for (lang, tip) in [("en", format!("Shortcut: {keys}")), ("vi", format!("Phím tắt: {keys}"))] {
+        d.exec("bashcut.ui.setLanguage", json!({"language": lang}));
+        // a tooltip waits for the pointer to rest: move once, then let frames pass
+        d.harness.input_mut().events.push(egui::Event::PointerMoved(center));
+        let mut found = false;
+        for _ in 0..40 {
+            d.frames(1);
+            if d.harness.query_by_label(&tip).is_some() {
+                found = true;
+                break;
+            }
+        }
+        assert!(found, "{lang}: the tooltip says {tip}");
+    }
+    d.exec("bashcut.ui.setLanguage", json!({"language": null}));
+}
+
+/// RC13: a secret's Save shows the busy row ("Saving…") until the side-thread write lands, then
+/// "stored". Needs a fake key store: `plugins::CachedKeyStore` always reads and writes the OS store.
+#[test]
+#[ignore = "needs a seam: CachedKeyStore has no fake inner store, so this would write the real OS key store"]
+fn a_secret_save_shows_busy_then_stored() {}

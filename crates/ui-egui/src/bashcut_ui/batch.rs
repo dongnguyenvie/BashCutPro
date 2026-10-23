@@ -189,6 +189,12 @@ impl Batch {
         self.running.is_some()
     }
 
+    /// Tests: mark a batch as running (or not) without starting one.
+    #[cfg(test)]
+    pub fn fake_running(&mut self, on: bool) {
+        self.running = on.then(|| Running { slot: Arc::new(Mutex::new(None)), since: 0 });
+    }
+
     fn read(&mut self) {
         self.read_at = Some(Instant::now());
         if let Some(job) = &self.job {

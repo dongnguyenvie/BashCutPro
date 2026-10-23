@@ -383,7 +383,39 @@ mod tests {
         }
     }
 
+    /// RU6 made routing and [`commands`] one table; this pins what the hand-written code did.
     #[test]
-    #[ignore = "test ticket: every MODULES prefix routes to its module and commands() lists each module's commands once, in the old order"]
-    fn modules_route_and_list() {}
+    fn modules_route_and_list() {
+        // the prefixes and the order before RU6: commands() listed plugins, palette, looks,
+        // library, agent, batch after the section commands
+        let prefixes: Vec<&str> = MODULES.iter().map(|(p, _, _)| *p).collect();
+        assert_eq!(prefixes, ["bashcut.plugins.", "bashcut.palette.", "bashcut.ui.looks.", "bashcut.ui.library.", "bashcut.agent.", "bashcut.batch."]);
+        let all: Vec<String> = commands().into_iter().map(|c| c.id).collect();
+        let mut seen = std::collections::BTreeSet::new();
+        assert!(all.iter().all(|id| seen.insert(id.clone())), "an id is listed twice: {all:?}");
+
+        // each module's commands sit together, in MODULES order, after the section commands
+        let mut at = all.iter().position(|id| id == &format!("bashcut.ui.show.{}", RUNS)).expect("section commands") + 1;
+        for (i, (prefix, _, list)) in MODULES.iter().enumerate() {
+            let ids: Vec<String> = list().into_iter().map(|c| c.id).collect();
+            assert!(!ids.is_empty(), "{prefix} lists commands");
+            assert_eq!(all.get(at..at + ids.len()), Some(ids.as_slice()), "{prefix} at {at}");
+            at += ids.len();
+            for id in &ids {
+                // the first prefix that matches is the module's own: none routes to another
+                let first = MODULES.iter().position(|(p, _, _)| id.starts_with(p));
+                assert_eq!(first, Some(i), "{id} routes to {:?}, not {prefix}", first.and_then(|f| MODULES.get(f)).map(|m| m.0));
+            }
+        }
+        // the Language submenu stays last
+        assert_eq!(all.get(at..).map(<[String]>::len), Some(LANGUAGE_MENU.len()));
+        assert!(LANGUAGE_MENU.iter().zip(&all[at..]).all(|((id, _), listed)| id == listed));
+        // our own ui commands and the language items are not taken by a module prefix
+        for id in ["bashcut.ui.state", "bashcut.ui.section", "bashcut.ui.show.agent", LANGUAGE_MENU[0].0] {
+            assert!(!MODULES.iter().any(|(p, _, _)| id.starts_with(p)), "{id}");
+        }
+        // upstream's ids are left to upstream
+        let mut app = FilmcraftApp::new(filmcraft_engine::Session::default());
+        assert!(invoke(&mut app, &egui::Context::default(), "edit.undo", &json!({})).is_none());
+    }
 }
