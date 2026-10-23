@@ -24,7 +24,8 @@ fn key() -> egui::Id {
 /// [`CachedKeyStore`] warmed on a side thread, so frames never wait on the OS key store.
 pub fn host(app: &FilmcraftApp, ctx: &egui::Context) -> Shared {
     super::shared::get_or_init(ctx, key(), || {
-        let store = Arc::new(CachedKeyStore::default());
+        let inner = ctx.data(|d| d.get_temp::<Arc<dyn SecretStore>>(inner_key())).unwrap_or_else(|| Arc::new(OsKeyStore));
+        let store = Arc::new(CachedKeyStore::new(inner));
         ctx.data_mut(|d| d.insert_temp(store_key(), store.clone()));
         let host = Host::new(super::data_dir(app), store.clone());
         let keys = host
@@ -33,13 +34,27 @@ pub fn host(app: &FilmcraftApp, ctx: &egui::Context) -> Shared {
             .filter_map(|p| p.manifest.as_ref())
             .flat_map(|m| m.settings.iter().filter(|s| s.is_secret()).map(|s| (m.id.clone(), s.id.clone())))
             .collect();
-        store.warm(keys);
+        let _ = store.warm(keys);
         host
     })
 }
 
 fn store_key() -> egui::Id {
     egui::Id::new("bashcut.plugins.keyStore")
+}
+
+fn inner_key() -> egui::Id {
+    egui::Id::new("bashcut.plugins.keyStore.inner")
+}
+
+/// Put `inner` behind this context's [`CachedKeyStore`] instead of the OS key store (a test's fake
+/// store). Only before the host exists: `false` once it was created with the store it has.
+pub fn use_key_store(ctx: &egui::Context, inner: Arc<dyn SecretStore>) -> bool {
+    if existing(ctx).is_some() {
+        return false;
+    }
+    ctx.data_mut(|d| d.insert_temp(inner_key(), inner));
+    true
 }
 
 /// What a background secret write said: `None` while it runs.
@@ -73,18 +88,28 @@ pub fn set_secret_async(app: &FilmcraftApp, ctx: &egui::Context, plugin: &str, s
     Ok(slot)
 }
 
-/// The OS key store behind a cache (S10): a lookup can wait up to 20 s on an unlock prompt, and
+/// A key store (the OS one, [`OsKeyStore`], unless [`use_key_store`] named another) behind a cache (S10): a lookup can wait up to 20 s on an unlock prompt, and
 /// the host asks for secrets on the UI thread (the settings form, every run's environment, the
 /// agent list). [`CachedKeyStore::warm`] reads the installed plugins' secrets on a side thread; a
 /// key it has not read yet is asked once, then served from the cache; set / delete go through.
 /// Writes win over reads in flight (RC13): a read only fills a key nothing wrote meanwhile, and a
 /// delete leaves `None` cached, so a warm read that started before it cannot bring the value back.
-#[derive(Default)]
 pub struct CachedKeyStore {
+    inner: Arc<dyn SecretStore>,
     cache: Mutex<BTreeMap<(String, String), Option<String>>>,
 }
 
+impl Default for CachedKeyStore {
+    fn default() -> Self {
+        Self::new(Arc::new(OsKeyStore))
+    }
+}
+
 impl CachedKeyStore {
+    pub fn new(inner: Arc<dyn SecretStore>) -> Self {
+        Self { inner, cache: Mutex::default() }
+    }
+
     fn cached(&self, plugin: &str, key: &str) -> Option<Option<String>> {
         self.cache.lock().unwrap_or_else(PoisonError::into_inner).get(&(plugin.to_string(), key.to_string())).cloned()
     }
@@ -100,23 +125,24 @@ impl CachedKeyStore {
         c.entry((plugin.to_string(), key.to_string())).or_insert(value).clone()
     }
 
-    /// Read `keys` (plugin id, setting id) into the cache on a side thread.
-    pub fn warm(self: &Arc<Self>, keys: Vec<(String, String)>) {
+    /// Read `keys` (plugin id, setting id) into the cache on a side thread (its handle, if it started).
+    pub fn warm(self: &Arc<Self>, keys: Vec<(String, String)>) -> Option<std::thread::JoinHandle<()>> {
         if keys.is_empty() {
-            return;
+            return None;
         }
         let me = self.clone();
-        let _ = std::thread::Builder::new().name("bashcut-key-store-warm".into()).spawn(move || {
+        let started = std::thread::Builder::new().name("bashcut-key-store-warm".into()).spawn(move || {
             let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
                 for (plugin, key) in keys {
                     if me.cached(&plugin, &key).is_none()
-                        && let Ok(v) = OsKeyStore.get(&plugin, &key)
+                        && let Ok(v) = me.inner.get(&plugin, &key)
                     {
                         me.remember_read(&plugin, &key, v);
                     }
                 }
             }));
         });
+        started.ok()
     }
 }
 
@@ -125,18 +151,18 @@ impl SecretStore for CachedKeyStore {
         if let Some(v) = self.cached(plugin, key) {
             return Ok(v);
         }
-        let v = OsKeyStore.get(plugin, key)?;
+        let v = self.inner.get(plugin, key)?;
         Ok(self.remember_read(plugin, key, v))
     }
 
     fn set(&self, plugin: &str, key: &str, value: &str) -> HostResult<()> {
-        OsKeyStore.set(plugin, key, value)?;
+        self.inner.set(plugin, key, value)?;
         self.remember(plugin, key, Some(value.to_string()));
         Ok(())
     }
 
     fn delete(&self, plugin: &str, key: &str) -> HostResult<()> {
-        let r = OsKeyStore.delete(plugin, key);
+        let r = self.inner.delete(plugin, key);
         if r.is_ok() {
             // delete wins: a warm read in flight finds the key filled and keeps `None`
             self.remember(plugin, key, None);
@@ -276,19 +302,92 @@ pub fn commands() -> Vec<CommandInfo> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use bashcut_plugin_host::Error as HostError;
+    use bashcut_plugin_host::settings::MemoryStore;
+    use std::sync::Condvar;
+    use std::sync::atomic::{AtomicUsize, Ordering};
 
-    /// A key no OS store holds: a lookup that reached the store would come back `None`.
-    const PLUGIN: &str = "test.bashcut-cache-never-stored";
+    const PLUGIN: &str = "test.bashcut-cache";
+
+    /// A store that counts what reaches it, can refuse writes, and holds every `get` until
+    /// [`Fake::release`] (when built [`Fake::slow`]), answering with what it held when asked.
+    #[derive(Default)]
+    struct Fake {
+        inner: MemoryStore,
+        gets: AtomicUsize,
+        sets: AtomicUsize,
+        deletes: AtomicUsize,
+        refuse: std::sync::atomic::AtomicBool,
+        held: Mutex<bool>,
+        gate: Condvar,
+        asked: AtomicUsize,
+    }
+
+    impl Fake {
+        fn slow() -> Self {
+            Self { held: Mutex::new(true), ..Self::default() }
+        }
+
+        fn release(&self) {
+            *self.held.lock().unwrap_or_else(PoisonError::into_inner) = false;
+            self.gate.notify_all();
+        }
+
+        /// Wait (at most ~10 s) until `n` gets are waiting at the gate.
+        fn wait_asked(&self, n: usize) {
+            for _ in 0..1000 {
+                if self.asked.load(Ordering::SeqCst) >= n {
+                    return;
+                }
+                std::thread::sleep(Duration::from_millis(10));
+            }
+            panic!("no get reached the store");
+        }
+    }
+
+    impl SecretStore for Fake {
+        fn get(&self, plugin: &str, key: &str) -> HostResult<Option<String>> {
+            self.gets.fetch_add(1, Ordering::SeqCst);
+            // the answer is read now; it arrives once released, after any write that came meanwhile
+            let v = self.inner.get(plugin, key);
+            self.asked.fetch_add(1, Ordering::SeqCst);
+            let held = self.held.lock().unwrap_or_else(PoisonError::into_inner);
+            let _held = self.gate.wait_timeout_while(held, Duration::from_secs(30), |h| *h);
+            v
+        }
+
+        fn set(&self, plugin: &str, key: &str, value: &str) -> HostResult<()> {
+            self.sets.fetch_add(1, Ordering::SeqCst);
+            if self.refuse.load(Ordering::SeqCst) {
+                return Err(HostError("refused".into()));
+            }
+            self.inner.set(plugin, key, value)
+        }
+
+        fn delete(&self, plugin: &str, key: &str) -> HostResult<()> {
+            self.deletes.fetch_add(1, Ordering::SeqCst);
+            if self.refuse.load(Ordering::SeqCst) {
+                return Err(HostError("refused".into()));
+            }
+            self.inner.delete(plugin, key)
+        }
+    }
+
+    fn over(fake: &Arc<Fake>) -> Arc<CachedKeyStore> {
+        Arc::new(CachedKeyStore::new(fake.clone()))
+    }
 
     #[test]
     fn cached_key_store_serves_warmed_keys() {
-        let store = CachedKeyStore::default();
+        let fake = Arc::new(Fake::default());
+        let store = over(&fake);
         assert_eq!(store.cached(PLUGIN, "api_key"), None, "nothing read yet");
-        // what the warm thread does once the OS store answered
+        // what the warm thread does once the store answered
         assert_eq!(store.remember_read(PLUGIN, "api_key", Some("sk-warm".into())).as_deref(), Some("sk-warm"));
-        // served from the cache: the OS store has no such key, so a second lookup would say None
+        // served from the cache: the store has no such key and is never asked
         assert_eq!(store.get(PLUGIN, "api_key").ok().flatten().as_deref(), Some("sk-warm"));
         assert_eq!(store.get(PLUGIN, "api_key").ok().flatten().as_deref(), Some("sk-warm"));
+        assert_eq!(fake.gets.load(Ordering::SeqCst), 0);
         // a warmed "not set" is cached too
         store.remember_read(PLUGIN, "token", None);
         assert_eq!(store.cached(PLUGIN, "token"), Some(None));
@@ -300,11 +399,44 @@ mod tests {
         assert_eq!(store.get(PLUGIN, "api_key").ok(), Some(None));
         // keys are per plugin and setting
         assert_eq!(store.cached("test.other", "api_key"), None);
+        assert_eq!(fake.gets.load(Ordering::SeqCst), 0);
+    }
+
+    #[test]
+    fn cached_key_store_asks_the_inner_store_once_and_writes_through() {
+        let fake = Arc::new(Fake::default());
+        fake.inner.set(PLUGIN, "api_key", "sk-there").unwrap();
+        let store = over(&fake);
+        // a miss asks the store once, then the cache answers
+        assert_eq!(store.get(PLUGIN, "api_key").ok().flatten().as_deref(), Some("sk-there"));
+        assert_eq!(store.get(PLUGIN, "api_key").ok().flatten().as_deref(), Some("sk-there"));
+        assert_eq!(fake.gets.load(Ordering::SeqCst), 1);
+        // set reaches the store and the cache
+        store.set(PLUGIN, "api_key", "sk-new").unwrap();
+        assert_eq!(fake.sets.load(Ordering::SeqCst), 1);
+        assert_eq!(fake.inner.get(PLUGIN, "api_key").unwrap().as_deref(), Some("sk-new"));
+        assert_eq!(store.get(PLUGIN, "api_key").ok().flatten().as_deref(), Some("sk-new"));
+        // delete reaches the store and leaves `None` cached
+        store.delete(PLUGIN, "api_key").unwrap();
+        assert_eq!(fake.deletes.load(Ordering::SeqCst), 1);
+        assert_eq!(fake.inner.get(PLUGIN, "api_key").unwrap(), None);
+        assert_eq!(store.get(PLUGIN, "api_key").ok(), Some(None));
+        assert_eq!(fake.gets.load(Ordering::SeqCst), 1, "writes never ask the store");
+
+        // a refused set keeps what was cached; a refused delete forgets it, so the store is asked again
+        store.set(PLUGIN, "api_key", "sk-kept").unwrap();
+        fake.refuse.store(true, Ordering::SeqCst);
+        assert!(store.set(PLUGIN, "api_key", "sk-lost").is_err());
+        assert_eq!(store.get(PLUGIN, "api_key").ok().flatten().as_deref(), Some("sk-kept"));
+        assert!(store.delete(PLUGIN, "api_key").is_err());
+        assert_eq!(store.cached(PLUGIN, "api_key"), None);
+        assert_eq!(store.get(PLUGIN, "api_key").ok().flatten().as_deref(), Some("sk-kept"), "asked again");
+        assert_eq!(fake.gets.load(Ordering::SeqCst), 2);
     }
 
     #[test]
     fn cached_key_store_write_beats_warm_read() {
-        let store = std::sync::Arc::new(CachedKeyStore::default());
+        let store = Arc::new(CachedKeyStore::new(Arc::new(MemoryStore::default())));
         // the warm read started before the delete and answers after it: delete wins
         store.remember(PLUGIN, "api_key", None);
         assert_eq!(store.remember_read(PLUGIN, "api_key", Some("sk-old".into())), None);
@@ -325,5 +457,42 @@ mod tests {
             assert_eq!(r.join().ok(), Some(None));
         }
         assert_eq!(store.cached(PLUGIN, "race"), Some(None));
+    }
+
+    /// RC13 with a store that is slow to answer: the warm thread and a UI lookup ask it, a delete
+    /// and a set land while they wait, and the old answers that arrive later cannot undo them.
+    #[test]
+    fn a_slow_warm_read_cannot_undo_a_write() {
+        let fake = Arc::new(Fake::slow());
+        fake.inner.set(PLUGIN, "gone", "sk-old").unwrap();
+        fake.inner.set(PLUGIN, "changed", "sk-old").unwrap();
+        let store = over(&fake);
+        let warm = store.warm(vec![(PLUGIN.into(), "gone".into()), (PLUGIN.into(), "changed".into())]).expect("warm thread");
+        fake.wait_asked(1);
+        // the warm thread holds the old "gone"; it is deleted meanwhile
+        store.delete(PLUGIN, "gone").unwrap();
+        // a lookup of "changed" waits on the store too; it is set meanwhile
+        let s = store.clone();
+        let lookup = std::thread::spawn(move || s.get(PLUGIN, "changed").ok().flatten());
+        fake.wait_asked(2);
+        store.set(PLUGIN, "changed", "sk-new").unwrap();
+        fake.release();
+        assert!(warm.join().is_ok());
+        assert_eq!(lookup.join().ok().flatten().as_deref(), Some("sk-new"), "the waiting lookup gets the write");
+        assert_eq!(store.cached(PLUGIN, "gone"), Some(None), "the delete stays");
+        assert_eq!(store.get(PLUGIN, "gone").ok(), Some(None));
+        assert_eq!(store.get(PLUGIN, "changed").ok().flatten().as_deref(), Some("sk-new"), "the set stays");
+        assert_eq!(fake.inner.get(PLUGIN, "gone").unwrap(), None);
+        // the warm thread skips "changed" (the lookup filled it first) or asked and lost: never more than 3
+        assert!(fake.gets.load(Ordering::SeqCst) <= 3);
+    }
+
+    #[test]
+    fn use_key_store_only_before_the_host_exists() {
+        let ctx = egui::Context::default();
+        assert!(use_key_store(&ctx, Arc::new(MemoryStore::default())));
+        assert!(ctx.data(|d| d.get_temp::<Arc<dyn SecretStore>>(inner_key())).is_some());
+        let _ = super::super::shared::get_or_init(&ctx, key(), || Host::new(None, Arc::new(MemoryStore::default())));
+        assert!(!use_key_store(&ctx, Arc::new(MemoryStore::default())), "the host has its store already");
     }
 }

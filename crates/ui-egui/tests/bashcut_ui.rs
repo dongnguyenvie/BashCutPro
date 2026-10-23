@@ -7,6 +7,7 @@ use std::path::Path;
 use std::sync::mpsc::{Sender, channel};
 use std::time::Duration;
 
+use bashcut_plugin_host::settings::{MemoryStore, SecretStore};
 use egui_kittest::Harness;
 use egui_kittest::kittest::Queryable;
 use filmcraft_engine::Session;
@@ -42,18 +43,35 @@ impl Driver {
     /// reads that file and nothing goes to the network.
     fn with_data(data: &Path, setup: impl FnOnce(&mut FilmcraftApp)) -> Self {
         let mut d = Self::with_env_registry(data, setup);
+        Self::point_registry(&mut d, data);
+        d
+    }
+
+    /// Point the registry at an empty `data/registry.json` (see [`Driver::with_data`]).
+    fn point_registry(d: &mut Self, data: &Path) {
         std::fs::create_dir_all(data).unwrap();
         let path = data.join("registry.json");
         std::fs::write(&path, json!({"schema": "bashcut-registry/1", "name": "test", "plugins": []}).to_string()).unwrap();
         d.exec("bashcut.plugins.registry", json!({"location": path.to_string_lossy()}));
         let at = d.exec("bashcut.plugins.list", json!({}))["location"].clone();
         assert!(at.as_str().is_some_and(|l| l.starts_with(&*path.to_string_lossy())), "the registry is the local file: {at}");
-        d
     }
 
     /// Like [`Driver::with_data`] but the registry is whatever `BASHCUT_PLUGIN_REGISTRY` names;
     /// only for a test that sets it to a local file (a child test process, never the network).
     fn with_env_registry(data: &Path, setup: impl FnOnce(&mut FilmcraftApp)) -> Self {
+        Self::build(data, setup, |_| {})
+    }
+
+    /// [`Driver::with_data`] with `secrets` behind the app's key store cache instead of the OS
+    /// key store (`plugins::use_key_store`, before the first frame).
+    fn with_key_store(data: &Path, secrets: std::sync::Arc<dyn SecretStore>) -> Self {
+        let mut d = Self::build(data, |_| {}, |ctx| assert!(filmcraft_ui_egui::bashcut_ui::plugins::use_key_store(ctx, secrets), "no host yet"));
+        Self::point_registry(&mut d, data);
+        d
+    }
+
+    fn build(data: &Path, setup: impl FnOnce(&mut FilmcraftApp), before: impl FnOnce(&egui::Context)) -> Self {
         let mut session = Session::default();
         session.start_autosave(filmcraft_engine::autosave::AutosaveConfig::new(data)).expect("data dir");
         session.execute("file.openDemoProject", json!({})).expect("demo project");
@@ -61,6 +79,7 @@ impl Driver {
         let mut app = FilmcraftApp::new(session).with_control(rx);
         setup(&mut app);
         let harness = Harness::builder().with_size(egui::vec2(W, H)).with_max_steps(10_000).build_eframe(move |_cc| app);
+        before(&harness.ctx);
         let mut d = Driver { harness, tx };
         d.frames(4);
         d
@@ -1582,8 +1601,100 @@ fn agent_tooltip_names_its_shortcut() {
     d.exec("bashcut.ui.setLanguage", json!({"language": null}));
 }
 
-/// RC13: a secret's Save shows the busy row ("Saving…") until the side-thread write lands, then
-/// "stored". Needs a fake key store: `plugins::CachedKeyStore` always reads and writes the OS store.
+/// A key store whose writes wait until the test opens the gate, so the busy row can be seen.
+#[derive(Default)]
+struct GatedStore {
+    inner: MemoryStore,
+    shut: std::sync::Mutex<bool>,
+    gate: std::sync::Condvar,
+}
+
+impl GatedStore {
+    fn hold(&self, shut: bool) {
+        *self.shut.lock().unwrap() = shut;
+        self.gate.notify_all();
+    }
+
+    fn wait_open(&self) {
+        let shut = self.shut.lock().unwrap();
+        let _open = self.gate.wait_timeout_while(shut, Duration::from_secs(60), |s| *s).unwrap();
+    }
+}
+
+impl SecretStore for GatedStore {
+    fn get(&self, plugin: &str, key: &str) -> bashcut_plugin_host::Result<Option<String>> {
+        self.inner.get(plugin, key)
+    }
+    fn set(&self, plugin: &str, key: &str, value: &str) -> bashcut_plugin_host::Result<()> {
+        self.wait_open();
+        self.inner.set(plugin, key, value)
+    }
+    fn delete(&self, plugin: &str, key: &str) -> bashcut_plugin_host::Result<()> {
+        self.wait_open();
+        self.inner.delete(plugin, key)
+    }
+}
+
+/// RC13: a secret's Save shows the busy row ("Saving…", field and buttons gone) until the
+/// side-thread write lands, then "stored" (Clear appears, the field empties); Clear the same way
+/// with "Clearing…". The key store is a fake whose writes wait on the test; both languages.
 #[test]
-#[ignore = "needs a seam: CachedKeyStore has no fake inner store, so this would write the real OS key store"]
-fn a_secret_save_shows_busy_then_stored() {}
+fn a_secret_save_shows_busy_then_stored() {
+    let data = std::env::temp_dir().join(format!("bashcut-ui-secret-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&data);
+    let plugin = data.join("bashcut-plugins").join("test.secret");
+    std::fs::create_dir_all(&plugin).unwrap();
+    let manifest = json!({
+        "schema": "bashcut-plugin/1", "id": "test.secret", "name": "Secret", "version": "0.1.0", "summary": "test plugin",
+        "entry": {"command": ["python3", "plugin.py"]}, "output": "bashcut-result/1",
+        "settings": [{"id": "apiKey", "type": "secret", "title": "API key", "env": ["TEST_SECRET_KEY"]}],
+        "actions": []
+    });
+    std::fs::write(plugin.join("bashcut-plugin.json"), manifest.to_string()).unwrap();
+    let store = std::sync::Arc::new(GatedStore::default());
+    let mut d = Driver::with_key_store(&data, store.clone());
+
+    d.click("bashcut.rail.plugins");
+    d.click("bashcut.plugins.test.secret");
+    let field = "bashcut.plugins.test.secret.secret.apiKey";
+    for (lang, saving, clearing) in [("en", "Saving…", "Clearing…"), ("vi", "Đang lưu…", "Đang xóa…")] {
+        d.exec("bashcut.ui.setLanguage", json!({"language": lang}));
+        assert_eq!(d.element(field)["enabled"], json!(true), "{lang}: the field takes a secret");
+        assert!(!d.has(&format!("{field}.clear")), "{lang}: nothing stored, no Clear");
+
+        // Save: the write waits on the gate, so the row stays busy
+        store.hold(true);
+        d.click(field);
+        d.ok("ui.type", json!({"text": format!("sk-{lang}")}));
+        d.frames(2);
+        d.click(&format!("{field}.save"));
+        d.frames(3);
+        assert!(d.harness.query_by_label(saving).is_some(), "{lang}: the row says {saving}");
+        assert!(!d.has(&format!("{field}.save")), "{lang}: no Save while saving");
+        assert_eq!(d.element(field)["enabled"], json!(false), "{lang}: the field waits");
+        assert_eq!(store.inner.get("test.secret", "apiKey").unwrap(), None, "{lang}: not written yet");
+        store.hold(false);
+        let clear = d.wait_element(&format!("{field}.clear"), |e| !e.is_null());
+        assert!(!clear.is_null(), "{lang}: stored, so Clear shows");
+        assert!(d.harness.query_by_label(saving).is_none(), "{lang}: no longer busy");
+        assert_eq!(store.inner.get("test.secret", "apiKey").unwrap().as_deref(), Some(format!("sk-{lang}").as_str()));
+        assert_eq!(d.element(field)["enabled"], json!(true));
+        assert_eq!(d.element(&format!("{field}.save"))["enabled"], json!(false), "{lang}: the field emptied, Save waits for text");
+        assert_eq!(d.exec("bashcut.plugins.settings", json!({"plugin": "test.secret"}))["secrets"]["apiKey"], json!(true), "{lang}: the host sees it stored");
+
+        // Clear: busy the same way, then not set
+        store.hold(true);
+        d.click(&format!("{field}.clear"));
+        d.frames(3);
+        assert!(d.harness.query_by_label(clearing).is_some(), "{lang}: the row says {clearing}");
+        assert!(!d.has(&format!("{field}.clear")), "{lang}: no Clear while clearing");
+        store.hold(false);
+        let gone = d.wait(|d| json!(d.has(&format!("{field}.save"))), |v| *v == json!(true));
+        assert_eq!(gone, json!(true), "{lang}: the row is back");
+        assert!(!d.has(&format!("{field}.clear")), "{lang}: cleared, no Clear");
+        assert_eq!(store.inner.get("test.secret", "apiKey").unwrap(), None, "{lang}: deleted in the store");
+    }
+    d.exec("bashcut.ui.setLanguage", json!({"language": null}));
+    assert!(d.harness.state().ui_error.is_none(), "{:?}", d.harness.state().ui_error);
+    let _ = std::fs::remove_dir_all(&data);
+}
