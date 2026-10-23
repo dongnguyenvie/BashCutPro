@@ -9,6 +9,8 @@ Cài BashCutPro từ gói cài cho hệ điều hành của bạn (macOS `.app`,
 Mỗi gói kèm dòng lệnh `bashcutpro` (tên ngắn `bcpro`; nó chạy bộ máy `filmcraft-cli` nằm cạnh nó) và ba chương trình
 phụ: `bashcut-doctor` (kiểm tra máy), `bashcut-batch` (chạy hàng loạt) và `bashcut-mcp` (cho trợ lý AI kết nối vào cửa
 sổ đang mở), cùng một tập lệnh thiết lập lần đầu.
+Khi BashCutPro đang mở, `bashcutpro exec …` (và `run`, `inspect`, `mcp`, …) làm việc trên cửa sổ đang mở; thêm
+`--project`, hoặc đặt `BASHCUT_BRIDGE=off`, để dùng bộ máy mà không cần cửa sổ.
 
 ### Chưa có gói cài? Tự dựng từ mã nguồn
 

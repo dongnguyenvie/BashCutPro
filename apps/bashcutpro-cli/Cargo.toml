@@ -27,8 +27,10 @@ default = []
 # Same as filmcraft-cli's `whisper`: speech-to-text on the CPU, and model downloads.
 whisper = ["filmcraft-engine/whisper", "filmcraft-engine/speech-download"]
 
-# Mirrors apps/filmcraft-cli/Cargo.toml [dependencies]; build.rs fails if upstream's list changes.
+# Mirrors apps/filmcraft-cli/Cargo.toml [dependencies] plus our `bashcut-*` crates; build.rs fails if upstream's list changes.
 [dependencies]
+bashcut-connect = { path = "../../crates/bashcut-connect" }
+bashcut-dirs = { path = "../../crates/bashcut-dirs" }
 filmcraft-engine = { workspace = true }
 filmcraft-export = { workspace = true }
 filmcraft-project = { workspace = true }
