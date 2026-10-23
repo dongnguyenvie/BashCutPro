@@ -33,7 +33,9 @@ the same.
    `bashcutpro-cli` and the version number.
 
 From a source build, the first-run setup below is `bash bashcut/packaging/share/bashcut-setup.sh`, and you open the app
-with `target/debug/filmcraft --control 9876`.
+with `target/debug/filmcraft --control 9876`. To talk to that port from your own script, also
+`export FILMCRAFT_CONTROL_TOKEN=<64 hex>` before opening the app and send it as `"token"` (see upstream
+`docs/control-protocol.md`); the app also writes it to `automation.json`.
 
 If you change the code, use `cargo xtask dev --features whisper -- --control 9876` instead: it rebuilds the app and all
 its command-line tools together, then opens the app. `cargo run -p filmcraft` rebuilds only the app, so agents,

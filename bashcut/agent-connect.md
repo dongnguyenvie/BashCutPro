@@ -16,11 +16,11 @@ No upstream file changes: the window side runs from our `bashcut_ui::layout` (ho
 ## `automation.json` (`bashcut-automation/1`)
 
 ```json
-{"schema": "bashcut-automation/1", "address": "127.0.0.1:9876", "token": null, "pid": 4242,
+{"schema": "bashcut-automation/1", "address": "127.0.0.1:9876", "token": "<64 hex>", "pid": 4242,
  "project": "/Users/me/Films/trip.fcproj", "app": "BashCutPro", "version": "0.9.0"}
 ```
 
-Written (owner-only, 0600 on Unix; temp file + rename) when the window runs its control channel, i.e. it was started
+`token` is the window's session token (see "Control channel authentication"). Written (owner-only, 0600 on Unix; temp file + rename) when the window runs its control channel, i.e. it was started
 with `--control PORT` or `FILMCRAFT_CONTROL_PORT`. It is written again when the open project changes, and removed
 when the window closes, only by the window it names, also when it is ended by SIGINT / SIGTERM (AG1,
 `bashcut_dirs::signal`, Unix; the process then exits with 130). A window that crashed or was killed (SIGKILL) leaves the file behind, so readers also
@@ -69,15 +69,21 @@ bashcut-mcp --print                 # what it would do, as JSON
 
 ## Control channel authentication
 
-FilmCraft's control server (`apps/filmcraft/src/control_server.rs`) binds **127.0.0.1 only** and has **no token**.
-It refuses lines that are not JSON objects with a `method` (that stops browser cross-origin requests), and it caps
-line length and the number of connections. Any local process, of any user who can reach the loopback port, can drive
-the window while the channel runs. So:
+FilmCraft's control server (`apps/filmcraft/src/control_server.rs`) binds **127.0.0.1 only** and, since upstream
+#2764, requires a **session token** on every request (`"token"` in the JSON line). It also refuses lines that are not
+JSON objects with a `method` (that stops browser cross-origin requests), and caps line length and the number of
+connections. BashCutPro's window takes the token from `FILMCRAFT_CONTROL_TOKEN` when that is a valid 64-hex string,
+else makes a random one (32 bytes) for each launch (`bashcut_ui::control::launch_token`), and publishes it only in
+`automation.json` (owner-only). So:
 
-- the channel runs only when asked for (`--control`), and `automation.json` is owner-only;
-- `token` is in the format already, so a channel that gains one (upstream, or a `bashcut` wrapper) needs no format
-  change;
-- do not run the channel on shared multi-user machines.
+- anything the app starts (agent sessions, plugin runs) gets `FILMCRAFT_CONTROL_TOKEN` in its environment;
+- `bashcut-mcp` passes it to its `bashcutpro-cli`, and `bashcutpro-cli` itself reads it from `automation.json` when
+  the address matches and the `pid` is alive (then re-runs itself once with the env set);
+- a raw client (a script that talks to the port) reads `token` from `automation.json`, or sets
+  `FILMCRAFT_CONTROL_TOKEN` itself before it opens the app, and sends `"token"` with each request
+  (upstream `docs/control-protocol.md`);
+- the channel can be turned off (Agent section, `BASHCUT_CONTROL=0`), and do not run it on shared multi-user
+  machines: the token is per user, but a loopback port is reachable by every local user.
 
 ## Not done yet (UI)
 
