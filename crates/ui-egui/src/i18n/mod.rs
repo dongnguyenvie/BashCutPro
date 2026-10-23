@@ -188,6 +188,7 @@ impl Language {
 
     /// Does this language's catalog translate `text`? (English never does: it is the source.)
     pub fn has(self, text: &str) -> bool {
+        crate::bashcut_ui::catalog_has_ours!(text); // BashCutPro: in tests our labels count as covered, they live in our own catalog (bashcut/extending-upstream.md)
         self.catalog().and_then(|c| c.plain(text)).is_some()
     }
 }
