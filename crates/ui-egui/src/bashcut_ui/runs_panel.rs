@@ -204,7 +204,7 @@ fn batch_row(app: &mut FilmcraftApp, ui: &mut egui::Ui) -> bool {
     };
     let t = app.tokens;
     let frame = egui::Frame::group(ui.style()).show(ui, |ui| {
-        ui.horizontal(|ui| {
+        ui.horizontal_wrapped(|ui| {
             ui.label(egui::RichText::new(&text).color(t.text));
             if button(app, ui, "bashcut.runs.batch.open", s("Open Batch"), true) {
                 super::State::update(ui.ctx(), |st| st.show(super::BATCH));

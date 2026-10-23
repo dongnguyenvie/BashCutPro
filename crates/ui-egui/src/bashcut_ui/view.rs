@@ -86,7 +86,7 @@ pub fn draw(app: &mut FilmcraftApp, ui: &mut egui::Ui, plugin: &str, dir: &Path,
                 }
                 Row::Input { id, label, multiline, .. } => {
                     let mut text = field_text(&fields, id);
-                    ui.horizontal(|ui| {
+                    ui.horizontal_wrapped(|ui| {
                         if !label.is_empty() {
                             ui.label(label.as_str());
                         }
@@ -98,7 +98,7 @@ pub fn draw(app: &mut FilmcraftApp, ui: &mut egui::Ui, plugin: &str, dir: &Path,
                 }
                 Row::Select { id, label, choices, .. } => {
                     let mut value = field_text(&fields, id);
-                    ui.horizontal(|ui| {
+                    ui.horizontal_wrapped(|ui| {
                         if !label.is_empty() {
                             ui.label(label.as_str());
                         }
