@@ -2845,3 +2845,21 @@ fn narrow_agent_panel_keeps_queued_x_and_checkbox_in_place() {
     d.call("engine.execute", json!({"command": "bashcut.agent.stop", "params": {}}));
     d.no_ui_error();
 }
+
+/// FX28: after a sign-in failure, a Claude Code that is then not found (its program removed) shows
+/// only the not-found line (with Install), not the old "not signed in" line too.
+#[test]
+fn a_missing_claude_code_hides_the_old_not_signed_in_line() {
+    let Some(fake) = fake_claude("a_missing_claude_code_hides_the_old_not_signed_in_line", "auth", &[]) else { return };
+    let mut d = fake.driver();
+    d.exec("bashcut.agent.send", json!({"text": "please sign in"}));
+    d.agent_idle();
+    d.frames(2);
+    assert!(!d.element("bashcut.agent.ready.auth").is_null(), "the sign-in line shows while Claude Code is found");
+    std::fs::remove_file(&fake.claude).expect("remove the fake Claude Code");
+    d.frames(3);
+    assert!(!d.element("bashcut.agent.ready.agent").is_null(), "the not-found line shows");
+    assert!(d.element("bashcut.agent.ready.auth").is_null(), "not-found wins over the old sign-in line");
+    assert!(d.element("bashcut.agent.ready.auth.message").is_null());
+    d.no_ui_error();
+}
