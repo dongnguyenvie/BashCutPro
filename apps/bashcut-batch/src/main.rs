@@ -2,6 +2,8 @@
 //! project; up to `concurrency` items run at once, each step in its own `filmcraft-cli` process; the
 //! job book in `<projectsFolder>/.bashcut-batch/<id>/` survives restarts. Output is JSON.
 
+#![cfg_attr(not(test), deny(clippy::unwrap_used, clippy::expect_used, clippy::panic, clippy::unimplemented, clippy::todo, clippy::unreachable))]
+
 use bashcut_batch::pipeline::{self, Pipeline};
 use bashcut_batch::{Choices, Job, Options, Status, Summary, presets};
 use serde_json::{Value, json};

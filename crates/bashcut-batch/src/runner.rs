@@ -9,7 +9,7 @@
 use crate::agent;
 use crate::book::{self, AgentUsage, Book, Category, ErrorInfo, Job, Status, StepRef, StepState, now_ms};
 use crate::governor::{self, KeepAwake, Meter, Probe, SystemProbe};
-use crate::pipeline::{self, AgentStep, CommandLine, OnFailure, Pipeline, StepKind, Vars};
+use crate::pipeline::{self, AgentStep, CommandLine, OnFailure, Pipeline, ProcessStep, StepKind, Vars};
 use crate::process::{self, Ended, Spec};
 use bashcut_dirs::fs::write_atomic;
 use serde::Serialize;
@@ -628,20 +628,7 @@ fn run_step(sh: &Shared, idx: usize, s: usize, step: StepRef, ctx: &Ctx) -> Resu
                     engine_step(sh, idx, s, ctx, &key, std::slice::from_ref(&line), timeout)
                 }
                 StepKind::Commands(lines) => engine_step(sh, idx, s, ctx, &key, lines, timeout),
-                StepKind::Plugin(p) => {
-                    if ctx.vars.get("kit").is_none() && p.argv.iter().chain(p.env.values()).any(|a| a.contains("{kit}")) {
-                        return Err(ErrorInfo::new(
-                            Category::Usage,
-                            format!("{key}: this step runs a script of the agent kit; pass --kit <bashcutpro-agent-kit folder> or set BASHCUT_KIT"),
-                        ));
-                    }
-                    let argv = crate::python::resolve(p.argv.iter().map(|a| ctx.vars.expand(a)).collect());
-                    let mut env: Vec<(String, String)> = p.env.iter().map(|(k, v)| (k.clone(), ctx.vars.expand(v))).collect();
-                    env.extend(item_env(sh, ctx));
-                    let spec = Spec { argv, cwd: Some(ctx.dir.clone()), env, timeout, log: ctx.dir.join(&key) };
-                    let ended = spawn(sh, idx, s, &spec)?;
-                    outcome(ended, &spec.log, &key).map(|()| Vec::new())
-                }
+                StepKind::Plugin(p) => plugin_step(sh, idx, s, ctx, &key, p, timeout),
                 StepKind::Agent(a) => agent_step(sh, idx, s, ctx, &key, a),
             }
         }
@@ -711,6 +698,22 @@ fn create(sh: &Shared, idx: usize, s: usize, ctx: &Ctx) -> Result<(), ErrorInfo>
         }
     }
     std::fs::rename(&tmp, &ctx.project).map_err(|e| io(e, &ctx.project))
+}
+
+/// A plugin step: its program in the item folder, with the item's placeholders and env.
+fn plugin_step(sh: &Shared, idx: usize, s: usize, ctx: &Ctx, key: &str, p: &ProcessStep, timeout: Option<Duration>) -> Result<Vec<String>, ErrorInfo> {
+    if ctx.vars.get("kit").is_none() && p.argv.iter().chain(p.env.values()).any(|a| a.contains("{kit}")) {
+        return Err(ErrorInfo::new(
+            Category::Usage,
+            format!("{key}: this step runs a script of the agent kit; pass --kit <bashcutpro-agent-kit folder> or set BASHCUT_KIT"),
+        ));
+    }
+    let argv = crate::python::resolve(p.argv.iter().map(|a| ctx.vars.expand(a)).collect());
+    let mut env: Vec<(String, String)> = p.env.iter().map(|(k, v)| (k.clone(), ctx.vars.expand(v))).collect();
+    env.extend(item_env(sh, ctx));
+    let spec = Spec { argv, cwd: Some(ctx.dir.clone()), env, timeout, log: ctx.dir.join(key) };
+    let ended = spawn(sh, idx, s, &spec)?;
+    outcome(ended, &spec.log, key).map(|()| Vec::new())
 }
 
 /// An agent step (#60): rounds of the agent, each followed by `bashcut.review.run` on every sequence
@@ -1022,11 +1025,7 @@ fn speech_model(pipeline: &Pipeline, opts: &Options) -> Option<String> {
     }
     let unnamed =
         |id: &str, params: Option<&Value>| crate::speech::TRANSCRIBE_COMMANDS.contains(&id) && params.and_then(|p| p.get("model")).is_none_or(Value::is_null);
-    let needed = pipeline.steps.iter().filter_map(|s| s.kind().ok()).any(|k| match k {
-        StepKind::Command(id, params) => unnamed(id, params),
-        StepKind::Commands(lines) => lines.iter().any(|l| unnamed(&l.id, Some(&l.params))),
-        _ => false,
-    });
+    let needed = pipeline.steps.iter().filter_map(|s| s.kind().ok()).any(|k| k.engine_commands().into_iter().any(|(id, params)| unnamed(id, params)));
     if !needed {
         return None;
     }

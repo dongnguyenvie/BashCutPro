@@ -50,8 +50,8 @@ Size: **S** < 1 h, **M** half a day, **L** more. **Beh.** = whether the proposed
 |---|---|---|---|---|---|
 | S1 | New agent event format: `manifest.rs` `AGENT_EVENTS` (only `claude-stream-json`), `bashcut-agent/src/process.rs` `check` + `Decoder`, `stream_json::FORMAT` redefined; no trait despite `in-app-ui.md` | An agent plugin cannot declare `codex-json` though the crate supports it | Format registry in `bashcut-agent`; manifest accepts its names | M | yes |
 | S2 | `AgentLaunch` (`host.rs`) hand-mirrors part of `AgentSpec`, copied field by field in `ui-egui/.../agent.rs`; no `prompt_args`/`timeout_secs`/mcp templates in the manifest | A Codex-style agent plugin cannot be described | Serde-compatible `AgentLaunch` = `AgentSpec` subset | M | additive |
-| S3 | New batch step kind touches 7 places (`Step` fields, `kind`, `describe`, `validate`, `run_step`, `speech_model`, UI) | Cost of each new step | Step-kind table/trait | L | no |
-| S4 | New batch agent touches `AGENTS`, `agent::argv`, `read_round` (mixed Claude/Codex match) | Cost of each new agent | `AgentAdapter` table | M | no |
+| S3 | New batch step kind touches 7 places (`Step` fields, `kind`, `describe`, `validate`, `run_step`, `speech_model`, UI) | Cost of each new step | Step-kind table/trait (**done** RC9: `pipeline::STEP_KINDS` + `StepKind` methods; the UI still matches fields) | L | no |
+| S4 | New batch agent touches `AGENTS`, `agent::argv`, `read_round` (mixed Claude/Codex match) | Cost of each new agent | `AgentAdapter` table (**done** RC9: `agent::ADAPTERS`) | M | no |
 | S5 | OS mapping in ~5 places: `plugin-host/src/lib.rs` `os()`, `manifest.rs` `entry_for`, `registry.rs` `Entry::supports` = `Manifest::supports`, `settings.rs` `cfg!` chains, `bashcut-dirs` | A new OS = 5 edits, and they already disagree on naming | One `Os` enum in `bashcut-dirs`; OS-keyed map in the manifest | M | no |
 | S6 | `engine/src/bashcut/errors.rs` `SLOTS: [Run; 96]` positional trampolines | Command 97+ silently loses typed errors (34 today; only a test catches it) | More slots (S) or a dispatch-side hook (M, upstream) (**done** RC10: `spec!` in `bashcut/mod.rs` wraps each `run` in its own fn; no table) | S/M | no |
 | S7 | `bashcut-batch/src/pipeline.rs` `item_names` / `expand_inputs` dedup are O(n²–n³) with up to 10 000 inputs | Same file name on every card (`C0001.MP4`) ≈ hang | `HashSet` (**done** RV2: `item_names` and `expand_inputs`) | S | no |
@@ -84,7 +84,7 @@ Size: **S** < 1 h, **M** half a day, **L** more. **Beh.** = whether the proposed
 
 - **An engine name / env var:** one edit in `bashcut_dirs::engine` after RV2, plus doctor (RC2) until it lands (mcp uses it since RCA).
 - **A plugin kind / agent event format:** manifest constants + agent decoder + UI mirror (S1, S2).
-- **A batch step kind:** 7 places (S3). **A batch agent:** 3 places (S4).
+- **A batch step kind:** the `Step` field, a `pipeline::STEP_KINDS` row, its `StepKind` arms (the compiler lists them) and its run fn in `runner::run_step`, plus the Batch UI (S3, RC9). **A batch agent:** one `agent::ADAPTERS` row with its `argv` / `read_event` fns (S4, RC9).
 - **A CLI consumer:** copy an arg parser (D9) and call `bashcut_dirs::engine::default_cli`.
 - **An OS:** ~5 places (S5).
 
