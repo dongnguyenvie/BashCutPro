@@ -186,6 +186,15 @@ then `$FILMCRAFT_CLI`), else `bashcutpro` or `filmcraft-cli` next to `bashcut-ba
 (`crates/bashcut-batch/src/cli.rs`, #154). `bashcutpro` is the engine itself (generated from
 `filmcraft-cli`, SB2), so the memory watch and Cancel reach it directly on every OS.
 
+**Stopping a step (FX8).** Each step runs in its own process group on Unix (`process.rs::run_watched`), and
+cancel, timeout and the memory cap stop it through `bashcut_dirs::child::terminate`: TERM to the group, `GRACE`
+(1.5 s) to exit, then KILL, so an agent's own python / ffmpeg processes end with it; on Windows the kill takes the
+tree (`taskkill /T /F`, RC13). The batch keeps its own spawn because a step's output goes to `<step>.out` / `.err`
+files, not pipes. As the steps are no longer in the terminal's foreground group, Ctrl+C on `run` / `resume` /
+`retry` is caught: the first asks the job to cancel (as `bashcut-batch cancel`, the book ends `cancelled`), a second
+quits at once (exit 130; `resume` then reports the steps it left as tripped). A step that exits normally while
+something it started keeps running is not swept.
+
 **Options (RC8).** The command line and the app's Batch section build their run options with the same
 `Options::resolve` (`crates/bashcut-batch/src/runner.rs`): the kit, `bashcut-mcp` and keep-awake are found the same
 way, so a pipeline behaves alike from both (the app passes its engine and data dir, the rest is default). Relative
