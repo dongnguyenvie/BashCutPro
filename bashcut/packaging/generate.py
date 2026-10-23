@@ -8,9 +8,11 @@ expected number of times: when upstream rewrites a line we depend on, this fails
 our tools. Same input, byte-identical output (test_generate.py).
 
 The copy adds: speech-to-text (`--features whisper` for `filmcraft` and the engine CLI, #146); the Pro command line
-`bashcutpro` + alias `bcpro` in `filmcraft-cli`'s place (SB2); `bashcut-doctor`, `bashcut-batch`, `bashcut-mcp`;
-the first-run setup (`bashcut/packaging/share/`); on Linux our app id `com.birchapps.bashcutpro` (SB4). Only scripts
-and the manifests that list files are copied and changed. Details: bashcut/packaging/README.md.
+`bashcutpro-cli` + alias `bcpro` in `filmcraft-cli`'s place (SB2, NM2); the app installed as `bashcutpro`
+(`bashcutpro.exe`; macOS keeps `BashCutPro.app/Contents/MacOS/BashCutPro`, NM2); `bashcut-doctor`, `bashcut-batch`,
+`bashcut-mcp`; the first-run setup (`bashcut/packaging/share/`); on Linux and FreeBSD our app id
+`com.birchapps.bashcutpro` (SB4). Only scripts and the manifests that list files are copied and changed. Details:
+bashcut/packaging/README.md.
 
     python3 bashcut/packaging/generate.py --out target/bashcut-packaging [--root .]
 """
@@ -20,12 +22,13 @@ import os
 import shutil
 import sys
 
-# Our binaries next to the app. bashcutpro (#154, SB2: upstream's engine CLI generated under our name by
+# Our binaries next to the app. bashcutpro-cli (#154, SB2, NM2: upstream's engine CLI generated under our name by
 # apps/bashcutpro-cli) is not listed: it takes filmcraft-cli's place in upstream's lines (RENAMES); bcpro is its alias.
+# The app itself is built as `filmcraft` (upstream's source) and installed as `bashcutpro` (APP_SUBS, NM2).
 PRO_BINS = ["bcpro", "bashcut-doctor", "bashcut-batch", "bashcut-mcp"]
-# PK3: where a package can hold a symlink (Linux, the macOS CLI zip, Flatpak), bcpro is a relative link to the engine
-# (written `filmcraft-cli`, renamed to bashcutpro below) instead of a second ~36 MB copy. Windows (MSI, portable zip)
-# and the macOS app (bcpro is the only engine name there, #187) keep a real file.
+# PK3: where a package can hold a symlink (Linux, FreeBSD, the macOS app and CLI zip, Flatpak), bcpro is a relative
+# link to the engine (written `filmcraft-cli`, renamed to bashcutpro-cli below) instead of a second ~36 MB copy.
+# Windows (MSI, portable zip) keeps a real bcpro.exe.
 ALIAS = "bcpro"
 TOOLS = [b for b in PRO_BINS if b != ALIAS]
 TOOLS_SH = " ".join(TOOLS)
@@ -68,13 +71,13 @@ SUBS = [
         "macos/package.sh",
         'copy_font_licences "$APP/Contents/Resources"\n',
         'copy_font_licences "$APP/Contents/Resources"\n'
-        "# BashCutPro: Pro tools beside the app executable, the engine CLI among them (#187, SB2);\n"
-        "# Mac volumes ignore case, so a tool named like the executable (bashcutpro, BashCutPro) is left out: bcpro covers it\n"
-        'brand_lc="$(printf %%s "$BRAND_NAME" | tr "[:upper:]" "[:lower:]")"\n'
-        'APP_BINS=""; for b in filmcraft-cli %s; do [ "$b" = "$brand_lc" ] || APP_BINS="$APP_BINS $b"; done\n'
+        "# BashCutPro: Pro tools beside the app executable, the engine CLI among them (#187, SB2); bashcutpro-cli and\n"
+        "# bcpro never clash with the executable BashCutPro on a case-insensitive volume (NM2), bcpro is a link to it\n"
+        'APP_BINS="filmcraft-cli %s"\n'
         'for b in $APP_BINS; do cp "$WORK/bin/$b" "$APP/Contents/MacOS/$b"; done\n'
+        'ln -s filmcraft-cli "$APP/Contents/MacOS/%s"\n'
         "# first-run setup in Resources/bashcut\n"
-        'mkdir -p "$APP/Contents/Resources/bashcut" && cp "$ROOT/bashcut/packaging/share/"* "$APP/Contents/Resources/bashcut/"\n' % BINS_SH,
+        'mkdir -p "$APP/Contents/Resources/bashcut" && cp "$ROOT/bashcut/packaging/share/"* "$APP/Contents/Resources/bashcut/"\n' % (TOOLS_SH, ALIAS),
         1,
     ),
     (
@@ -204,7 +207,8 @@ SUBS = [
         'install -m 755 "$BIN/filmcraft" "$BIN/filmcraft-cli" "$STAGE/bin/"\n'
         "# BashCutPro: Pro tools and the first-run setup\n"
         'for b in %s; do install -m 755 "$BIN/$b" "$STAGE/bin/"; done\n'
-        'mkdir -p "$STAGE/share/bashcutpro" && cp "$ROOT/bashcut/packaging/share/"* "$STAGE/share/bashcutpro/"\n' % BINS_SH,
+        'ln -s filmcraft-cli "$STAGE/bin/%s"\n'
+        'mkdir -p "$STAGE/share/bashcutpro" && cp "$ROOT/bashcut/packaging/share/"* "$STAGE/share/bashcutpro/"\n' % (TOOLS_SH, ALIAS),
         1,
     ),
     # ---- Windows
@@ -250,14 +254,14 @@ SUBS = [
         1,
     ),
     # PK1: what the Windows copy prints and writes into portable.txt names BashCutPro and its own %APPDATA% folder
-    # (bashcut_dirs::data_dir); the app exe keeps upstream's name filmcraft.exe
+    # (bashcut_dirs::data_dir); the app exe is bashcutpro.exe (NM2)
     ("windows/package.ps1", 'Write-Output "FilmCraft $Version for Windows', 'Write-Output "BashCutPro $Version for Windows', 1),
     (
         "windows/package.ps1",
         "  'FilmCraft portable: preferences, presets, logs and crash recovery are kept in the data folder',\n"
         "  'next to filmcraft.exe. Delete this file to use %APPDATA%\\FilmCraft instead.'\n",
         "  'BashCutPro portable: preferences, presets, logs and crash recovery are kept in the data folder',\n"
-        "  'next to filmcraft.exe. Delete this file to use %APPDATA%\\BashCutPro instead.'\n",
+        "  'next to bashcutpro.exe. Delete this file to use %APPDATA%\\BashCutPro instead.'\n",
         1,
     ),
     # PK4: Windows PowerShell 5.1's Compress-Archive (and ZipFile.CreateFromDirectory on .NET Framework) writes the
@@ -278,15 +282,15 @@ SUBS = [
         "} finally { $Archive.Dispose() }\n",
         1,
     ),
-    # PK4: the Windows copy's comments and the MSI's icon id name BashCutPro (the other WiX ids, the App Paths key and
-    # the app exe filmcraft.exe wait for the owner's binary-name decision)
+    # PK4: the Windows copy's comments and the MSI's icon id name BashCutPro (the app exe, its App Paths key and the
+    # other WiX ids: APP_SUBS, NM2)
     ("windows/package.ps1", "  Build, sign and package FilmCraft for Windows.\n", "  Build, sign and package BashCutPro for Windows.\n", 1),
     (
         "windows/package.ps1",
         "    filmcraft-<version>-windows-<arch>.msi            per-machine installer (WiX v5)\n"
         "    filmcraft-<version>-windows-<arch>-portable.zip   filmcraft.exe + filmcraft-cli.exe + portable.txt\n",
         "    bashcutpro-<version>-windows-<arch>.msi            per-machine installer (WiX v5)\n"
-        "    bashcutpro-<version>-windows-<arch>-portable.zip   filmcraft.exe (the app), bashcutpro.exe,\n"
+        "    bashcutpro-<version>-windows-<arch>-portable.zip   bashcutpro.exe (the app), bashcutpro-cli.exe,\n"
         "      %s.exe, bashcut-setup.ps1, portable.txt\n" % ".exe, ".join(PRO_BINS),
         1,
     ),
@@ -333,10 +337,71 @@ RENAME_FILES = [
     "windows/filmcraft.wxs",
 ]
 RENAMES = [
-    ("-p filmcraft-cli ", "-p bashcutpro-cli "),
-    ("filmcraft-cli/whisper", "bashcutpro-cli/whisper"),
-    ('Id="FilmcraftCliExe"', 'Id="BashcutproExe"'),
-    ("filmcraft-cli", "bashcutpro"),
+    ('Id="FilmcraftCliExe"', 'Id="BashcutproCliExe"'),
+    ('Id="FilmcraftCli"', 'Id="BashcutproCli"'),
+    ("filmcraft-cli", "bashcutpro-cli"),
+]
+
+
+# NM2 (owner decision 2026-10-23, upstream's convention): the app is built as `filmcraft` and installed as
+# `bashcutpro` (`/usr/bin/bashcutpro`, `bashcutpro.exe`; macOS keeps `BashCutPro.app/Contents/MacOS/BashCutPro`), so
+# no installed name says filmcraft. Applied after RENAMES, same rules as SUBS: build-output paths (`$BIN/filmcraft`,
+# `target/release/filmcraft`, the PE check in $Bin) keep the cargo name, every installed path changes.
+APP_SUBS = [
+    # ---- Linux
+    ("linux/package.sh", 'install -Dm755 "$BIN/filmcraft" "$STAGE/usr/bin/filmcraft"\n', 'install -Dm755 "$BIN/filmcraft" "$STAGE/usr/bin/bashcutpro"\n', 1),
+    ("linux/package.sh", '"${CROSS_COMPILE:-}strip" "$STAGE/usr/bin/filmcraft" ', '"${CROSS_COMPILE:-}strip" "$STAGE/usr/bin/bashcutpro" ', 1),
+    ("linux/package.sh", 'ln -s usr/bin/filmcraft "$APPDIR/AppRun"', 'ln -s usr/bin/bashcutpro "$APPDIR/AppRun"', 1),
+    ("linux/nfpm.yaml", "  - src: ${STAGE}/usr/bin/filmcraft\n    dst: /usr/bin/filmcraft\n", "  - src: ${STAGE}/usr/bin/bashcutpro\n    dst: /usr/bin/bashcutpro\n", 1),
+    ("linux/install.sh", "for binary in filmcraft bashcutpro-cli; do\n", "for binary in bashcutpro bashcutpro-cli; do\n", 1),
+    ("linux/install.sh", 'install -m755 -- "$source_dir/bin/filmcraft" "$prefix/bin/filmcraft"\n', 'install -m755 -- "$source_dir/bin/bashcutpro" "$prefix/bin/bashcutpro"\n', 1),
+    ("linux/install.sh", "\"$prefix/bin/filmcraft\"", "\"$prefix/bin/bashcutpro\"", 2),
+    ("linux/install.sh", 'run \"%s/bin/filmcraft\".', 'run \"%s/bin/bashcutpro\".', 1),
+    ("linux/ai.storyteller.filmcraft.desktop", "Exec=filmcraft %F\nTryExec=filmcraft\n", "Exec=bashcutpro %F\nTryExec=bashcutpro\n", 1),
+    (
+        "linux/ai.storyteller.filmcraft.metainfo.xml.in",
+        "    <binary>filmcraft</binary>\n",
+        "    <binary>bashcutpro</binary>\n    <binary>bashcutpro-cli</binary>\n    <binary>bcpro</binary>\n",
+        1,
+    ),
+    ("linux/flatpak-bundle.sh", '[ -x "$WORK/stage/bin/filmcraft" ] || { echo "error: $TARBALL has no bin/filmcraft" >&2', '[ -x "$WORK/stage/bin/bashcutpro" ] || { echo "error: $TARBALL has no bin/bashcutpro" >&2', 1),
+    ("linux/flatpak/ai.storyteller.filmcraft.bundle.yml", "\ncommand: filmcraft\n", "\ncommand: bashcutpro\n", 1),
+    ("linux/flatpak/ai.storyteller.filmcraft.bundle.yml", "      - install -Dm755 bin/filmcraft /app/bin/filmcraft\n", "      - install -Dm755 bin/bashcutpro /app/bin/bashcutpro\n", 1),
+    ("linux/flatpak/ai.storyteller.filmcraft.yml", "\ncommand: filmcraft\n", "\ncommand: bashcutpro\n", 1),
+    ("linux/flatpak/ai.storyteller.filmcraft.yml", "      - install -Dm755 target/release/filmcraft /app/bin/filmcraft\n", "      - install -Dm755 target/release/filmcraft /app/bin/bashcutpro\n", 1),
+    # upstream's installer test, run on the copy: the bundle carries bin/bashcutpro (the tarball test stages from
+    # the cargo names, so its `filmcraft` fixture stays)
+    ("linux/test_install.py", 'for name in ("filmcraft", "bashcutpro-cli"):\n            (self.bundle', 'for name in ("bashcutpro", "bashcutpro-cli"):\n            (self.bundle', 1),
+    ("linux/test_install.py", 'for name in ("filmcraft", "bashcutpro-cli"):\n                self.assertTrue', 'for name in ("bashcutpro", "bashcutpro-cli"):\n                self.assertTrue', 1),
+    ("linux/test_install.py", 'bin/filmcraft"', 'bin/bashcutpro"', 3),
+    # ---- FreeBSD: the Linux copy's freedesktop files (our app id, Exec=bashcutpro) and the same names
+    ("freebsd/package.sh", 'LINUX="$ROOT/packaging/linux"\nAPP_ID=ai.storyteller.filmcraft\n', 'LINUX="$BASHCUT_PACKAGING/linux"\nAPP_ID=%s\n' % "com.birchapps.bashcutpro", 1),
+    ("freebsd/package.sh", 'cp -R "$BRAND_ICON_DIR/hicolor" ', 'cp -R "$LINUX/icons/hicolor" ', 1),
+    ("freebsd/package.sh", 'BASENAME="filmcraft-$VERSION-freebsd-$ARCH"', 'BASENAME="$BRAND_SLUG-$VERSION-freebsd-$ARCH"', 1),
+    (
+        "freebsd/package.sh",
+        'install -m 755 "$BIN/filmcraft" "$BIN/bashcutpro-cli" "$STAGE/bin/"\n',
+        'install -m 755 "$BIN/filmcraft" "$STAGE/bin/bashcutpro"\ninstall -m 755 "$BIN/bashcutpro-cli" "$STAGE/bin/"\n',
+        1,
+    ),
+    ("freebsd/package.sh", 'strip "$STAGE/bin/filmcraft" ', 'strip "$STAGE/bin/bashcutpro" ', 1),
+    ("freebsd/package.sh", "for f in bin/filmcraft bin/bashcutpro-cli ", "for f in bin/bashcutpro bin/bashcutpro-cli bin/bcpro ", 1),
+    ("freebsd/package.sh", "share/doc/filmcraft", "share/doc/bashcutpro", 6),
+    ("freebsd/package.sh", 'echo "==> FilmCraft $VERSION', 'echo "==> BashCutPro $VERSION', 1),
+    ("freebsd/package.sh", "# Build and package FilmCraft for FreeBSD:", "# Build and package BashCutPro for FreeBSD:", 1),
+    # ---- Windows: stage the app as bashcutpro.exe; MSI file, App Paths key and ids follow
+    (
+        "windows/package.ps1",
+        "Copy-Item (Join-Path $Bin 'filmcraft.exe'), (Join-Path $Bin 'bashcutpro-cli.exe') $Stage\n",
+        "Copy-Item (Join-Path $Bin 'filmcraft.exe') (Join-Path $Stage 'bashcutpro.exe')\n"
+        "Copy-Item (Join-Path $Bin 'bashcutpro-cli.exe') $Stage\n",
+        1,
+    ),
+    ("windows/package.ps1", "(Join-Path $Stage 'filmcraft.exe')", "(Join-Path $Stage 'bashcutpro.exe')", 1),
+    ("windows/filmcraft.wxs", '"FilmcraftFiles"', '"BashcutproFiles"', 2),
+    ("windows/filmcraft.wxs", 'Component Id="FilmcraftApp"', 'Component Id="BashcutproApp"', 1),
+    ("windows/filmcraft.wxs", 'File Id="FilmcraftExe" Source="$(var.BinDir)\\filmcraft.exe"', 'File Id="BashcutproExe" Source="$(var.BinDir)\\bashcutpro.exe"', 1),
+    ("windows/filmcraft.wxs", "App Paths\\filmcraft.exe\" Value=\"[#FilmcraftExe]\"", "App Paths\\bashcutpro.exe\" Value=\"[#BashcutproExe]\"", 1),
 ]
 
 
@@ -367,7 +432,25 @@ def generate(root, out):
     if os.path.isdir(out):
         shutil.rmtree(out)
     shutil.copytree(src, out)
-    for rel, old, new, want in SUBS:
+    apply(out, SUBS)
+    for rel in RENAME_FILES:
+        path = os.path.join(out, *rel.split("/"))
+        with open(path, encoding="utf-8", newline="") as fh:
+            text = fh.read()
+        if "filmcraft-cli" not in text:
+            raise Fail("packaging/%s: no filmcraft-cli to rename to bashcutpro-cli; upstream changed it: update RENAME_FILES in %s" % (rel, __file__))
+        for old, new in RENAMES:
+            text = text.replace(old, new)
+        with open(path, "w", encoding="utf-8", newline="") as fh:
+            fh.write(text)
+    apply(out, APP_SUBS)
+    linux_app_id(root, out)
+    return len(SUBS) + len(APP_SUBS)
+
+
+def apply(out, subs):
+    """Exact-match substitutions: (file under the copy, old, new, expected matches)."""
+    for rel, old, new, want in subs:
         path = os.path.join(out, *rel.split("/"))
         with open(path, encoding="utf-8", newline="") as fh:
             text = fh.read()
@@ -383,18 +466,6 @@ def generate(root, out):
             text = text.replace("\n", "\r\n")
         with open(path, "w", encoding="utf-8", newline="") as fh:
             fh.write(text)
-    for rel in RENAME_FILES:
-        path = os.path.join(out, *rel.split("/"))
-        with open(path, encoding="utf-8", newline="") as fh:
-            text = fh.read()
-        if "filmcraft-cli" not in text:
-            raise Fail("packaging/%s: no filmcraft-cli to rename to bashcutpro; upstream changed it: update RENAME_FILES in %s" % (rel, __file__))
-        for old, new in RENAMES:
-            text = text.replace(old, new)
-        with open(path, "w", encoding="utf-8", newline="") as fh:
-            fh.write(text)
-    linux_app_id(root, out)
-    return len(SUBS)
 
 
 def linux_app_id(root, out):

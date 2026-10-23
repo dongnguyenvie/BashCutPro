@@ -5,20 +5,32 @@ scripts for them.
 
 ## What every package carries
 
+Names (NM2, owner decision 2026-10-23, upstream FilmCraft's convention): the source still builds the app as
+`filmcraft` (`-p filmcraft`); the packages install it under our name. No installed name says filmcraft.
+
+| | macOS | Windows | Linux / FreeBSD |
+|---|---|---|---|
+| app | `BashCutPro.app/Contents/MacOS/BashCutPro` | `bashcutpro.exe` (Start menu, `App Paths\bashcutpro.exe`) | `/usr/bin/bashcutpro` (FreeBSD `bin/bashcutpro`); desktop `Exec=bashcutpro`, AppImage `AppRun` -> `usr/bin/bashcutpro`, Flatpak `command: bashcutpro` |
+| command line | `bashcutpro-cli` + `bcpro` (link) in `Contents/MacOS/` and the CLI zip | `bashcutpro-cli.exe` + `bcpro.exe` (copy) | `bashcutpro-cli` + `bcpro` (link) |
+
+The engine lookup (app, setup scripts, MCP) tries `bashcutpro-cli`, then `bcpro`, then `filmcraft-cli`, after the env
+overrides (`BASHCUTPRO_CLI`, `BASHCUT_FILMCRAFT_CLI`, `FILMCRAFT_CLI`); `apps/bashcutpro-cli` builds the bins
+`bashcutpro-cli` and `bcpro` (NM1).
+
 | Piece | macOS (.app / CLI zip) | Windows (MSI / portable zip) | Linux (tar, deb, rpm, AppImage) / FreeBSD |
 |---|---|---|---|
-| `bashcutpro` and its alias `bcpro` (#154, in place of `filmcraft-cli`, SB2), `bashcut-doctor`, `bashcut-batch`, `bashcut-mcp` | `Contents/MacOS/` (only `bcpro` there: `bashcutpro` would replace `BashCutPro` on a Mac volume, #187); CLI zip | install folder; portable zip | `/usr/bin` (FreeBSD: `bin/`) |
+| `bashcutpro-cli` and its alias `bcpro` (#154, in place of `filmcraft-cli`, SB2, NM2), `bashcut-doctor`, `bashcut-batch`, `bashcut-mcp` | `Contents/MacOS/` (no case clash with `BashCutPro`, #187); CLI zip | install folder; portable zip | `/usr/bin` (FreeBSD: `bin/`) |
 | first-run setup `bashcut-setup.sh` / `.ps1` | `Contents/Resources/bashcut/`; CLI zip | install folder; portable zip | `/usr/share/bashcutpro/` (FreeBSD: `share/bashcutpro/`) |
 | speech-to-text (`--features whisper` for `filmcraft` and `bashcutpro-cli`, #146; candle on the CPU) | app and CLI | app and CLI | app and CLI |
 
-`bcpro` is a relative symlink to `bashcutpro` wherever the package can hold one (deb, rpm, tarball, AppImage,
-Flatpak, macOS CLI zip; PK3), not a second ~36 MB copy. The macOS app keeps a real `bcpro` (its only engine name) and
-Windows keeps `bcpro.exe` as a copy (MSI and zip carry no symlinks; a `.cmd` shim would change Ctrl+C and exit-code
-behaviour). Linux docs install to `/usr/share/doc/bashcutpro` (Debian policy), and `bashcut-doctor --version` /
+`bcpro` is a relative symlink to `bashcutpro-cli` wherever the package can hold one (deb, rpm, tarball, AppImage,
+Flatpak, FreeBSD, the macOS app and CLI zip; PK3, NM2), not a second ~36 MB copy. Windows keeps `bcpro.exe` as a copy
+(MSI and zip carry no symlinks; a `.cmd` shim would change Ctrl+C and exit-code behaviour). Linux and FreeBSD docs
+install to `share/doc/bashcutpro` (Debian policy), and `bashcut-doctor --version` /
 `bashcut-mcp --version` print `<name> <version>` and exit 0.
 
 The batch presets and the kit's caption skills start by transcribing. The Whisper models are not packaged: they
-download on first use (`bashcutpro exec transcript.downloadModel`, or Text panel > Transcribe); until then
+download on first use (`bashcutpro-cli exec transcript.downloadModel`, or Text panel > Transcribe); until then
 `bashcut-doctor` warns and a batch step that transcribes fails with that command as its next step.
 The Flatpak bundle repackages the Linux tarball. Upstream's Flatpak source manifest
 (`packaging/linux/flatpak/ai.storyteller.filmcraft.yml`) keeps its carried speech-to-text edit (#174), which
@@ -32,7 +44,8 @@ packages never replace an installed FilmCraft's desktop entry, icons, MIME file 
 hicolor icons from `$BRAND_ICON_DIR` (default `bashcut/brand/app-icon`) under the new name to
 `linux/icons/hicolor/`, and points `package.sh` / `flatpak-bundle.sh` at the copy (`HERE`). The app sets the same
 id as its Wayland app id / X11 class (`bashcut_brand::APP_ID`, a hook in `apps/filmcraft/src/main.rs`, SB5), so
-`StartupWMClass=com.birchapps.bashcutpro` matches the window to our desktop entry. One exception: the `.fcproj` type
+`StartupWMClass=com.birchapps.bashcutpro` matches the window to our desktop entry. FreeBSD ships the same generated
+files (`LINUX="$BASHCUT_PACKAGING/linux"` in its copy, NM2). One exception: the `.fcproj` type
 `application/x-filmcraft` (shared with FilmCraft: the last installed app opens `.fcproj`). The copy's `install.sh`,
 `package.sh`, `flatpak-bundle.sh` messages and the Flatpak manifests' comments name BashCutPro (SUBS, SB5).
 
@@ -42,13 +55,13 @@ id as its Wayland app id / X11 class (`bashcut_brand::APP_ID`, a hook in `apps/f
 | `com.birchapps.bashcutpro.metainfo.xml.in` | `/usr/share/metainfo/com.birchapps.bashcutpro.metainfo.xml` |
 | `com.birchapps.bashcutpro.mime.xml` | `/usr/share/mime/packages/com.birchapps.bashcutpro.xml` |
 | `icons/hicolor/<size>/apps/com.birchapps.bashcutpro.png`, `scalable/…svg` | `/usr/share/icons/hicolor/…` (AppImage: also `com.birchapps.bashcutpro.png` at its root) |
-| `flatpak/com.birchapps.bashcutpro.bundle.yml` | used by `flatpak-bundle.sh`: `bashcutpro-<v>-linux-<arch>.flatpak`, `/app/bin/{filmcraft,bashcutpro,bcpro,bashcut-*}` |
+| `flatpak/com.birchapps.bashcutpro.bundle.yml` | used by `flatpak-bundle.sh`: `bashcutpro-<v>-linux-<arch>.flatpak`, `/app/bin/{bashcutpro,bashcutpro-cli,bcpro,bashcut-*}` |
 | `flatpak/com.birchapps.bashcutpro.yml` | from source (Flathub): builds `-p filmcraft -p bashcutpro-cli` with whisper and the Pro tools |
 
 From-source Flatpak: `python3 bashcut/packaging/generate.py --out target/bashcut-packaging`, vendor
 `packaging/linux/flatpak/cargo-sources.json` as upstream's header says, then
 `flatpak-builder --user --install --force-clean build-flatpak target/bashcut-packaging/linux/flatpak/com.birchapps.bashcutpro.yml`
-and `flatpak run --command=bashcutpro com.birchapps.bashcutpro --version`. Its sources are the checkout
+and `flatpak run --command=bashcutpro-cli com.birchapps.bashcutpro --version`. Its sources are the checkout
 (relative path written by the generator) and the generated Linux folder (`dest: bashcut-packaging/linux`).
 
 Profiles, templates and looks are built into the binaries (`bashcut.profiles.*`, `bashcut.template.*`,
@@ -62,8 +75,10 @@ Profiles, templates and looks are built into the binaries (`bashcut.profiles.*`,
    (`BASHCUT_BRANDED=1`, `BASHCUT_ROOT` pins the checkout).
 2. Windows: one inserted hook line in `packaging/windows/package.ps1` (row in `UPSTREAM.md`) runs
    `bashcut/packaging/package.ps1`, which does the same for PowerShell.
-3. `generate.py` applies exact-match substitutions (`SUBS`), then renames `filmcraft-cli` to `bashcutpro` in the
-   copied scripts and manifests (`RENAMES`: `-p bashcutpro-cli`, its `whisper` feature, the staged/installed file): build our packages with the app
+3. `generate.py` applies exact-match substitutions (`SUBS`), then renames `filmcraft-cli` to `bashcutpro-cli` in the
+   copied scripts and manifests (`RENAMES`: `-p bashcutpro-cli`, its `whisper` feature, the built and installed file,
+   the WiX ids), then installs the app as `bashcutpro` (`APP_SUBS`, exact-match like `SUBS`: cargo's
+   `$BIN/filmcraft` stays, every installed path changes): build our packages with the app
    (`-p bashcut-doctor -p bashcut-batch-cli -p bashcut-mcp`), stage, strip and sign the binaries, add them to
    `nfpm.yaml`, the WiX source and the Linux tarball installer, copy `share/`. A substitution that no longer matches
    upstream's text fails the packaging run with the file and line to update; it never ships silently without our tools.
@@ -79,8 +94,8 @@ with `-Yes`, `-Skip…`):
 
 1. Creates `<data dir>/bashcut/{profiles,templates,looks}`. `<data dir>` is BashCutPro's own folder, by the app's rules
    (`bashcut_dirs::data_dir`, SB1): `BASHCUTPRO_DATA_DIR`, `FILMCRAFT_DATA_DIR`, then `BashCutPro` (macOS, Windows;
-   `.\data` for a portable Windows install) or `bashcutpro` (XDG). The engine is `bashcutpro`, else `bcpro` (the
-   name inside the macOS app, #187), else `filmcraft-cli`.
+   `.\data` for a portable Windows install) or `bashcutpro` (XDG). The engine is `bashcutpro-cli`, else `bcpro`,
+   else `filmcraft-cli`.
 2. Writes the look pack as `.cube` LUTs + `looks.json` (`bashcut.looks.export`).
 3. Compiles the output profiles into the `BashCut <name>` export presets (`bashcut.profiles.compile`).
 4. Installs the agent kit as a Claude Code plugin when `claude` is found, and for Codex (clone + `install-codex.sh`) when `codex` is found.
@@ -102,18 +117,18 @@ and `bashcut-doctor --json`.
   signing secrets every binary and the MSI stay unsigned (a warning, not an error). Output in `dist/release/`:
   `bashcutpro-<v>-windows-x64.msi` (product BashCutPro, Birch Apps, its own UpgradeCode, `Program Files\BashCutPro`,
   Start menu shortcut BashCutPro) and `bashcutpro-<v>-windows-x64-portable.zip`. Both carry the app as
-  `filmcraft.exe` (VERSIONINFO and icon BashCutPro) next to `bashcutpro.exe`, `bcpro.exe`, `bashcut-doctor.exe`,
+  `bashcutpro.exe` (built as `filmcraft.exe`; VERSIONINFO and icon BashCutPro) next to `bashcutpro-cli.exe`, `bcpro.exe`, `bashcut-doctor.exe`,
   `bashcut-batch.exe`, `bashcut-mcp.exe`, `bashcut-setup.ps1`; no `filmcraft-cli.exe`. Every command-line exe has
   the BashCutPro icon and VERSIONINFO too (ProductName BashCutPro, its own FileDescription, the package version;
-  `crates/bashcut-winres`, PK4; `bcpro.exe` shares `bashcutpro.exe`'s resource). PK4 run (0.10.0, unsigned, Windows
-  PowerShell 5.1): MSI 51.9 MB, portable zip 66.4 MB. Not renamed yet (the owner's binary-name decision): the app exe,
-  the `App Paths\filmcraft.exe` key, the other WiX ids, and the log file `Logs/filmcraft.log` (upstream's
-  `apps/filmcraft/src/logging.rs`).
+  `crates/bashcut-winres`, PK4; `bcpro.exe` shares `bashcutpro-cli.exe`'s resource). PK4 run (0.10.0, unsigned, Windows
+  PowerShell 5.1): MSI 51.9 MB, portable zip 66.4 MB. Since NM2 the app exe, the `App Paths\bashcutpro.exe` key and
+  the WiX ids are BashCutPro's; still upstream's: the log file `Logs/filmcraft.log` (`apps/filmcraft/src/logging.rs`).
 - Codec patents: for a paid build prefer the OS encoders (VideoToolbox, Media Foundation) and get legal advice before
   selling.
 
 Tests: `python3 bashcut/packaging/test_generate.py` (every substitution matches upstream's current files once, the
 copies parse, the WiX source is valid XML, no generated Linux file names or mentions `ai.storyteller.filmcraft`
 (`StartupWMClass` included) or ships `filmcraft-cli`, the Flatpak manifests parse and find their sources, the Windows
-copy names BashCutPro and zips with `/` (and parses, when PowerShell is there); on Linux,
+copy names BashCutPro and zips with `/`, no installed binary name says filmcraft (app `bashcutpro`, CLI
+`bashcutpro-cli` + `bcpro`, `Exec=bashcutpro`, `App Paths\bashcutpro.exe`; NM2) (and parses, when PowerShell is there); on Linux,
 upstream's installer test runs on the copy).

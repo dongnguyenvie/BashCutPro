@@ -29,19 +29,20 @@ class GenerateTest(unittest.TestCase):
             return fh.read()
 
     def test_every_substitution_applies_to_the_current_files(self):
-        self.assertEqual(generate.generate(ROOT, self.out), len(generate.SUBS))
+        self.assertEqual(generate.generate(ROOT, self.out), len(generate.SUBS) + len(generate.APP_SUBS))
         for rel in ("macos/package.sh", "linux/package.sh", "freebsd/package.sh", "windows/package.ps1"):
             text = self.read(rel)
             for b in generate.PRO_BINS:
                 self.assertIn(b, text, rel)
         wxs = self.read("windows/filmcraft.wxs")
         self.assertIn("bashcut-mcp.exe", wxs)
-        # the Pro command line ships under both names, in place of filmcraft-cli (#154, SB2)
+        # the Pro command line ships under both names, in place of filmcraft-cli (#154, SB2, NM2)
         for rel in generate.RENAME_FILES:
             self.assertNotIn("filmcraft-cli", self.read(rel.replace(generate.UPSTREAM_ID, generate.APP_ID)), rel)
-        for b in ("bashcutpro", "bcpro"):
+        for b in ("bashcutpro", "bashcutpro-cli", "bcpro"):
             self.assertIn("\\%s.exe" % b, wxs)
-            self.assertIn("/usr/bin/%s" % b, self.read("linux/nfpm.yaml"))
+            self.assertIn("/usr/bin/%s\n" % b, self.read("linux/nfpm.yaml"))
+        self.assertIn('File Id="BashcutproCliExe"', wxs)
         self.assertIn('Component Id="BashcutDoctor"', wxs)
         self.assertIn('File Id="BcproExe"', wxs)
         self.assertIn("-p filmcraft -p bashcutpro-cli --features", self.read("windows/package.ps1"))
@@ -102,9 +103,11 @@ class GenerateTest(unittest.TestCase):
             self.assertNotIn("FilmCraft", text, rel)
         self.assertNotIn("FilmcraftIcon", wxs)
         self.assertEqual(wxs.count('"BashCutProIcon.ico"'), 3)
-        # the app exe and its App Paths key keep upstream's name until the owner decides on the binary name
-        self.assertIn("App Paths\\filmcraft.exe", wxs)
-        self.assertIn("Copy-Item (Join-Path $Bin 'filmcraft.exe')", ps1)
+        # NM2: the app is staged and installed as bashcutpro.exe (App Paths key too); only cargo's output keeps filmcraft
+        self.assertIn("App Paths\\bashcutpro.exe\" Value=\"[#BashcutproExe]\"", wxs)
+        self.assertIn("Copy-Item (Join-Path $Bin 'filmcraft.exe') (Join-Path $Stage 'bashcutpro.exe')", ps1)
+        self.assertNotIn("filmcraft", wxs.replace("wix build filmcraft.wxs", ""))
+        self.assertIn("next to bashcutpro.exe.", ps1)
 
     def test_windows_zip_entries_use_forward_slashes(self):
         # PK4: Compress-Archive on Windows PowerShell 5.1 writes zip entry names with backslashes
@@ -141,7 +144,7 @@ class GenerateTest(unittest.TestCase):
         desktop = self.read("linux/%s.desktop" % app)
         self.assertIn("StartupWMClass=%s\n" % app, desktop)
         self.assertIn("Icon=%s\n" % app, desktop)
-        self.assertIn("Exec=filmcraft %F\n", desktop)
+        self.assertIn("Exec=bashcutpro %F\nTryExec=bashcutpro\n", desktop)
         meta = xml.dom.minidom.parseString(self.read("linux/%s.metainfo.xml.in" % app).replace("@VERSION@", "1").replace("@DATE@", "2026-01-01"))
         self.assertEqual(meta.getElementsByTagName("id")[0].firstChild.data, app)
         self.assertEqual(meta.getElementsByTagName("launchable")[0].firstChild.data, app + ".desktop")
@@ -156,12 +159,52 @@ class GenerateTest(unittest.TestCase):
         for rel in ("linux/package.sh", "linux/flatpak-bundle.sh"):
             self.assertIn('HERE="$BASHCUT_PACKAGING/linux"\n', self.read(rel), rel)
         self.assertNotIn("BRAND_ICON_DIR", self.read("linux/package.sh"))
-        self.assertIn("--command=bashcutpro ", self.read("linux/flatpak-bundle.sh"))
+        self.assertIn("--command=bashcutpro-cli ", self.read("linux/flatpak-bundle.sh"))
         for rel in ("linux/flatpak/%s.yml" % app, "linux/flatpak/%s.bundle.yml" % app):
             text = self.read(rel)
             self.assertIn("\nid: %s\n" % app, text, rel)
-            for b in ["bashcutpro"] + generate.PRO_BINS:
+            self.assertIn("\ncommand: bashcutpro\n", text, rel)
+            for b in ["bashcutpro", "bashcutpro-cli"] + generate.PRO_BINS:
                 self.assertIn("/app/bin/%s\n" % b, text, rel)
+
+    def test_no_installed_name_says_filmcraft(self):
+        # NM2: the app installs as bashcutpro and the CLI as bashcutpro-cli + bcpro; `filmcraft` stays only as
+        # cargo's output name ($BIN/filmcraft, target/release/filmcraft, the PE check in $Bin)
+        generate.generate(ROOT, self.out)
+        import re
+
+        installed = {
+            "linux/package.sh": r'"\$STAGE/usr/bin/(\S+?)"',
+            "linux/install.sh": r'"\$prefix/bin/(\S+?)"',
+            "linux/nfpm.yaml": r"dst: /usr/bin/(\S+)",
+            "linux/flatpak/%s.yml" % generate.APP_ID: r"/app/bin/(\S+)",
+            "linux/flatpak/%s.bundle.yml" % generate.APP_ID: r"/app/bin/(\S+)",
+            "freebsd/package.sh": r'"\$STAGE/bin/(\S+?)"',
+            "windows/filmcraft.wxs": r"\\(\S+?)\.exe\"",
+        }
+        for rel, pattern in installed.items():
+            names = set(re.findall(pattern, self.read(rel)))
+            self.assertIn("bashcutpro", names, rel)
+            self.assertFalse([n for n in names if "filmcraft" in n], rel)
+        linux = self.read("linux/package.sh")
+        self.assertIn('install -Dm755 "$BIN/filmcraft" "$STAGE/usr/bin/bashcutpro"\n', linux)
+        self.assertIn('ln -s usr/bin/bashcutpro "$APPDIR/AppRun"', linux)
+        self.assertIn('ln -s bashcutpro-cli "$STAGE/usr/bin/bcpro"', linux)
+        install = self.read("linux/install.sh")
+        self.assertIn("for binary in bashcutpro bashcutpro-cli; do", install)
+        self.assertIn('ln -sfn -- bashcutpro-cli "$prefix/bin/bcpro"', install)
+        freebsd = self.read("freebsd/package.sh")
+        self.assertIn('install -m 755 "$BIN/filmcraft" "$STAGE/bin/bashcutpro"\n', freebsd)
+        self.assertIn("APP_ID=%s\n" % generate.APP_ID, freebsd)
+        self.assertIn('BASENAME="$BRAND_SLUG-', freebsd)
+        self.assertNotIn("share/doc/filmcraft", freebsd)
+        meta = self.read("linux/%s.metainfo.xml.in" % generate.APP_ID)
+        for b in ("bashcutpro", "bashcutpro-cli", "bcpro"):
+            self.assertIn("<binary>%s</binary>" % b, meta)
+        mac = self.read("macos/package.sh")
+        self.assertIn('cp "$WORK/bin/filmcraft" "$APP/Contents/MacOS/$BRAND_NAME"', mac)
+        self.assertIn('ln -s bashcutpro-cli "$APP/Contents/MacOS/bcpro"', mac)
+        self.assertIn('ln -s bashcutpro-cli "$CLI_DIR/bcpro"', mac)
 
     def test_the_flatpak_source_manifest_finds_its_files(self):
         # flatpak-builder reads the generated manifest: its sources are the checkout and the generated Linux files
@@ -183,7 +226,7 @@ class GenerateTest(unittest.TestCase):
         for name in ("%s.yml", "%s.bundle.yml"):
             with open(os.path.join(flatpak, name % generate.APP_ID), encoding="utf-8") as fh:
                 doc = yaml.safe_load(fh)
-            self.assertEqual((doc["id"], doc["command"]), (generate.APP_ID, "filmcraft"))
+            self.assertEqual((doc["id"], doc["command"]), (generate.APP_ID, "bashcutpro"))
 
     def test_the_copied_tarball_installer_installs_ours(self):
         # upstream's installer test, run on the copy (needs GNU realpath -m, so Linux)
@@ -197,24 +240,18 @@ class GenerateTest(unittest.TestCase):
         self.assertEqual(r.returncode, 0, r.stderr)
 
     def test_the_app_keeps_its_executable_and_ships_the_engine_cli(self):
-        # Mac volumes ignore case: copying bashcutpro beside BashCutPro replaced the app executable (#187)
+        # Mac volumes ignore case: copying bashcutpro beside BashCutPro replaced the app executable (#187); the engine
+        # is bashcutpro-cli now (NM2), so it ships in the app under its own name with bcpro linked to it
         generate.generate(ROOT, self.out)
-        lines = [l for l in self.read("macos/package.sh").splitlines() if l.startswith(("brand_lc=", "APP_BINS="))]
-        self.assertEqual(len(lines), 2)
-        bash = shutil.which("bash")
-        if not bash:
-            return
-        for brand, left_out in (("BashCutPro", "bashcutpro"), ("Other", None)):
-            r = subprocess.run([bash, "-c", "\n".join(lines) + '\necho $APP_BINS'], env={"BRAND_NAME": brand, "PATH": os.environ["PATH"]}, capture_output=True, text=True)
-            bins = r.stdout.split()
-            self.assertNotIn("filmcraft-cli", bins, brand)
-            self.assertIn("bcpro", bins, brand)
-            if left_out:
-                self.assertNotIn(left_out, bins)
-            else:
-                self.assertIn("bashcutpro", bins)
+        lines = [l for l in self.read("macos/package.sh").splitlines() if l.startswith("APP_BINS=")]
+        self.assertEqual(len(lines), 1)
+        bins = lines[0].split("=", 1)[1].strip('"').split()
+        self.assertEqual(bins[0], "bashcutpro-cli")
+        self.assertNotIn("filmcraft-cli", bins)
+        self.assertNotIn("bcpro", bins)
+        self.assertFalse([b for b in bins if b.lower() == "bashcutpro"])
 
-    @unittest.skip("test ticket: bcpro is a symlink to bashcutpro in the Linux stage, nfpm (type: symlink), install.sh, both Flatpak manifests and the macOS CLI zip, a real file in the app and on Windows; docs in usr/share/doc/bashcutpro; the metainfo's first <p> is a sentence of 80+ chars")
+    @unittest.skip("test ticket: bcpro is a symlink to bashcutpro-cli in the Linux and FreeBSD stage, nfpm, install.sh, both Flatpak manifests, the macOS app and CLI zip, a real file on Windows; docs in usr/share/doc/bashcutpro; the metainfo's first <p> is a sentence of 80+ chars")
     def test_bcpro_is_a_link_and_linux_docs_and_metainfo_are_ours(self):
         pass
 
