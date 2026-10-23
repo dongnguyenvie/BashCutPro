@@ -9,6 +9,10 @@
 //! `"error": "authentication_failed"` and the text `Not logged in · Please run /login`, then a
 //! `result` with `is_error: true` and the same text; a rejected login mid-turn arrives as
 //! `system/api_retry` with the same `error` values.
+//!
+//! AG8: with `--permission-prompt-tool stdio` Claude Code asks the host before a tool call that is
+//! not pre-allowed: a `control_request` with subtype `can_use_tool` ([`Event::Permission`]), answered
+//! with [`permission_response`]; `control_cancel_request` withdraws one ([`Event::PermissionWithdrawn`]).
 
 use serde_json::{Value, json};
 
@@ -70,6 +74,13 @@ pub enum Event {
         ok: bool,
         cancelled: bool,
     },
+    /// The agent asks before running a tool that is not pre-allowed (AG8); it waits for
+    /// [`permission_response`].
+    Permission(Permission),
+    /// The agent no longer waits for the answer to permission request `request` (it was interrupted).
+    PermissionWithdrawn {
+        request: String,
+    },
     /// Something we show but do not model (an unparsable line, an agent error message).
     Notice(String),
     /// Claude Code is not signed in, or its account cannot be used: `category` is one of
@@ -80,6 +91,29 @@ pub enum Event {
         message: String,
     },
 }
+
+/// A `can_use_tool` request as the panel shows it.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Permission {
+    /// Its `request_id`, for the answer.
+    pub request: String,
+    /// The tool's name (`Bash`, `Write`, `mcp__x__y`).
+    pub tool: String,
+    /// The command or file it would run or touch (else the agent's description, else the input).
+    pub detail: String,
+    /// The tool's input as sent (up to [`MAX_PERMISSION_INPUT`]): an allowed call runs with it.
+    pub input: Value,
+    /// The agent's suggested allow rules (`permission_suggestions` of type `addRules`): what "Always
+    /// for this project" writes. Empty: no rule to offer.
+    pub rules: Vec<Value>,
+    /// The input was longer than [`MAX_PERMISSION_INPUT`] (and dropped): it can only be denied.
+    pub oversized: bool,
+}
+
+/// Longest tool input a permission request keeps (as JSON text); a longer one is denied at once.
+pub const MAX_PERMISSION_INPUT: usize = 256 * 1024;
+/// Rules kept from one request's suggestions.
+const MAX_RULES: usize = 8;
 
 /// The `error` values of `assistant` and `system/api_retry` events that mean "sign in" or "account
 /// problem" rather than a failed turn.
@@ -182,9 +216,70 @@ pub fn parse_line(line: &str) -> Vec<Event> {
             let cancelled = r.and_then(|r| r.get("response")).and_then(|r| r.get("cancelled")).and_then(Value::as_bool) == Some(true);
             vec![Event::Control { request: clip(field("request_id"), 128), ok: field("subtype") == "success", cancelled }]
         }
+        "control_request" => match v.get("request").filter(|r| r.get("subtype").and_then(Value::as_str) == Some("can_use_tool")) {
+            Some(r) => vec![Event::Permission(permission(&text(&v, "request_id"), r))],
+            None => Vec::new(),
+        },
+        "control_cancel_request" => vec![Event::PermissionWithdrawn { request: clip(&text(&v, "request_id"), 128) }],
         "error" => vec![Event::Notice(clip(&v.get("error").map(|e| content_text(Some(e))).unwrap_or_else(|| text(&v, "message")), 2048))],
         _ => Vec::new(),
     }
+}
+
+/// A `can_use_tool` request's fields (checked with Claude Code 2.1.309: `tool_name`, `input`,
+/// `description`, `blocked_path`, `permission_suggestions`, `tool_use_id`).
+fn permission(id: &str, r: &Value) -> Permission {
+    let s = |k: &str| r.get(k).and_then(Value::as_str).unwrap_or_default();
+    let input = r.get("input").cloned().unwrap_or(Value::Null);
+    let input_s = |k: &str| input.get(k).and_then(Value::as_str).unwrap_or_default();
+    let detail = ["command", "file_path", "notebook_path", "path", "url", "pattern"]
+        .iter()
+        .map(|k| input_s(k))
+        .chain([s("blocked_path"), s("description")])
+        .find(|d| !d.trim().is_empty())
+        .map_or_else(|| input.to_string(), str::to_string);
+    let rules = r
+        .get("permission_suggestions")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter(|g| g.get("type").and_then(Value::as_str) == Some("addRules") && g.get("behavior").and_then(Value::as_str) == Some("allow"))
+        .filter_map(|g| g.get("rules").and_then(Value::as_array))
+        .flatten()
+        .filter(|rule| rule.get("toolName").and_then(Value::as_str).is_some_and(|t| !t.is_empty()))
+        .take(MAX_RULES)
+        .cloned()
+        .collect();
+    let oversized = input.to_string().len() > MAX_PERMISSION_INPUT;
+    let input = if oversized { Value::Null } else { input };
+    Permission { request: clip(id, 128), tool: clip(s("tool_name"), 256), detail: clip(&detail, 2048), input, rules, oversized }
+}
+
+/// How the user answered a [`Permission`].
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Answer {
+    Once,
+    /// Allow, and add the request's rules to the project's `.claude/settings.local.json`.
+    Always,
+    Deny,
+}
+
+/// The `control_response` answering permission request `p` (checked with Claude Code 2.1.309):
+/// allow runs the tool with its input as sent; [`Answer::Always`] also passes the rules as
+/// `updatedPermissions` with destination `localSettings`, which Claude Code writes into
+/// `<cwd>/.claude/settings.local.json` (never the user's own settings); deny tells the agent
+/// `message`. No trailing newline.
+pub fn permission_response(p: &Permission, answer: Answer, message: &str) -> String {
+    let response = match answer {
+        Answer::Deny => json!({"behavior": "deny", "message": message}),
+        Answer::Once => json!({"behavior": "allow", "updatedInput": p.input}),
+        Answer::Always => json!({
+            "behavior": "allow",
+            "updatedInput": p.input,
+            "updatedPermissions": [{"type": "addRules", "rules": p.rules, "behavior": "allow", "destination": "localSettings"}],
+        }),
+    };
+    json!({"type": "control_response", "response": {"subtype": "success", "request_id": p.request, "response": response}}).to_string()
 }
 
 /// The strings of `system/init`'s `capabilities`, capped.
@@ -311,6 +406,10 @@ mod tests {
     #[test]
     #[ignore = "test ticket: isReplay echo keeps its uuid in Event::Picked; control_response {cancelled:true} sets Control.cancelled; user_message_with_uuid and cancel_request shapes"]
     fn queued_message_uuid_and_cancel_request() {}
+
+    #[test]
+    #[ignore = "test ticket: can_use_tool control_request decodes to Event::Permission (tool, detail from command/file_path/blocked_path, addRules allow suggestions kept, input over the cap → truncated); control_cancel_request → PermissionWithdrawn; permission_response shapes for Once / Always (localSettings) / Deny"]
+    fn permission_request_and_response() {}
 
     #[test]
     fn user_message_round_trips() {

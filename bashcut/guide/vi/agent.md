@@ -29,6 +29,12 @@ liệu, Tải về) khi dự án nằm ở đó: bấm **Cho phép**. Khi chưa 
 6. Bạn vẫn gõ tiếp được khi trợ lý đang làm: mỗi tin nhắn chờ dưới bản ghi với nhãn **Bạn · đang chờ 1**, **2**, …
    theo đúng thứ tự trợ lý sẽ nhận. Bấm **✕** ở một tin để bỏ nó; trợ lý sẽ không trả lời tin đó. Tin trợ lý đã nhận
    rồi thì vẫn được trả lời (muốn ngừng thì bấm **Dừng**).
+7. Khi Claude Code cần chạy thứ chưa được cho phép sẵn (ví dụ một lệnh shell hay ghi một tệp), bản ghi hiện một thẻ
+   **Claude Code muốn dùng Bash** kèm lệnh hoặc tệp đó: **Cho phép lần này** chạy nó một lần; **Luôn cho phép trong
+   dự án này** chạy nó và ghi một quy tắc vào `.claude/settings.local.json` trong thư mục dự án (chỉ dự án này, không
+   bao giờ vào cài đặt chung của bạn; chỉ có khi dự án đã được lưu); **Từ chối** không chạy và báo cho trợ lý là bạn
+   từ chối, trợ lý sẽ làm tiếp theo cách khác. Trợ lý chờ câu trả lời của bạn; **Dừng** cũng từ chối thẻ đang chờ.
+   Các bước trợ lý trong Batch không hỏi: thứ cần cho phép sẽ bị từ chối ngay.
 
 **Mới** (New) bắt đầu cuộc trò chuyện mới; các cuộc trước được liệt kê và mở lại được.
 

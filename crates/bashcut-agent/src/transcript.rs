@@ -38,6 +38,13 @@ pub enum Item {
     Notice {
         message: String,
     },
+    /// AG8: a permission request the user answered (`allowed`, `always`, `denied`; `withdrawn` when
+    /// the agent stopped waiting first).
+    Permission {
+        tool: String,
+        detail: String,
+        answer: String,
+    },
     /// AG6: the agent is not signed in or its account cannot be used ([`Event::Auth`]); the panel
     /// shows a readiness line with Sign in while this is the latest turn's outcome.
     Auth {
@@ -118,6 +125,8 @@ impl Transcript {
             }
             Event::Notice(m) => self.push(Item::Notice { message: m.clone() }),
             Event::Init { .. } | Event::Result { .. } | Event::Picked { .. } | Event::Control { .. } => {}
+            // the session keeps open requests; the answer is added as an Item::Permission
+            Event::Permission(_) | Event::PermissionWithdrawn { .. } => {}
         }
     }
 

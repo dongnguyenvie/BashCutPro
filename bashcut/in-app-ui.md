@@ -330,8 +330,8 @@ labels or subclips (§1 rule 1). A project opened in upstream FilmCraft still wo
   `Bash(printenv BASHCUTPRO_CLI *)`, `Bash(<engine> commands *)` for `bashcutpro-cli`, `bcpro` and `filmcraft-cli`
   (an absolute path to the engine does not match and is denied), `Read(~/.config/bashcutpro/mcp.env)` and
   `Read(//<data dir>/bashcut/automation.json)` (macOS / Linux; a Windows path has no rule form). Not installs,
-  builds, `claude mcp add` or writing `mcp.env`; no bypass mode: in print mode anything else that needs approval
-  is denied (checked: `touch` lands in `permission_denials`, the rules above run). The `system/init` event also
+  builds, `claude mcp add` or writing `mcp.env`; no bypass mode: anything else that needs approval is asked in
+  the panel (AG8 below; without a host to ask, `touch` landed in `permission_denials`, the rules above run). The `system/init` event also
   carries `capabilities` (`interrupt_receipt_v1`, `interrupt_cancel_queued_v1`, …), `tools`, `mcp_servers` and
   `plugins`.
 - **`BASHCUT_IN_APP_AGENT=1`** (next to `BASHCUT_AGENT_HOST=1`) is in every in-app agent child's environment. What
@@ -414,6 +414,35 @@ labels or subclips (§1 rule 1). A project opened in upstream FilmCraft still wo
   queue (`cancel_queued: true`, held ones never written) and puts the queued text back into the message box (AG3
   behaviour, kept: nothing typed is lost, and one click stops everything). Claude Code merges messages it takes
   together into one turn; a message cancelled before that never reaches it.
+- **Permission requests answered in the panel (AG8, checked with `claude` 2.1.309 on macOS)**: Claude Code runs with
+  `--permission-prompt-tool stdio` (hidden in `--help`; `--permission-prompts` defaults to `host`), the stream-json
+  control protocol the Agent SDK uses for `canUseTool`. Chosen over an MCP permission tool on our `bashcut-mcp` /
+  control channel: no extra server, tool or round trip through the engine, the request arrives on the stdout we
+  already read and the answer goes on the stdin we already write, and it carries Claude Code's own rule
+  suggestions. Checked: `touch ag8-probe.txt` (not in the AG7 allow list) gives
+  `{"type":"control_request","request_id":"<uuid>","request":{"subtype":"can_use_tool","tool_name":"Bash",
+  "display_name":"Bash","input":{"command":"touch ag8-probe.txt","description":"…"},"description":"…",
+  "permission_suggestions":[{"type":"addRules","rules":[{"toolName":"Bash","ruleContent":"touch ag8-probe.txt"}],
+  "behavior":"allow","destination":"localSettings"},{"type":"addDirectories",…},{"type":"setMode",…}],
+  "blocked_path":"…","tool_use_id":"toolu_…"}}` and the agent waits. Answer (`stream_json::permission_response`):
+  `{"type":"control_response","response":{"subtype":"success","request_id":<id>,"response":{"behavior":"allow",
+  "updatedInput":<input as sent>}}}` runs the command (the file appeared); `{"behavior":"deny","message":"The user
+  denied this in BashCutPro."}` puts the call in the `result`'s `permission_denials` and the model goes on;
+  **Always** adds `"updatedPermissions":[{"type":"addRules","rules":<the request's addRules/allow suggestions>,
+  "behavior":"allow","destination":"localSettings"}]` and Claude Code itself wrote
+  `{"permissions":{"allow":["Bash(touch ag8-probe.txt)"]}}` to `<cwd>/.claude/settings.local.json`. We always pass
+  `localSettings` (the turn's folder = the project's folder, never `userSettings`), only the suggested `addRules`
+  rules (never `addDirectories` / `setMode`), and offer Always only for a saved project with a suggestion. The
+  request becomes `Event::Permission`; the session keeps it (`Agent::permissions`, `bashcut.agent.state` →
+  `permissions: [{tool, detail, always}]`) and the panel shows a card at the end of the transcript ("{agent} wants
+  to use {tool}", the command / file / URL / path, else the description) with Allow once / Always for this project /
+  Deny (`bashcut.agent.permission.<n>.once|always|deny`; command `bashcut.agent.permission {index, answer:
+  once|always|deny}`). The answer stays as one transcript line (`Item::Permission`, `allowed` / `always` / `denied`
+  / `withdrawn`). **Nothing hangs**: Stop first denies waiting requests ("The user stopped the turn…") then
+  interrupts; a `control_cancel_request` (`Event::PermissionWithdrawn`), the turn's `result` and the process's end
+  drop the card ("not answered"); more than 16 waiting requests, or an input over 256 KB, are denied at once; the
+  30 s "no output" hint is not shown while a card waits (the turn timeout still applies). Codex and Batch are
+  unchanged: Batch agent steps keep `--permission-prompts none`.
 - **Sign-in problem in a live session (AG3 for AG6)**: after an `Event::Auth` the live process is closed at its
   `result`, so the next message starts a new one with the login as it is then; its non-zero exit adds no generic
   error under the sign-in line.
