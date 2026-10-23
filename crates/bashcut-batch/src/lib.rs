@@ -5,7 +5,7 @@
 //! a job book with one item, and one project, per input; [`run`] works through the items in
 //! parallel, each step in its own engine (`bashcutpro`) process, and can stop, be cancelled and resume
 //! (see [`book`] for the tripwire). Only workspace dependency: `bashcut-dirs` (data folder, engine
-//! lookup); it drives the CLI, not the engine.
+//! lookup, `fs` helpers); it drives the CLI, not the engine.
 
 mod agent;
 pub mod book;

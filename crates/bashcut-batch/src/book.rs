@@ -8,6 +8,7 @@
 //! `needsAttention`, and only an explicit `retry` runs it again.
 
 use crate::pipeline::{self, Pipeline};
+use bashcut_dirs::fs::{read_capped, write_atomic};
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 
@@ -492,12 +493,7 @@ impl Job {
     }
 
     pub fn book(&self) -> Result<Book, String> {
-        let path = self.state_path();
-        let meta = std::fs::metadata(&path).map_err(|e| format!("{}: {e}", path.display()))?;
-        if meta.len() > MAX_BOOK_BYTES {
-            return Err(format!("{}: larger than {MAX_BOOK_BYTES} bytes", path.display()));
-        }
-        let text = std::fs::read_to_string(&path).map_err(|e| format!("{}: {e}", path.display()))?;
+        let text = read_capped(&self.state_path(), MAX_BOOK_BYTES)?;
         let b: Book = serde_json::from_str(&text).map_err(|e| format!("{}: {e}", self.state_path().display()))?;
         if b.schema != STATE_SCHEMA {
             return Err(format!("{}: unknown schema {}", self.state_path().display(), b.schema));
@@ -511,7 +507,7 @@ impl Job {
         if u64::try_from(bytes.len()).unwrap_or(u64::MAX) > MAX_BOOK_BYTES {
             return Err(format!("{}: job book would be larger than {MAX_BOOK_BYTES} bytes", self.state_path().display()));
         }
-        write_atomic(&self.state_path(), &bytes)
+        Ok(write_atomic(&self.state_path(), &bytes)?)
     }
 
     /// The pipeline stored with the job (absolute paths), not the file it came from.
@@ -564,15 +560,6 @@ pub fn list_jobs(projects: &Path) -> Vec<Job> {
         .collect();
     jobs.sort_by(|a, b| a.0.cmp(&b.0).then_with(|| a.1.dir.cmp(&b.1.dir)));
     jobs.into_iter().map(|(_, j)| j).collect()
-}
-
-/// Write `bytes` to `<path>.tmp`, then rename over `path`.
-pub fn write_atomic(path: &Path, bytes: &[u8]) -> Result<(), String> {
-    let mut tmp = path.as_os_str().to_owned();
-    tmp.push(".tmp");
-    let tmp = PathBuf::from(tmp);
-    std::fs::write(&tmp, bytes).map_err(|e| format!("{}: {e}", tmp.display()))?;
-    std::fs::rename(&tmp, path).map_err(|e| format!("{}: {e}", path.display()))
 }
 
 pub fn now_ms() -> u64 {

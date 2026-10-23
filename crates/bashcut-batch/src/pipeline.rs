@@ -547,11 +547,7 @@ pub fn absolute(p: &Path) -> PathBuf {
 
 /// A small text file (a pipeline, a state file), refused over 4 MB.
 pub fn read_capped(path: &Path) -> Result<String, String> {
-    let meta = std::fs::metadata(path).map_err(|e| format!("{}: {e}", path.display()))?;
-    if meta.len() > MAX_FILE_BYTES {
-        return Err(format!("{}: larger than {MAX_FILE_BYTES} bytes", path.display()));
-    }
-    std::fs::read_to_string(path).map_err(|e| format!("{}: {e}", path.display()))
+    Ok(bashcut_dirs::fs::read_capped(path, MAX_FILE_BYTES)?)
 }
 
 #[cfg(test)]

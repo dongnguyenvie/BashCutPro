@@ -7,11 +7,13 @@
 //! No workspace dependencies: the engine (through a one-line hook in `autosave::default_data_dir`),
 //! `bashcut-batch`, `bashcut-connect`, `bashcut-doctor` and the UI all ask [`data_dir`]. [`engine`] is
 //! the one engine-binary lookup (`bashcutpro` → `bcpro` → `filmcraft-cli`); [`pid_alive`] the one
-//! "does this process run" check (`bashcut-connect`, `bashcut-batch`).
+//! "does this process run" check (`bashcut-connect`, `bashcut-batch`); [`fs`] the one `read_capped` /
+//! `write_atomic` / `clip` and message error of every BashCutPro crate (RC4).
 
 use std::path::{Path, PathBuf};
 
 pub mod engine;
+pub mod fs;
 pub mod process;
 
 pub use process::pid_alive;

@@ -25,65 +25,21 @@ pub use store::Conversation;
 pub use stream_json::Event;
 pub use transcript::{Item, Transcript};
 
-use std::fmt;
 use std::path::Path;
 
-/// Every error here, as a message a person can act on.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct Error(pub String);
+/// Every error here, as a message a person can act on (shared with `bashcut-plugin-host`, RC4).
+pub use bashcut_dirs::fs::{Error, Result};
 
-impl fmt::Display for Error {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(&self.0)
-    }
-}
-
-impl std::error::Error for Error {}
-
-impl From<std::io::Error> for Error {
-    fn from(e: std::io::Error) -> Self {
-        Error(e.to_string())
-    }
-}
-
-pub type Result<T> = std::result::Result<T, Error>;
-
-pub(crate) fn err<T>(msg: impl Into<String>) -> Result<T> {
-    Err(Error(msg.into()))
-}
-
-/// Read a text file of at most `cap` bytes.
-pub(crate) fn read_capped(path: &Path, cap: u64) -> Result<String> {
-    let meta = std::fs::metadata(path).map_err(|e| Error(format!("{}: {e}", path.display())))?;
-    if meta.len() > cap {
-        return err(format!("{}: larger than {cap} bytes", path.display()));
-    }
-    std::fs::read_to_string(path).map_err(|e| Error(format!("{}: {e}", path.display())))
-}
+pub(crate) use bashcut_dirs::fs::{err, read_capped};
 
 /// Write `text` to `path` through a temporary file, so a crash never leaves half a file.
 pub(crate) fn write_atomic(path: &Path, text: &str) -> Result<()> {
-    if let Some(dir) = path.parent() {
-        std::fs::create_dir_all(dir)?;
-    }
-    let tmp = path.with_extension(format!("tmp{}", std::process::id()));
-    std::fs::write(&tmp, text)?;
-    std::fs::rename(&tmp, path).map_err(|e| {
-        let _ = std::fs::remove_file(&tmp);
-        Error(format!("{}: {e}", path.display()))
-    })
+    bashcut_dirs::fs::write_atomic(path, text.as_bytes())
 }
 
 /// `text` cut to at most `max` bytes on a character boundary, with `…` when cut.
 pub fn clip(text: &str, max: usize) -> String {
-    if text.len() <= max {
-        return text.to_string();
-    }
-    let mut end = max;
-    while end > 0 && !text.is_char_boundary(end) {
-        end -= 1;
-    }
-    format!("{}…", text.get(..end).unwrap_or_default())
+    bashcut_dirs::fs::clip(text, max, "…")
 }
 
 /// The sidecar folder of a project: `<name>.fcproj` → `<name>.fcproj.bashcut/` (`bashcut/in-app-ui.md` §5).

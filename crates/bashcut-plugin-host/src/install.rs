@@ -131,7 +131,7 @@ impl Installer {
             }
             let origin = Origin { repo: entry.source.repo.clone(), git_ref: entry.source.git_ref.clone(), path: entry.source.path.clone(), commit };
             let text = serde_json::to_string_pretty(&origin).map_err(|e| Error(e.to_string()))?;
-            std::fs::write(staged.join(SOURCE_FILE), text)?;
+            crate::write_atomic(&staged.join(SOURCE_FILE), text.as_bytes())?;
             let settings = crate::settings::file(&self.root, &entry.id);
             if settings.is_file() {
                 std::fs::copy(&settings, staged.join(crate::settings::FILE))?;

@@ -50,11 +50,8 @@ pub fn save(plugins_dir: &Path, m: &Manifest, values: &Values) -> Result<Values>
         }
     }
     let path = file(plugins_dir, &m.id);
-    if let Some(dir) = path.parent() {
-        std::fs::create_dir_all(dir)?;
-    }
     let text = serde_json::to_string_pretty(&cur).map_err(|e| Error(e.to_string()))?;
-    std::fs::write(&path, text)?;
+    crate::write_atomic(&path, text.as_bytes())?;
     Ok(cur)
 }
 

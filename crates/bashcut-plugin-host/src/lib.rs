@@ -24,31 +24,10 @@ pub use registry::Registry;
 pub use runner::{Outcome, PluginResult, RunSpec};
 pub use view::View;
 
-use std::fmt;
+/// Every error of the host, as a message a person can act on (shared with `bashcut-agent`, RC4).
+pub use bashcut_dirs::fs::{Error, Result};
 
-/// Every error of the host, as a message a person can act on.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct Error(pub String);
-
-impl fmt::Display for Error {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(&self.0)
-    }
-}
-
-impl std::error::Error for Error {}
-
-impl From<std::io::Error> for Error {
-    fn from(e: std::io::Error) -> Self {
-        Error(e.to_string())
-    }
-}
-
-pub type Result<T> = std::result::Result<T, Error>;
-
-pub(crate) fn err<T>(msg: impl Into<String>) -> Result<T> {
-    Err(Error(msg.into()))
-}
+pub(crate) use bashcut_dirs::fs::{err, read_capped, write_atomic};
 
 /// The folder plugins are installed in: `<data dir>/bashcut-plugins`.
 pub fn plugins_dir(data_dir: &std::path::Path) -> std::path::PathBuf {
@@ -74,13 +53,4 @@ pub fn valid_id(id: &str) -> bool {
         && !id.starts_with('.')
         && !id.contains("..")
         && id.bytes().all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'.' || b == b'-' || b == b'_')
-}
-
-/// Read a text file of at most `cap` bytes.
-pub(crate) fn read_capped(path: &std::path::Path, cap: u64) -> Result<String> {
-    let meta = std::fs::metadata(path).map_err(|e| Error(format!("{}: {e}", path.display())))?;
-    if meta.len() > cap {
-        return err(format!("{}: larger than {cap} bytes", path.display()));
-    }
-    std::fs::read_to_string(path).map_err(|e| Error(format!("{}: {e}", path.display())))
 }

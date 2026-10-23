@@ -130,3 +130,15 @@ fn models_fall_back_to_filmcraft_per_file() {
     assert_eq!(read("kokoro/voices.bin"), "new");
     let _ = std::fs::remove_dir_all(&root);
 }
+
+#[test]
+#[ignore = "test ticket: fs::read_capped reads a file at the cap and refuses one byte over it with the path in the message"]
+fn read_capped_refuses_files_over_the_cap() {}
+
+#[test]
+#[ignore = "test ticket: fs::write_atomic creates the parent folder, replaces an existing file, leaves no .tmp behind, and keeps the old file when the write fails"]
+fn write_atomic_replaces_whole_files_only() {}
+
+#[test]
+#[ignore = "test ticket: fs::clip keeps short text, cuts multi-byte text on a char boundary and appends the ellipsis only when cut"]
+fn clip_cuts_on_char_boundaries() {}
