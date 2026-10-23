@@ -497,6 +497,9 @@ labels or subclips (§1 rule 1). A project opened in upstream FilmCraft still wo
   powershell.exe …` (raw args); Linux `x-terminal-emulator -e sh -c`, `gnome-terminal --working-directory=… -- sh -c`,
   `konsole --workdir … -e sh -c`, `xterm -e sh -c`, ending in `exec "$SHELL"` so the window stays. The folder is the
   child's working directory (plus a single-quoted `cd` in POSIX lines); no project text is parsed by a shell unquoted.
+  `terminal::stand_in` replaces the window for the rest of the process (TA5: the headless Agent tests in
+  `tests/bashcut_ui.rs` record each folder, job and hint instead; they run a scripted stream-json Claude Code as
+  `BASHCUT_CLAUDE` in a child test process).
   Verified on 2026-10-23 against Claude Code 2.1.309 (`claude --help`: `-r, --resume [value]`; `/login` inside the
   interactive UI). The terminal session gets no `--mcp-config` (the panel's temp config is private to
   `bashcut-agent`); it uses the agent kit's `bashcutpro` server, except when the kit is missing (AG9, below).

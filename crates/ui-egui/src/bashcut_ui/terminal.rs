@@ -11,9 +11,13 @@
 //! AG9: Install kit runs the agent-kit README's two `claude plugin` commands ([`kit_job`]), and
 //! when the live session showed no kit, Open in Terminal passes the app's MCP server from a config
 //! kept in the data folder ([`terminal_mcp_config`]) so the terminal agent still reaches the app.
+//!
+//! [`stand_in`] replaces the window for this process (headless tests): [`open`] then hands the
+//! folder, job and hint to it and starts nothing.
 
 use std::path::Path;
 use std::process::Command;
+use std::sync::OnceLock;
 
 use bashcut_dirs::child;
 
@@ -181,9 +185,23 @@ fn command(program: &str, args: &[String], dir: &Path) -> Command {
     cmd
 }
 
+/// What [`open`] calls instead of starting a terminal, once [`stand_in`] set it.
+pub type Opener = fn(&Path, &Job, Option<&str>) -> Result<(), String>;
+
+static STAND_IN: OnceLock<Opener> = OnceLock::new();
+
+/// From now on [`open`] calls `f` instead of starting a terminal, for the rest of this process
+/// (headless tests: no window opens). `false` when one was set already (the first one stays).
+pub fn stand_in(f: Opener) -> bool {
+    STAND_IN.set(f).is_ok()
+}
+
 /// Open a terminal window running `job` in `dir` (`hint`: one line printed first). Errors when no
 /// terminal could be started.
 pub fn open(dir: &Path, job: &Job, hint: Option<&str>) -> Result<(), String> {
+    if let Some(f) = STAND_IN.get() {
+        return f(dir, job, hint);
+    }
     let mut last = String::new();
     for (program, args) in launches(Os::current(), dir, job, hint) {
         let cmd = command(&program, &args, dir);
