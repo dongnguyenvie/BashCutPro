@@ -370,11 +370,13 @@ impl Host {
             Some(addr) => Connection::Bridge(addr.clone()),
             None => Connection::None,
         };
-        let argv = m.command_line(crate::os(), action, &conn, ctx.cli.as_deref(), params)?;
         let values = settings::load(&self.plugins_dir()?, &m);
+        // BASHCUTPRO_CLI: an exported engine or a manifest setting wins over the run's engine (FX10);
+        // `--cli` is the same engine, since plugins read it first (FX11)
+        let env = settings::env_for_engine(&m, &values, self.secrets.as_ref(), ctx.cli.as_deref().map(Path::new));
+        let argv = m.command_line(crate::os(), action, &conn, settings::cli_in(&env), params)?;
         let mut spec = RunSpec::new(dir, argv);
-        // BASHCUTPRO_CLI: an exported engine or a manifest setting wins over the run's engine (FX10)
-        spec.env = settings::env_for_engine(&m, &values, self.secrets.as_ref(), ctx.cli.as_deref().map(Path::new));
+        spec.env = env;
         spec.env.push(("BASHCUT_PLUGIN_HOST".into(), "1".into()));
         if let Some(t) = timeout {
             spec.timeout = t;

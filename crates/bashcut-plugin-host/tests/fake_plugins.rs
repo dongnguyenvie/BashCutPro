@@ -420,12 +420,17 @@ fn plugin_runs_find_the_engine_beside_the_app() {
         let mut m = manifest("test.fake");
         m["entry"] = json!({"command": [py, "plugin.py"]});
         m["settings"].as_array_mut().unwrap().push(json!({"id": "engine", "title": "Engine", "type": "string", "optional": true, "env": ["BASHCUTPRO_CLI"]}));
+        // FX11: an action that takes connection arguments gets the same engine as `--cli`
+        m["connect"]["cli"] = json!(["--cli", "{cli}"]);
+        m["actions"].as_array_mut().unwrap().push(json!({"id": "engine", "title": "Engine", "args": ["ok"], "params": []}));
         std::fs::write(dir.join("bashcut-plugin.json"), m.to_string()).unwrap();
         let mut host = Host::new(Some(data.clone()), Arc::new(MemoryStore::default()));
         let cli_of = |host: &mut Host, ctx: &RunContext| {
-            let job = host.command("run", &json!({"plugin": "test.fake", "action": "ok"}), ctx).unwrap()["job"].as_u64().unwrap();
+            let job = host.command("run", &json!({"plugin": "test.fake", "action": "engine"}), ctx).unwrap()["job"].as_u64().unwrap();
             assert_eq!(wait_job(host, job), JobState::Succeeded, "{:?}", host.job(job));
-            host.job(job).unwrap().outcome.as_ref().unwrap().result.as_ref().unwrap().data["cli"].clone()
+            let data = &host.job(job).unwrap().outcome.as_ref().unwrap().result.as_ref().unwrap().data;
+            assert_eq!(data["args"], json!(["--cli", data["cli"].clone()]), "argv --cli is the env's engine (FX11)");
+            data["cli"].clone()
         };
         let seen = cli_of(&mut host, &RunContext::default());
         // FX10: a run's own engine (RunContext.cli) comes after an exported one and a manifest setting
