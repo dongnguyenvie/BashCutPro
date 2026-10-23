@@ -13,7 +13,7 @@ use serde_json::{Map, Value, json};
 use super::hints::{self, CONTROL_OFF, HOW_TO_TURN_ON};
 use super::plugins;
 use super::strings::{self, f, s};
-use super::widgets::{META, NOTE, button, note, note_text};
+use super::widgets::{META, NOTE, button, close_button, note, note_text};
 use crate::FilmcraftApp;
 use crate::native_dialogs::FileDialog;
 
@@ -339,12 +339,8 @@ fn last_run(app: &mut FilmcraftApp, ui: &mut egui::Ui, ctx: &egui::Context, d: &
             }
         }
         let running = job.is_some_and(|j| j.state.is_running());
-        if !running {
-            let r = ui.small_button("✕").on_hover_text(s("Dismiss"));
-            app.auto.add_response(&format!("{id}.dismiss"), &r, s("Dismiss"));
-            if r.clicked() {
-                d.last.remove(plugin);
-            }
+        if !running && close_button(app, ui, &format!("{id}.dismiss"), s("Dismiss")) {
+            d.last.remove(plugin);
         }
     });
 }

@@ -17,6 +17,33 @@ pub fn small_button(app: &mut FilmcraftApp, ui: &mut egui::Ui, id: &str, label: 
     r.clicked()
 }
 
+/// A small icon-only button drawn with the app's icon painter (no font glyph, so it never renders
+/// as an empty box when the build lacks the extra fonts); `tip` is its tooltip and automation label.
+pub fn icon_button(app: &mut FilmcraftApp, ui: &mut egui::Ui, id: &str, icon: crate::icons::Icon, tip: &str, enabled: bool) -> bool {
+    let t = app.tokens;
+    let (rect, r) = ui.allocate_exact_size(egui::vec2(20.0, 18.0), egui::Sense::click());
+    let r = if enabled { r } else { r.on_disabled_hover_text(tip) };
+    let r = r.on_hover_text(tip);
+    if enabled && r.hovered() {
+        ui.painter().rect_filled(rect, t.radius_sm, t.hover);
+    }
+    let color = if !enabled {
+        t.text_faint
+    } else if r.hovered() {
+        t.text
+    } else {
+        t.text_dim
+    };
+    crate::icons::paint(ui.painter(), egui::Rect::from_center_size(rect.center(), egui::vec2(10.0, 10.0)), icon, color);
+    app.auto.add_response(id, &r, tip);
+    enabled && r.clicked()
+}
+
+/// [`icon_button`] with the close cross: remove, dismiss, clear.
+pub fn close_button(app: &mut FilmcraftApp, ui: &mut egui::Ui, id: &str, tip: &str) -> bool {
+    icon_button(app, ui, id, crate::icons::Icon::Close, tip, true)
+}
+
 /// Text size of a note under a control: empty states, hints, inline errors (px).
 pub const NOTE: f32 = 11.0;
 /// Text size of a meta line: counts, signatures, step details (px).
