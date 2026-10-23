@@ -439,6 +439,7 @@ pub fn handle(app: &mut FilmcraftApp, ctx: &egui::Context, req: &ControlRequest)
         "ui.focus" => {
             if p.is_null() || p.as_object().is_some_and(|object| object.is_empty()) {
                 // Existing explicit request: activate the app and take OS keyboard focus.
+                crate::bashcut_ui::control::restore(ctx); // BashCutPro: ui.focus {} also restores a minimised window (bashcut/extending-upstream.md)
                 ctx.send_viewport_cmd(egui::ViewportCommand::Focus);
                 return ok(Value::Null);
             }
