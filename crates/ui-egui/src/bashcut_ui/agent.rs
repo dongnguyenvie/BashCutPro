@@ -182,6 +182,7 @@ pub fn commands() -> Vec<CommandInfo> {
 
 #[cfg(test)]
 mod tests {
+    #[cfg(unix)]
     use super::*;
 
     /// PV3: `claude` in `~/.local/bin` with a login `PATH` resolves to that file and puts its folder
