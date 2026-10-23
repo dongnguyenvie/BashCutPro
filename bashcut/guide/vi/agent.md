@@ -58,6 +58,9 @@ Lần đầu ở một thư mục, Claude Code hỏi bạn có tin thư mục đ
   `claude plugin install bcp@bashcutpro-agent-kit`) và nút **Cài bộ công cụ…** chạy chúng trong terminal. Không có gì
   được cài cho đến khi bạn bấm. Cài xong, bấm **Mới**: dòng này biến mất khi tin nhắn đầu tiên của cuộc trò chuyện mới
   thấy bộ công cụ. Các nút công thức của cuộc trò chuyện trống cũng cần bộ công cụ.
+- Bảng lệnh cũng có ba thao tác này: **Mở trợ lý trong Terminal**, **Đăng nhập Claude Code** và **Cài Claude Code**
+  (trợ lý điều khiển BashCutPro có thể gọi chúng bằng `bashcut.agent.terminal`, `bashcut.agent.signIn` và
+  `bashcut.agent.install`). Việc cài vẫn chỉ chạy khi bạn chọn.
 
 Terminal là Terminal trên macOS, Windows Terminal (không có thì một cửa sổ PowerShell) trên Windows, và terminal mặc
 định của màn hình nền (không có thì GNOME Terminal, Konsole hoặc xterm) trên Linux.

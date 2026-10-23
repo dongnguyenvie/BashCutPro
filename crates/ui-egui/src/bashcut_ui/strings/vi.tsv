@@ -400,3 +400,10 @@ event format `{name}` is not supported (use {formats})	Không hỗ trợ định
 event format `{name}` has no live session	Định dạng sự kiện `{name}` không hỗ trợ phiên chạy liên tục
 conversation {id}: {error}	Cuộc trò chuyện {id}: {error}
 plan.json: {error}	plan.json: {error}
+# Agent terminal commands (AG10)
+Open Agent in Terminal	Mở trợ lý trong Terminal
+Sign In to Claude Code	Đăng nhập Claude Code
+Install Claude Code	Cài Claude Code
+Open in Terminal works with Claude Code or Codex once it is installed.	Mở trong Terminal chỉ dùng được khi đã cài Claude Code hoặc Codex.
+Sign in works with Claude Code once it is installed.	Đăng nhập chỉ dùng được khi đã cài Claude Code.
+Claude Code is already installed.	Claude Code đã được cài.

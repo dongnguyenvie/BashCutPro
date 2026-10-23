@@ -434,7 +434,7 @@ labels or subclips (§1 rule 1). A project opened in upstream FilmCraft still wo
   prompts; a click fills the message box with `Use the bcp:<id> recipe on this project.` and does not send. Under
   them: "The agent stops at each stage for your approval." Automation ids `bashcut.agent.example.<recipe id>`.
 - **Commands**: `bashcut.agent.{send, stop, cancel, state, transcript, conversations, open, new, agents, use, gate, approve,
-  change}`; automation ids `bashcut.agent.{input, send, stop, picker, conversations, new, transcript}`,
+  change, terminal, signIn, install}`; automation ids `bashcut.agent.{input, send, stop, picker, conversations, new, transcript}`,
   `bashcut.gate.{approve, change, note}`.
 - **Terminal (AG5, `bashcut_ui/terminal.rs`)**: under the header, **Open in Terminal** (automation id
   `bashcut.agent.terminal`; Claude Code and Codex when their program is found) opens the OS terminal in the turns'
@@ -452,6 +452,19 @@ labels or subclips (§1 rule 1). A project opened in upstream FilmCraft still wo
   Verified on 2026-10-23 against Claude Code 2.1.309 (`claude --help`: `-r, --resume [value]`; `/login` inside the
   interactive UI). The terminal session gets no `--mcp-config` (the panel's temp config is private to
   `bashcut-agent`); it uses the agent kit's `bashcutpro` server, except when the kit is missing (AG9, below).
+- **Terminal commands (AG10)**: the three terminal buttons are also engine/palette commands with the same ids as
+  their automation ids, and the buttons call the same functions in `bashcut_ui/agent.rs`: `bashcut.agent.terminal`
+  "Open Agent in Terminal" (`agent::open_in_terminal`: Claude Code or Codex found, else an error; returns
+  `{opened, pending}`), `bashcut.agent.signIn` "Sign In to Claude Code" (`agent::sign_in`; current agent Claude
+  Code, found) and `bashcut.agent.install` "Install Claude Code" (`agent::install`; only when Claude Code is not
+  found, else "Claude Code is already installed."; still only on this explicit command or the click, never
+  automatic). Open in Terminal is a hand-off kept in egui context data: it opens at once when no turn runs, else
+  `agent::poll` (every frame, panel shown or not) opens it once the in-app agent has ended; meanwhile the panel
+  shows "Ending the in-app session…", and an error opening the window goes to the status bar. `bashcut.agent.agents`
+  lists each agent's `actions` now (`terminal`, `signIn` or `install`). Palette labels of `bashcut.*` commands go
+  through the string catalog (`strings::s`), so these three show in Vietnamese ("Mở trợ lý trong Terminal",
+  "Đăng nhập Claude Code", "Cài Claude Code"); MCP `command_list` keeps the English labels. Switching agents
+  (`use`) resets `Agent::plugins` to unknown, so the kit line never shows from the other agent's init.
 - **Kit missing (AG9)**: `stream_json` keeps the `name`s of `system/init`'s `plugins` (`Event::Init.plugins`,
   `Agent::plugins`: `None` until a live session sent one; also in `bashcut.agent.state`). Checked on 2026-10-23
   with Claude Code 2.1.309 on Windows: `plugins` is `[{"name", "path", "source", "version"}]`, builtin ones with

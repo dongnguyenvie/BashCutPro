@@ -1,6 +1,10 @@
 //! The agent as the app holds it (`bashcut/in-app-ui.md` §6): one [`Agent`] per app in egui
 //! context data (no field in `FilmcraftApp`), polled each frame, and the `bashcut.agent.*` commands
 //! that the Agent section, shortcuts, the control channel and MCP share.
+//!
+//! AG10: the terminal actions (Open in Terminal, Sign in, Install) live here too, so the panel's
+//! buttons and `bashcut.agent.terminal` / `signIn` / `install` run the same code. Open in Terminal
+//! is a hand-off: it waits (in [`poll`]) until the in-app agent has ended, then opens the window.
 
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, PoisonError};
@@ -10,7 +14,9 @@ use bashcut_agent::{Agent, AgentSpec, Context};
 use filmcraft_engine::shortcuts::CommandInfo;
 use serde_json::{Value, json};
 
-use super::plugins;
+use super::strings::{f, s};
+use super::terminal::{self, Job};
+use super::{hints, plugins};
 use crate::FilmcraftApp;
 
 pub type Shared = Arc<Mutex<Agent>>;
@@ -106,13 +112,14 @@ pub fn poll(ctx: &egui::Context) {
     let shown = shown(ctx);
     let mut a = h.lock().unwrap_or_else(PoisonError::into_inner);
     let running = a.poll();
+    let handing_off = finish_hand_off(ctx, &mut a) == Some(false);
     if shown {
         a.driven = false;
     } else if !running && !a.driven {
         a.end_session();
     }
     drop(a);
-    if running {
+    if running || handing_off {
         ctx.request_repaint_after(Duration::from_millis(100));
     }
 }
@@ -147,20 +154,53 @@ pub fn context(app: &FilmcraftApp) -> Context {
     }
 }
 
+/// The terminal actions `spec` offers now (AG10), as `bashcut.agent.<name>` names.
+fn actions(spec: &AgentSpec) -> Vec<&'static str> {
+    let found = hints::agent_found(spec);
+    let mut v = Vec::new();
+    if found && matches!(spec.id.as_str(), "claude-code" | "codex") {
+        v.push("terminal");
+    }
+    if spec.id == "claude-code" {
+        v.push(if found { "signIn" } else { "install" });
+    }
+    v
+}
+
 /// `bashcut.agent.<name>`.
 pub fn invoke(app: &mut FilmcraftApp, ctx: &egui::Context, name: &str, params: &Value) -> Result<Value, String> {
-    if name == "agents" {
-        // re-read the agent plugins (one may have been installed since)
-        let list = agents(app, ctx);
-        return Ok(with(app, ctx, |a| {
-            if !a.is_running() {
-                if let Some(cur) = list.iter().find(|s| s.id == a.agent.id) {
-                    a.agent = cur.clone();
+    match name {
+        "agents" => {
+            // re-read the agent plugins (one may have been installed since)
+            let list = agents(app, ctx);
+            return Ok(with(app, ctx, |a| {
+                if !a.is_running() {
+                    if let Some(cur) = list.iter().find(|s| s.id == a.agent.id) {
+                        a.agent = cur.clone();
+                    }
+                    a.agents = list;
                 }
-                a.agents = list;
+                let list = a.agents.iter().map(|s| json!({"id": s.id, "name": s.name, "events": s.events, "actions": actions(s)}));
+                json!(list.collect::<Vec<_>>())
+            }));
+        }
+        "terminal" => return open_in_terminal(app, ctx).map(|opened| json!({"opened": opened, "pending": !opened})),
+        "signIn" => {
+            let program = with(app, ctx, |a| (a.agent.id == "claude-code").then(|| resume(a)).flatten().and_then(|v| v.into_iter().next()));
+            let program = program.ok_or_else(|| s("Sign in works with Claude Code once it is installed.").to_string())?;
+            sign_in(&program, context(app).project.as_deref())?;
+            return Ok(json!({"opened": true}));
+        }
+        "install" => {
+            // only on this explicit command (or the button); never while Claude Code is found
+            let missing = with(app, ctx, |a| a.agents.iter().any(|s| s.id == "claude-code" && !hints::agent_found(s)));
+            if !missing {
+                return Err(s("Claude Code is already installed.").into());
             }
-            json!(a.agents.iter().map(|s| json!({"id": s.id, "name": s.name, "events": s.events})).collect::<Vec<_>>())
-        }));
+            install(context(app).project.as_deref())?;
+            return Ok(json!({"opened": true}));
+        }
+        _ => {}
     }
     let c = context(app);
     let driven = !shown(ctx);
@@ -181,6 +221,108 @@ pub fn send(app: &mut FilmcraftApp, ctx: &egui::Context, text: &str) -> Result<V
     invoke(app, ctx, "send", &json!({"text": text}))
 }
 
+/// The agent's program with its resume arguments for this conversation's session (Claude Code,
+/// Codex, once found): what Open in Terminal runs.
+pub fn resume(a: &Agent) -> Option<Vec<String>> {
+    (matches!(a.agent.id.as_str(), "claude-code" | "codex") && hints::agent_found(&a.agent))
+        .then(|| a.agent.argv.first().map(|p| terminal::resume_argv(p, &a.agent.resume_args, &a.conversation.session)))
+        .flatten()
+}
+
+/// Claude Code's last `system/init` listed no [`terminal::KIT_PLUGIN`] (unknown before one: `false`).
+pub fn kit_missing(a: &Agent) -> bool {
+    a.agent.id == "claude-code" && a.plugins.as_ref().is_some_and(|p| !p.iter().any(|n| n == terminal::KIT_PLUGIN))
+}
+
+/// `argv` plus, while the kit is missing (no `bashcutpro` server in the terminal), the app's own (AG9).
+fn terminal_argv(mut argv: Vec<String>, kit_missing: bool, c: &Context) -> Vec<String> {
+    if kit_missing && let (Some(cli), Some(bridge)) = (&c.cli, &c.bridge) {
+        match terminal::terminal_mcp_config(cli, bridge) {
+            Ok(path) => argv.extend(["--mcp-config".to_string(), path.to_string_lossy().into_owned()]),
+            Err(e) => log::warn!("bashcut terminal MCP config: {e}"),
+        }
+    }
+    argv
+}
+
+/// Open `job` in a terminal window in `cwd`; the error is the sentence shown to the user.
+pub fn open_terminal(cwd: &Path, job: &Job, hint: Option<&str>) -> Result<(), String> {
+    terminal::open(cwd, job, hint).map_err(|e| f("Could not open a terminal: {error}", &[("error", &e)]))
+}
+
+/// Sign in: `program` (`claude`) in a terminal with a hint to type `/login` (AG6). The login happens
+/// in Claude Code's own flow; the app never reads or stores tokens.
+pub fn sign_in(program: &str, project: Option<&Path>) -> Result<(), String> {
+    let hint = s("Type /login and follow the steps in your browser, then close this window.");
+    open_terminal(&bashcut_agent::session::turn_dir(project), &Job::Program(vec![program.to_string()]), Some(hint))
+}
+
+/// Install: the official Claude Code installer in a terminal (user-started only, never automatic).
+pub fn install(project: Option<&Path>) -> Result<(), String> {
+    let hint = s("Installing Claude Code with the official installer. When it finishes, run claude and type /login, then go back to BashCutPro.");
+    open_terminal(&bashcut_agent::session::turn_dir(project), &terminal::install_job(terminal::Os::current()), Some(hint))
+}
+
+fn hand_off_key() -> egui::Id {
+    egui::Id::new("bashcut.agent.handoff")
+}
+
+/// Open in Terminal between the click and the window: the terminal's command and folder, and the
+/// error of the last one that could not open (the panel shows it).
+#[derive(Clone, Default)]
+struct HandOff {
+    job: Option<(Vec<String>, PathBuf)>,
+    error: Option<String>,
+}
+
+fn hand_off_state(ctx: &egui::Context) -> HandOff {
+    ctx.data(|d| d.get_temp::<HandOff>(hand_off_key())).unwrap_or_default()
+}
+
+/// Open in Terminal (the button and `bashcut.agent.terminal`): ends the in-app agent of this
+/// conversation first (AG3: one writer per session), then the terminal resumes the session alone.
+/// `true` when the window opened now, `false` while the turn is still stopping ([`poll`] opens it).
+pub fn open_in_terminal(app: &FilmcraftApp, ctx: &egui::Context) -> Result<bool, String> {
+    let c = context(app);
+    let cwd = || bashcut_agent::session::turn_dir(c.project.as_deref());
+    let job = with(app, ctx, |a| resume(a).map(|argv| (terminal_argv(argv, kit_missing(a), &c), cwd())));
+    let job = job.ok_or_else(|| s("Open in Terminal works with Claude Code or Codex once it is installed.").to_string())?;
+    ctx.data_mut(|d| d.insert_temp(hand_off_key(), HandOff { job: Some(job), error: None }));
+    let done = with(app, ctx, |a| finish_hand_off(ctx, a));
+    ctx.request_repaint();
+    match done {
+        Some(opened) => Ok(opened),
+        None => Err(take_hand_off_error(ctx).unwrap_or_default()),
+    }
+}
+
+/// Opens the pending hand-off once `a` has ended: `Some(true)` opened, `Some(false)` still waiting,
+/// `None` nothing pending or the window could not open (the error waits in [`take_hand_off_error`]).
+fn finish_hand_off(ctx: &egui::Context, a: &mut Agent) -> Option<bool> {
+    let (argv, cwd) = hand_off_state(ctx).job?;
+    if !a.release() {
+        return Some(false);
+    }
+    a.continued_in_terminal();
+    let error = open_terminal(&cwd, &Job::Program(argv), None).err();
+    let opened = error.is_none();
+    ctx.data_mut(|d| d.insert_temp(hand_off_key(), HandOff { job: None, error }));
+    opened.then_some(true)
+}
+
+/// Open in Terminal is waiting for the in-app agent to end.
+pub fn handing_off(ctx: &egui::Context) -> bool {
+    hand_off_state(ctx).job.is_some()
+}
+
+/// The error of the last Open in Terminal that could not open a window, once.
+pub fn take_hand_off_error(ctx: &egui::Context) -> Option<String> {
+    let mut st = hand_off_state(ctx);
+    let e = st.error.take()?;
+    ctx.data_mut(|d| d.insert_temp(hand_off_key(), st));
+    Some(e)
+}
+
 pub fn commands() -> Vec<CommandInfo> {
     [
         ("send", "Send to Agent"),
@@ -196,6 +338,9 @@ pub fn commands() -> Vec<CommandInfo> {
         ("gate", "Pending Gate"),
         ("approve", "Approve Gate"),
         ("change", "Request Gate Changes"),
+        ("terminal", "Open Agent in Terminal"),
+        ("signIn", "Sign In to Claude Code"),
+        ("install", "Install Claude Code"),
     ]
     .into_iter()
     .map(|(id, label)| CommandInfo::new(&format!("bashcut.agent.{id}"), label, &[], None))
@@ -206,6 +351,18 @@ pub fn commands() -> Vec<CommandInfo> {
 mod tests {
     #[cfg(unix)]
     use super::*;
+
+    #[test]
+    #[ignore = "test ticket: bashcut.agent.agents lists terminal/signIn for a found Claude Code, install for a missing one, terminal only for Codex, none for a plugin agent"]
+    fn agents_list_terminal_actions() {}
+
+    #[test]
+    #[ignore = "test ticket: bashcut.agent.terminal while a turn runs returns pending, poll opens it once the agent ended and the transcript says Continued in Terminal"]
+    fn terminal_command_hands_off_after_the_turn_ends() {}
+
+    #[test]
+    #[ignore = "test ticket: bashcut.agent.install errors while Claude Code is found; signIn errors for Codex or a missing Claude Code"]
+    fn install_and_sign_in_commands_refuse_when_not_applicable() {}
 
     /// PV3: `claude` in `~/.local/bin` with a login `PATH` resolves to that file and puts its folder
     /// first on the child's `PATH`; found on `PATH`, or `BASHCUT_CLAUDE` set, keeps the given program.
