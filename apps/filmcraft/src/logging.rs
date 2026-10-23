@@ -265,7 +265,8 @@ impl log::Log for AppLogger {
         }
         // Format before taking the lock, so the lock covers one write only.
         let thread = std::thread::current();
-        let line = format_line(&timestamp(SystemTime::now()), record.level(), thread.name().unwrap_or("?"), record.target(), &record.args().to_string());
+        let message = crate::bashcut_cli::log_message(record.args().to_string()); // BashCutPro: "BashCutPro <version>" (UPSTREAM.md "Carried edits")
+        let line = format_line(&timestamp(SystemTime::now()), record.level(), thread.name().unwrap_or("?"), record.target(), &message);
         if self.stderr {
             let _ = std::io::stderr().write_all(line.as_bytes());
         }

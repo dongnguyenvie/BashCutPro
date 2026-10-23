@@ -126,6 +126,24 @@ class GenerateTest(unittest.TestCase):
             self.assertIn(text, readme)
         self.assertNotIn("getartcraft", readme)
 
+    def test_share_folders_get_the_setup_scripts_but_not_the_readme(self):
+        # BR2: share/README.md goes to the archive root (copy_docs) only; the setup folders get bashcut-setup.*
+        generate.generate(ROOT, self.out)
+        dests = {
+            "macos/package.sh": ('"$APP/Contents/Resources/bashcut/"', '"$CLI_DIR/"'),
+            "linux/package.sh": ('"$STAGE/usr/share/bashcutpro/"',),
+            "freebsd/package.sh": ('"$STAGE/share/bashcutpro/"',),
+            "linux/flatpak/%s.yml" % generate.APP_ID: ("/app/share/bashcutpro/",),
+        }
+        for rel, folders in dests.items():
+            text = self.read(rel)
+            self.assertNotIn("packaging/share/*", text, rel)
+            self.assertNotIn('packaging/share/"*', text, rel)
+            for folder in folders:
+                self.assertIn("bashcut-setup.* " + folder, text, rel)
+        names = sorted(os.listdir(os.path.join(HERE, "share")))
+        self.assertEqual([n for n in names if not n.startswith("bashcut-setup.")], ["README.md"])
+
     def test_windows_zip_entries_use_forward_slashes(self):
         # PK4: Compress-Archive on Windows PowerShell 5.1 writes zip entry names with backslashes
         generate.generate(ROOT, self.out)
