@@ -162,15 +162,110 @@ fn rename_str(v: &mut Value) -> bool {
 
 #[cfg(test)]
 mod tests {
-    #[test]
-    #[ignore = "test ticket: initialize result gets serverInfo.name bashcutpro and BashCutPro instructions"]
-    fn initialize_is_branded() {}
+    use super::*;
+    use serde_json::json;
+
+    fn branded(v: &Value) -> Value {
+        serde_json::from_str(&brand_line(&v.to_string()).expect("rewritten")).unwrap()
+    }
+
+    /// A tool result (`content`) or a `resources/read` result (`contents`) holding `text`.
+    fn text_result(key: &str, text: &str) -> Value {
+        json!({"jsonrpc": "2.0", "id": 3, "result": {key: [{"type": "text", "uri": "filmcraft://commands", "text": text}]}})
+    }
 
     #[test]
-    #[ignore = "test ticket: tools/list descriptions and the TEXTS tool results lose FilmCraft; other lines pass through unchanged"]
-    fn other_lines_pass_through() {}
+    fn initialize_is_branded() {
+        let init = json!({"jsonrpc": "2.0", "id": 1, "result": {
+            "protocolVersion": "2025-06-18",
+            "capabilities": {"tools": {}},
+            "serverInfo": {"name": "filmcraft", "title": "FilmCraft", "version": "0.1.0"},
+            "instructions": "FilmCraft video editor (Premiere Pro-class). Every edit is an engine command.",
+        }});
+        let v = branded(&init);
+        assert_eq!(v["result"]["serverInfo"], json!({"name": SERVER_NAME, "title": "BashCutPro", "version": "0.1.0"}));
+        assert_eq!(v["result"]["instructions"], "BashCutPro video editor (Premiere Pro-class). Every edit is an engine command.");
+        assert_eq!((v["id"].clone(), v["result"]["protocolVersion"].clone()), (json!(1), json!("2025-06-18")));
+        // no title: none is added; no instructions: none are added
+        let v = branded(&json!({"id": 1, "result": {"serverInfo": {"name": "filmcraft"}}}));
+        assert_eq!(v["result"], json!({"serverInfo": {"name": "bashcutpro"}}));
+    }
 
     #[test]
-    #[ignore = "test ticket: command_list / command_run command.list / filmcraft://commands results lose FilmCraft and filmcraft-cli in label, menu and params; ids unchanged; a non-catalog JSON text is untouched"]
-    fn command_catalog_is_branded() {}
+    fn other_lines_pass_through() {
+        // tools/list: titles and descriptions naming the app are rewritten, names stay
+        let list = json!({"id": 2, "result": {"tools": [
+            {"name": "ui_screenshot", "title": "Live FilmCraft: screenshot", "description": "A screenshot of the FilmCraft window."},
+            {"name": "command_list", "title": "List commands", "description": "List every command."},
+        ]}});
+        let v = branded(&list);
+        assert_eq!(
+            v["result"]["tools"][0],
+            json!({"name": "ui_screenshot", "title": "Live BashCutPro: screenshot", "description": "A screenshot of the BashCutPro window."})
+        );
+        assert_eq!(v["result"]["tools"][1], list["result"]["tools"][1]);
+        // every TEXTS item is swapped whole
+        for (from, to) in TEXTS {
+            let v = branded(&json!({"id": 4, "result": {"content": [{"type": "text", "text": from}], "isError": true}}));
+            assert_eq!(v["result"]["content"][0]["text"], *to);
+            assert_eq!(v["result"]["isError"], true);
+            assert!(!to.contains("FilmCraft") && !to.contains("filmcraft-cli"), "{to}");
+        }
+        // anything else is left alone: brand_line says None and serve_stdio sends the line byte for byte
+        let alone = [
+            r#"{"jsonrpc":"2.0","id":2,"result":{"tools":[{"name":"command_run","description":"Run a command by id."}]}}"#,
+            r#"{"jsonrpc":"2.0","id":5,"result":{"content":[{"type":"text","text":"{\"ok\": true, \"name\": \"FilmCraft\"}"}]}}"#,
+            r#"{"jsonrpc":"2.0","id":6,"result":{"content":[{"type":"text","text":"The FilmCraft project was saved"}]}}"#,
+            r#"{"jsonrpc":"2.0","id":7,"error":{"code":-32602,"message":"FilmCraft: unknown tool"}}"#,
+            r#"{"jsonrpc":"2.0","method":"notifications/message","params":{"data":"FilmCraft"}}"#,
+            r#"{"jsonrpc":"2.0","id":8,"result":{}}"#,
+            "not json FilmCraft",
+            "",
+        ];
+        for line in alone {
+            assert_eq!(brand_line(line), None, "{line}");
+        }
+    }
+
+    #[test]
+    fn command_catalog_is_branded() {
+        let catalog = json!([
+            {"id": "help.filmcraftHelp", "label": "About FilmCraft", "menu": ["Help", "About FilmCraft"], "shortcut": null,
+             "params": "none; from a shell: filmcraft-cli exec help.filmcraftHelp", "enabled": true},
+            {"id": "timeline.razor", "label": "Razor", "menu": ["Sequence"], "shortcut": "Cmd+K", "params": "{seconds}", "enabled": false},
+        ]);
+        let pretty = serde_json::to_string_pretty(&catalog).unwrap();
+        let want = json!([
+            {"id": "help.filmcraftHelp", "label": "About BashCutPro", "menu": ["Help", "About BashCutPro"], "shortcut": null,
+             "params": "none; from a shell: bashcutpro-cli exec help.filmcraftHelp", "enabled": true},
+            catalog[1].clone(),
+        ]);
+        // command_list and command_run {id: command.list} (tool results), filmcraft://commands (resources/read)
+        for key in ["content", "contents"] {
+            let v = branded(&text_result(key, &pretty));
+            let item = &v["result"][key][0];
+            let text = item["text"].as_str().unwrap();
+            assert_eq!(serde_json::from_str::<Value>(text).unwrap(), want, "{key}");
+            assert_eq!(text, serde_json::to_string_pretty(&want).unwrap(), "still pretty JSON");
+            assert_eq!(item["uri"], "filmcraft://commands", "URIs keep upstream's spelling");
+        }
+        // the CLI's own `commands` / `exec command.list`
+        assert_eq!(branded_commands(catalog.clone()), want);
+        assert_eq!(branded_exec("command.list", catalog.clone()), want);
+        assert_eq!(branded_exec("project.inspect", catalog.clone()), catalog, "only command.list");
+        // a catalog without the app's name, and JSON texts that are no catalog, are untouched
+        let plain = serde_json::to_string_pretty(&json!([catalog[1].clone()])).unwrap();
+        let no_catalog = [
+            plain.as_str(),
+            r#"[{"id": "a", "label": "FilmCraft"}]"#,
+            r#"[{"id": "a", "label": "FilmCraft", "params": ""}, {"name": "FilmCraft"}]"#,
+            r#"{"id": "a", "label": "FilmCraft", "params": "filmcraft-cli x"}"#,
+            "[]",
+        ];
+        for text in no_catalog {
+            for key in ["content", "contents"] {
+                assert_eq!(brand_line(&text_result(key, text).to_string()), None, "{key}: {text}");
+            }
+        }
+    }
 }
