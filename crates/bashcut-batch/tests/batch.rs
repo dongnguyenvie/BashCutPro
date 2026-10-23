@@ -621,7 +621,8 @@ fn engine_children_get_the_data_dir_and_every_child_the_bridge_off() {
 #[test]
 fn step_children_get_the_data_dir() {
     // FX9: plugin and agent steps see BASHCUTPRO_DATA_DIR = --data-dir, else the app's data folder;
-    // a plugin step's own env value for it wins (the agent step next to it keeps the folder)
+    // a plugin step's own env value for it wins over the app's folder (the agent step next to it keeps the
+    // folder), but not over --data-dir (FX10: an older app saved its own folder into the step)
     let data = std::env::temp_dir().join(format!("bashcut-batch-step-data-dir-{}", std::process::id()));
     let seen = |tag: &str, data_dir: Option<&PathBuf>, step_env: Value| {
         let b = bench(&format!("step-data-dir-{tag}"), &["a"]);
@@ -650,7 +651,8 @@ fn step_children_get_the_data_dir() {
     assert_eq!(seen("given", Some(&data), json!({})), (vec![ours.clone()], vec![ours.clone()]), "--data-dir");
     let app = bashcut_dirs::data_dir().map(|d| d.to_string_lossy().into_owned());
     assert!(app.is_some(), "the test process has an app data folder");
-    assert_eq!(seen("app", None, json!({})), (vec![app.clone()], vec![app]), "no --data-dir: the app's folder");
+    assert_eq!(seen("app", None, json!({})), (vec![app.clone()], vec![app.clone()]), "no --data-dir: the app's folder");
     let own = json!({"BASHCUTPRO_DATA_DIR": "/step/own", "OTHER": "x"});
-    assert_eq!(seen("own", Some(&data), own), (vec![Some("/step/own".to_string())], vec![ours]), "the step's own value wins");
+    assert_eq!(seen("own", None, own.clone()), (vec![Some("/step/own".to_string())], vec![app]), "the step's own value wins over the app's folder");
+    assert_eq!(seen("own-given", Some(&data), own), (vec![ours.clone()], vec![ours]), "--data-dir wins over the step's value");
 }

@@ -86,6 +86,12 @@ Each item has the steps `create`, `step-1`…, `export-1`…:
 agent step, gets `BASHCUT_BRIDGE=off`, so the engine stays headless on the item's project even while a BashCutPro
 window is open (since CC2 a bare `bashcutpro-cli exec` would otherwise talk to that window).
 
+Plugin and agent steps also get `BASHCUTPRO_DATA_DIR` (FX9): the job's `--data-dir`, else the app's data folder, so
+their plugins use the folder the engine uses. A plugin step's own `env` value for it wins over the app's folder but
+not over `--data-dir` (FX10): a step built from a plugin action in the app no longer saves `BASHCUTPRO_DATA_DIR` or
+`BASHCUTPRO_CLI` (machine paths), and a pipeline saved by an older app that holds them still runs against the job's
+`--data-dir` and `--cli`.
+
 Exit statuses map to error categories: 0 ok, 1 `command` (`offlineMedia` for an export that drew placeholders), 2
 `usage`, 3 `handoff` (item `needsAttention`; once a person or agent has done that step, `retry --items <name>
 --done` goes on after it), anything else or a signal `crashed`; plus `timeout`, `cancelled`,

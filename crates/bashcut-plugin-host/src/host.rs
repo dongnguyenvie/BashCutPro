@@ -5,7 +5,7 @@
 
 use std::collections::{BTreeMap, VecDeque};
 use std::panic::{AssertUnwindSafe, catch_unwind};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::sync::mpsc::{Receiver, TryRecvError, channel};
 use std::time::{Duration, Instant};
@@ -146,7 +146,7 @@ pub struct RunContext {
     /// `127.0.0.1:<port>` of the app's control channel, when it serves one.
     pub bridge: Option<String>,
     /// The engine next to the app (`bashcutpro-cli`, else `bcpro` or `filmcraft-cli`, #154), passed as `--cli` and
-    /// as `BASHCUTPRO_CLI`.
+    /// as `BASHCUTPRO_CLI` unless the user exported one or a manifest setting names it (FX10).
     pub cli: Option<String>,
     /// The running build's command ids (checked against `app.commands`); empty skips the check.
     pub known_commands: Vec<String>,
@@ -373,11 +373,9 @@ impl Host {
         let argv = m.command_line(crate::os(), action, &conn, ctx.cli.as_deref(), params)?;
         let values = settings::load(&self.plugins_dir()?, &m);
         let mut spec = RunSpec::new(dir, argv);
-        spec.env = settings::env_for(&m, &values, self.secrets.as_ref());
+        // BASHCUTPRO_CLI: an exported engine or a manifest setting wins over the run's engine (FX10)
+        spec.env = settings::env_for_engine(&m, &values, self.secrets.as_ref(), ctx.cli.as_deref().map(Path::new));
         spec.env.push(("BASHCUT_PLUGIN_HOST".into(), "1".into()));
-        if let Some(cli) = &ctx.cli {
-            spec.env.push(("BASHCUTPRO_CLI".into(), cli.clone()));
-        }
         if let Some(t) = timeout {
             spec.timeout = t;
         }

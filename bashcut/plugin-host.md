@@ -85,9 +85,10 @@ Every plugin child also gets `BASHCUTPRO_CLI=<the engine the app found>` (`setti
 (`BashCutPro.app/Contents/MacOS/bashcutpro-cli`, `<install>ashcutpro-cli.exe`, `/usr/bin/bashcutpro-cli`), which is
 not always on `PATH`; the plugins' `find_cli` reads `--cli`, then `BASHCUTPRO_CLI` (plugins #72), so they find it
 without `PATH`. `settings::env_for` puts it right after the data folder, so agent plugins and engine hooks get it too;
-an action run with an engine in its `RunContext` also passes it as `--cli` and sets `BASHCUTPRO_CLI` to the same path
-(later, so it wins); batch steps get theirs from `item_env` (`--cli`). A manifest setting named `BASHCUTPRO_CLI`
-still wins. No engine found: nothing is set and the plugin reports `no_cli`, which the panel shows as the friendly
+an action run with an engine in its `RunContext` also passes it as `--cli` and uses it for `BASHCUTPRO_CLI` in place
+of the found one (`settings::env_for_engine`); batch steps get theirs from `item_env` (`--cli`). The order is the same
+everywhere (FX10): a manifest setting named `BASHCUTPRO_CLI`, then an engine the user exported, then the run's engine,
+then the one found next to the app or on `PATH`. No engine found: nothing is set and the plugin reports `no_cli`, which the panel shows as the friendly
 "engine not found" hint (it matches the code, so older plugins' wording is recognised too).
 
 ## Touch points in upstream files (the whole core change)

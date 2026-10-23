@@ -1822,3 +1822,30 @@ fn panels_render_for_a_pixel_diff() {
     d.exec("bashcut.ui.setLanguage", json!({"language": null}));
     let _ = std::fs::remove_dir_all(&data);
 }
+
+/// FX10: a batch step built from a plugin action keeps its settings in `env` but no machine paths
+/// (`BASHCUTPRO_DATA_DIR`, `BASHCUTPRO_CLI`): the runner sets both from the job's `--data-dir` and `--cli`.
+#[test]
+fn batch_plugin_steps_save_no_machine_paths() {
+    let data = std::env::temp_dir().join(format!("bashcut-ui-fx10-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&data);
+    let plugin = data.join("bashcut-plugins").join("test.env");
+    std::fs::create_dir_all(&plugin).unwrap();
+    let manifest = json!({
+        "schema": "bashcut-plugin/1", "id": "test.env", "name": "Env", "version": "0.1.0", "summary": "test plugin",
+        "entry": {"command": ["python3", "plugin.py"]}, "output": "bashcut-result/1",
+        "connect": {"project": ["--project", "{project}"]},
+        "settings": [{"id": "service", "title": "Service", "type": "enum", "choices": ["a", "b"], "default": "b", "env": ["FAKE_SERVICE_FX10"]}],
+        "actions": [{"id": "go", "title": "Go", "args": ["go"], "needs": "project", "params": []}]
+    });
+    std::fs::write(plugin.join("bashcut-plugin.json"), manifest.to_string()).unwrap();
+    let mut d = Driver::with_data(&data, |_| {});
+    d.click("bashcut.rail.batch");
+    d.exec("bashcut.batch.addStep", json!({"plugin": "test.env", "action": "go"}));
+    let step = d.exec("bashcut.batch.state", json!({}))["draft"]["steps"][0].clone();
+    let env = &step["plugin"]["env"];
+    assert_eq!(env["FAKE_SERVICE_FX10"], json!("b"), "settings stay: {step}");
+    assert!(env.get("BASHCUTPRO_DATA_DIR").is_none(), "no data folder in the saved step: {step}");
+    assert!(env.get("BASHCUTPRO_CLI").is_none(), "no engine path in the saved step: {step}");
+    let _ = std::fs::remove_dir_all(&data);
+}
