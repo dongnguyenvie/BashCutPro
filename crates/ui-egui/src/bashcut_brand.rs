@@ -94,8 +94,9 @@ pub fn about_tab(app: &mut crate::FilmcraftApp, ui: &mut egui::Ui) -> bool {
     true
 }
 
-/// (upstream English string, what BashCutPro shows instead).
-const OVERRIDES: [(&str, &str); 11] = [
+/// (upstream English string, what BashCutPro shows instead). Each replacement has a Vietnamese row in
+/// `bashcut_ui/strings/vi.tsv`.
+const OVERRIDES: &[(&str, &str)] = &[
     // Help menu and Home screen links (`links::ALL`; their URLs are in links.rs)
     ("Join the ArtCraft Discord…", "BashCutPro Discussions…"),
     ("ArtCraft Website", "BashCut Website"),
@@ -113,11 +114,34 @@ const OVERRIDES: [(&str, &str); 11] = [
     ("About FilmCraft", "About BashCutPro"),
     ("Hide FilmCraft", "Hide BashCutPro"),
     ("Quit FilmCraft", "Quit BashCutPro"),
+    // file dialogs and File ▸ Export (BR2; the .fcproj / .fcgt extensions stay)
+    ("FilmCraft Project", "BashCutPro Project"),
+    ("Selection as FilmCraft Project…", "Selection as BashCutPro Project…"),
+    ("FilmCraft Graphics Template", "BashCutPro Graphics Template"),
+    ("Saved as a FilmCraft graphics template (.fcgt) in your templates folder.", "Saved as a BashCutPro graphics template (.fcgt) in your templates folder."),
+    // messages and notes that name the running app (BR2)
+    ("FilmCraft hit an error", "BashCutPro hit an error"),
+    ("FilmCraft was closed while “{name}” had unsaved changes.", "BashCutPro was closed while “{name}” had unsaved changes."),
+    ("FilmCraft quit unexpectedly while “{name}” had unsaved changes.", "BashCutPro quit unexpectedly while “{name}” had unsaved changes."),
+    (
+        "Changes are copied in the background a moment after each edit. If FilmCraft quits unexpectedly, they are offered the next time it starts.",
+        "Changes are copied in the background a moment after each edit. If BashCutPro quits unexpectedly, they are offered the next time it starts.",
+    ),
+    ("FilmCraft keeps the rest of the RAM free for other applications.", "BashCutPro keeps the rest of the RAM free for other applications."),
+    (
+        "The media cache holds render previews of unsaved projects and other files FilmCraft can recreate. Deleting them is always safe; FilmCraft rebuilds them as needed.",
+        "The media cache holds render previews of unsaved projects and other files BashCutPro can recreate. Deleting them is always safe; BashCutPro rebuilds them as needed.",
+    ),
+    ("Not supported by FilmCraft's encoders yet", "Not supported by BashCutPro's encoders yet"),
+    ("Not supported in FilmCraft yet", "Not supported in BashCutPro yet"),
+    ("FilmCraft always composites in linear light", "BashCutPro always composites in linear light"),
+    ("Shows the version, community links and credits in a FilmCraft window.", "Shows the version, community links and credits in a BashCutPro window."),
 ];
 
-/// What BashCutPro shows instead of the upstream English string `english`, if it is branded.
+/// What BashCutPro shows instead of the upstream English string `english`, if it is branded: in Vietnamese when our
+/// strings are (`bashcut_ui::strings`), else in English.
 pub fn text(english: &str) -> Option<&'static str> {
-    OVERRIDES.iter().find(|(from, _)| *from == english).map(|(_, to)| *to)
+    OVERRIDES.iter().find(|(from, _)| *from == english).map(|(_, to)| crate::bashcut_ui::strings::s(to))
 }
 
 /// What a build shows for `english` in `lang`: the branded text, else the translation (what
@@ -135,7 +159,7 @@ mod tests {
     #[test]
     fn no_artcraft_mark_or_link_is_shown() {
         // only the plain-text "based on FilmCraft by the ArtCraft team" may name ArtCraft
-        for (_, to) in OVERRIDES {
+        for &(_, to) in OVERRIDES {
             assert!(!to.contains("ArtCraft") || to.contains("based on FilmCraft by the ArtCraft team"), "{to}");
         }
         for lang in Language::ALL {
@@ -149,6 +173,27 @@ mod tests {
     }
 
     #[test]
+    fn file_dialogs_and_messages_name_bashcutpro_in_both_languages() {
+        assert_eq!(text("FilmCraft Project"), Some("BashCutPro Project"));
+        assert_eq!(text("FilmCraft hit an error"), Some("BashCutPro hit an error"));
+        crate::bashcut_ui::strings::set_language(Some("vi"));
+        let vi = text("FilmCraft Project");
+        crate::bashcut_ui::strings::set_language(None);
+        assert_eq!(vi, Some("Dự án BashCutPro"));
+    }
+
+    #[test]
+    fn every_replacement_has_a_vietnamese_row() {
+        crate::bashcut_ui::strings::set_language(Some("vi"));
+        let missing: Vec<&str> = OVERRIDES.iter().map(|(_, to)| *to).filter(|to| crate::bashcut_ui::strings::s(to) == *to).collect();
+        crate::bashcut_ui::strings::set_language(None);
+        assert!(missing.is_empty(), "no row in bashcut_ui/strings/vi.tsv: {missing:?}");
+        for &(_, to) in OVERRIDES {
+            assert!(!to.contains("FilmCraft") || to.contains("based on FilmCraft"), "{to}");
+        }
+    }
+
+    #[test]
     fn header_button_is_ours() {
         assert_eq!(community_button("Discord"), COMMUNITY_BUTTON);
     }
@@ -157,7 +202,7 @@ mod tests {
     /// ArtCraft text back, so this fails first.
     #[test]
     fn every_override_matches_an_upstream_string() {
-        for (from, _) in OVERRIDES {
+        for &(from, _) in OVERRIDES {
             assert!(Language::Es.has(from), "no longer upstream: {from}");
         }
         // strings that aren't branded are left alone

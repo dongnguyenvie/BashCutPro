@@ -307,3 +307,29 @@ Clearing…	Đang xóa…
 # Agent quiet hint (AG1)
 No output for 30 s: check for a macOS permission prompt (it can be behind this window).	Không có phản hồi sau 30 giây: hãy xem macOS có đang hỏi quyền không (hộp thoại có thể nằm sau cửa sổ này).
 No output for 30 s: the agent may be waiting for a sign-in or a prompt outside BashCutPro.	Không có phản hồi sau 30 giây: trợ lý có thể đang chờ đăng nhập hoặc một xác nhận bên ngoài BashCutPro.
+# Branded upstream strings (bashcut_brand::OVERRIDES; BR2)
+BashCutPro Discussions…	Thảo luận BashCutPro…
+BashCut Website	Trang web BashCut
+BashCutPro Releases	Các bản phát hành BashCutPro
+BashCutPro on GitHub	BashCutPro trên GitHub
+Join the discussions	Tham gia thảo luận
+Join the BashCutPro discussions on GitHub	Tham gia thảo luận BashCutPro trên GitHub
+Join the BashCutPro discussions	Tham gia thảo luận BashCutPro
+BashCutPro, based on FilmCraft by the ArtCraft team: a clean-room, pure-Rust non-linear video editor.	BashCutPro, dựa trên FilmCraft của nhóm ArtCraft: trình dựng video phi tuyến viết hoàn toàn bằng Rust, phát triển độc lập (clean-room).
+About BashCutPro	Giới thiệu BashCutPro
+Hide BashCutPro	Ẩn BashCutPro
+Quit BashCutPro	Thoát BashCutPro
+BashCutPro Project	Dự án BashCutPro
+Selection as BashCutPro Project…	Vùng chọn thành dự án BashCutPro…
+BashCutPro Graphics Template	Mẫu đồ họa BashCutPro
+Saved as a BashCutPro graphics template (.fcgt) in your templates folder.	Lưu thành mẫu đồ họa BashCutPro (.fcgt) trong thư mục mẫu của bạn.
+BashCutPro hit an error	BashCutPro gặp lỗi
+BashCutPro was closed while “{name}” had unsaved changes.	BashCutPro đã đóng khi “{name}” còn thay đổi chưa lưu.
+BashCutPro quit unexpectedly while “{name}” had unsaved changes.	BashCutPro bị thoát đột ngột khi “{name}” còn thay đổi chưa lưu.
+Changes are copied in the background a moment after each edit. If BashCutPro quits unexpectedly, they are offered the next time it starts.	Thay đổi được sao lưu ngầm ngay sau mỗi lần chỉnh sửa. Nếu BashCutPro bị thoát đột ngột, lần mở sau bạn có thể khôi phục chúng.
+BashCutPro keeps the rest of the RAM free for other applications.	BashCutPro để dành phần RAM còn lại cho các ứng dụng khác.
+The media cache holds render previews of unsaved projects and other files BashCutPro can recreate. Deleting them is always safe; BashCutPro rebuilds them as needed.	Bộ nhớ đệm media chứa bản xem trước đã render của các dự án chưa lưu và những tệp khác BashCutPro có thể tạo lại. Xóa chúng luôn an toàn; BashCutPro sẽ tạo lại khi cần.
+Not supported by BashCutPro's encoders yet	Bộ mã hóa của BashCutPro chưa hỗ trợ
+Not supported in BashCutPro yet	BashCutPro chưa hỗ trợ
+BashCutPro always composites in linear light	BashCutPro luôn ghép hình trong không gian ánh sáng tuyến tính
+Shows the version, community links and credits in a BashCutPro window.	Hiện phiên bản, liên kết cộng đồng và ghi công trong một cửa sổ BashCutPro.

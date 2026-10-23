@@ -17,6 +17,15 @@ pub fn branded(text: &str) -> String {
     }
 }
 
+/// A log message with our name: upstream's first record, `FilmCraft <version> (<os> <arch>)`, says `BashCutPro
+/// <version> …`. Called by `logging.rs` for every record (`UPSTREAM.md` "Carried edits"); other text is left alone.
+pub fn log_message(message: String) -> String {
+    match message.strip_prefix("FilmCraft ") {
+        Some(rest) if rest.starts_with(|c: char| c.is_ascii_digit()) => format!("{} {rest}", filmcraft_ui_egui::bashcut_brand::NAME),
+        _ => message,
+    }
+}
+
 /// Upstream's `tell` with our name: print `text` (stdout, or stderr for an error); a Windows release build has no
 /// console, so there it is also shown in a message box titled BashCutPro. Always `true` (handled).
 pub fn tell(text: &str, error: bool) -> bool {
@@ -47,7 +56,14 @@ pub(crate) use tell_first;
 
 #[cfg(test)]
 mod tests {
-    use super::branded;
+    use super::{branded, log_message};
+
+    #[test]
+    fn first_log_line_names_bashcutpro() {
+        assert_eq!(log_message("FilmCraft 0.10.0 (windows x86_64)".into()), "BashCutPro 0.10.0 (windows x86_64)");
+        assert_eq!(log_message("FilmCraft starting".into()), "FilmCraft starting");
+        assert_eq!(log_message("log file C:/x/FilmCraft 1/bashcutpro.log".into()), "log file C:/x/FilmCraft 1/bashcutpro.log");
+    }
 
     #[test]
     fn version_usage_and_errors_name_bashcutpro() {

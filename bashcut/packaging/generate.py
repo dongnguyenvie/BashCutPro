@@ -85,7 +85,7 @@ SUBS = [
         'for b in $APP_BINS; do cp "$WORK/bin/$b" "$APP/Contents/MacOS/$b"; done\n'
         'ln -s filmcraft-cli "$APP/Contents/MacOS/%s"\n'
         "# first-run setup in Resources/bashcut\n"
-        'mkdir -p "$APP/Contents/Resources/bashcut" && cp "$ROOT/bashcut/packaging/share/"* "$APP/Contents/Resources/bashcut/"\n' % (TOOLS_SH, ALIAS),
+        'mkdir -p "$APP/Contents/Resources/bashcut" && cp "$ROOT/bashcut/packaging/share/"bashcut-setup.* "$APP/Contents/Resources/bashcut/"\n' % (TOOLS_SH, ALIAS),
         1,
     ),
     (
@@ -101,7 +101,7 @@ SUBS = [
         'cp "$WORK/bin/filmcraft-cli" "$CLI_DIR/"\n'
         'for b in %s; do cp "$WORK/bin/$b" "$CLI_DIR/"; done\n'
         'ln -s filmcraft-cli "$CLI_DIR/%s"\n'
-        'cp "$ROOT/bashcut/packaging/share/"* "$CLI_DIR/"\n' % (TOOLS_SH, ALIAS),
+        'cp "$ROOT/bashcut/packaging/share/"bashcut-setup.* "$CLI_DIR/"\n' % (TOOLS_SH, ALIAS),
         1,
     ),
     (
@@ -129,7 +129,7 @@ SUBS = [
         "# BashCutPro: Pro tools and the first-run setup\n"
         'for b in %s; do install -Dm755 "$BIN/$b" "$STAGE/usr/bin/$b"; "${CROSS_COMPILE:-}strip" "$STAGE/usr/bin/$b" 2>/dev/null || true; done\n'
         'ln -s filmcraft-cli "$STAGE/usr/bin/%s"\n'
-        'mkdir -p "$STAGE/usr/share/bashcutpro" && cp "$ROOT/bashcut/packaging/share/"* "$STAGE/usr/share/bashcutpro/"\n' % (TOOLS_SH, ALIAS),
+        'mkdir -p "$STAGE/usr/share/bashcutpro" && cp "$ROOT/bashcut/packaging/share/"bashcut-setup.* "$STAGE/usr/share/bashcutpro/"\n' % (TOOLS_SH, ALIAS),
         1,
     ),
     # SB4: the copy's install.sh, nfpm.yaml, desktop file, metainfo, MIME file and icons (renamed to APP_ID)
@@ -171,7 +171,7 @@ SUBS = [
         "      # BashCutPro: Pro tools and the first-run setup\n"
         + "".join("      - install -Dm755 target/release/%s /app/bin/%s\n" % (b, b) for b in TOOLS)
         + "      - ln -s filmcraft-cli /app/bin/%s\n" % ALIAS
-        + "      - mkdir -p /app/share/bashcutpro && cp bashcut/packaging/share/* /app/share/bashcutpro/\n",
+        + "      - mkdir -p /app/share/bashcutpro && cp bashcut/packaging/share/bashcut-setup.* /app/share/bashcutpro/\n",
         1,
     ),
     ("linux/flatpak/ai.storyteller.filmcraft.yml", " packaging/linux/ai.storyteller.filmcraft.", " bashcut-packaging/linux/ai.storyteller.filmcraft.", 3),
@@ -225,7 +225,7 @@ SUBS = [
         "# BashCutPro: Pro tools and the first-run setup\n"
         'for b in %s; do install -m 755 "$BIN/$b" "$STAGE/bin/"; done\n'
         'ln -s filmcraft-cli "$STAGE/bin/%s"\n'
-        'mkdir -p "$STAGE/share/bashcutpro" && cp "$ROOT/bashcut/packaging/share/"* "$STAGE/share/bashcutpro/"\n' % (TOOLS_SH, ALIAS),
+        'mkdir -p "$STAGE/share/bashcutpro" && cp "$ROOT/bashcut/packaging/share/"bashcut-setup.* "$STAGE/share/bashcutpro/"\n' % (TOOLS_SH, ALIAS),
         1,
     ),
     # ---- Windows
