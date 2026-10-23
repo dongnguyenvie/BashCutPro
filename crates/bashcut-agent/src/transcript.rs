@@ -174,6 +174,44 @@ mod tests {
     }
 
     #[test]
+    fn auth_problems_fold_and_clear() {
+        let auth = |category: &str, message: &str| Event::Auth { category: category.into(), message: message.into() };
+        let failed = Event::Result { ok: false, text: "Not logged in · Please run /login".into(), session: "s".into(), cost_usd: None, turns: None };
+        let mut t = Transcript::default();
+        t.push(Item::User { text: "cut it".into() });
+        assert_eq!(t.auth_problem(), None);
+        // retries without a message, then the assistant's words, then the result's: one item
+        t.apply(&auth("authentication_failed", ""));
+        t.apply(&auth("authentication_failed", ""));
+        t.apply(&auth("authentication_failed", "Not logged in · Please run /login"));
+        t.apply(&auth("authentication_failed", "something else"));
+        t.apply(&failed);
+        assert_eq!(t.items.len(), 2, "{:?}", t.items);
+        assert_eq!(t.items[1], Item::Auth { category: "authentication_failed".into(), message: "Not logged in · Please run /login".into() });
+        assert_eq!(t.auth_problem(), Some(("authentication_failed", "Not logged in · Please run /login")));
+        // Init, Control and a successful result do not hide it
+        t.apply(&Event::Init { session: "s".into(), model: "m".into(), capabilities: Vec::new(), plugins: Vec::new() });
+        t.apply(&Event::Result { ok: true, text: String::new(), session: "s".into(), cost_usd: None, turns: None });
+        assert_eq!(t.auth_problem().map(|a| a.0), Some("authentication_failed"));
+        // another category is its own item and the latest problem
+        t.apply(&auth("billing_error", "Credit balance is too low"));
+        assert_eq!(t.items.len(), 3);
+        assert_eq!(t.auth_problem(), Some(("billing_error", "Credit balance is too low")));
+        // a later message clears it; a failed result then is a plain error again
+        t.push(Item::User { text: "again".into() });
+        assert_eq!(t.auth_problem(), None);
+        t.apply(&Event::Result { ok: false, text: "error_max_turns".into(), session: "s".into(), cost_usd: None, turns: None });
+        assert_eq!(t.items.last(), Some(&Item::Error { message: "error_max_turns".into() }));
+        // an Auth after other items (not right after an Auth) is pushed again
+        t.apply(&auth("billing_error", ""));
+        assert_eq!(t.items.last(), Some(&Item::Auth { category: "billing_error".into(), message: String::new() }));
+        assert_eq!(t.auth_problem(), Some(("billing_error", "")));
+        // items survive the saved form
+        let back: Transcript = serde_json::from_value(serde_json::to_value(&t).unwrap()).unwrap();
+        assert_eq!(back, t);
+    }
+
+    #[test]
     fn keeps_at_most_max_items() {
         let mut t = Transcript::default();
         for i in 0..MAX_ITEMS + 5 {
