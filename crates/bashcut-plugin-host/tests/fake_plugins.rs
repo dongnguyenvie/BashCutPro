@@ -419,16 +419,28 @@ fn plugin_runs_find_the_engine_beside_the_app() {
         write_plugin(&dir, "test.fake");
         let mut m = manifest("test.fake");
         m["entry"] = json!({"command": [py, "plugin.py"]});
+        m["settings"].as_array_mut().unwrap().push(json!({"id": "engine", "title": "Engine", "type": "string", "optional": true, "env": ["BASHCUTPRO_CLI"]}));
         std::fs::write(dir.join("bashcut-plugin.json"), m.to_string()).unwrap();
         let mut host = Host::new(Some(data.clone()), Arc::new(MemoryStore::default()));
-        let job = host.command("run", &json!({"plugin": "test.fake", "action": "ok"}), &RunContext::default()).unwrap()["job"].as_u64().unwrap();
-        assert_eq!(wait_job(&mut host, job), JobState::Succeeded, "{:?}", host.job(job));
-        let seen = host.job(job).unwrap().outcome.as_ref().unwrap().result.as_ref().unwrap().data["cli"].clone();
+        let cli_of = |host: &mut Host, ctx: &RunContext| {
+            let job = host.command("run", &json!({"plugin": "test.fake", "action": "ok"}), ctx).unwrap()["job"].as_u64().unwrap();
+            assert_eq!(wait_job(host, job), JobState::Succeeded, "{:?}", host.job(job));
+            host.job(job).unwrap().outcome.as_ref().unwrap().result.as_ref().unwrap().data["cli"].clone()
+        };
+        let seen = cli_of(&mut host, &RunContext::default());
+        // FX10: a run's own engine (RunContext.cli) comes after an exported one and a manifest setting
+        let ctx = RunContext { cli: Some("/ctx/bashcutpro-cli".into()), ..RunContext::default() };
+        let with_ctx = cli_of(&mut host, &ctx);
+        host.command("settings", &json!({"plugin": "test.fake", "values": {"engine": "/setting/bashcutpro-cli"}}), &ctx).unwrap();
+        let with_setting = cli_of(&mut host, &ctx);
         let parsed = bashcut_plugin_host::Manifest::parse(&m.to_string()).unwrap();
         let env = bashcut_plugin_host::settings::env_for(&parsed, &Default::default(), &MemoryStore::default());
         let _ = std::fs::remove_dir_all(&data);
         assert_eq!(seen, json!(expect), "action run");
         assert!(env.contains(&("BASHCUTPRO_CLI".to_string(), expect.clone())), "agent plugins and hooks (env_for): {env:?}");
+        let exported = std::env::var("BASHCUTPRO_CLI").unwrap_or_else(|_| "/ctx/bashcutpro-cli".into());
+        assert_eq!(with_ctx, json!(exported), "an export wins over the run's engine, which wins over the found one");
+        assert_eq!(with_setting, json!("/setting/bashcutpro-cli"), "a manifest setting wins over both");
         return;
     }
     let Ok(exe) = std::env::current_exe() else {

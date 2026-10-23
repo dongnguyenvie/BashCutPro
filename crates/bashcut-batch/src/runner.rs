@@ -710,8 +710,13 @@ fn plugin_step(sh: &Shared, idx: usize, s: usize, ctx: &Ctx, key: &str, p: &Proc
     }
     let argv = crate::python::resolve(p.argv.iter().map(|a| ctx.vars.expand(a)).collect());
     let mut env: Vec<(String, String)> = p.env.iter().map(|(k, v)| (k.clone(), ctx.vars.expand(v))).collect();
-    // the step's own env wins over the item's data folder (FX9)
-    env.extend(item_env(sh, ctx).into_iter().filter(|(k, _)| !(k == "BASHCUTPRO_DATA_DIR" && p.env.contains_key(k))));
+    // the step's own env wins over the app's data folder (FX9), but not over the job's --data-dir (FX10: a
+    // pipeline saved by an older app holds that app's folder)
+    let job_dir = sh.opts.data_dir.is_some();
+    if job_dir {
+        env.retain(|(k, _)| k != "BASHCUTPRO_DATA_DIR");
+    }
+    env.extend(item_env(sh, ctx).into_iter().filter(|(k, _)| job_dir || !(k == "BASHCUTPRO_DATA_DIR" && p.env.contains_key(k))));
     let spec = Spec { argv, cwd: Some(ctx.dir.clone()), env, timeout, log: ctx.dir.join(key) };
     let ended = spawn(sh, idx, s, &spec)?;
     outcome(ended, &spec.log, key).map(|()| Vec::new())

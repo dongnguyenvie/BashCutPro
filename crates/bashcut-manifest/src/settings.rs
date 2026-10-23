@@ -92,8 +92,16 @@ pub fn check(s: &Setting, v: &Value) -> Result<Value> {
 /// refuses one): only a stored value is ever exported.
 /// First come [`DATA_DIR_ENV`] (FX9) and [`CLI_ENV`] (NM4), so a manifest setting of either name still wins.
 pub fn env_for(m: &Manifest, values: &Values, secrets: &dyn SecretStore) -> Vec<(String, String)> {
+    env_for_engine(m, values, secrets, None)
+}
+
+/// [`env_for`] for a run that knows its engine (an action run's `RunContext.cli`): `BASHCUTPRO_CLI` is
+/// the engine the user exported, else `engine`, else the one this process finds; a manifest setting
+/// of that name still wins (FX10: the same order for action runs, agents and hooks).
+pub fn env_for_engine(m: &Manifest, values: &Values, secrets: &dyn SecretStore, engine: Option<&Path>) -> Vec<(String, String)> {
     let mut env: Vec<(String, String)> = data_dir_env(bashcut_dirs::data_dir().as_deref()).into_iter().collect();
-    env.extend(cli_env(bashcut_dirs::engine::found().as_deref()));
+    let exported = bashcut_dirs::engine::lookup(&|k| std::env::var_os(k), None, None);
+    env.extend(cli_env(engine_for(exported.as_deref(), engine).or_else(bashcut_dirs::engine::found).as_deref()));
     env.extend(env_with(m, values, secrets, &|name| std::env::var_os(name).is_some()));
     env
 }
@@ -121,6 +129,12 @@ pub const CLI_ENV: &str = "BASHCUTPRO_CLI";
 /// without an engine (the plugin then reports `no_cli`).
 pub fn cli_env(engine: Option<&Path>) -> Option<(String, String)> {
     engine.filter(|e| !e.as_os_str().is_empty()).map(|e| (CLI_ENV.to_string(), e.to_string_lossy().into_owned()))
+}
+
+/// The run's engine for [`cli_env`]: an exported one over the run's own (empty paths ignored); `None`
+/// leaves it to [`bashcut_dirs::engine::found`].
+fn engine_for(exported: Option<&Path>, run: Option<&Path>) -> Option<PathBuf> {
+    [exported, run].into_iter().flatten().find(|p| !p.as_os_str().is_empty()).map(Path::to_path_buf)
 }
 
 /// [`env_for`] with the host environment lookup given (tests).
@@ -382,5 +396,21 @@ mod tests {
         let env = env_for(&m, &saved, &store);
         let last = env.iter().rev().find(|(k, _)| k == CLI_ENV);
         assert_eq!(last, Some(&(CLI_ENV.to_string(), "/my/bashcutpro-cli".to_string())), "the setting wins: {env:?}");
+        // env_for_engine (an action run's engine): the setting still wins
+        let env = env_for_engine(&m, &saved, &store, Some(Path::new("/ctx/bashcutpro-cli")));
+        let last = env.iter().rev().find(|(k, _)| k == CLI_ENV);
+        assert_eq!(last, Some(&(CLI_ENV.to_string(), "/my/bashcutpro-cli".to_string())), "the setting wins over the run's engine: {env:?}");
+    }
+
+    #[test]
+    fn exported_engine_wins_over_the_runs() {
+        // FX10: an exported engine, then the run's own (RunContext.cli), then the found one (None)
+        let (export, run) = (Path::new("/my/bashcutpro-cli"), Path::new("/ctx/bashcutpro-cli"));
+        assert_eq!(engine_for(Some(export), Some(run)).as_deref(), Some(export));
+        assert_eq!(engine_for(None, Some(run)).as_deref(), Some(run));
+        assert_eq!(engine_for(Some(Path::new("")), Some(run)).as_deref(), Some(run), "an empty export is ignored");
+        assert_eq!(engine_for(Some(export), None).as_deref(), Some(export));
+        assert_eq!(engine_for(None, Some(Path::new(""))), None);
+        assert_eq!(engine_for(None, None), None);
     }
 }
