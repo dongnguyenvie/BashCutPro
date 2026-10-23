@@ -148,7 +148,9 @@ Issue #60. `{"agent": {"skill", "brief", "agent"?, "argv"?, "maxTurns"?, "maxMin
 `<projectsFolder>/.bashcut-batch/<id>/`: `state.json` (`bashcut-batch-state/1`: job, items, steps with status,
 attempts, pid, start / end / duration, error `{category, message}`, outputs), `pipeline.json` (the resolved pipeline
 the job runs, so editing the original file does not change a running job), `items/<name>/` (step scripts,
-`<step>.out` / `.err` logs), `cancel`, `runner.lock`. It is rewritten (temp file + rename) after every change.
+`<step>.out` / `.err` logs), `cancel`, `runner.lock`. It is rewritten (temp file + rename) after every change, as
+compact JSON, and capped at 256 MB on read and on write alike: a save that would pass the cap fails and keeps the
+previous `state.json`, so every book on disk can be resumed (RCC).
 
 **Tripwire.** A step is marked `running` with its pid before the process starts. A runner that finds a step still
 `running` from an earlier run (the runner or the machine died) does not run it again, because it may have crashed

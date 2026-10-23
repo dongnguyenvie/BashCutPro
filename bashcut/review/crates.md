@@ -55,9 +55,9 @@ Size: **S** < 1 h, **M** half a day, **L** more. **Beh.** = whether the proposed
 | S5 | OS mapping in ~5 places: `plugin-host/src/lib.rs` `os()`, `manifest.rs` `entry_for`, `registry.rs` `Entry::supports` = `Manifest::supports`, `settings.rs` `cfg!` chains, `bashcut-dirs` | A new OS = 5 edits, and they already disagree on naming | One `Os` enum in `bashcut-dirs`; OS-keyed map in the manifest | M | no |
 | S6 | `engine/src/bashcut/errors.rs` `SLOTS: [Run; 96]` positional trampolines | Command 97+ silently loses typed errors (34 today; only a test catches it) | More slots (S) or a dispatch-side hook (M, upstream) | S/M | no |
 | S7 | `bashcut-batch/src/pipeline.rs` `item_names` / `expand_inputs` dedup are O(n²–n³) with up to 10 000 inputs | Same file name on every card (`C0001.MP4`) ≈ hang | `HashSet` (**done** RV2: `item_names` and `expand_inputs`) | S | no |
-| S8 | `book.rs` reads `state.json` with a 4 MB cap but writes it uncapped, pretty; `Shared::with` rewrites the whole book on every step event | A large job is created but cannot be resumed; quadratic writes | Bigger cap + compact JSON; coalesce writes | S/M | yes |
+| S8 | `book.rs` reads `state.json` with a 4 MB cap but writes it uncapped, pretty; `Shared::with` rewrites the whole book on every step event | A large job is created but cannot be resumed; quadratic writes | Bigger cap + compact JSON (**done** RCC: 256 MB on read and write); coalesce writes | S/M | yes |
 | S9 | `bashcut-agent/src/store.rs` `list` loads up to 500 conversations in filesystem order, then sorts | Past 500 the newest can be missing | Sort by mtime first | M | yes |
-| S10 | Plugin-host OS key store shells out with no timeout (`settings.rs` `tool`), on the UI thread | `secret-tool` unlock prompt freezes the app | Timeout runner (with D2) | S | yes |
+| S10 | Plugin-host OS key store shells out with no timeout (`settings.rs` `tool`), on the UI thread | `secret-tool` unlock prompt freezes the app | Timeout runner (with D2) (**timeout done** RCC: 20 s; still on the UI thread) | S | yes |
 | S11 | `bashcut-agent` `write_mcp_config` names the file by pid only and reuses it when the bridge changes | Two agents share/delete it | Name by bridge; rewrite on change | S | yes |
 
 ## Dead code
