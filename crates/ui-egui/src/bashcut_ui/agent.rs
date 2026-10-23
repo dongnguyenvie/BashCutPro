@@ -91,6 +91,16 @@ pub fn host(app: &FilmcraftApp, ctx: &egui::Context) -> Shared {
     super::shared::get_or_init(ctx, key(), || Agent::new(agents(app, ctx)))
 }
 
+/// Make `agents` this context's agents (the first one in use) instead of Claude Code, Codex and the
+/// plugins' (a test's fake agent). Only before the host exists: `false` once it was created.
+pub fn use_agents(ctx: &egui::Context, agents: Vec<AgentSpec>) -> bool {
+    if super::shared::existing::<Agent>(ctx, key()).is_some() {
+        return false;
+    }
+    super::shared::get_or_init(ctx, key(), || Agent::new(agents));
+    true
+}
+
 /// Run `f` with the agent locked.
 pub fn with<R>(app: &FilmcraftApp, ctx: &egui::Context, f: impl FnOnce(&mut Agent) -> R) -> R {
     let h = host(app, ctx);

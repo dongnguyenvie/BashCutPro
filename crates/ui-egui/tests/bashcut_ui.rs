@@ -1980,3 +1980,74 @@ fn queued_messages_are_numbered_and_cancel_with_x() {}
 #[test]
 #[ignore = "test ticket: with the Recover Unsaved Changes modal open (a recovery journal in the data dir), ui.click on a rail id answers ok:false naming the modal and recovery.recover / recovery.discard / recovery.later; ui.click recovery.later still works and closes it"]
 fn a_click_behind_the_recovery_modal_names_it() {}
+
+/// A live Claude Code stand-in for [`queued_x_stays_clear_of_the_transcript_scroll_bar`]: it takes
+/// the first message, answers with a long text (the transcript scrolls) and works until stdin closes,
+/// so every later message stays queued.
+const QUEUE_FAKE: &str = r#"
+import json, sys
+def out(v):
+    sys.stdout.write(json.dumps(v) + "\n")
+    sys.stdout.flush()
+m = json.loads(sys.stdin.readline())
+out({"type": "system", "subtype": "init", "session_id": "live-q", "model": "fake", "capabilities": []})
+out({"type": "user", "isReplay": True, "uuid": m.get("uuid", ""), "message": m["message"]})
+text = "\n\n".join("line %d of a long answer" % i for i in range(60))
+out({"type": "assistant", "message": {"content": [{"type": "text", "text": text}]}})
+for line in sys.stdin:
+    pass
+"#;
+
+/// FX16: during a long turn each queued message's ✕ lies inside the transcript, clear of its
+/// (floating) vertical scroll bar, and a real pointer click on it removes the message; at the
+/// narrowest panel too, in English and Vietnamese.
+#[test]
+fn queued_x_stays_clear_of_the_transcript_scroll_bar() {
+    let py = ["python3", "python"].into_iter().find(|p| std::process::Command::new(p).arg("--version").output().is_ok_and(|o| o.status.success()));
+    let Some(py) = py else {
+        eprintln!("python not found: skipped");
+        return;
+    };
+    let dir = std::env::temp_dir().join(format!("bashcut-ui-fx16-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    let script = dir.join("live.py");
+    std::fs::write(&script, QUEUE_FAKE).unwrap();
+    let spec = bashcut_agent::AgentSpec {
+        id: "fake-live".into(),
+        name: "Fake".into(),
+        argv: vec![py.into(), script.to_string_lossy().into_owned()],
+        timeout_secs: 120,
+        ..bashcut_agent::AgentSpec::default()
+    };
+    let mut d = Driver::build(&dir.join("data"), |_| {}, |ctx| assert!(filmcraft_ui_egui::bashcut_ui::agent::use_agents(ctx, vec![spec]), "no agent yet"));
+    Driver::point_registry(&mut d, &dir.join("data"));
+    d.click("bashcut.rail.agent");
+    d.exec("bashcut.agent.send", json!({"text": "first"}));
+    d.wait(|d| d.exec("bashcut.agent.transcript", json!({})), |t| t["items"].to_string().contains("line 59 of a long answer"));
+    for text in ["second", "third", "fourth"] {
+        d.exec("bashcut.agent.send", json!({"text": text}));
+    }
+    let bar = 10.0;
+    for (lang, width) in [("en", 340.0), ("vi", 340.0), ("en", 240.0), ("vi", 240.0)] {
+        d.exec("bashcut.ui.setLanguage", json!({"language": lang}));
+        d.exec("bashcut.ui.setWidth", json!({"width": width}));
+        d.frames(3);
+        let t = d.rect("bashcut.agent.transcript").expect("transcript");
+        for i in 0..3 {
+            let x = d.wait(|d| json!(d.rect(&format!("bashcut.agent.queued.{i}.cancel"))), |r| !r.is_null());
+            let x: Vec<f32> = x.as_array().expect("✕ shown").iter().map(|v| v.as_f64().unwrap_or(0.0) as f32).collect();
+            let (left, top, right, bottom) = (x[0], x[1], x[0] + x[2], x[1] + x[3]);
+            assert!(left >= t[0] && top >= t[1] && bottom <= t[1] + t[3], "{lang} {width}: ✕ {i} {x:?} inside the transcript {t:?}");
+            assert!(right <= t[0] + t[2] - bar, "{lang} {width}: ✕ {i} {x:?} clear of the scroll bar of {t:?}");
+        }
+    }
+    d.exec("bashcut.ui.setLanguage", json!({"language": null}));
+    // a real pointer click at the ✕'s centre reaches it
+    d.click("bashcut.agent.queued.1.cancel");
+    let st = d.wait(|d| d.exec("bashcut.agent.state", json!({})), |s| s["queued"].as_array().is_some_and(|q| q.len() == 2));
+    assert_eq!(st["queued"], json!(["second", "fourth"]), "{st}");
+    d.call("engine.execute", json!({"command": "bashcut.agent.stop", "params": {}}));
+    assert!(d.harness.state().ui_error.is_none(), "{:?}", d.harness.state().ui_error);
+    let _ = std::fs::remove_dir_all(&dir);
+}
