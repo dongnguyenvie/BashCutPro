@@ -45,9 +45,24 @@ fn runs_activity(ctx: &egui::Context) -> (Vec<u64>, bool) {
     (failures, g.jobs().iter().any(|j| j.state.is_running()))
 }
 
-/// The keys that open `sec` (Agent's focus command, else its show command), from the live map.
+/// Runs' dot ([`super::Section::badge`]): a failure not yet seen, else a running job. While Runs is
+/// on screen its failures count as seen.
+pub fn runs_badge(ctx: &egui::Context, st: &mut State, on_screen: bool) -> Option<Badge> {
+    let (failures, busy) = runs_activity(ctx);
+    if on_screen {
+        st.see_failures(&failures);
+    }
+    if st.unseen_failure(&failures) { Some(Badge::Failed) } else { busy.then_some(Badge::Busy) }
+}
+
+/// Batch's dot: a batch runs.
+pub fn batch_badge(ctx: &egui::Context, _: &mut State, _: bool) -> Option<Badge> {
+    batch::lock(&batch::shared(ctx)).is_running().then_some(Badge::Busy)
+}
+
+/// The keys that open `sec` (its [`Section::shortcut`] command, else its show command), from the live map.
 fn shortcut(app: &FilmcraftApp, sec: &Section) -> Option<String> {
-    let keys = if sec.id == "agent" { app.session.shortcuts.primary("bashcut.ui.focusAgent") } else { None };
+    let keys = sec.shortcut.and_then(|c| app.session.shortcuts.primary(c));
     keys.or_else(|| app.session.shortcuts.primary(&format!("bashcut.ui.show.{}", sec.id))).map(|k| crate::menus::shortcut_text(&k))
 }
 
@@ -58,10 +73,11 @@ pub fn show(app: &mut FilmcraftApp, ui: &mut egui::Ui, rect: Rect, st: &mut Stat
     let painter = ui.painter().clone();
     painter.rect_filled(rect, 0.0, t.header_bg);
     painter.line_segment([rect.left_top(), rect.left_bottom()], Stroke::new(1.0, t.separator));
-    let (failures, runs_busy) = runs_activity(&ctx);
-    let batch_busy = batch::lock(&batch::shared(&ctx)).is_running();
-    if st.on_screen("runs") {
-        st.see_failures(&failures);
+    // every section's dot first, also for buttons that don't fit (Runs marks failures seen there)
+    let mut badges = Vec::with_capacity(SECTIONS.len());
+    for sec in SECTIONS {
+        let shown = st.on_screen(sec.id);
+        badges.push(sec.badge.and_then(|b| b(&ctx, st, shown)).filter(|_| !shown));
     }
     for (i, sec) in SECTIONS.iter().enumerate() {
         let top = rect.min.y + 6.0 + STEP * i as f32;
@@ -87,13 +103,7 @@ pub fn show(app: &mut FilmcraftApp, ui: &mut egui::Ui, rect: Rect, st: &mut Stat
             t.icon
         };
         icons::paint(&painter, r.shrink(6.0), sec.icon, color);
-        let badge = match sec.id {
-            _ if open || popped => None,
-            "runs" if st.unseen_failure(&failures) => Some(Badge::Failed),
-            "runs" if runs_busy => Some(Badge::Busy),
-            "batch" if batch_busy => Some(Badge::Busy),
-            _ => None,
-        };
+        let badge = badges.get(i).copied().flatten();
         if let Some(b) = badge {
             let fill = if b == Badge::Failed { t.danger } else { t.accent };
             let c = pos2(r.max.x - DOT - 1.0, r.min.y + DOT + 1.0);

@@ -5,9 +5,9 @@
 //! touched. Commands (`bashcut.ui.*`) reach us through three one-line hooks in `menus.rs`
 //! ([`route!`], [`commands`], [`menu_items`]). State lives in egui context data ([`state`]).
 //!
-//! Adding a section: one row in [`SECTIONS`] and a `draw` function in its own file, plus its id in
-//! the [`params`] hints (a test checks) and, if it shows a rail badge, an arm in `rail::show`
-//! (`bashcut/review/ui.md` S1, ticket RU6).
+//! Adding a section: one row in [`SECTIONS`] and a `draw` function in its own file; its rail
+//! badge and shortcut are fields of that row. A section with commands of its own adds one row to
+//! [`MODULES`] (routing and [`commands`]).
 
 pub mod agent;
 pub mod agent_panel;
@@ -33,6 +33,7 @@ pub mod view;
 pub mod widgets;
 
 use std::path::PathBuf;
+use std::sync::OnceLock;
 
 use filmcraft_engine::shortcuts::CommandInfo;
 use serde_json::{Value, json};
@@ -52,16 +53,27 @@ pub struct Section {
     /// One line shown under the title.
     pub blurb: &'static str,
     pub draw: fn(&mut FilmcraftApp, &mut egui::Ui),
+    /// The dot on its rail icon: called every frame with whether the section is on screen
+    /// (docked or popped out); the rail hides the dot while it is.
+    pub badge: Option<fn(&egui::Context, &mut State, bool) -> Option<rail::Badge>>,
+    /// A command whose keys the rail tooltip shows before `bashcut.ui.show.<id>`'s.
+    pub shortcut: Option<&'static str>,
 }
+
+/// Section ids used outside [`SECTIONS`] (`bashcut.ui.focusAgent`, the toasts' Runs check).
+pub const AGENT: &str = "agent";
+pub const RUNS: &str = "runs";
 
 /// The rail, top to bottom (`bashcut/in-app-ui.md` §1).
 pub const SECTIONS: &[Section] = &[
     Section {
-        id: "agent",
+        id: AGENT,
         title: "Agent",
         icon: Icon::Chat,
         blurb: "Chat with the editing agent (Claude Code, Codex) about this project.",
         draw: agent_panel::draw,
+        badge: None,
+        shortcut: Some("bashcut.ui.focusAgent"),
     },
     Section {
         id: "batch",
@@ -69,6 +81,8 @@ pub const SECTIONS: &[Section] = &[
         icon: Icon::ListView,
         blurb: "Run steps on many files at once, watch them and fix the ones that fail.",
         draw: batch_panel::draw,
+        badge: Some(rail::batch_badge),
+        shortcut: None,
     },
     Section {
         id: "looks",
@@ -76,6 +90,8 @@ pub const SECTIONS: &[Section] = &[
         icon: Icon::Sparkle,
         blurb: "Curated looks with a purpose each: preview, apply to the selection, favourite.",
         draw: looks_panel::draw,
+        badge: None,
+        shortcut: None,
     },
     Section {
         id: "library",
@@ -83,9 +99,40 @@ pub const SECTIONS: &[Section] = &[
         icon: Icon::Folder,
         blurb: "Your saved pieces and open media online, with the licence shown before download.",
         draw: library_panel::draw,
+        badge: None,
+        shortcut: None,
     },
-    Section { id: "plugins", title: "Plugins", icon: Icon::Grid, blurb: "Installed plugins, their settings and actions.", draw: plugins_panel::draw },
-    Section { id: "runs", title: "Runs", icon: Icon::Stopwatch, blurb: "Plugin runs, installs and registry checks, with results.", draw: runs_panel::draw },
+    Section {
+        id: "plugins",
+        title: "Plugins",
+        icon: Icon::Grid,
+        blurb: "Installed plugins, their settings and actions.",
+        draw: plugins_panel::draw,
+        badge: None,
+        shortcut: None,
+    },
+    Section {
+        id: RUNS,
+        title: "Runs",
+        icon: Icon::Stopwatch,
+        blurb: "Plugin runs, installs and registry checks, with results.",
+        draw: runs_panel::draw,
+        badge: Some(rail::runs_badge),
+        shortcut: None,
+    },
+];
+
+/// A module's command runner: its command name (the id after the prefix) and params.
+type Invoke = fn(&mut FilmcraftApp, &egui::Context, &str, &Value) -> Result<Value, String>;
+
+/// Modules with commands of their own: id prefix, runner and command list, in [`commands`] order.
+const MODULES: &[(&str, Invoke, fn() -> Vec<CommandInfo>)] = &[
+    ("bashcut.plugins.", plugins::invoke, plugins::commands),
+    ("bashcut.palette.", palette::invoke, palette::commands),
+    ("bashcut.ui.looks.", looks_panel::invoke, looks_panel::commands),
+    ("bashcut.ui.library.", library_panel::invoke, library_panel::commands),
+    ("bashcut.agent.", agent::invoke, agent::commands),
+    ("bashcut.batch.", batch::invoke, batch::commands),
 ];
 
 /// The ids of [`SECTIONS`].
@@ -151,7 +198,7 @@ pub fn layout(app: &mut FilmcraftApp, ui: &mut egui::Ui, body: egui::Rect) -> eg
         st.save_if_changed(dir.as_deref());
     }
     // Runs counts as on screen only where it draws: the rail shown, Edit mode, docked or popped out
-    let runs_visible = st.rail && app.ui.mode == crate::state::Mode::Edit && st.on_screen("runs");
+    let runs_visible = st.rail && app.ui.mode == crate::state::Mode::Edit && st.on_screen(RUNS);
     st.put(&ctx);
     toast::show(app, &ctx, runs_visible);
     palette::show(app, &ctx);
@@ -173,23 +220,10 @@ pub fn invoke(app: &mut FilmcraftApp, ctx: &egui::Context, id: &str, params: &Va
     if !id.starts_with("bashcut.") {
         return None;
     }
-    if let Some(name) = id.strip_prefix("bashcut.plugins.") {
-        return Some(plugins::invoke(app, ctx, name, params));
-    }
-    if let Some(name) = id.strip_prefix("bashcut.ui.library.") {
-        return Some(library_panel::invoke(app, ctx, name, params));
-    }
-    if let Some(name) = id.strip_prefix("bashcut.ui.looks.") {
-        return Some(looks_panel::invoke(app, ctx, name, params));
-    }
-    if let Some(name) = id.strip_prefix("bashcut.palette.") {
-        return Some(palette::invoke(app, ctx, name, params));
-    }
-    if let Some(name) = id.strip_prefix("bashcut.agent.") {
-        return Some(agent::invoke(app, ctx, name, params));
-    }
-    if let Some(name) = id.strip_prefix("bashcut.batch.") {
-        return Some(batch::invoke(app, ctx, name, params));
+    for (prefix, run, _) in MODULES {
+        if let Some(name) = id.strip_prefix(prefix) {
+            return Some(run(app, ctx, name, params));
+        }
     }
     // Window ▸ BashCutPro ▸ Language: menus pass no params, so the choice is in the id
     if let Some((_, code)) = LANGUAGE_MENU.iter().find(|(menu_id, _)| *menu_id == id) {
@@ -204,8 +238,8 @@ pub fn invoke(app: &mut FilmcraftApp, ctx: &egui::Context, id: &str, params: &Va
             st.rail
         }))),
         "bashcut.ui.focusAgent" => {
-            State::update(ctx, |st| st.show("agent"));
-            Ok(json!("agent"))
+            State::update(ctx, |st| st.show(AGENT));
+            Ok(json!(AGENT))
         }
         "bashcut.ui.section" => {
             let Some(sec) = section_param() else { return Some(Err(format!("section must be one of {}", known.join(", ")))) };
@@ -257,12 +291,18 @@ pub fn invoke(app: &mut FilmcraftApp, ctx: &egui::Context, id: &str, params: &Va
 }
 
 /// The parameter line of a rail command, in the engine's notation, so the palette's editor says what to type.
+/// The section hints are built once from [`SECTIONS`].
 pub fn params(id: &str) -> &'static str {
+    static SECTION_HINTS: OnceLock<[String; 3]> = OnceLock::new();
+    let hints = SECTION_HINTS.get_or_init(|| {
+        let list = section_ids().join("|");
+        [format!(r#"{{"section":"{list}","open":bool?}}"#), format!(r#"{{"section":"{list}"?}}"#), format!(r#"{{"section":"{list}"}}"#)]
+    });
     match id {
-        "bashcut.ui.section" => r#"{"section":"agent|batch|looks|library|plugins|runs","open":bool?}"#,
+        "bashcut.ui.section" => &hints[0],
         "bashcut.ui.setWidth" => r#"{"width":px}"#,
-        "bashcut.ui.popOut" => r#"{"section":"agent|batch|looks|library|plugins|runs"?}"#,
-        "bashcut.ui.dockBack" => r#"{"section":"agent|batch|looks|library|plugins|runs"}"#,
+        "bashcut.ui.popOut" => &hints[1],
+        "bashcut.ui.dockBack" => &hints[2],
         "bashcut.ui.setLanguage" => r#"{"language":"en|vi"?}"#,
         _ => "",
     }
@@ -285,12 +325,9 @@ pub fn commands() -> Vec<CommandInfo> {
     for sec in SECTIONS {
         v.push(CommandInfo::new(&format!("bashcut.ui.show.{}", sec.id), sec.title, &["Window", "BashCutPro"], None));
     }
-    v.extend(plugins::commands());
-    v.extend(palette::commands());
-    v.extend(looks_panel::commands());
-    v.extend(library_panel::commands());
-    v.extend(agent::commands());
-    v.extend(batch::commands());
+    for (_, _, list) in MODULES {
+        v.extend(list());
+    }
     // last, so the Language submenu ends Window ▸ BashCutPro
     v.extend([
         CommandInfo::new(LANGUAGE_MENU[0].0, "Follow App", LANGUAGE_PATH, None),
@@ -330,7 +367,7 @@ pub fn menu_items(session: &filmcraft_engine::Session) -> Vec<MenuItem> {
 mod tests {
     use super::*;
 
-    /// `params` spells the section list out; a new row in [`SECTIONS`] must show up there too.
+    /// `params` builds the section list from [`SECTIONS`]; this keeps its notation in check.
     #[test]
     fn params_list_every_section() {
         let list = section_ids().join("|");
@@ -339,4 +376,8 @@ mod tests {
             assert!(p.contains(&format!(r#""section":"{list}""#)), "{id}: {p} should list {list}");
         }
     }
+
+    #[test]
+    #[ignore = "test ticket: every MODULES prefix routes to its module and commands() lists each module's commands once, in the old order"]
+    fn modules_route_and_list() {}
 }
