@@ -27,7 +27,11 @@ store UI beyond installing from `registry.json`.
 ```
 crates/bashcut-manifest/           the one bashcut-plugin.json reader (serde, checked; RC5), re-exported as
                                    bashcut_plugin_host::manifest; the engine's hooks and bashcut-doctor read
-                                   manifests with it too. OS names: bashcut_dirs::Os (other Unixes = linux)
+                                   manifests with it too. OS names: bashcut_dirs::Os (other Unixes = linux).
+                                   Its settings.rs (settings.json, secrets, run env) is the host's `settings`
+crates/bashcut-dirs/src/child.rs   the one child supervisor (RC3): spawn + stdin policy + process group,
+                                   cancel/timeout TERM -> 1.5 s -> KILL, capped pipe readers; plugin runs,
+                                   key store, git, agent turns and engine hooks all use it
 crates/bashcut-plugin-host/        new crate, ours only
   src/registry.rs                  parse registry.json (serde)
   src/install.rs                   <data dir>/bashcut-plugins/<id>/ : fetch from registry source, settings.json

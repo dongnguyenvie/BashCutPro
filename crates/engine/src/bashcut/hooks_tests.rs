@@ -127,3 +127,11 @@ fn plugins_come_from_the_sessions_data_dir() {
     let v = s.execute("bashcut.hooks.list", json!({})).unwrap();
     assert_eq!(v["hooks"][0]["plugin"], "t.p", "{v}");
 }
+
+#[test]
+#[ignore = "test ticket: a hook gets its plugin's settings env (settings.json value under the setting's env name, BASHCUT_PLUGIN_HOST=1) like an action run"]
+fn hook_gets_the_plugins_settings_env() {}
+
+#[test]
+#[ignore = "test ticket: a timed-out hook gets TERM first (unix trap writes a marker), then KILL after the grace; a failed row carries stderr's tail"]
+fn hook_timeout_is_soft_first_and_failed_rows_keep_stderr() {}

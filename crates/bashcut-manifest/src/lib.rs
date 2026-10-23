@@ -11,6 +11,8 @@ use std::path::Path;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
+pub mod settings;
+
 pub use bashcut_dirs::Os;
 use bashcut_dirs::fs::{Error, Result, err, read_capped};
 

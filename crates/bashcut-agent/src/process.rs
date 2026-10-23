@@ -2,15 +2,16 @@
 //! for Codex), stdout is read line by line into [`Event`]s, and the turn ends when the process exits
 //! (or is stopped or times out). The next turn starts a new process that resumes the agent's session.
 
-use std::io::{Read, Write};
+use std::io::Read;
 use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::path::{Path, PathBuf};
-use std::process::{Child, Command, Stdio};
+use std::process::{Child, Command};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{Receiver, Sender, TryRecvError, channel};
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
+use bashcut_dirs::child::{self, Opts, Stop};
 use serde::{Deserialize, Serialize};
 
 use crate::codex_json;
@@ -21,8 +22,6 @@ use crate::{Error, Result, err};
 pub const MAX_LINE: usize = 1024 * 1024;
 /// stderr kept for the error message of a failed turn.
 const MAX_STDERR: usize = 8 * 1024;
-const TICK: Duration = Duration::from_millis(25);
-const GRACE: Duration = Duration::from_millis(1500);
 
 /// How to start an agent.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -201,20 +200,11 @@ impl Turn {
     pub fn start(argv: &[String], cwd: &Path, env: &[(String, String)], message: &str, events: &str, timeout: Duration) -> Result<Turn> {
         let Some((program, args)) = argv.split_first() else { return err("empty agent command") };
         let mut cmd = Command::new(program);
-        cmd.args(args).current_dir(cwd).envs(env.iter().map(|(k, v)| (k, v))).stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::piped());
-        #[cfg(unix)]
-        {
-            use std::os::unix::process::CommandExt;
-            // its own process group, so Stop also ends the MCP server it started
-            cmd.process_group(0);
-        }
-        let mut child = cmd.spawn().map_err(|e| Error(format!("cannot start `{program}`: {e}")))?;
-        if let Some(mut stdin) = child.stdin.take() {
-            // one message, then EOF: the agent answers it and exits
-            if let Err(e) = stdin.write_all(input(events, message).as_bytes()) {
-                log::warn!("bashcut agent stdin: {e}");
-            }
-        }
+        cmd.args(args).current_dir(cwd).envs(env.iter().map(|(k, v)| (k, v)));
+        // one message, then EOF: the agent answers it and exits; its own process group, so Stop
+        // also ends the MCP server it started
+        let opts = Opts { stdin: Some(input(events, message)), group: true, stderr: true };
+        let child = child::spawn(cmd, &opts).map_err(|e| Error(format!("cannot start `{program}`: {e}")))?;
         let (tx, rx) = channel();
         let stop = Arc::new(AtomicBool::new(false));
         let flag = stop.clone();
@@ -261,74 +251,28 @@ impl Turn {
 }
 
 fn supervise(mut child: Child, mut decoder: Decoder, timeout: Duration, tx: &Sender<TurnEvent>, stop: &AtomicBool) {
-    let (out_done_tx, out_done) = channel::<()>();
-    if let Some(out) = child.stdout.take() {
-        let tx = tx.clone();
-        let _ = std::thread::Builder::new().name("bashcut-agent-stdout".into()).spawn(move || {
-            let _ = catch_unwind(AssertUnwindSafe(|| {
-                for_each_line(out, |line, cut| {
-                    if cut {
-                        let _ = tx.send(TurnEvent::Agent(Event::Notice("skipped an event larger than 1 MB".into())));
-                        return;
-                    }
-                    for e in decoder.parse_line(line) {
-                        let _ = tx.send(TurnEvent::Agent(e));
-                    }
-                })
-            }));
-            let _ = out_done_tx.send(());
-        });
-    }
-    let (err_tx, err_rx) = channel::<String>();
-    if let Some(mut errs) = child.stderr.take() {
-        let _ = std::thread::Builder::new().name("bashcut-agent-stderr".into()).spawn(move || {
-            let text = catch_unwind(AssertUnwindSafe(|| {
-                // keep the tail: the last lines say what went wrong
-                let mut tail: Vec<u8> = Vec::new();
-                let mut chunk = [0u8; 4096];
-                while let Ok(n) = errs.read(&mut chunk) {
-                    if n == 0 {
-                        break;
-                    }
-                    tail.extend_from_slice(chunk.get(..n).unwrap_or_default());
-                    if tail.len() > MAX_STDERR * 2 {
-                        let cut = tail.len() - MAX_STDERR;
-                        tail.drain(..cut);
-                    }
-                }
-                let start = tail.len().saturating_sub(MAX_STDERR);
-                String::from_utf8_lossy(tail.get(start..).unwrap_or_default()).trim().to_string()
-            }));
-            let _ = err_tx.send(text.unwrap_or_default());
-        });
-    }
-
-    let start = Instant::now();
-    let mut ending: Option<(TurnEnd, Instant)> = None;
-    let status = loop {
-        match child.try_wait() {
-            Ok(Some(s)) => break Some(s),
-            Ok(None) => {}
-            Err(_) => break None,
-        }
-        if ending.is_none() {
-            if stop.load(Ordering::Relaxed) {
-                terminate(&mut child, false);
-                ending = Some((TurnEnd::Stopped, Instant::now()));
-            } else if start.elapsed() > timeout {
-                terminate(&mut child, false);
-                ending = Some((TurnEnd::TimedOut, Instant::now()));
+    let events = tx.clone();
+    let out_done = child::pump("bashcut-agent-stdout", child.stdout.take(), move |out| {
+        for_each_line(out, |line, cut| {
+            if cut {
+                let _ = events.send(TurnEvent::Agent(Event::Notice("skipped an event larger than 1 MB".into())));
+                return;
             }
-        } else if ending.as_ref().is_some_and(|(_, since)| since.elapsed() > GRACE) {
-            terminate(&mut child, true);
-        }
-        std::thread::sleep(TICK);
-    };
+            for e in decoder.parse_line(line) {
+                let _ = events.send(TurnEvent::Agent(e));
+            }
+        })
+    });
+    // keep the tail: the last lines say what went wrong
+    let err_rx = child::pump("bashcut-agent-stderr", child.stderr.take(), |errs| String::from_utf8_lossy(&child::tail(errs, MAX_STDERR)).trim().to_string());
+
+    let exit = child::supervise(&mut child, timeout, Some(stop));
     // all events first, then the end (a grandchild holding the pipe must not hang us)
-    let _ = out_done.recv_timeout(Duration::from_secs(2));
-    let stderr = err_rx.recv_timeout(Duration::from_millis(500)).unwrap_or_default();
-    let end = match (ending, status.and_then(|s| s.code())) {
-        (Some((end, _)), _) => end,
+    child::collect(&out_done, child::STDOUT_WAIT);
+    let stderr = child::collect(&err_rx, child::STDERR_WAIT);
+    let end = match (exit.stop, exit.code()) {
+        (Some(Stop::Cancelled), _) => TurnEnd::Stopped,
+        (Some(Stop::TimedOut), _) => TurnEnd::TimedOut,
         (None, Some(0)) => TurnEnd::Done,
         (None, code) => {
             let what = code.map_or_else(|| "the agent was killed".to_string(), |c| format!("the agent exited with status {c}"));
@@ -338,53 +282,16 @@ fn supervise(mut child: Child, mut decoder: Decoder, timeout: Duration, tx: &Sen
     let _ = tx.send(TurnEvent::Ended(end));
 }
 
-/// Stop the child (and on Unix its process group): TERM first, KILL when `hard`.
-fn terminate(child: &mut Child, hard: bool) {
-    #[cfg(unix)]
-    {
-        let sig = if hard { "-KILL" } else { "-TERM" };
-        let group = format!("-{}", child.id());
-        let ok = Command::new("kill").args([sig, "--", &group]).stdout(Stdio::null()).stderr(Stdio::null()).status().is_ok_and(|s| s.success());
-        if ok {
-            return;
-        }
-    }
-    if hard || cfg!(not(unix)) {
-        let _ = child.kill();
-    }
-}
-
 /// Call `f` with each line (lossy UTF-8) and whether it was longer than [`MAX_LINE`] (then it is
 /// not passed).
-fn for_each_line<R: Read>(mut r: R, mut f: impl FnMut(&str, bool)) {
-    let mut line: Vec<u8> = Vec::new();
-    let mut cut = false;
-    let mut chunk = [0u8; 16 * 1024];
-    let mut emit = |line: &mut Vec<u8>, cut: &mut bool| {
-        if *cut {
+fn for_each_line<R: Read>(r: R, mut f: impl FnMut(&str, bool)) {
+    child::read_lines(r, 0, MAX_LINE, |line, cut| {
+        if cut {
             f("", true);
         } else if !line.is_empty() {
             f(&String::from_utf8_lossy(line), false);
         }
-        line.clear();
-        *cut = false;
-    };
-    loop {
-        let n = match r.read(&mut chunk) {
-            Ok(0) | Err(_) => break,
-            Ok(n) => n,
-        };
-        for &b in chunk.get(..n).unwrap_or_default() {
-            if b == b'\n' {
-                emit(&mut line, &mut cut);
-            } else if line.len() < MAX_LINE {
-                line.push(b);
-            } else {
-                cut = true;
-            }
-        }
-    }
-    emit(&mut line, &mut cut);
+    });
 }
 
 /// Where [`write_mcp_config`] puts the config for this engine and bridge: named by pid and a hash of

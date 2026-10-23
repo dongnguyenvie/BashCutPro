@@ -2,12 +2,13 @@
 //! context data (no field in `FilmcraftApp`), polled each frame, and the `bashcut.plugins.*`
 //! commands that the Plugins and Runs sections, shortcuts, the control channel and MCP share.
 
+use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex, OnceLock, PoisonError};
 use std::time::Duration;
 
-use bashcut_plugin_host::Host;
 use bashcut_plugin_host::host::RunContext;
-use bashcut_plugin_host::settings::OsKeyStore;
+use bashcut_plugin_host::settings::{OsKeyStore, SecretStore};
+use bashcut_plugin_host::{Host, Result as HostResult};
 use filmcraft_engine::shortcuts::CommandInfo;
 use serde_json::{Value, json};
 
@@ -19,9 +20,83 @@ fn key() -> egui::Id {
     egui::Id::new("bashcut.plugins.host")
 }
 
-/// This app's host, created on first use with the session's data dir.
+/// This app's host, created on first use with the session's data dir. Its secrets come from a
+/// [`CachedKeyStore`] warmed on a side thread, so frames never wait on the OS key store.
 pub fn host(app: &FilmcraftApp, ctx: &egui::Context) -> Shared {
-    super::shared::get_or_init(ctx, key(), || Host::new(super::data_dir(app), Arc::new(OsKeyStore)))
+    super::shared::get_or_init(ctx, key(), || {
+        let store = Arc::new(CachedKeyStore::default());
+        let host = Host::new(super::data_dir(app), store.clone());
+        let keys = host
+            .installed()
+            .iter()
+            .filter_map(|p| p.manifest.as_ref())
+            .flat_map(|m| m.settings.iter().filter(|s| s.is_secret()).map(|s| (m.id.clone(), s.id.clone())))
+            .collect();
+        store.warm(keys);
+        host
+    })
+}
+
+/// The OS key store behind a cache (S10): a lookup can wait up to 20 s on an unlock prompt, and
+/// the host asks for secrets on the UI thread (the settings form, every run's environment, the
+/// agent list). [`CachedKeyStore::warm`] reads the installed plugins' secrets on a side thread; a
+/// key it has not read yet is asked once, then served from the cache; set / delete go through.
+#[derive(Default)]
+pub struct CachedKeyStore {
+    cache: Mutex<BTreeMap<(String, String), Option<String>>>,
+}
+
+impl CachedKeyStore {
+    fn cached(&self, plugin: &str, key: &str) -> Option<Option<String>> {
+        self.cache.lock().unwrap_or_else(PoisonError::into_inner).get(&(plugin.to_string(), key.to_string())).cloned()
+    }
+
+    fn remember(&self, plugin: &str, key: &str, value: Option<String>) {
+        self.cache.lock().unwrap_or_else(PoisonError::into_inner).insert((plugin.to_string(), key.to_string()), value);
+    }
+
+    /// Read `keys` (plugin id, setting id) into the cache on a side thread.
+    pub fn warm(self: &Arc<Self>, keys: Vec<(String, String)>) {
+        if keys.is_empty() {
+            return;
+        }
+        let me = self.clone();
+        let _ = std::thread::Builder::new().name("bashcut-key-store-warm".into()).spawn(move || {
+            let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                for (plugin, key) in keys {
+                    if me.cached(&plugin, &key).is_none()
+                        && let Ok(v) = OsKeyStore.get(&plugin, &key)
+                    {
+                        me.remember(&plugin, &key, v);
+                    }
+                }
+            }));
+        });
+    }
+}
+
+impl SecretStore for CachedKeyStore {
+    fn get(&self, plugin: &str, key: &str) -> HostResult<Option<String>> {
+        if let Some(v) = self.cached(plugin, key) {
+            return Ok(v);
+        }
+        let v = OsKeyStore.get(plugin, key)?;
+        self.remember(plugin, key, v.clone());
+        Ok(v)
+    }
+
+    fn set(&self, plugin: &str, key: &str, value: &str) -> HostResult<()> {
+        OsKeyStore.set(plugin, key, value)?;
+        self.remember(plugin, key, Some(value.to_string()));
+        Ok(())
+    }
+
+    fn delete(&self, plugin: &str, key: &str) -> HostResult<()> {
+        let r = OsKeyStore.delete(plugin, key);
+        // whatever the store said, ask it again next time
+        self.cache.lock().unwrap_or_else(PoisonError::into_inner).remove(&(plugin.to_string(), key.to_string()));
+        r
+    }
 }
 
 /// The host if one was created already (nothing has used plugins yet otherwise).
@@ -147,4 +222,11 @@ pub fn commands() -> Vec<CommandInfo> {
     .into_iter()
     .map(|(id, label)| CommandInfo::new(&format!("bashcut.plugins.{id}"), label, &[], None))
     .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    #[ignore = "test ticket: CachedKeyStore serves a warmed key without calling the OS store again; set updates and delete clears the cache"]
+    fn cached_key_store_serves_warmed_keys() {}
 }

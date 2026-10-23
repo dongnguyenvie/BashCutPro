@@ -546,6 +546,9 @@ dependencies = [
 [[package]]
 name = "bashcut-dirs"
 version = "0.10.0"
+dependencies = [
+ "log",
+]
 
 [[package]]
 name = "bashcut-doctor"
