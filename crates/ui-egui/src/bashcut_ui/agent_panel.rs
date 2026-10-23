@@ -178,8 +178,9 @@ pub fn draw(app: &mut FilmcraftApp, ui: &mut egui::Ui) {
         v.handoff = Some(job);
     }
     hand_off(app, ui, &ctx, &mut v);
-    // the agent crate's messages are English; those with a catalog row show translated
-    super::toast::status_line(app, ui, "bashcut.agent.status", v.status.as_deref().map(s), t.danger);
+    // the agent crate's messages are English; ours show translated (strings::agent, VI4)
+    let status = v.status.as_deref().map(super::strings::agent);
+    super::toast::status_line(app, ui, "bashcut.agent.status", status.as_deref(), t.danger);
     if let Some(g) = v.gate.clone() {
         gate_card(app, ui, &ctx, &mut v, &g, running);
     }
@@ -585,10 +586,10 @@ fn transcript(app: &mut FilmcraftApp, ui: &mut egui::Ui, items: &[Item]) {
                 super::widgets::note(ui, line, NOTE, t.accent);
             }
             Item::Error { message } => {
-                note(ui, s(message), NOTE, t.danger);
+                note(ui, super::strings::agent(message), NOTE, t.danger);
             }
             Item::Notice { message } => {
-                note(ui, s(message), META, t.text_dim);
+                note(ui, super::strings::agent(message), META, t.text_dim);
             }
             Item::Auth { category, message } => {
                 // the readiness line says what to do; here the agent's own words, selectable
