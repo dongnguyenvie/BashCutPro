@@ -277,6 +277,11 @@ preview need an HTTP image loader / player (later, or through plugin views #37).
   `widgets::scroll_bar_overlap` (the hovered bar's width) short of the right edge, and right-aligned states, ✕
   buttons and full-width cards stay visible and clickable. A section's area registers `bashcut.panel.<id>.scroll`.
   Painted rows (the palette) subtract `scroll_bar_overlap` themselves.
+- **Narrow panel** (FX26): a section must fit 240 px in English and Vietnamese. A row with a long note or label
+  is `horizontal_wrapped`, not `horizontal`: one row wider than the area grows the content's max rect (egui expands
+  it to whatever a child allocates), so every card and right-aligned button below it overflows too. A text field
+  beside a button takes the width the button leaves (Batch's preset name), a card's thumbnail at most 40% of it
+  (Looks).
 - **Open modal dialogs** (FX14, `bashcut_ui/modal.rs`, hook H14): an egui `Modal` (upstream's Recover Unsaved
   Changes, Revert, Preferences) takes every click outside its own widgets. `ui.click` on an element behind it (by
   `id`, or at `x,y` over such an element) answers `ok: false` with `“Recover Unsaved Changes” is open and takes

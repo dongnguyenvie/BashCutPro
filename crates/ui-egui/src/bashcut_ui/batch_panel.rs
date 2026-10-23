@@ -117,7 +117,8 @@ pub fn draw(app: &mut FilmcraftApp, ui: &mut egui::Ui) {
     settings(app, ui, &ctx, &mut v, &draft);
 
     ui.add_space(6.0);
-    ui.horizontal(|ui| {
+    // wraps: a note wider than a narrow panel would widen every row below (FX26)
+    ui.horizontal_wrapped(|ui| {
         let why = if draft.inputs.is_empty() || running { Some(String::new()) } else { run_blocker(app, &ctx, &draft.steps) };
         if gated_button(app, ui, "bashcut.batch.run", s("Run batch"), why.as_deref()) {
             call(app, &ctx, &mut v, "run", json!({}));
@@ -725,12 +726,15 @@ fn presets(app: &mut FilmcraftApp, ui: &mut egui::Ui, ctx: &egui::Context, v: &m
         });
     }
     ui.horizontal(|ui| {
-        let r = ui.add(egui::TextEdit::singleline(&mut v.preset).hint_text(s("preset-name")).desired_width(160.0));
+        // the name field takes what Save as preset leaves, so the row fits a narrow panel (FX26)
+        let save = s("Save as preset");
+        let text = egui::WidgetText::from(save).into_galley(ui, Some(egui::TextWrapMode::Extend), f32::INFINITY, egui::TextStyle::Button);
+        let button_w = text.size().x + 2.0 * ui.spacing().button_padding.x + ui.spacing().item_spacing.x;
+        let width = (ui.available_width() - button_w).clamp(40.0, 160.0);
+        let r = ui.add(egui::TextEdit::singleline(&mut v.preset).hint_text(s("preset-name")).desired_width(width));
         app.auto.add_response("bashcut.batch.preset.name", &r, "preset name");
         let name = v.preset.trim().to_string();
-        if button(app, ui, "bashcut.batch.preset.save", s("Save as preset"), !name.is_empty())
-            && call(app, ctx, v, "savePreset", json!({"name": name})).is_some()
-        {
+        if button(app, ui, "bashcut.batch.preset.save", save, !name.is_empty()) && call(app, ctx, v, "savePreset", json!({"name": name})).is_some() {
             v.preset.clear();
         }
     });

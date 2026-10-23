@@ -2982,3 +2982,55 @@ fn edit_mode_layout_is_the_body_minus_rail_and_panel() {
     assert!(right_of_dock.is_empty(), "nothing of the dock runs under the panel {panel:?}: {right_of_dock:?}");
     d.no_ui_error();
 }
+
+/// FX26: at the narrowest panel (and at 340 px), in English and Vietnamese, every Looks card's
+/// ☆ and Apply lie inside the section, clear of its floating scroll bar, and Batch's preset name
+/// field and Save as preset ("Lưu thành mẫu") lie inside the panel.
+#[test]
+fn looks_stars_and_batch_save_fit_a_narrow_panel() {
+    let data = std::env::temp_dir().join(format!("bashcut-ui-fx26-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&data);
+    let mut d = Driver::with_data(&data, |_| {});
+    let shots = std::env::var_os("BASHCUT_UI_SHOTS").map(std::path::PathBuf::from);
+    let bar = 10.0;
+    for (lang, width) in [("en", 340.0), ("vi", 340.0), ("en", 240.0), ("vi", 240.0)] {
+        d.exec("bashcut.ui.setLanguage", json!({"language": lang}));
+        d.click("bashcut.rail.looks");
+        d.exec("bashcut.ui.setWidth", json!({"width": width}));
+        d.frames(6);
+        if let Some(dir) = &shots {
+            std::fs::create_dir_all(dir).unwrap();
+            d.harness.render().unwrap().save(dir.join(format!("fx26-looks-{lang}-{width}.png"))).unwrap();
+        }
+        let area = edges(&mut d, "bashcut.panel.looks.scroll").expect("Looks scroll area");
+        let all = d.ok("ui.elements", json!({"prefix": "bashcut.looks."}));
+        let mut seen = 0;
+        for e in all.as_array().expect("elements") {
+            let id = e["id"].as_str().unwrap_or_default();
+            if !(id.ends_with(".favourite") || id.ends_with(".apply")) {
+                continue;
+            }
+            let r = edges(&mut d, id).expect("rect");
+            if r[1] < area[1] || r[3] > area[3] {
+                continue; // scrolled out of view
+            }
+            seen += 1;
+            assert!(r[0] >= area[0] && r[2] <= area[2] - bar, "{lang} {width}: {id} {r:?} inside Looks {area:?}, clear of the bar");
+        }
+        assert!(seen >= 4, "{lang} {width}: {seen} stars/Apply on screen");
+
+        d.click("bashcut.rail.batch");
+        d.frames(6);
+        if let Some(dir) = &shots {
+            d.harness.render().unwrap().save(dir.join(format!("fx26-batch-{lang}-{width}.png"))).unwrap();
+        }
+        let panel = edges(&mut d, "bashcut.panel.batch").expect("Batch panel");
+        for id in ["bashcut.batch.preset.name", "bashcut.batch.preset.save"] {
+            let r = edges(&mut d, id).unwrap_or_else(|| panic!("{lang} {width}: {id} shown"));
+            assert!(r[0] >= panel[0] && r[2] <= panel[2], "{lang} {width}: {id} {r:?} inside Batch {panel:?}");
+        }
+    }
+    d.exec("bashcut.ui.setLanguage", json!({"language": null}));
+    assert!(d.harness.state().ui_error.is_none(), "{:?}", d.harness.state().ui_error);
+    let _ = std::fs::remove_dir_all(&data);
+}
