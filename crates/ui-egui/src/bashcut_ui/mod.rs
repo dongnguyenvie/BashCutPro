@@ -24,6 +24,7 @@ pub mod plugins;
 pub mod plugins_panel;
 pub mod prefs;
 pub mod rail;
+pub mod recovery;
 pub mod runs_panel;
 pub mod shared;
 pub mod side_panel;
@@ -166,6 +167,7 @@ pub fn data_dir(app: &FilmcraftApp) -> Option<PathBuf> {
 /// project opened or saved over the control channel is still published to `automation.json` (#191).
 pub fn logic(app: &FilmcraftApp, ctx: &egui::Context) {
     connect::publish(app, ctx, data_dir(app).as_deref());
+    recovery::poll(app, ctx);
 }
 
 /// The layout hook (`lib.rs`, `frame()`): draws the rail, the side panel, floating sections and
