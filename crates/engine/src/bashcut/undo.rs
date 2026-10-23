@@ -27,6 +27,15 @@ impl UndoGroup {
         g
     }
 
+    /// Drop the group: the project and the undo history go back to how they were at [`UndoGroup::start`] (the
+    /// caller restores the rest of the session).
+    pub(crate) fn cancel(self, s: &mut Session) {
+        s.project = self.project;
+        s.history.undo.truncate(self.undo_len);
+        s.history.merge_key = None;
+        s.history.limit = self.limit;
+    }
+
     /// End the group: the entries its steps pushed become one labelled `label`. Returns whether there is one.
     pub(crate) fn finish(self, s: &mut Session, label: &str) -> bool {
         s.history.limit = self.limit;

@@ -207,11 +207,9 @@ pub fn fire(s: &Session, p: &Value, event: &str, context: Value, cmd: &str) -> R
 
 pub fn commands() -> Vec<CommandSpec> {
     vec![
-        CommandSpec {
+        spec! {
             id: "bashcut.hooks.list",
             label: "List Plugin Hooks",
-            menu: &[],
-            shortcut: None,
             params: r#"{"event":"batch.beforeItem|batch.afterItem|import.after|export.before"?,"pluginsDir":str?}"#,
             enabled: always,
             run: |s, p| {
@@ -230,11 +228,9 @@ pub fn commands() -> Vec<CommandSpec> {
             },
             journal: false,
         },
-        CommandSpec {
+        spec! {
             id: "bashcut.hooks.run",
             label: "Run Plugin Hooks",
-            menu: &[],
-            shortcut: None,
             params: r#"{"event":"batch.beforeItem|batch.afterItem|import.after|export.before","context":{}?,"hooks":bool=true,"pluginsDir":str?}  (the batch runner fires the batch.* events)"#,
             enabled: always,
             run: |s, p| {
@@ -245,11 +241,9 @@ pub fn commands() -> Vec<CommandSpec> {
             },
             journal: false,
         },
-        CommandSpec {
+        spec! {
             id: "bashcut.media.import",
             label: "Import (with Plugin Hooks)",
-            menu: &[],
-            shortcut: None,
             params: r#"{"paths":[str], …file.import params, "hooks":bool=true,"pluginsDir":str?}  (file.import, then the import.after hooks)"#,
             enabled: always,
             run: |s, p| {

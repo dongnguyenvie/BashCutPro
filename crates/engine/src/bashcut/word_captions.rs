@@ -24,11 +24,9 @@ const MAX_WORDS: usize = 64;
 pub const MIN_STEP_SECONDS: f64 = 0.25;
 
 pub fn commands() -> Vec<CommandSpec> {
-    vec![CommandSpec {
+    vec![spec! {
         id: CMD,
         label: "Word-by-Word Caption Style",
-        menu: &[],
-        shortcut: None,
         params: r##"{"captions":[id]? (default: the selected captions, else every caption of the first track),"style":{"preset":"karaoke|pop|clean"?,"highlight":"#rrggbb"?,"pop":1..1.6?,"bold":bool?,"dim":0..1? (alpha of the upcoming words; 1 = off)}?,"useTranscript":bool=true}"##,
         enabled: has_seq,
         run: word_style,

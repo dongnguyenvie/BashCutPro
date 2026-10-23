@@ -132,3 +132,7 @@ fn hostile_batches_are_refused_without_changes() {
     let v = s.execute("bashcut.batch", json!({"commands": [place(item, 0.0)], "label": "x".repeat(10_000)})).unwrap();
     assert_eq!(v["label"].as_str().unwrap().chars().count(), 80);
 }
+
+#[test]
+#[ignore = "test ticket: a batch whose step opens a project (history reset) reports undoSteps 0 and keeps the new history; a failing atomic batch restores project, state, undo and redo"]
+fn batch_undo_fold_after_history_reset() {}

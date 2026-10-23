@@ -32,31 +32,25 @@ const UNDO_LABEL: &str = "Instantiate Template";
 
 pub fn commands() -> Vec<CommandSpec> {
     vec![
-        CommandSpec {
+        spec! {
             id: "bashcut.template.save",
             label: "Save as Template…",
-            menu: &[],
-            shortcut: None,
             params: r#"{"path":str (bundle folder) | "name":str (in <data dir>/bashcut/templates),"slots":[id | {"item":id,"name":str?}],"title":str?,"poster":bool=true,"overwrite":bool=false,"dir":str?}"#,
             enabled: always,
             run: save,
             journal: true,
         },
-        CommandSpec {
+        spec! {
             id: "bashcut.template.instantiate",
             label: "New Project from Template…",
-            menu: &[],
-            shortcut: None,
             params: r#"{"template":str (folder or name),"fills":[{"slot":str,"file":str}],"saveAs":str?,"dir":str?}"#,
             enabled: always,
             run: instantiate,
             journal: true,
         },
-        CommandSpec {
+        spec! {
             id: "bashcut.template.list",
             label: "List Templates",
-            menu: &[],
-            shortcut: None,
             params: r#"{"dir":str?}"#,
             enabled: always,
             run: |s, p| list(s, p),

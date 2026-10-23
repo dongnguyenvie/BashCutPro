@@ -752,14 +752,12 @@ fn run(s: &mut Session, p: &Value) -> Result<Value> {
 }
 
 pub(crate) fn commands() -> Vec<CommandSpec> {
-    vec![CommandSpec {
+    vec![spec! {
         id: CMD,
         label: "Review Edit",
-        menu: &[],
-        shortcut: None,
         params: r#"{"profile":str? (loudness target and caption safe area from bashcut.profiles.*; default -14 LUFS / -1 dBTP, no safe area),"checks":["sound"|"picture"|"captions"|"edit"]?,"range":{"start":seconds?,"end":seconds?}?,"writeMarkers":bool=true,"samplesPerSecond":0.5..60=5,"sequence":id? (must be the active one)} (findings in seconds; markers replace the previous review's)"#,
         enabled: has_seq,
-        run,
+        run: run,
         journal: true,
     }]
 }

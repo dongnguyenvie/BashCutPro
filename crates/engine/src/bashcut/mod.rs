@@ -3,7 +3,29 @@
 //! `lib.rs` and `v.extend(crate::bashcut::commands());` in `commands::build()`.
 //!
 //! Each feature lives in its own file here and appends its specs in [`commands`]. Command ids start with
-//! `bashcut.`; params strings state their units (seconds unless they say otherwise).
+//! `bashcut.`; params strings state their units (seconds unless they say otherwise). Specs are built with [`spec!`].
+
+/// One `bashcut.*` command: a [`CommandSpec`] with no menu and no shortcut whose `run` (a fn path or a non-capturing
+/// closure) returns typed errors ([`errors::typed`], `notFound: …`). Each spec gets its own wrapper fn, so there is
+/// no table to run out of.
+macro_rules! spec {
+    (id: $id:expr, label: $label:expr, params: $params:expr, enabled: $enabled:expr, run: $run:expr, journal: $journal:expr $(,)?) => {{
+        fn typed_run(s: &mut crate::Session, p: &serde_json::Value) -> crate::Result<serde_json::Value> {
+            const RUN: fn(&mut crate::Session, &serde_json::Value) -> crate::Result<serde_json::Value> = $run;
+            crate::bashcut::errors::typed(RUN(s, p))
+        }
+        crate::commands::CommandSpec {
+            id: $id,
+            label: $label,
+            menu: &[],
+            shortcut: None,
+            params: $params,
+            enabled: $enabled,
+            run: typed_run,
+            journal: $journal,
+        }
+    }};
+}
 
 pub mod analysis;
 pub mod batch;
@@ -73,6 +95,6 @@ pub fn commands() -> Vec<CommandSpec> {
         captions_fit::commands(),
         word_edges::commands(),
     ];
-    // typed errors (`notFound: …`) and a units note on every command (errors.rs)
+    // a units note on every command (errors.rs); `spec!` already typed the errors
     errors::wrap(groups.into_iter().flatten().collect())
 }

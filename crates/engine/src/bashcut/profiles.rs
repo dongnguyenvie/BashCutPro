@@ -353,11 +353,9 @@ pub fn compile(s: &mut Session, pr: &Profile) -> Result<String> {
 
 pub fn commands() -> Vec<CommandSpec> {
     vec![
-        CommandSpec {
+        spec! {
             id: "bashcut.profiles.list",
             label: "List Output Profiles",
-            menu: &[],
-            shortcut: None,
             params: r#"{"seconds":f64? (estimate; default the active sequence),"dir":str?}"#,
             enabled: always,
             run: |s, p| {
@@ -366,11 +364,9 @@ pub fn commands() -> Vec<CommandSpec> {
             },
             journal: false,
         },
-        CommandSpec {
+        spec! {
             id: "bashcut.profiles.get",
             label: "Get Output Profile",
-            menu: &[],
-            shortcut: None,
             params: r#"{"profile":str,"seconds":f64?,"dir":str?}"#,
             enabled: always,
             run: |s, p| {
@@ -379,11 +375,9 @@ pub fn commands() -> Vec<CommandSpec> {
             },
             journal: false,
         },
-        CommandSpec {
+        spec! {
             id: "bashcut.profiles.compile",
             label: "Compile Output Profiles to Export Presets",
-            menu: &[],
-            shortcut: None,
             params: r#"{"profile":str? (default every profile),"dir":str?}"#,
             enabled: always,
             run: |s, p| {
@@ -399,11 +393,9 @@ pub fn commands() -> Vec<CommandSpec> {
             },
             journal: true,
         },
-        CommandSpec {
+        spec! {
             id: "bashcut.profiles.apply",
             label: "Export with Output Profile",
-            menu: &[],
-            shortcut: None,
             params: r#"{"profile":str,"path":str?,"queue":bool=false,"wait":bool=false,"sequence":id?,"range":str?,"hooks":bool=true,"dir":str?}  (no path: compile only, for filmcraft-cli export --preset)"#,
             enabled: always,
             run: apply,
