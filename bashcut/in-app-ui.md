@@ -346,7 +346,7 @@ labels or subclips (§1 rule 1). A project opened in upstream FilmCraft still wo
   `bashcut.gate.{approve, change, note}`.
 - **Terminal (AG5, `bashcut_ui/terminal.rs`)**: under the header, **Open in Terminal** (automation id
   `bashcut.agent.terminal`; Claude Code and Codex when their program is found) opens the OS terminal in the turns'
-  folder (the project's, else the temp folder, so `--resume` finds the session) running the panel's program plus its
+  folder (`bashcut_agent::session::turn_dir`: the project's, else `<data dir>/agent`, so `--resume` finds the session) running the panel's program plus its
   resume arguments (`claude --resume <id>`; a session id other than `[A-Za-z0-9_-]` is dropped). **Sign in…**
   (`bashcut.agent.signIn`, Claude Code only; `agent_panel::sign_in_button` for AG6's auth-failure line) runs `claude`
   after the hint "Type /login…". **Install** (`bashcut.agent.install`) sits on the "Claude Code not found" line and runs

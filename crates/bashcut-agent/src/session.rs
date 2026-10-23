@@ -166,7 +166,7 @@ impl Agent {
         self.set_project(ctx.project.as_deref());
         let argv = self.command_line(ctx)?;
         let message = if ctx.line.is_empty() { text.to_string() } else { format!("[{}]\n\n{text}", ctx.line) };
-        let cwd = ctx.project.as_deref().and_then(Path::parent).map(Path::to_path_buf).unwrap_or_else(unsaved_cwd);
+        let cwd = turn_dir(ctx.project.as_deref());
         let mut env = self.agent.env.clone();
         env.push(("BASHCUT_AGENT_HOST".into(), "1".into()));
         // the kit's MCP launcher steps aside when it sees this: the app passes its own server (AK3)
@@ -338,6 +338,12 @@ impl Agent {
             _ => err(format!("unknown command bashcut.agent.{name}")),
         }
     }
+}
+
+/// Where a turn runs: the project's folder, else [`unsaved_cwd`]. A terminal resuming the session
+/// starts here too (the agent keys its sessions by folder).
+pub fn turn_dir(project: Option<&Path>) -> PathBuf {
+    project.and_then(Path::parent).map(Path::to_path_buf).unwrap_or_else(unsaved_cwd)
 }
 
 /// Where an unsaved project's turn runs: `agent` in the app's data folder (else the temp dir), never

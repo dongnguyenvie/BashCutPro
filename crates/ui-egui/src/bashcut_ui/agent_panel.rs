@@ -65,8 +65,15 @@ struct Snapshot {
     events: u64,
     /// The agent's program with its resume arguments (Claude Code, Codex), for Open in Terminal.
     resume: Option<Vec<String>>,
-    /// The folder turns run in: the project's, else the temp folder (as `Agent::send`).
-    cwd: std::path::PathBuf,
+    /// The open project, for the folder turns run in ([`Snapshot::cwd`]).
+    project: Option<std::path::PathBuf>,
+}
+
+impl Snapshot {
+    /// The folder turns run in ([`bashcut_agent::session::turn_dir`]; it may create it, so only on a click).
+    fn cwd(&self) -> std::path::PathBuf {
+        bashcut_agent::session::turn_dir(self.project.as_deref())
+    }
 }
 
 fn call(app: &mut FilmcraftApp, ctx: &egui::Context, v: &mut View, name: &str, params: Value) -> bool {
@@ -107,7 +114,7 @@ pub fn draw(app: &mut FilmcraftApp, ui: &mut egui::Ui) {
             resume: (matches!(a.agent.id.as_str(), "claude-code" | "codex") && hints::agent_found(&a.agent))
                 .then(|| a.agent.argv.first().map(|p| terminal::resume_argv(p, &a.agent.resume_args, &a.conversation.session)))
                 .flatten(),
-            cwd: c.project.as_deref().and_then(std::path::Path::parent).map(std::path::Path::to_path_buf).unwrap_or_else(std::env::temp_dir),
+            project: c.project.clone(),
         };
         let gate = if check_gate && !a.is_running() { Some(a.gate()) } else { None };
         (snap, gate)
@@ -201,7 +208,7 @@ fn readiness(app: &mut FilmcraftApp, ui: &mut egui::Ui, ctx: &egui::Context, sna
                 && hover_button(app, ui, "bashcut.agent.install", s("Install"), s("Open a terminal with the official Claude Code installer."))
             {
                 let hint = s("Installing Claude Code with the official installer. When it finishes, run claude and type /login, then go back to BashCutPro.");
-                open_terminal(app, &snap.cwd, &terminal::install_job(terminal::Os::current()), Some(hint));
+                open_terminal(app, &snap.cwd(), &terminal::install_job(terminal::Os::current()), Some(hint));
             }
         });
     }
@@ -238,22 +245,23 @@ fn terminal_row(app: &mut FilmcraftApp, ui: &mut egui::Ui, snap: &Snapshot) {
     ui.horizontal_wrapped(|ui| {
         let tip = f("Continue this conversation with {agent} in a terminal window.", &[("agent", &snap.agent.1)]);
         if hover_button(app, ui, "bashcut.agent.terminal", s("Open in Terminal"), &tip) {
-            open_terminal(app, &snap.cwd, &Job::Program(argv.clone()), None);
+            open_terminal(app, &snap.cwd(), &Job::Program(argv.clone()), None);
         }
         if snap.agent.0 == "claude-code" {
             let program = argv.first().cloned().unwrap_or_default();
-            sign_in_button(app, ui, &program, &snap.cwd);
+            sign_in_button(app, ui, &program, snap.project.as_deref());
         }
     });
 }
 
 /// Sign in: `claude` in a terminal with a hint to type `/login` (AG6 shows it when auth fails).
 /// The login happens in Claude Code's own flow; the app never reads or stores tokens.
-pub fn sign_in_button(app: &mut FilmcraftApp, ui: &mut egui::Ui, program: &str, cwd: &std::path::Path) {
+pub fn sign_in_button(app: &mut FilmcraftApp, ui: &mut egui::Ui, program: &str, project: Option<&std::path::Path>) {
     let tip = s("Open Claude Code in a terminal to sign in (type /login). BashCutPro never sees your login.");
     if hover_button(app, ui, "bashcut.agent.signIn", s("Sign in…"), tip) {
         let hint = s("Type /login and follow the steps in your browser, then close this window.");
-        open_terminal(app, cwd, &Job::Program(vec![program.to_string()]), Some(hint));
+        let cwd = bashcut_agent::session::turn_dir(project);
+        open_terminal(app, &cwd, &Job::Program(vec![program.to_string()]), Some(hint));
     }
 }
 
