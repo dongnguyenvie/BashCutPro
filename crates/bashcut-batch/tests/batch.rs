@@ -130,17 +130,25 @@ fn cancel_kills_the_running_step_and_starts_nothing_new() {
     let b = bench("cancel", &["a", "b"]);
     let p = b.pipeline(json!({"steps": [{"command": "fake.sleep", "params": {"ms": 5000}}]}));
     let job = Job::create(&p, Some("cancel")).unwrap();
+    // cancel once a's sleep runs: a fixed delay can land in the create step on a slow spawn (Windows)
     let canceller = {
         let job = job.clone();
         std::thread::spawn(move || {
-            std::thread::sleep(Duration::from_millis(700));
+            let start = Instant::now();
+            while start.elapsed() < Duration::from_secs(20) {
+                if job.book().is_ok_and(|b| b.items.iter().any(|i| i.name == "a" && i.steps.get(1).is_some_and(|s| s.status == Status::Running))) {
+                    break;
+                }
+                std::thread::sleep(Duration::from_millis(20));
+            }
+            std::thread::sleep(Duration::from_millis(200));
             job.request_cancel().unwrap();
+            Instant::now()
         })
     };
-    let start = Instant::now();
     let summary = run(&job, &b.opts()).unwrap();
-    canceller.join().unwrap();
-    assert!(start.elapsed() < Duration::from_secs(4), "the 5 s step was killed");
+    let cancelled_at = canceller.join().unwrap();
+    assert!(cancelled_at.elapsed() < Duration::from_secs(4), "the 5 s step was killed");
     assert_eq!(summary.status, Status::Cancelled);
     let book = job.book().unwrap();
     let a = item(&book, "a");

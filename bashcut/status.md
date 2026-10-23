@@ -124,3 +124,4 @@ One row per run of `bashcut/scripts/smoke.sh` / `smoke.ps1` ([smoke.md](smoke.md
 | Date | Machine | Commit | Result |
 |---|---|---|---|
 | 2026-10-20 | geekomT (Windows 11, AMD64) | 1c720a2a (dev build) | `smoke: 6 passed, 0 failed` with `-NoIsa`; ISA scan of release binaries pending (release checklist) |
+| 2026-10-23 | geekomT (Windows 11, AMD64) | 4ec3fec9 + T6b (release, `CARGO_PROFILE_RELEASE_DEBUG=line-tables-only`) | `smoke: 8 passed, 0 failed` incl. the ISA scan of `filmcraft.exe` and `bashcutpro.exe`; also passes with another BashCutPro open (cli-razor on the headless engine, no bridge note) (T6b) |

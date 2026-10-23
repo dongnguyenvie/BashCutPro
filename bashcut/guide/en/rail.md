@@ -40,8 +40,9 @@ Plugins are small programs that run beside the app and bring their results in as
    again; hover "N plugins available" to see where the list comes from).
 2. **Install** the ones you want (the button says **Installing…** until it is done). Most need Python 3.9 or newer on
    the computer.
-3. Open a plugin's **Settings** to fill in its options. API keys are kept in your system's key store (Keychain,
-   Windows Credential Manager…), never in a file.
+3. Open a plugin's **Settings** to fill in its options. API keys are kept in your system's key store (Keychain on
+   macOS, Secret Service on Linux), never in a file. Windows has no key store support yet: set the plugin's
+   environment variable for the key (its README names it) before you start BashCutPro.
 4. Each **action** has a small form; **Run** starts it. Actions that edit the open project need the app to have been
    started with its control channel (see [Troubleshooting](troubleshooting.md)).
 5. The plugin's card then shows how the run goes: **Running 40 %**, **Done** or **Failed:** and the reason. **Open in

@@ -94,7 +94,8 @@ layout files and `ALL` array on every merge. Docking can come later if upstream 
 
 - A plugin is a local program the user installed; the host shows its manifest (`app.commands`, `edits`, network use)
   before the first run and on update.
-- Secrets live in the OS key store (Keychain / Credential Manager / Secret Service) and reach the process only as the
+- Secrets live in the OS key store (Keychain / Secret Service; none on Windows yet, where saving one is refused and the
+  user sets the env var instead, `bashcut-manifest/src/settings.rs`, T6b) and reach the process only as the
   env vars its manifest declares. Settings files hold non-secrets only. A non-secret setting with an `env` name that
   the user never saved reaches the run as its manifest `default` (FX6, `settings::env_for`), unless the default is
   empty or one of its `env` names is already set in the app's own environment (the run inherits that one); a saved value always

@@ -40,8 +40,9 @@ Plugin là chương trình nhỏ chạy cạnh ứng dụng và đưa kết qu�
    chuột lên dòng "Có N plugin" để xem danh sách lấy từ đâu).
 2. **Cài đặt** (Install) plugin bạn cần (nút hiện **Đang cài…** cho tới khi xong). Phần lớn cần Python 3.9 trở lên trên
    máy.
-3. Mở **Cài đặt** (Settings) của plugin để điền tùy chọn. Khóa API được giữ trong kho khóa của hệ điều hành (Keychain,
-   Windows Credential Manager…), không bao giờ nằm trong tệp.
+3. Mở **Cài đặt** (Settings) của plugin để điền tùy chọn. Khóa API được giữ trong kho khóa của hệ điều hành (Keychain
+   trên macOS, Secret Service trên Linux), không bao giờ nằm trong tệp. Windows chưa hỗ trợ kho khóa: hãy đặt biến
+   môi trường chứa khóa của plugin (tên biến có trong README của plugin) trước khi mở BashCutPro.
 4. Mỗi **thao tác** có một biểu mẫu nhỏ; **Chạy** (Run) để bắt đầu. Thao tác sửa dự án đang mở cần ứng dụng được mở kèm
    kênh điều khiển (xem [Khắc phục sự cố](troubleshooting.md)).
 5. Thẻ của plugin sau đó cho biết lượt chạy ra sao: **Đang chạy 40 %**, **Xong** hoặc **Lỗi:** kèm lý do. **Mở trong Tác

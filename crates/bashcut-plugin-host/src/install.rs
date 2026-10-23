@@ -168,10 +168,13 @@ impl Installer {
         }
         let url = registry::clone_url(repo)?;
         let mut cmd = Command::new(&self.git);
-        cmd.args(["-c", "advice.detachedHead=false", "clone", "--quiet", "--depth", "1", "--branch", git_ref, "--"]).arg(&url).arg(dest);
+        // core.longpaths: a data folder deep enough puts .git/objects/pack/*.keep past Windows' 260 (T6b)
+        cmd.args(["-c", "advice.detachedHead=false", "-c", "core.longpaths=true", "clone", "--quiet", "--depth", "1", "--branch", git_ref, "--"])
+            .arg(&url)
+            .arg(dest);
         run_git(cmd).map_err(|e| Error(format!("git clone {url}@{git_ref}: {}", e.0)))?;
         let mut rev = Command::new(&self.git);
-        rev.arg("-C").arg(dest).args(["rev-parse", "HEAD"]);
+        rev.arg("-C").arg(dest).args(["-c", "core.longpaths=true", "rev-parse", "HEAD"]);
         Ok(run_git(rev).map(|o| o.trim().to_string()).unwrap_or_default())
     }
 }

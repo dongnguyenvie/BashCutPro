@@ -1,6 +1,6 @@
 //! `bashcut-view/1` forms end to end: a fake Python plugin prints views on stdout while it runs,
 //! the host keeps the latest, and a button press runs the action it names with the form's values.
-//! Skips (with a note) when `python3` is not on PATH.
+//! Skips (with a note) when neither `python3` nor `python` runs.
 
 use std::path::PathBuf;
 use std::process::Command;
@@ -34,10 +34,15 @@ else:
     print(json.dumps({"ok": True, "message": "accepted", "data": {"args": sys.argv[2:]}}))
 "#;
 
-fn manifest() -> Value {
+/// `python3`, else `python` (Windows installs only the latter; its `python3` is a store stub that fails).
+fn python() -> Option<&'static str> {
+    ["python3", "python"].into_iter().find(|p| Command::new(p).arg("--version").output().is_ok_and(|o| o.status.success()))
+}
+
+fn manifest(py: &str) -> Value {
     json!({
         "schema": "bashcut-plugin/1", "id": "test.views", "name": "Views", "version": "0.1.0", "summary": "test plugin",
-        "entry": {"command": ["python3", "plugin.py"]},
+        "entry": {"command": [py, "plugin.py"]},
         "output": "bashcut-result/1",
         "actions": [
             {"id": "review", "title": "Review", "args": ["review"], "needs": "none", "view": true},
@@ -66,16 +71,16 @@ fn wait_job(host: &mut Host, job: u64) -> JobState {
 
 #[test]
 fn a_view_action_shows_a_form_and_its_buttons_run_actions() {
-    if !Command::new("python3").arg("--version").output().is_ok_and(|o| o.status.success()) {
-        eprintln!("skipped: no python3");
+    let Some(py) = python() else {
+        eprintln!("skipped: no python3 or python");
         return;
-    }
+    };
     let data: PathBuf = std::env::temp_dir().join(format!("bashcut-host-views-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&data);
     let dir = bashcut_plugin_host::plugins_dir(&data).join("test.views");
     std::fs::create_dir_all(&dir).unwrap();
     std::fs::write(dir.join("plugin.py"), PLUGIN_PY).unwrap();
-    std::fs::write(dir.join("bashcut-plugin.json"), manifest().to_string()).unwrap();
+    std::fs::write(dir.join("bashcut-plugin.json"), manifest(py).to_string()).unwrap();
     let mut host = Host::new(Some(data.clone()), Arc::new(MemoryStore::default()));
     let ctx = RunContext::default();
     assert!(host.plugin("test.views").and_then(|p| p.manifest.as_ref()).and_then(|m| m.action("review")).is_some_and(|a| a.view));

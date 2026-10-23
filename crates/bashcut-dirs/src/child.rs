@@ -304,7 +304,44 @@ mod tests {
         terminate(&mut c, true);
     }
 
+    /// The pids of `pid`'s children (PowerShell's CIM query: no `unsafe`, no extra crate).
+    #[cfg(windows)]
+    fn children(pid: u32) -> Vec<u32> {
+        let query = format!("(Get-CimInstance Win32_Process -Filter 'ParentProcessId={pid}').ProcessId");
+        let out = Command::new("powershell").args(["-NoProfile", "-NonInteractive", "-Command", &query]).output().unwrap();
+        String::from_utf8_lossy(&out.stdout).split_whitespace().filter_map(|p| p.parse().ok()).collect()
+    }
+
+    #[cfg(windows)]
     #[test]
-    #[ignore = "test ticket: on Windows terminate ends a grandchild too (cmd /c start /b ping -t), via taskkill /T"]
-    fn windows_terminate_kills_tree() {}
+    fn windows_terminate_kills_tree() {
+        // cmd is the child, ping.exe its grandchild: a cancel has to end both (taskkill /T)
+        let mut cmd = Command::new("cmd");
+        cmd.args(["/c", "ping", "-n", "120", "127.0.0.1"]);
+        let mut c = spawn(cmd, &Opts { group: true, ..Opts::default() }).unwrap();
+        let reader = pump("test-stdout", c.stdout.take(), |out| read_lines(out, 1024, 1024, |_, _| {}).0);
+        let start = Instant::now();
+        let ping = loop {
+            if let Some(&p) = children(c.id()).first() {
+                break p;
+            }
+            assert!(start.elapsed() < Duration::from_secs(20), "ping.exe never started");
+            std::thread::sleep(Duration::from_millis(100));
+        };
+        assert!(crate::process::pid_alive(ping));
+        let start = Instant::now();
+        let exit = supervise(&mut c, Duration::from_secs(60), Some(&AtomicBool::new(true)));
+        assert_eq!(exit.stop, Some(Stop::Cancelled));
+        assert!(exit.status.is_some(), "cmd ended");
+        assert!(start.elapsed() < GRACE + Duration::from_secs(5), "{:?}", start.elapsed());
+        // no ping.exe left holding the pipe: stdout reaches EOF well before STDOUT_WAIT
+        let start = Instant::now();
+        let _ = collect(&reader, STDOUT_WAIT);
+        assert!(start.elapsed() < STDOUT_WAIT, "stdout still held: {:?}", start.elapsed());
+        let start = Instant::now();
+        while crate::process::pid_alive(ping) && start.elapsed() < Duration::from_secs(5) {
+            std::thread::sleep(Duration::from_millis(100));
+        }
+        assert!(!crate::process::pid_alive(ping), "ping.exe {ping} outlived the cancel");
+    }
 }

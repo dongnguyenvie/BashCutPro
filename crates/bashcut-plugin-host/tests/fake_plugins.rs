@@ -1,6 +1,6 @@
 //! The plugin host against fake Python plugins (stdlib only): ok, error, hand-off, hang → timeout,
 //! cancel, oversized output, garbage output, and install from a local git registry.
-//! Skips (with a note) when `python3` or `git` is not on PATH.
+//! Skips (with a note) when neither `python3` nor `python` runs, or `git` is not on PATH.
 
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -18,6 +18,11 @@ static N: AtomicU64 = AtomicU64::new(0);
 
 fn has(program: &str) -> bool {
     Command::new(program).arg("--version").output().is_ok_and(|o| o.status.success())
+}
+
+/// `python3`, else `python` (Windows installs only the latter; its `python3` is a store stub that fails).
+fn python() -> Option<&'static str> {
+    ["python3", "python"].into_iter().find(|p| has(p))
 }
 
 fn scratch(name: &str) -> PathBuf {
@@ -60,11 +65,12 @@ elif mode == "crash":
 "#;
 
 fn manifest(id: &str) -> Value {
+    let py = python().unwrap_or("python3");
     let mode =
         |m: &str| json!({"id": m, "title": m, "args": [m], "needs": "none", "params": [{"id": "word", "flag": "--word", "type": "string", "optional": true}]});
     json!({
         "schema": "bashcut-plugin/1", "id": id, "name": "Fake", "version": "0.1.0", "summary": "test plugin",
-        "entry": {"command": ["python3", "plugin.py"]},
+        "entry": {"command": [py, "plugin.py"]},
         "connect": {"bridge": ["--bridge", "{address}"]},
         "output": "bashcut-result/1",
         "settings": [
@@ -83,7 +89,8 @@ fn write_plugin(dir: &Path, id: &str) {
 }
 
 fn run_mode(dir: &Path, mode: &str, timeout: Duration) -> (Vec<Event>, bashcut_plugin_host::Outcome) {
-    let mut spec = RunSpec::new(dir.to_path_buf(), vec!["python3".into(), "plugin.py".into(), mode.into()]);
+    let py = python().expect("checked by the caller");
+    let mut spec = RunSpec::new(dir.to_path_buf(), vec![py.into(), "plugin.py".into(), mode.into()]);
     spec.timeout = timeout;
     spec.max_stdout = 64 * 1024;
     let mut r = Running::start(spec).unwrap();
@@ -93,8 +100,8 @@ fn run_mode(dir: &Path, mode: &str, timeout: Duration) -> (Vec<Event>, bashcut_p
 
 #[test]
 fn runner_outcomes() {
-    if !has("python3") {
-        eprintln!("skipped: no python3");
+    if python().is_none() {
+        eprintln!("skipped: no python3 or python");
         return;
     }
     let dir = scratch("runner");
@@ -141,13 +148,13 @@ fn runner_outcomes() {
 
 #[test]
 fn cancel_stops_a_run() {
-    if !has("python3") {
-        eprintln!("skipped: no python3");
+    if python().is_none() {
+        eprintln!("skipped: no python3 or python");
         return;
     }
     let dir = scratch("cancel");
     write_plugin(&dir, "test.fake");
-    let mut r = Running::start(RunSpec::new(dir.clone(), vec!["python3".into(), "plugin.py".into(), "hang".into()])).unwrap();
+    let mut r = Running::start(RunSpec::new(dir.clone(), vec![python().unwrap().into(), "plugin.py".into(), "hang".into()])).unwrap();
     std::thread::sleep(Duration::from_millis(300));
     r.cancel();
     let (_, o) = r.wait(Duration::from_secs(10));
@@ -195,8 +202,8 @@ fn registry_repo(version: &str) -> PathBuf {
 
 #[test]
 fn install_settings_run_update_remove() {
-    if !has("python3") || !has("git") {
-        eprintln!("skipped: needs python3 and git");
+    if python().is_none() || !has("git") {
+        eprintln!("skipped: needs python3 (or python) and git");
         return;
     }
     let data = scratch("data");
@@ -390,4 +397,37 @@ fn plugin_runs_get_the_data_dir() {
     run(&root.join("exported-portable"), true, Some(&exported), &exported);
     run(&root.join("exported-normal"), false, Some(&exported), &exported);
     let _ = std::fs::remove_dir_all(&root);
+}
+
+#[cfg(windows)]
+#[test]
+fn install_into_a_deep_data_dir() {
+    // a portable install in a deep folder: the clone's .git/objects/pack/*.keep goes past MAX_PATH (260)
+    if !has("git") {
+        eprintln!("skipped: needs git");
+        return;
+    }
+    let mut data = scratch("deep");
+    while data.as_os_str().len() < 190 {
+        data = data.join("deeper-folder");
+    }
+    std::fs::create_dir_all(&data).unwrap();
+    let repo = registry_repo("0.1.0");
+    let mut host = Host::new(Some(data.clone()), Arc::new(MemoryStore::default()));
+    let ctx = RunContext::default();
+    host.command("registry", &json!({"location": format!("{}@main", repo.display())}), &ctx).unwrap();
+    let job = host.jobs().last().unwrap().id;
+    assert_eq!(wait_job(&mut host, job), JobState::Succeeded, "{:?}", host.job(job));
+    let job = host.command("install", &json!({"plugin": "test.fake"}), &ctx).unwrap()["job"].as_u64().unwrap();
+    assert_eq!(wait_job(&mut host, job), JobState::Succeeded, "{:?}", host.job(job));
+    assert!(bashcut_plugin_host::plugins_dir(&data).join("test.fake/bashcut-plugin.json").is_file());
+    for d in [scratch_root(&data), repo] {
+        let _ = std::fs::remove_dir_all(d);
+    }
+}
+
+/// The scratch folder a deep path was made in.
+#[cfg(windows)]
+fn scratch_root(deep: &Path) -> PathBuf {
+    deep.ancestors().find(|a| a.file_name().is_some_and(|n| n.to_string_lossy().starts_with("bashcut-host-deep-"))).unwrap_or(deep).to_path_buf()
 }
