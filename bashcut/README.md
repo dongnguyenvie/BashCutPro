@@ -98,3 +98,24 @@ engine next to it. `CARGO_TARGET_DIR` is respected. There is no `cargo dev` alia
 - Docs, UI text and samples in English.
 - GitHub Actions run manually only (`workflow_dispatch`); keep it that way when merging upstream.
 - Commit identity `dongnguyenvie@gmail.com`; no AI attribution lines in commits or PRs.
+
+## License
+
+BashCutPro is under the same terms as FilmCraft: licensed under either of
+[Apache License, Version 2.0](../LICENSE-APACHE) or [MIT license](../LICENSE-MIT), at your option.
+Every crate, ours (`bashcut-*`, `bashcutpro-cli`) included, takes `license = "MIT OR Apache-2.0"` from the
+workspace `Cargo.toml`.
+
+- **Upstream attribution:** FilmCraft is Copyright (c) 2026 ArtCraft Team and the FilmCraft contributors; our
+  copyright line ("Copyright (c) 2026 Dong Nguyen and the BashCutPro contributors") is added beside theirs in
+  [`LICENSE-MIT`](../LICENSE-MIT) and [`NOTICE`](../NOTICE). Keep upstream's lines and files as they are.
+- **Our brand assets** (app icon, mark, wordmarks in [`brand/`](brand/README.md)) are MIT OR Apache-2.0 too, see
+  [`brand/LICENSE.txt`](brand/LICENSE.txt); their sources (BashCut's mark, Inter OFL-1.1) are rows in
+  [`ATTRIBUTION.md`](../ATTRIBUTION.md).
+- **ArtCraft's** name and logos in `docs/brand/` are not covered by this licence
+  (`docs/brand/LICENSE-brand.txt`); rebranded builds do not show them ([rebrand.md](rebrand.md)).
+- The sibling repos `bashcutpro-agent-kit` and `bashcutpro-plugins` use the same MIT OR Apache-2.0 terms.
+
+Unless you explicitly state otherwise, any contribution intentionally submitted for inclusion in the work by
+you, as defined in the Apache-2.0 license, shall be dual licensed as above, without any additional terms or
+conditions.
