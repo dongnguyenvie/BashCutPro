@@ -15,6 +15,14 @@ decides something; don't change an old one, add a new one that supersedes it.
   when upstream's `match cmd` arms that use `Backend::open(` / `"--bridge"` no longer match it.
 - **Rules out:** a default bridge for `render` (headless only) and for callers that name a project; our own tools
   that want the headless engine pass `--project`/`--data-dir` or set `BASHCUT_BRIDGE=off`.
+- **Callers (CC3):** headless, `BASHCUT_BRIDGE=off` set: `bashcut/scripts/smoke.sh` + `smoke.ps1` (the CLI checks test
+  the engine, not the app they launched), `bashcut/packaging/share/bashcut-setup.sh` + `.ps1` (looks export, profiles
+  compile), `bashcut-doctor` (every probe it runs: `commands`, `exec transcript.models`), `bashcut-mcp` on the engine
+  it starts (it decides bridge or headless itself; in bridge mode it passes `--bridge`, so `off` only stops a
+  headless `mcp` with no project from being bridged anyway); `bashcut-batch` is RC7. Left as they are: the Agent
+  section (`mcp --bridge <app>`, explicit), plugins (the host fills their manifest `connect` block, which always
+  passes `--project` or `--bridge`), `bashcut/scripts/bashcutpro-mcp.sh` (runs `bashcut-mcp`). xtask and the test
+  fakes do not start the engine.
 
 ## 2026-10-23: Doctor uses the shared engine lookup; its model check stays on the plugins' cache (RCB)
 
