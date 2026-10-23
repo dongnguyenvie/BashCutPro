@@ -59,7 +59,7 @@ These modify upstream lines (all listed in `UPSTREAM.md` "Carried edits", with t
 ## 3. What upstream changes most
 
 Upstream commits touching each file in the 30 days to 2026-10-23 (`git log --since=2026-09-23 --no-merges upstream/main`).
-Re-counted at the 2026-10-23 sync (upstream `c5c16939`, 88 commits past `dd525c93`): `git log --since=2026-09-23 --no-merges upstream/main -- <file>`.
+Re-counted at the 2026-10-24 sync (upstream `fbeccbe9`, 5 commits past `c5c16939`; window moved to 2026-09-24, the hot-file counts below did not change): `git log --since=2026-09-24 --no-merges upstream/main -- <file>`.
 Treat anything above ~20 as "will conflict with any edit".
 
 | Changes | File | What it means for us |

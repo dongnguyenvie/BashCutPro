@@ -295,7 +295,7 @@ class GenerateTest(unittest.TestCase):
         links = {
             "linux/package.sh": 'ln -s bashcutpro-cli "$STAGE/usr/bin/bcpro"\n',
             "freebsd/package.sh": 'ln -s bashcutpro-cli "$STAGE/bin/bcpro"\n',
-            "linux/install.sh": 'if [ -L "$source_dir/bin/bcpro" ]; then ln -sfn -- bashcutpro-cli "$prefix/bin/bcpro"; fi\n',
+            "linux/install.sh": 'if [[ -L "$source_dir/bin/bcpro" ]]; then ln -sfn -- bashcutpro-cli "$prefix/bin/bcpro"; fi\n',
             "linux/flatpak/%s.yml" % generate.APP_ID: "- ln -s bashcutpro-cli /app/bin/bcpro\n",
             "linux/flatpak/%s.bundle.yml" % generate.APP_ID: "- ln -s bashcutpro-cli /app/bin/bcpro\n",
         }

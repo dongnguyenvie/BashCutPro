@@ -125,12 +125,12 @@ SUBS = [
     # stored by `xcrun notarytool store-credentials`) as well as upstream's APPLE_ID / APPLE_PASSWORD / APPLE_TEAM_ID
     (
         "macos/package.sh",
-        'elif [ -n "${APPLE_ID:-}" ] && [ -n "${APPLE_PASSWORD:-}" ] && [ -n "${APPLE_TEAM_ID:-}" ]; then\n'
+        'elif [[ -n "${APPLE_ID:-}" ]] && [[ -n "${APPLE_PASSWORD:-}" ]] && [[ -n "${APPLE_TEAM_ID:-}" ]]; then\n'
         "  NOTARIZE=1\n",
-        'elif [ -n "${MACOS_NOTARY_PROFILE:-}" ]; then\n'
+        'elif [[ -n "${MACOS_NOTARY_PROFILE:-}" ]]; then\n'
         "  NOTARIZE=1\n"
         '  NOTARY_AUTH=(--keychain-profile "$MACOS_NOTARY_PROFILE")\n'
-        'elif [ -n "${APPLE_ID:-}" ] && [ -n "${APPLE_PASSWORD:-}" ] && [ -n "${APPLE_TEAM_ID:-}" ]; then\n'
+        'elif [[ -n "${APPLE_ID:-}" ]] && [[ -n "${APPLE_PASSWORD:-}" ]] && [[ -n "${APPLE_TEAM_ID:-}" ]]; then\n'
         "  NOTARIZE=1\n"
         '  NOTARY_AUTH=(--apple-id "$APPLE_ID" --password "$APPLE_PASSWORD" --team-id "$APPLE_TEAM_ID")\n',
         1,
@@ -245,8 +245,8 @@ SUBS = [
         "linux/install.sh",
         'install -m755 -- "$source_dir/bin/filmcraft-cli" "$prefix/bin/filmcraft-cli"\n',
         'install -m755 -- "$source_dir/bin/filmcraft-cli" "$prefix/bin/filmcraft-cli"\n'
-        'for b in %s; do if [ -f "$source_dir/bin/$b" ]; then install -m755 -- "$source_dir/bin/$b" "$prefix/bin/$b"; fi; done\n'
-        'if [ -L "$source_dir/bin/%s" ]; then ln -sfn -- filmcraft-cli "$prefix/bin/%s"; fi\n' % (TOOLS_SH, ALIAS, ALIAS),
+        'for b in %s; do if [[ -f "$source_dir/bin/$b" ]]; then install -m755 -- "$source_dir/bin/$b" "$prefix/bin/$b"; fi; done\n'
+        'if [[ -L "$source_dir/bin/%s" ]]; then ln -sfn -- filmcraft-cli "$prefix/bin/%s"; fi\n' % (TOOLS_SH, ALIAS, ALIAS),
         1,
     ),
     # ---- FreeBSD
@@ -430,7 +430,7 @@ APP_SUBS = [
         "    <binary>bashcutpro</binary>\n    <binary>bashcutpro-cli</binary>\n    <binary>bcpro</binary>\n",
         1,
     ),
-    ("linux/flatpak-bundle.sh", '[ -x "$WORK/stage/bin/filmcraft" ] || { echo "error: $TARBALL has no bin/filmcraft" >&2', '[ -x "$WORK/stage/bin/bashcutpro" ] || { echo "error: $TARBALL has no bin/bashcutpro" >&2', 1),
+    ("linux/flatpak-bundle.sh", '[[ -x "$WORK/stage/bin/filmcraft" ]] || { echo "error: $TARBALL has no bin/filmcraft" >&2', '[[ -x "$WORK/stage/bin/bashcutpro" ]] || { echo "error: $TARBALL has no bin/bashcutpro" >&2', 1),
     ("linux/flatpak/ai.storyteller.filmcraft.bundle.yml", "\ncommand: filmcraft\n", "\ncommand: bashcutpro\n", 1),
     ("linux/flatpak/ai.storyteller.filmcraft.bundle.yml", "      - install -Dm755 bin/filmcraft /app/bin/filmcraft\n", "      - install -Dm755 bin/bashcutpro /app/bin/bashcutpro\n", 1),
     ("linux/flatpak/ai.storyteller.filmcraft.yml", "\ncommand: filmcraft\n", "\ncommand: bashcutpro\n", 1),
