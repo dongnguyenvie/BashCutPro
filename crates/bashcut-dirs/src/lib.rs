@@ -201,11 +201,6 @@ pub fn models_dir() -> Option<PathBuf> {
     Some(dir.unwrap_or_else(|| models_dir_in(&ours, None)))
 }
 
-/// Upstream FilmCraft's per-user folder, read only (see [`Host::filmcraft_dir`]).
-pub fn filmcraft_dir() -> Option<PathBuf> {
-    Host::current().filmcraft_dir()
-}
-
 /// The hook in the engine's `autosave::default_data_dir`: returns [`data_dir`] early, except in the
 /// engine's own unit tests, which assert upstream's folder. A macro so the hook stays one line.
 #[macro_export]

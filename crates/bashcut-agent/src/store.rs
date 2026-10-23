@@ -14,6 +14,8 @@ pub const SCHEMA: &str = "bashcut-conversation/1";
 pub const DIR: &str = "conversations";
 const MAX_BYTES: u64 = 16 * 1024 * 1024;
 const MAX_LISTED: usize = 500;
+/// Directory entries looked at (names and mtimes only) before the newest [`MAX_LISTED`] are loaded.
+const MAX_SCANNED: usize = 20_000;
 
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 #[serde(default, rename_all = "camelCase")]
@@ -108,16 +110,19 @@ pub fn save(sidecar: &Path, c: &Conversation) -> Result<()> {
 /// The saved conversations, most recent first.
 pub fn list(sidecar: &Path) -> Vec<Summary> {
     let Ok(rd) = std::fs::read_dir(dir(sidecar)) else { return Vec::new() };
-    let mut out: Vec<Summary> = rd
+    // Newest files first (by mtime, then name) so the cap drops the oldest, not whatever the
+    // filesystem happens to return first.
+    let mut files: Vec<(SystemTime, String)> = rd
         .flatten()
-        .take(MAX_LISTED * 2)
+        .take(MAX_SCANNED)
         .filter_map(|e| {
-            let name = e.file_name().to_string_lossy().into_owned();
-            let id = name.strip_suffix(".json")?;
-            load(sidecar, id).ok().map(|c| c.summary())
+            let id = e.file_name().to_string_lossy().strip_suffix(".json")?.to_string();
+            let mtime = e.metadata().and_then(|m| m.modified()).unwrap_or(UNIX_EPOCH);
+            Some((mtime, id))
         })
-        .take(MAX_LISTED)
         .collect();
+    files.sort_by(|a, b| b.cmp(a));
+    let mut out: Vec<Summary> = files.iter().filter_map(|(_, id)| load(sidecar, id).ok().map(|c| c.summary())).take(MAX_LISTED).collect();
     out.sort_by(|a, b| b.updated.cmp(&a.updated).then_with(|| b.id.cmp(&a.id)));
     out
 }
@@ -143,4 +148,8 @@ mod tests {
         assert_eq!(list(&side).len(), 1, "broken files are skipped");
         let _ = std::fs::remove_dir_all(&side);
     }
+
+    #[test]
+    #[ignore = "test ticket: past MAX_LISTED conversations, list keeps the newest by mtime"]
+    fn list_keeps_the_newest_past_the_cap() {}
 }

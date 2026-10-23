@@ -17,6 +17,7 @@ and its own docs (`CLAUDE.md`, `AGENTS.md`, `docs/`) still apply in full.
 | [batch.md](batch.md) | `bashcut-batch`: headless parallel pipelines, one project per input, resumable job book (#45) |
 | [brand/](brand/README.md) | BashCutPro's app icon, mark and wordmarks, and the scripts that render them |
 | [commands.md](commands.md), [commands.json](commands.json) | FilmCraft's live command catalogue (`command_list`) and the ids that matter for agents |
+| [bashcut-commands.md](bashcut-commands.md) | Our own `bashcut.*` engine commands (id, label, params), generated from `bashcutpro commands bashcut --json` |
 | [skill-needs.md](skill-needs.md) | what each BashCut skill needs, need by need: available, compose, plugin, or new engine command |
 | [plugin-host.md](plugin-host.md) | `bashcut-plugin-host`: running plugins from the app (approved) |
 | [in-app-ui.md](in-app-ui.md) | in-app UI (rail, side panel, agent, plugins, runs), where its code lives, and every upstream hook line (accepted) |

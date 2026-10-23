@@ -235,10 +235,6 @@ impl Turn {
         self.stop.store(true, Ordering::Relaxed);
     }
 
-    pub fn is_finished(&self) -> bool {
-        self.finished
-    }
-
     /// Events since the last call; never blocks.
     pub fn poll(&mut self) -> Vec<TurnEvent> {
         let mut out = Vec::new();
@@ -259,17 +255,6 @@ impl Turn {
                     break;
                 }
             }
-        }
-        out
-    }
-
-    /// Block until the turn ends or `max` passes (tests).
-    pub fn wait(&mut self, max: Duration) -> Vec<TurnEvent> {
-        let start = Instant::now();
-        let mut out = Vec::new();
-        while start.elapsed() < max && !self.finished {
-            out.extend(self.poll());
-            std::thread::sleep(TICK);
         }
         out
     }
@@ -402,11 +387,20 @@ fn for_each_line<R: Read>(mut r: R, mut f: impl FnMut(&str, bool)) {
     emit(&mut line, &mut cut);
 }
 
+/// Where [`write_mcp_config`] puts the config for this engine and bridge: named by pid and a hash of
+/// both, so a changed bridge (or a second agent with another one) gets its own file.
+pub fn mcp_config_path(cli: &str, bridge: &str) -> PathBuf {
+    use std::hash::{Hash, Hasher};
+    let mut h = std::collections::hash_map::DefaultHasher::new();
+    (cli, bridge).hash(&mut h);
+    std::env::temp_dir().join(format!("bashcut-agent-mcp-{}-{:016x}.json", std::process::id(), h.finish()))
+}
+
 /// A temporary MCP config for this app: `<engine> mcp --bridge <address>` (`bashcutpro` or `filmcraft-cli`) as server `filmcraft`.
-/// Written to the temp dir (it holds no secret) and removed by the caller when the session ends.
+/// Written to the temp dir (it holds no secret) at [`mcp_config_path`] and removed by the caller when the session ends.
 pub fn write_mcp_config(cli: &str, bridge: &str) -> Result<PathBuf> {
     let v = serde_json::json!({"mcpServers": {"filmcraft": {"command": cli, "args": ["mcp", "--bridge", bridge]}}});
-    let path = std::env::temp_dir().join(format!("bashcut-agent-mcp-{}.json", std::process::id()));
+    let path = mcp_config_path(cli, bridge);
     crate::write_atomic(&path, &v.to_string())?;
     Ok(path)
 }
@@ -443,6 +437,10 @@ mod tests {
         assert_eq!(input(codex_json::FORMAT, "cut it"), "cut it");
         assert!(input(stream_json::FORMAT, "cut it").ends_with("}\n"));
     }
+
+    #[test]
+    #[ignore = "test ticket: a new bridge gets its own MCP config file and the session removes the stale one"]
+    fn mcp_config_is_named_by_bridge_and_rewritten_on_change() {}
 
     #[test]
     fn lines_are_split_and_capped() {

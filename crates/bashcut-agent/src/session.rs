@@ -9,7 +9,7 @@ use serde::Serialize;
 use serde_json::{Value, json};
 
 use crate::plan::{self, Gate};
-use crate::process::{AgentSpec, Turn, TurnEnd, TurnEvent, write_mcp_config};
+use crate::process::{AgentSpec, Turn, TurnEnd, TurnEvent, mcp_config_path, write_mcp_config};
 use crate::store::{self, Conversation};
 use crate::stream_json::Event;
 use crate::transcript::Item;
@@ -171,13 +171,20 @@ impl Agent {
         Ok(())
     }
 
-    /// The next turn's command line (writes the MCP config the first time).
+    /// The next turn's command line (writes the MCP config the first time and whenever the engine or
+    /// bridge changed; the stale file is removed).
     fn command_line(&mut self, ctx: &Context) -> Result<Vec<String>> {
         let mcp = match (&ctx.cli, &ctx.bridge) {
             _ if self.agent.mcp_args.is_empty() => None,
             (Some(cli), Some(bridge)) => Some(match &self.mcp_config {
-                Some(p) if p.is_file() => p.clone(),
-                _ => write_mcp_config(cli, bridge)?,
+                Some(p) if *p == mcp_config_path(cli, bridge) && p.is_file() => p.clone(),
+                old => {
+                    let path = write_mcp_config(cli, bridge)?;
+                    if let Some(old) = old.as_ref().filter(|o| **o != path) {
+                        let _ = std::fs::remove_file(old);
+                    }
+                    path
+                }
             }),
             (None, _) => return err("neither bashcutpro nor filmcraft-cli was found next to the app: install BashCutPro again"),
             (_, None) => return err("this agent needs the app's control channel: start BashCutPro with --control <port>"),

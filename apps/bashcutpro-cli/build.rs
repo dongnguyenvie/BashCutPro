@@ -3,15 +3,18 @@
 //! (`filmcraft-cli` → `bashcutpro`, "FilmCraft" → "BashCutPro" in the help). Command ids, JSON
 //! fields, MCP tool names and `FILMCRAFT_*` variables are a protocol and stay as they are.
 //!
-//! Every anchor below must be found, else the build fails: when upstream rewrites its help we fix
-//! this table instead of shipping half-renamed text.
+//! The anchors are tripwires: every one must be found, else the build fails, so when upstream
+//! rewrites its help we fix this table instead of shipping half-renamed text. After them, the rest
+//! of the text gets [`rename`], which only touches the program name as a word (`filmcraft-cli`
+//! followed by a space or `:`), so a future `filmcraft-cli/1` schema, `filmcraft-cli-…` file name or
+//! other protocol string keeps upstream's spelling.
 
 use std::fs;
 use std::path::{Path, PathBuf};
 
 const UPSTREAM: &str = "../filmcraft-cli";
 
-/// (file, text that must be there, its replacement); applied before the blanket rename.
+/// (file, text that must be there, its replacement); applied before [`rename`].
 const ANCHORS: &[(&str, &str, &str)] = &[
     ("main.rs", "filmcraft-cli: drive FilmCraft from the shell", "bashcutpro: drive BashCutPro from the shell"),
     ("main.rs", "USAGE\n  filmcraft-cli [OPTIONS]", "USAGE\n  bashcutpro [OPTIONS]"),
@@ -48,6 +51,23 @@ const MODS: &[&str] = &["args", "probe"];
 /// inner attributes).
 const INNER_ATTR: &str =
     "#![cfg_attr(not(test), deny(clippy::unwrap_used, clippy::expect_used, clippy::panic, clippy::unimplemented, clippy::todo, clippy::unreachable))]";
+
+/// `filmcraft-cli` → `bashcutpro` where it is the program name in text (`filmcraft-cli help`,
+/// `filmcraft-cli: …`), not part of a longer token.
+fn rename(text: &str) -> String {
+    const FROM: &str = "filmcraft-cli";
+    let mut out = String::with_capacity(text.len());
+    let mut rest = text;
+    while let Some(i) = rest.find(FROM) {
+        let (before, after) = rest.split_at(i);
+        let tail = after.get(FROM.len()..).unwrap_or_default();
+        out.push_str(before);
+        out.push_str(if tail.starts_with([' ', ':']) { "bashcutpro" } else { FROM });
+        rest = tail;
+    }
+    out.push_str(rest);
+    out
+}
 
 fn read(p: &Path) -> Result<String, String> {
     fs::read_to_string(p).map_err(|e| format!("bashcutpro-cli: can't read {}: {e}", p.display()))
@@ -150,9 +170,9 @@ fn main() -> Result<(), String> {
                 src = src.replace(&line, &format!("#[path = {:?}]\nmod {m};", path.to_string_lossy()));
             }
         }
-        // Inner doc comments can't be `include!`d; the rest of the text gets the blanket rename.
+        // Inner doc comments can't be `include!`d; the rest of the text gets the narrow rename.
         let body: Vec<&str> = src.lines().filter(|l| !l.starts_with("//!")).collect();
-        let text = body.join("\n").replace("filmcraft-cli", "bashcutpro") + "\n";
+        let text = rename(&body.join("\n")) + "\n";
         fs::write(out.join(file), text).map_err(|e| format!("bashcutpro-cli: can't write {file}: {e}"))?;
     }
     Ok(())

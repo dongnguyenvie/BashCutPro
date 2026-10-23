@@ -157,3 +157,7 @@ fn hostile_params_are_errors_not_crashes() {
     let v = s.execute("bashcut.audio.loudness", json!({"range": {"start": 0.0, "end": 9e6}})).unwrap();
     assert!(v["end"].as_f64().unwrap() <= 2.01);
 }
+
+#[test]
+#[ignore = "test ticket: bashcut/bashcut-commands.md lists exactly the ids of crate::bashcut::commands(), in order"]
+fn bashcut_commands_doc_matches_the_engine() {}

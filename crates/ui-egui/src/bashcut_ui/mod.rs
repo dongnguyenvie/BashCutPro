@@ -3,7 +3,7 @@
 //! A rail on the right edge of the window and a side panel left of it, reserved by one hook in
 //! `FilmcraftApp::frame` ([`layout`]), so FilmCraft's dock, `PanelKind` and `UiState` are not
 //! touched. Commands (`bashcut.ui.*`) reach us through three one-line hooks in `menus.rs`
-//! ([`route!`], [`commands`], [`menu_items`]). State lives in egui context data ([`state`]).
+//! (`route!`, [`commands`], [`menu_items`]). State lives in egui context data ([`state`]).
 //!
 //! Adding a section: one row in [`SECTIONS`] and a `draw` function in its own file; its rail
 //! badge and shortcut are fields of that row. A section with commands of its own adds one row to
