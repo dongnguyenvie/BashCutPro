@@ -28,6 +28,24 @@ nothing.
 
 **New** starts a new conversation; earlier ones are listed and can be opened again.
 
+### Use Claude Code in a terminal
+
+Under the header, **Open in Terminal** opens a terminal window in the project's folder running the same agent
+program the panel uses, resuming the panel's conversation (`claude --resume <id>`, or `codex resume <id>`): you get
+the full Claude Code screen (its own permission prompts, `/` commands, history) on the same conversation. Come back
+to the panel and press **Send** to keep going here. The terminal session talks to the open window through the agent
+kit's tools; the panel's own tool connection is not passed along.
+The first time in a folder, Claude Code asks whether you trust it: choose **Yes, I trust this folder**.
+
+- **Sign in…** opens `claude` in a terminal: type `/login` and follow the steps in your browser. You sign in with
+  Claude Code's own login (a Claude subscription or an API key); BashCutPro never reads or stores it.
+- When Claude Code is not installed, the "not found" line has an **Install** button. It opens a terminal running the
+  official installer (`curl -fsSL https://claude.ai/install.sh | bash` on macOS and Linux,
+  `irm https://claude.ai/install.ps1 | iex` in PowerShell on Windows). Nothing is installed until you press it.
+
+The terminal is Terminal on macOS, Windows Terminal (else a PowerShell window) on Windows, and your desktop's
+default terminal (else GNOME Terminal, Konsole or xterm) on Linux.
+
 ## Codex
 
 Codex works as an outside agent (below) and in batch pipelines, whose agent steps can use `codex` instead of

@@ -27,6 +27,24 @@ liệu, Tải về) khi dự án nằm ở đó: bấm **Cho phép**. Khi chưa 
 
 **Mới** (New) bắt đầu cuộc trò chuyện mới; các cuộc trước được liệt kê và mở lại được.
 
+### Dùng Claude Code trong terminal
+
+Dưới tiêu đề, **Mở trong Terminal** mở một cửa sổ terminal ở thư mục dự án, chạy đúng chương trình trợ lý mà mục
+Trợ lý đang dùng và tiếp tục cuộc trò chuyện của nó (`claude --resume <id>`, hoặc `codex resume <id>`): bạn có đầy đủ
+màn hình Claude Code (hỏi quyền, lệnh `/`, lịch sử) trên cùng cuộc trò chuyện. Quay lại mục Trợ lý và bấm **Gửi** để
+tiếp tục ở đây. Phiên trong terminal điều khiển cửa sổ đang mở qua công cụ của bộ agent kit; kết nối công cụ riêng của
+mục Trợ lý không được chuyển sang.
+Lần đầu ở một thư mục, Claude Code hỏi bạn có tin thư mục đó không: chọn **Yes, I trust this folder**.
+
+- **Đăng nhập…** mở `claude` trong terminal: gõ `/login` rồi làm theo các bước trong trình duyệt. Bạn đăng nhập bằng
+  cách đăng nhập của chính Claude Code (gói Claude hoặc API key); BashCutPro không bao giờ đọc hay lưu nó.
+- Khi chưa cài Claude Code, dòng "không tìm thấy" có nút **Cài đặt**. Nút này mở terminal chạy trình cài đặt chính
+  thức (`curl -fsSL https://claude.ai/install.sh | bash` trên macOS và Linux, `irm https://claude.ai/install.ps1 | iex`
+  trong PowerShell trên Windows). Không có gì được cài cho đến khi bạn bấm.
+
+Terminal là Terminal trên macOS, Windows Terminal (không có thì một cửa sổ PowerShell) trên Windows, và terminal mặc
+định của màn hình nền (không có thì GNOME Terminal, Konsole hoặc xterm) trên Linux.
+
 ## Codex
 
 Codex dùng được như trợ lý bên ngoài (bên dưới) và trong các lượt hàng loạt, nơi bước trợ lý có thể dùng `codex` thay

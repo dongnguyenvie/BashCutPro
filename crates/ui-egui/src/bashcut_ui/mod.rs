@@ -30,6 +30,7 @@ pub mod shared;
 pub mod side_panel;
 pub mod state;
 pub mod strings;
+pub mod terminal;
 pub mod toast;
 pub mod view;
 pub mod widgets;
