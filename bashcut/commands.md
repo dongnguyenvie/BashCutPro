@@ -1,21 +1,20 @@
-# FilmCraft command catalogue
+# BashCutPro command catalogue
 
-Read from a running server, not from source: `filmcraft-cli mcp --demo`, MCP `command_list {}`, release
-build of `filmcraft-cli` 0.9.0 (upstream `105c09bd`), default features, 2026-10-20. The full list (id, label,
-menu, shortcut, params, enabled) is [commands.json](commands.json). Refresh it after every upstream merge:
+The single source is the agent kit's **`scripts/commands.json`** ([bashcutpro-agent-kit](https://github.com/dongnguyenvie/bashcutpro-agent-kit)),
+generated from a build's own `command_list` (`bashcutpro-cli mcp --demo`, v0.10.0, upstream `dd525c93`, whisper,
+Windows, 2026-10-23). [commands.json](commands.json) here is a byte copy of it, kept so the links in this folder
+keep working: never edit or regenerate it here. After an upstream merge or a new `bashcut.*` command, refresh the
+kit (`python3 scripts/refresh_commands.py --cli <abs>/target/debug/bashcutpro-cli`), then copy the file over this one.
+Each row has id, label, menu, shortcut, params and enabled; `frontend` lists window-only ids a headless build lacks.
 
-```bash
-CARGO_TARGET_DIR=target/agent-catalogue cargo build --release -p filmcraft-cli
-target/agent-catalogue/release/filmcraft-cli commands --json > /tmp/commands.json   # same list as MCP command_list
-```
-
-`enabled` is the state in the demo project with nothing selected: 244 of 701 are `false` because they need a
-selection, a transcript, a caption track or a saved path, not because they are missing. `filmcraft-cli
-describe <id>` prints one command; `filmcraft-cli exec --demo <id> key=value` runs one headless.
+`enabled` is the state in the demo project with nothing selected: 242 of 730 are `false` because they need a
+selection, a transcript, a caption track or a saved path, not because they are missing. `bashcutpro-cli
+describe <id>` prints one command; `bashcutpro-cli exec --demo <id> key=value` runs one headless. The `bashcut.*`
+ids are described in [bashcut-commands.md](bashcut-commands.md).
 
 ## Totals
 
-**701 engine commands** in 42 namespaces, plus **17 MCP tools**: `command_list`, `command_run`,
+**730 engine commands** (701 FilmCraft + 29 `bashcut.*`) in 43 namespaces, plus **17 MCP tools**: `command_list`, `command_run`,
 `command_batch`, `doc_inspect`, `project_inspect`, `sequence_inspect`, `media_import`, `render_frame`,
 `render_preview`, and in `--bridge` mode `ui_elements`, `ui_inspect`, `ui_click`, `ui_drag`, `ui_key`,
 `ui_type`, `ui_control`, `ui_screenshot`.
@@ -30,7 +29,7 @@ describe <id>` prints one command; `filmcraft-cli exec --demo <id> key=value` ru
 | `project` | 40 | `shortcuts` | 16 | `jobs`, `mediaCache`, `events`, `metadata` | 2 each |
 | `edit` | 39 | `playhead` | 14 | `command`, `state`, `history`, `perf` | 1 each |
 | `multicam` | 35 | `transcript` | 14 | `color`, `fonts`, `scopes`, `help` | 1 each |
-| `markers` | 32 | `masks` | 12 | | |
+| `markers` | 32 | `masks` | 12 | `bashcut` | 29 |
 | `trim` | 24 | `mediaBrowser` | 10 | | |
 | | | `essentialSound` | 9 | | |
 | | | `source`, `lumetri`, `presets`, `tts` | 7 each | | |
@@ -67,7 +66,7 @@ Time params take ticks (254 016 000 000/s) or `seconds`, `frame`, `timecode` whe
 
 - **Speech** (`transcript.*`, `sequence.transcribe`): `transcript.models` reports `"available": false` in a
   default build; Whisper needs `--features whisper` (gap G19), which also enables model download. With
-  `--features whisper` the build compiles, lists the same 701 commands and reports `"available": true`; a model is
+  `--features whisper` the build compiles, lists the same commands and reports `"available": true`; a model is
   then downloaded with `transcript.downloadModel`. Without it,
   **`transcript.set`** imports word timings made elsewhere (`{"item", "transcript": {"language", "speakers",
   "words": [{"text", "start", "end", "speaker"}]}}`, ticks), and every other `transcript.*` command then works
