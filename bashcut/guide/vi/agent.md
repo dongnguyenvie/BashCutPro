@@ -20,7 +20,8 @@ liệu, Tải về) khi dự án nằm ở đó: bấm **Cho phép**. Khi chưa 
 2. Mở **Trợ lý** (Agent) trên thanh bên (**Cmd+Alt+Shift+A**). Gõ điều bạn muốn ("cắt hết ừm à, dưới một phút, thêm
    phụ đề tiếng Việt") rồi nhấn **Enter** (**Shift+Enter** để xuống dòng).
 3. Câu trả lời hiện dần; các lệnh trợ lý chạy được gom mỗi lệnh một dòng. Mỗi thao tác trợ lý làm là một bước hoàn tác
-   bình thường.
+   bình thường. Tin của bạn nằm trong khung bên phải, câu trả lời của trợ lý nằm dưới tên của nó; rê chuột vào một tin
+   (hoặc một khối mã trong câu trả lời) để hiện nút **Sao chép**.
 4. Ở mỗi chặng (yêu cầu, kế hoạch, cắt thô, bản nháp) trợ lý hiện một **thẻ duyệt** với việc đã làm và số đo đi kèm:
    **Duyệt** (Approve) để đi tiếp, hoặc viết ghi chú rồi **Yêu cầu sửa** (Ask for changes).
 5. **Dừng** (Stop) kết thúc lượt của trợ lý trong vài giây, kể cả khi đang chạy một công cụ lâu; bản ghi hiện

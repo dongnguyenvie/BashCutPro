@@ -225,7 +225,7 @@ pub fn draw(app: &mut FilmcraftApp, ui: &mut egui::Ui) {
             v.input = prompt;
             ctx.memory_mut(|m| m.request_focus(input_id()));
         }
-        transcript::transcript(app, ui, &snap.items);
+        transcript::transcript(app, ui, &snap.items, &snap.agent.1);
         for (i, p) in snap.permissions.iter().enumerate() {
             cards::permission_card(app, ui, &ctx, &mut v, i, p, &snap.agent.1);
         }
@@ -363,6 +363,8 @@ mod tests {
             "Allow once",
             "Always for this project",
             "Deny",
+            "Copy",
+            "Copied",
             "Start a message to load skills",
             "skill",
             "command",

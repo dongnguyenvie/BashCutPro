@@ -594,6 +594,18 @@ labels or subclips (§1 rule 1). A project opened in upstream FilmCraft still wo
   (`codex exec --json -` with the prompt on stdin, `resume <thread>` for later turns, the MCP server passed as `-c
   mcp_servers.bashcutpro.*`; `codex`, or `BASHCUT_CODEX`; events `codex-json`, #37); others as plugins.
 
+### 6.AGU2 Message blocks (agent redesign wave A)
+
+`agent_panel/transcript.rs`: a user message is a right-aligned bubble (max 85 % of the width, `field_bg`, `radius`,
+8/6 px padding, no "You" label); an assistant reply is unboxed Markdown under a name row (Sparkle icon in `accent` +
+the agent's name, e.g. "Claude Code") shown only at the start of a run of assistant/tool items. A turn starts with
+10 px and a `separator` hairline. Notices (`Stopped.`) are a centered META line. Copy (`markdown::copy_button`,
+`ctx.copy_text`) is hover-only on a bubble (top-left, outside), a reply (top-right, raw Markdown) and each code block
+(`bashcut.agent.copy.<i>`, `…<i>.code.<n>`); after a click the icon changes and the tooltip says Copied for 1 s. Items
+appended while the panel stays open on a live turn fade and slide in (`motion::appear`); a saved conversation,
+or the panel reopened after a gap, does not animate (no fade with Animations off). Upstream has no Copy or Check
+icon, so `NewItem` / `Marker` stand in until `icons.rs` gets the pair.
+
 ### 6a. Batch section in detail (#46)
 
 - **Build**: inputs (drop zone, Add files…, Add folder…; drops on the zone are taken by hook H12 before upstream's
