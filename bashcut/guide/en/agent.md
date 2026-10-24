@@ -50,7 +50,7 @@ nothing.
 
 ### Use Claude Code in a terminal
 
-Under the header, **Open in Terminal** opens a terminal window in the project's folder running the same agent
+In the header's **menu** (the three-lines icon at the right), **Open in Terminal** opens a terminal window in the project's folder running the same agent
 program the panel uses, resuming the panel's conversation (`claude --resume <id>`, or `codex resume <id>`): you get
 the full Claude Code screen (its own permission prompts, `/` commands, history) on the same conversation. Come back
 to the panel and press **Send** to keep going here. The terminal session talks to the open window through the agent

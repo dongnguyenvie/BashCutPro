@@ -559,7 +559,12 @@ Working	Đang làm
 Thinking…	Đang suy nghĩ…
 Running {tool}…	Đang chạy {tool}…
 Writing…	Đang viết…
+<<<<<<< HEAD
 # Agent cards (AGU6)
 The turn ended with an error.	Lượt này kết thúc với lỗi.
 The turn stopped at its turn limit.	Lượt này dừng vì hết số bước cho phép.
 The turn stopped at its spending limit.	Lượt này dừng vì hết ngân sách cho phép.
+=======
+More	Thêm
+{n} things to set up	{n} việc cần thiết lập
+>>>>>>> 5b85ad9b (AGU7: Agent panel header (icon New, overflow menu) and one collapsible Setup strip)

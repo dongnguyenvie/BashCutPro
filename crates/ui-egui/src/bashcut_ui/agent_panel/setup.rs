@@ -1,4 +1,4 @@
-//! Header, readiness lines and the terminal row (UX7, AG5, AG6, AG9, AG16).
+//! Header with its overflow menu, the Setup strip and the terminal status line (UX7, AG5, AG6, AG9, AG16, AGU7).
 
 use serde_json::json;
 
@@ -6,12 +6,46 @@ use super::super::agent;
 use super::super::hints::{self, HOW_TO_TURN_ON};
 use super::super::strings::{f, s};
 use super::super::terminal;
-use super::super::widgets::{NOTE, button, code_text, note};
+use super::super::widgets::{NOTE, button, code_text, icon_button, icon_button_response, note};
 use super::{Snapshot, View, call, report};
 use crate::FilmcraftApp;
+use crate::icons::Icon;
 
-/// One line per missing item, before the user presses Send; `true` when Open in Terminal was clicked.
+/// The Setup strip (AGU7): nothing when all is ready, the one line when one item is missing, "n things to set up ▸"
+/// expanding to the lines for more. Under it the terminal session's state. `true` when the menu's Open in
+/// Terminal was clicked (see [`header`]).
 pub(super) fn readiness(app: &mut FilmcraftApp, ui: &mut egui::Ui, ctx: &egui::Context, snap: &Snapshot) -> bool {
+    let control_off = !hints::control_on();
+    let issues = usize::from(snap.missing.is_some())
+        + usize::from(snap.outdated)
+        + usize::from(snap.auth.is_some())
+        + usize::from(snap.kit_missing)
+        + usize::from(control_off)
+        + usize::from(!snap.has_project);
+    match issues {
+        0 => {}
+        1 => lines(app, ui, ctx, snap, control_off),
+        n => {
+            let id = ui.make_persistent_id("bashcut.agent.setup");
+            let mut state = egui::collapsing_header::CollapsingState::load_with_default_open(ctx, id, false);
+            let title = f("{n} things to set up", &[("n", &n.to_string())]);
+            let head = ui.add(
+                egui::Button::new(egui::RichText::new(format!("{} {title}", if state.is_open() { "▾" } else { "▸" })).size(NOTE).color(app.tokens.danger))
+                    .frame(false),
+            );
+            app.auto.add_response("bashcut.agent.setup", &head, &title);
+            if head.clicked() {
+                state.toggle(ui);
+            }
+            state.show_body_unindented(ui, |ui| lines(app, ui, ctx, snap, control_off));
+        }
+    }
+    status_row(app, ui, snap);
+    take_menu_click(ctx)
+}
+
+/// One line per missing item (ids `bashcut.agent.ready.*`); the control checkbox sits under its line while the channel is off.
+fn lines(app: &mut FilmcraftApp, ui: &mut egui::Ui, ctx: &egui::Context, snap: &Snapshot, control_off: bool) {
     let t = app.tokens;
     if let Some(line) = &snap.missing {
         ui.horizontal_wrapped(|ui| {
@@ -35,13 +69,12 @@ pub(super) fn readiness(app: &mut FilmcraftApp, ui: &mut egui::Ui, ctx: &egui::C
     if snap.kit_missing {
         kit_line(app, ui, snap);
     }
-    let handoff = terminal_row(app, ui, snap);
-    if !hints::control_on() {
+    if control_off {
         let line = s("Control channel off: the agent cannot edit the open project.");
         let r = note(ui, line, NOTE, t.text_dim).on_hover_text(s(HOW_TO_TURN_ON));
         app.auto.add_response("bashcut.agent.ready.control", &r, line);
+        super::super::control::setting(app, ui);
     }
-    super::super::control::setting(app, ui);
     if !snap.has_project {
         ui.horizontal_wrapped(|ui| {
             let line = s("Project not saved: conversations will not be kept");
@@ -54,7 +87,6 @@ pub(super) fn readiness(app: &mut FilmcraftApp, ui: &mut egui::Ui, ctx: &egui::C
             }
         });
     }
-    handoff
 }
 
 /// "Claude Code is not signed in" or "… account problem: billing" (AG6).
@@ -135,22 +167,11 @@ pub(super) fn hover_button(app: &mut FilmcraftApp, ui: &mut egui::Ui, id: &str, 
     r.clicked()
 }
 
-/// Open in Terminal and Sign in, for an agent whose program was found (Claude Code, Codex), and under them the
-/// terminal session's state from its hooks (AGT1); `true` when Open in Terminal was clicked.
-pub(super) fn terminal_row(app: &mut FilmcraftApp, ui: &mut egui::Ui, snap: &Snapshot) -> bool {
-    let Some(argv) = snap.resume.as_ref() else { return false };
-    let clicked = ui
-        .horizontal_wrapped(|ui| {
-            let tip = f("Continue this conversation with {agent} in a terminal window.", &[("agent", &snap.agent.1)]);
-            let clicked = hover_button(app, ui, "bashcut.agent.terminal", s("Open in Terminal"), &tip);
-            // the sign-in line has its own Sign in (AG6)
-            if snap.agent.0 == "claude-code" && snap.auth.is_none() {
-                let program = argv.first().cloned().unwrap_or_default();
-                sign_in_button(app, ui, &program, snap.project.as_deref());
-            }
-            clicked
-        })
-        .inner;
+/// The terminal session's state from its hooks (AGT1), under the header.
+fn status_row(app: &mut FilmcraftApp, ui: &mut egui::Ui, snap: &Snapshot) {
+    if snap.resume.is_none() {
+        return;
+    }
     if let Some(phase) = agent::terminal_phase(ui.ctx()) {
         let (line, color) = match phase {
             terminal::Phase::Opened => (s("Terminal: opened"), app.tokens.text_dim),
@@ -163,7 +184,39 @@ pub(super) fn terminal_row(app: &mut FilmcraftApp, ui: &mut egui::Ui, snap: &Sna
         let r = note(ui, line, NOTE, color);
         app.auto.add_response("bashcut.agent.terminal.status", &r, line);
     }
-    clicked
+}
+
+/// The header's menu clicked Open in Terminal this frame; [`readiness`] hands it to the panel.
+fn menu_click_id() -> egui::Id {
+    egui::Id::new("bashcut.agent.menu.terminal")
+}
+
+fn take_menu_click(ctx: &egui::Context) -> bool {
+    ctx.data_mut(|d| d.remove_temp::<bool>(menu_click_id())).unwrap_or(false)
+}
+
+/// The overflow menu: Open in Terminal, Sign in… (unless the auth line has it) and the control checkbox (inline in
+/// the Setup strip instead while the channel is off).
+fn overflow_menu(app: &mut FilmcraftApp, ui: &mut egui::Ui, ctx: &egui::Context, snap: &Snapshot) {
+    let r = icon_button_response(app, ui, "bashcut.agent.menu", Icon::Hamburger, s("More"), true);
+    egui::Popup::menu(&r).show(|ui| {
+        ui.set_min_width(180.0);
+        if let Some(argv) = snap.resume.as_ref() {
+            let tip = f("Continue this conversation with {agent} in a terminal window.", &[("agent", &snap.agent.1)]);
+            if hover_button(app, ui, "bashcut.agent.terminal", s("Open in Terminal"), &tip) {
+                ctx.data_mut(|d| d.insert_temp(menu_click_id(), true));
+                ui.close();
+            }
+            // the sign-in line has its own Sign in (AG6)
+            if snap.agent.0 == "claude-code" && snap.auth.is_none() {
+                let program = argv.first().cloned().unwrap_or_default();
+                sign_in_button(app, ui, &program, snap.project.as_deref());
+            }
+        }
+        if hints::control_on() {
+            super::super::control::setting(app, ui);
+        }
+    });
 }
 
 /// Sign in ([`agent::sign_in`], AG6 shows it when auth fails).
@@ -174,10 +227,17 @@ pub fn sign_in_button(app: &mut FilmcraftApp, ui: &mut egui::Ui, program: &str, 
     }
 }
 
+/// Below this the conversation picker gets its own row (240 px panel).
+const NARROW: f32 = 300.0;
+
 pub(super) fn header(app: &mut FilmcraftApp, ui: &mut egui::Ui, ctx: &egui::Context, v: &mut View, snap: &Snapshot, running: bool) {
+    let narrow = ui.available_width() < NARROW;
     ui.horizontal(|ui| {
         let mut chosen = None;
-        let combo = egui::ComboBox::from_id_salt("bashcut.agent.picker").selected_text(snap.agent.1.as_str()).width(120.0).show_ui(ui, |ui| {
+        // sized to its text, not less than 90 px
+        let text = egui::WidgetText::from(snap.agent.1.as_str()).into_galley(ui, Some(egui::TextWrapMode::Extend), f32::INFINITY, egui::TextStyle::Button);
+        let width = (text.size().x + 28.0).clamp(90.0, 150.0);
+        let combo = egui::ComboBox::from_id_salt("bashcut.agent.picker").selected_text(snap.agent.1.as_str()).width(width).show_ui(ui, |ui| {
             for (id, name, found) in &snap.agents {
                 let label = if *found { name.clone() } else { f("{agent} (not installed)", &[("agent", name)]) };
                 let r = ui.add_enabled(*found || *id == snap.agent.0, egui::Button::selectable(*id == snap.agent.0, label.as_str()));
@@ -196,35 +256,46 @@ pub(super) fn header(app: &mut FilmcraftApp, ui: &mut egui::Ui, ctx: &egui::Cont
             call(app, ctx, v, "use", json!({"agent": id}));
         }
 
-        // New first from the right, so a long conversation title truncates instead of pushing it out
+        // icons first from the right, so a long conversation title truncates instead of pushing them out
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-            if button(app, ui, "bashcut.agent.new", s("New"), !running && !snap.items.is_empty()) {
-                call(app, ctx, v, "new", json!({}));
-            }
-            let mut open = None;
-            let title = if snap.title.is_empty() { s("New conversation").to_string() } else { snap.title.clone() };
-            let combo = egui::ComboBox::from_id_salt("bashcut.agent.conversations")
-                .selected_text(title.as_str())
-                .width(ui.available_width())
-                .truncate()
-                .show_ui(ui, |ui| {
-                    // read only while the list is open
-                    let list = agent::with(app, ctx, |a| a.conversations());
-                    if list.is_empty() {
-                        ui.label(egui::RichText::new(s("No saved conversations.")).size(11.0));
-                    }
-                    for c in list {
-                        let label = if c.title.is_empty() { c.id.clone() } else { c.title.clone() };
-                        if ui.selectable_label(false, label).clicked() {
-                            open = Some(c.id);
-                        }
-                    }
-                });
-            let combo_response = combo.response.on_hover_text(&title);
-            app.auto.add_response("bashcut.agent.conversations", &combo_response, &title);
-            if let Some(id) = open {
-                call(app, ctx, v, "open", json!({"id": id}));
+            overflow_menu(app, ui, ctx, snap);
+            new_button(app, ui, ctx, v, snap, running);
+            if !narrow {
+                conversation_picker(app, ui, ctx, v, snap);
             }
         });
     });
+    if narrow {
+        conversation_picker(app, ui, ctx, v, snap);
+    }
+}
+
+fn new_button(app: &mut FilmcraftApp, ui: &mut egui::Ui, ctx: &egui::Context, v: &mut View, snap: &Snapshot, running: bool) {
+    if icon_button(app, ui, "bashcut.agent.new", Icon::NewItem, s("New"), !running && !snap.items.is_empty()) {
+        call(app, ctx, v, "new", json!({}));
+    }
+}
+
+fn conversation_picker(app: &mut FilmcraftApp, ui: &mut egui::Ui, ctx: &egui::Context, v: &mut View, snap: &Snapshot) {
+    let mut open = None;
+    let title = if snap.title.is_empty() { s("New conversation").to_string() } else { snap.title.clone() };
+    let combo =
+        egui::ComboBox::from_id_salt("bashcut.agent.conversations").selected_text(title.as_str()).width(ui.available_width()).truncate().show_ui(ui, |ui| {
+            // read only while the list is open
+            let list = agent::with(app, ctx, |a| a.conversations());
+            if list.is_empty() {
+                ui.label(egui::RichText::new(s("No saved conversations.")).size(11.0));
+            }
+            for c in list {
+                let label = if c.title.is_empty() { c.id.clone() } else { c.title.clone() };
+                if ui.selectable_label(false, label).clicked() {
+                    open = Some(c.id);
+                }
+            }
+        });
+    let combo_response = combo.response.on_hover_text(&title);
+    app.auto.add_response("bashcut.agent.conversations", &combo_response, &title);
+    if let Some(id) = open {
+        call(app, ctx, v, "open", json!({"id": id}));
+    }
 }

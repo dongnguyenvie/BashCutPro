@@ -717,3 +717,14 @@ see a change.
   mode but makes the default a **side panel reserved by hook H6**, which still adds no `PanelKind`. Accepted
   2026-10-20 (decisions.md).
 - The plugin host's touch points in plugin-host.md (`lib.rs` per-frame call, `menus.rs` routing) are H5–H9 here.
+
+- **Header and Setup strip (AGU7, `agent_panel/setup.rs`)**: header row = agent picker (sized to its text, min 90 px),
+  conversation picker (takes the rest; on its own row under 300 px so it stays readable at 240 px), **New** as an icon
+  button (`bashcut.agent.new`) and a `Hamburger` overflow menu (`bashcut.agent.menu`) holding **Open in Terminal**
+  (`bashcut.agent.terminal`), **Sign in…** (`bashcut.agent.signIn`, not while the auth line shows it) and the
+  *Allow AI agents to control BashCutPro* checkbox (`bashcut.agent.allowControl`); the checkbox is inline under
+  `ready.control` only while the channel is off, in the menu otherwise. The `bashcut.agent.ready.*` lines became one
+  Setup strip: 0 issues nothing, 1 issue its line, more "{n} things to set up ▸" (`bashcut.agent.setup`, state in egui
+  memory) expanding to the lines. The terminal status line stays under the header. Menu items exist only while the
+  menu is open: drive them by clicking `bashcut.agent.menu` first. Follow-up: disable the input while the terminal
+  session is live (input.rs, AGU5).

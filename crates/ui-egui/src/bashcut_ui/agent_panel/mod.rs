@@ -374,6 +374,8 @@ mod tests {
             "skill",
             "command",
             "↑/↓ to pick, Enter or Tab to insert, Esc to close",
+            "More",
+            "{n} things to set up",
         ] {
             assert_ne!(s(k), k);
         }
