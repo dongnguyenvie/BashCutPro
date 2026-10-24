@@ -23,6 +23,8 @@ pub const REQUIRED_COMMANDS: &[&str] = &["bashcut.profiles.list", "bashcut.profi
 
 const GB: u64 = 1 << 30;
 const MAX_MANIFEST: usize = 4 << 20;
+/// Longest `commands --json` listing the doctor parses (the whole registry, a few thousand entries).
+const MAX_COMMANDS_JSON: usize = 4 << 20;
 const MAX_PLUGINS: usize = 200;
 const MAX_MODEL_FILES: usize = 2_000;
 /// The plugins' model cache, `<data dir>/bashcut-models/<model id>/`: where `bashcut_models.py` (bashcutpro-plugins)
@@ -184,7 +186,7 @@ pub fn run_checks(env: &dyn Env, opts: &Options) -> Report {
     r
 }
 
-/// Returns the `bashcut.*` ids the engine lists (None when it could not be listed).
+/// Returns every command id the engine lists, core and `bashcut.*` (None when it could not be listed).
 fn check_cli(env: &dyn Env, opts: &Options, r: &mut Report) -> Option<Vec<String>> {
     let cli = cli_program(env, opts);
     let Some(out) = env.run(&cli, &["--version"]).filter(Output::ok) else {
@@ -196,17 +198,20 @@ fn check_cli(env: &dyn Env, opts: &Options, r: &mut Report) -> Option<Vec<String
     };
     let version = out.stdout.trim().to_string();
     r.findings.push(Finding::new("cli", Level::Ok, format!("{version} ({cli})")));
-    let listed = env.run(&cli, &["commands", "bashcut", "--json"]).filter(Output::ok).and_then(|o| serde_json::from_str::<Value>(&o.stdout).ok());
+    let listed = env
+        .run(&cli, &["commands", "--json"])
+        .filter(Output::ok)
+        .filter(|o| o.stdout.len() <= MAX_COMMANDS_JSON)
+        .and_then(|o| serde_json::from_str::<Value>(&o.stdout).ok());
     let Some(Value::Array(list)) = listed else {
-        r.findings.push(
-            Finding::new("cli.commands", Level::Warn, "`commands bashcut --json` gave no command list").fix("rebuild bashcutpro-cli from BashCutPro main"),
-        );
+        r.findings.push(Finding::new("cli.commands", Level::Warn, "`commands --json` gave no command list").fix("rebuild bashcutpro-cli from BashCutPro main"));
         return None;
     };
     let have: Vec<&str> = list.iter().filter_map(|c| c.get("id").and_then(Value::as_str)).collect();
     let missing: Vec<&str> = REQUIRED_COMMANDS.iter().copied().filter(|id| !have.contains(id)).collect();
     if missing.is_empty() {
-        r.findings.push(Finding::new("cli.commands", Level::Ok, format!("{} bashcut.* commands", have.len())));
+        let ours = have.iter().filter(|id| id.starts_with("bashcut.")).count();
+        r.findings.push(Finding::new("cli.commands", Level::Ok, format!("{} commands ({ours} bashcut.*)", have.len())));
     } else {
         r.findings.push(
             Finding::new("cli.commands", Level::Fail, format!("this build lacks {}", missing.join(", "))).fix("rebuild bashcutpro-cli from BashCutPro main"),
@@ -306,11 +311,11 @@ fn check_kit(env: &dyn Env, opts: &Options, engine_ids: Option<&[String]>, r: &m
     }
 }
 
-/// `kit.commands`: the commands the kit's skills name against the commands this engine lists (`bashcut_dirs::kit::kit_command_gaps`).
+/// `kit.commands`: the commands the kit's skills name against the commands this engine lists (`bashcut_dirs::kit::kit_all_command_gaps`: core and `bashcut.*` ids, plugin ids excluded).
 fn check_kit_commands(env: &dyn Env, kit: &Path, engine_ids: Option<&[String]>, r: &mut Report) {
     let Some(engine_ids) = engine_ids else { return };
     let index = env.read(&kit.join(bashcut_dirs::kit::INDEX_FILE)).filter(|b| b.len() <= bashcut_dirs::kit::MAX_INDEX_BYTES);
-    let gaps = index.and_then(|b| bashcut_dirs::kit::kit_command_gaps(&String::from_utf8_lossy(&b), engine_ids));
+    let gaps = index.and_then(|b| bashcut_dirs::kit::kit_all_command_gaps(&String::from_utf8_lossy(&b), engine_ids));
     let Some(gaps) = gaps else {
         r.findings
             .push(Finding::new("kit.commands", Level::Info, "this kit has no command index, so its commands were not compared with the engine").fix(KIT_FIX));
