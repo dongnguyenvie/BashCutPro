@@ -207,7 +207,12 @@ impl State {
             return;
         }
         self.loaded = true;
-        let Some(dir) = data_dir else { return };
+        let Some(dir) = data_dir else {
+            // no data dir, nothing saved (a bare harness, a session without autosave): upstream's
+            // layout owns the window, the rail comes with `bashcut.ui.toggleRail`
+            self.rail = false;
+            return;
+        };
         let path = file(dir);
         let Some(text) = super::prefs::read(&path, MAX_FILE) else { return };
         match serde_json::from_str::<State>(&text) {

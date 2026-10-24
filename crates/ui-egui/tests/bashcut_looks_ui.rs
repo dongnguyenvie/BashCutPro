@@ -17,6 +17,9 @@ struct Driver {
 impl Driver {
     fn demo() -> Self {
         let mut session = Session::default();
+        // saving into a scratch dir: with no data dir the rail starts hidden (`State::load_once`)
+        let data = std::env::temp_dir().join(format!("bashcut-ui-looks-{}", std::process::id()));
+        session.start_autosave(filmcraft_engine::autosave::AutosaveConfig::new(&data)).expect("data dir");
         session.execute("file.openDemoProject", json!({})).expect("demo project");
         let (tx, rx) = channel();
         let app = FilmcraftApp::new(session).with_control(rx);
