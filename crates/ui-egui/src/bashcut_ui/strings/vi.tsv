@@ -578,3 +578,6 @@ This kit uses 1 command this BashCutPro doesn't have: {skills}.	Bộ kỹ năng 
 This kit uses {n} commands this BashCutPro doesn't have: {skills}.	Bộ kỹ năng này dùng {n} lệnh mà BashCutPro này chưa có: {skills}.
 Update the kit or BashCutPro so the skills and the commands match.	Hãy cập nhật bộ kỹ năng hoặc BashCutPro để kỹ năng và lệnh khớp nhau.
 Show	Xem
+Message {agent}…	Nhắn {agent}…
+Send (Enter sends, Shift+Enter for a new line)	Gửi (Enter để gửi, Shift+Enter để xuống dòng)
+No sequence open	Chưa mở sequence nào

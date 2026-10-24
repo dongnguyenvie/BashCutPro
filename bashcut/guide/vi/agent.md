@@ -119,3 +119,7 @@ Claude Code hoặc Codex chạy trong cửa sổ dòng lệnh cũng điều khi�
 
 Trợ lý chỉ được ghi trong thư mục của dự án (và các thư mục bạn cho phép), nên một nhầm lẫn không thể ghi đè tệp khác
 của bạn.
+
+Ô nhập tin tự cao lên khi bạn gõ (tối đa 8 dòng). Bên dưới có một dòng nhỏ cho biết những gì được gửi kèm tin nhắn
+(sequence, vị trí đầu phát, các clip đang chọn; rê chuột để xem đầy đủ), và nút tròn có mũi tên để gửi. Khi Claude đang
+làm việc mà ô trống, mũi tên đổi thành nút vuông **Dừng**.

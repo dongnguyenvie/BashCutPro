@@ -747,3 +747,12 @@ see a change.
   memory) expanding to the lines. The terminal status line stays under the header. Menu items exist only while the
   menu is open: drive them by clicking `bashcut.agent.menu` first. Follow-up: disable the input while the terminal
   session is live (input.rs, AGU5).
+- **Composer (AGU5)**: the message box is one rounded frame (`field_bg`, 1 px `field_border`, accent while focused). The
+  text grows from 1 to 8 rows with its content, then scrolls inside the frame; the transcript gets the rest (the
+  frame's height of the last frame is kept in the view). Under the text: a **context chip** on the left
+  (`bashcut.agent.context`: active sequence, playhead `m:ss.s`, selected clips; hover shows the full line sent with
+  every message, `agent::context_line`) and a round button on the right: **Send** (`ArrowUp`, accent fill, grey with the
+  missing-agent reason as tooltip when off; `bashcut.agent.send`), replaced by **Stop** (`Square`,
+  `bashcut.agent.stop`) while a turn runs and the box is empty; a live agent with text typed shows both. Both ids stay
+  registered (zero-size when not shown). The Enter / Shift+Enter hint moved into Send's tooltip; the placeholder is
+  "Message {agent}…". The `/` list is unchanged.
