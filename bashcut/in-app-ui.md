@@ -580,12 +580,16 @@ labels or subclips (§1 rule 1). A project opened in upstream FilmCraft still wo
   has no `bcp`. Then the readiness line `bashcut.agent.ready.kit` says "BashCutPro skills are not downloaded", shows the
   optional global-install command selectable (`bashcut.agent.ready.kit.commands`, with a note "Want the skills in
   every Claude Code session? Run:"; the app never runs it) and **Download kit…** (AG16,
-  `bashcut.agent.installKit`, id unchanged), which opens a terminal running `git clone
-  https://github.com/dongnguyenvie/bashcutpro-agent-kit <data dir>/bashcut-kit`, or `git -C <dir> pull` when `.git`
-  is already there (`terminal::kit_job`, `agent::install_kit`; the folder AG15's lookup reads first, so the next
-  message loads it with `--plugin-dir`; the UI never runs `claude plugin install`). Without git on `PATH` the button
-  is replaced by the zip URL and target folder as selectable text (`bashcut.agent.ready.kit.zip`), and the command
-  refuses with the same sentence. Never automatic. Before the first init nothing shows (unknown is not missing).
+  `bashcut.agent.installKit`, id unchanged), which opens a terminal running `git clone --branch <tag> --depth 1
+  https://github.com/dongnguyenvie/bashcutpro-agent-kit <data dir>/bashcut-kit` for a fresh directory, or
+  `git fetch --tags && git checkout <tag>` when `.git` is already there (`terminal::kit_job`, `agent::install_kit`;
+  the folder AG15's lookup reads first, so the next message loads it with `--plugin-dir`; the UI never runs
+  `claude plugin install`). **The tag** comes from `bashcut/kit.lock` (one `vX.Y.Z` line, embedded at build time via
+  `include_str!` in `terminal::KIT_TAG_RAW`; trimmed by `terminal::kit_tag()`; PLK7). Without git on `PATH` the
+  button is replaced by the zip URL for the pinned tag and target folder as selectable text
+  (`bashcut.agent.ready.kit.zip`), and the command refuses with the same sentence. The kit-gap line
+  (`bashcut.agent.ready.kitGap`, PLK5) says "pinned to kit <tag>" so the user sees what version this build expects.
+  Never automatic. Before the first init nothing shows (unknown is not missing).
   While the kit is not installed globally, **Open in Terminal** adds `--plugin-dir <kit>` (when a folder is found) and `--mcp-config <data dir>/agent/terminal-mcp.json`
   (`terminal::terminal_mcp_config`: the app's `bashcutpro` server, `<engine> mcp --bridge <address>`, rewritten on
   each click), so the terminal agent reaches the app without the kit; with the kit it is not passed (two copies

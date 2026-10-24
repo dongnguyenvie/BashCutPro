@@ -549,7 +549,10 @@ pub fn git_found() -> bool {
 pub fn install_kit(cwd: &Path) -> Result<(), String> {
     let dir = kit_target().ok_or_else(|| s("There is no data folder to keep the kit in.").to_string())?;
     if !git_found() {
-        return Err(f("Git was not found. Download {url} and unpack it into {folder}.", &[("url", terminal::KIT_ZIP_URL), ("folder", &dir.to_string_lossy())]));
+        return Err(f(
+            "Git was not found. Download {url} and unpack it into {folder}.",
+            &[("url", &terminal::kit_zip_url()), ("folder", &dir.to_string_lossy())],
+        ));
     }
     let hint = s("Downloading the BashCutPro kit. When it finishes, close this window: your next message in BashCutPro loads it.");
     let job = terminal::kit_job(terminal::Os::current(), "git", &dir, dir.join(".git").exists());

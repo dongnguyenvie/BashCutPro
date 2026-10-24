@@ -155,7 +155,7 @@ pub(super) fn kit_line(app: &mut FilmcraftApp, ui: &mut egui::Ui, snap: &Snapsho
         note(ui, s("When the download finishes, your next message loads the kit."), NOTE, t.text_dim);
     } else {
         let folder = agent::kit_target().map(|d| d.to_string_lossy().into_owned()).unwrap_or_default();
-        let text = f("Git was not found. Download {url} and unpack it into {folder}.", &[("url", terminal::KIT_ZIP_URL), ("folder", &folder)]);
+        let text = f("Git was not found. Download {url} and unpack it into {folder}.", &[("url", &terminal::kit_zip_url()), ("folder", &folder)]);
         let r = ui.add(egui::Label::new(egui::RichText::new(&text).size(NOTE).color(t.text_dim)).selectable(true).wrap());
         app.auto.add_response("bashcut.agent.ready.kit.zip", &r, &text);
     }
@@ -168,19 +168,22 @@ pub(super) fn kit_line(app: &mut FilmcraftApp, ui: &mut egui::Ui, snap: &Snapsho
 /// Skill names shown in the kit-gap line before "…".
 const GAP_SKILLS: usize = 4;
 
-/// "This kit uses N commands this BashCutPro doesn't have: <skills>." with Download kit… (PLK5).
+/// "This kit uses N commands this BashCutPro doesn't have: <skills>. Pinned to kit <tag>." with
+/// Download kit… (PLK5/PLK7). The tag from `bashcut/kit.lock` is shown so the user knows which
+/// version this build expects.
 fn kit_gap_line(app: &mut FilmcraftApp, ui: &mut egui::Ui, snap: &Snapshot, n: usize, skills: &[String]) {
     let t = app.tokens;
     let mut names = skills.iter().take(GAP_SKILLS).cloned().collect::<Vec<_>>().join(", ");
     if skills.len() > GAP_SKILLS {
         names.push('…');
     }
+    let tag = terminal::kit_tag();
     let key = if n == 1 {
-        "This kit uses 1 command this BashCutPro doesn't have: {skills}."
+        "This kit uses 1 command this BashCutPro doesn't have: {skills}. Pinned to kit {tag}."
     } else {
-        "This kit uses {n} commands this BashCutPro doesn't have: {skills}."
+        "This kit uses {n} commands this BashCutPro doesn't have: {skills}. Pinned to kit {tag}."
     };
-    let line = f(key, &[("n", &n.to_string()), ("skills", &names)]);
+    let line = f(key, &[("n", &n.to_string()), ("skills", &names), ("tag", tag)]);
     ui.horizontal_wrapped(|ui| {
         let r = note(ui, &line, NOTE, t.danger).on_hover_text(s("Update the kit or BashCutPro so the skills and the commands match."));
         app.auto.add_response("bashcut.agent.ready.kitGap", &r, &line);
