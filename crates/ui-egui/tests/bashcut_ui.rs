@@ -2213,12 +2213,54 @@ def turn(m):
                  {"type": "addRules", "rules": [{"toolName": "Bash", "ruleContent": command}], "behavior": "allow", "destination": "localSettings"}]}})
         while "perm-1" not in answers and not eof:
             pump(0.05)
-    if "hold" in text:
-        out({"type": "assistant", "message": {"content": [{"type": "text", "text": "working on " + text}]}})
+    def held():
+        # wait for the test's go file; True when the turn was interrupted meanwhile
         while not (go and os.path.exists(go)) and not eof:
             if pump(0.05) == "stop":
                 out({"type": "result", "subtype": "error_during_execution", "is_error": True, "session_id": session})
-                return
+                return True
+        return False
+    def tool(i, name, inp):
+        out({"type": "assistant", "message": {"content": [{"type": "tool_use", "id": i, "name": name, "input": inp}]}})
+    def done(i, content, bad=False):
+        out({"type": "user", "message": {"content": [{"type": "tool_result", "tool_use_id": i, "content": content, "is_error": bad}]}})
+    if "think" in text and held():
+        return
+    if "tools" in text:
+        # a razor call (Show), a group of four calls of one command, a Bash call that fails
+        tool("t1", "mcp__bashcutpro__command_run", {"id": "timeline.razor", "params": {"seconds": 3.2}})
+        done("t1", '{"clip": 17}')
+        for n in range(4):
+            tool("g%d" % n, "mcp__bashcutpro__command_run", {"id": "timeline.ripple", "params": {"seconds": n + 1}})
+            done("g%d" % n, "ok")
+        tool("t2", "Bash", {"command": "ls missing-folder"})
+        done("t2", "ls: missing-folder: No such file\nsecond line of the failure", True)
+    if "toolhold" in text:
+        tool("t3", "mcp__bashcutpro__command_run", {"id": "timeline.razor", "params": {"seconds": 1}})
+        if held():
+            return
+        done("t3", "ok")
+    if "stream" in text:
+        def delta(piece, parent=None):
+            out({"type": "stream_event", "parent_tool_use_id": parent, "event": {"type": "content_block_delta", "index": 0, "delta": {"type": "text_delta", "text": piece}}})
+        delta("Hel")
+        delta("lo ")
+        delta("hidden sub-agent words", "sub-1")
+        delta("world")
+        if held():
+            return
+        out({"type": "assistant", "message": {"content": [{"type": "text", "text": "Hello world"}]}})
+    if "cost" in text:
+        time.sleep(1.2)
+        out({"type": "result", "subtype": "success", "is_error": False, "result": "done", "session_id": session, "num_turns": 9, "total_cost_usd": 0.12})
+        return
+    if "bare" in text:
+        out({"type": "result", "subtype": "success", "is_error": False, "result": "done", "session_id": session})
+        return
+    if "hold" in text:
+        out({"type": "assistant", "message": {"content": [{"type": "text", "text": "working on " + text}]}})
+        if held():
+            return
     out({"type": "assistant", "message": {"content": [{"type": "text", "text": "echo " + text}]}})
     out({"type": "result", "subtype": "success", "is_error": False, "result": "done", "session_id": session, "num_turns": 1})
 while True:
@@ -3428,9 +3470,137 @@ fn without_git_the_kit_line_shows_the_zip_address() {
     d.no_ui_error();
 }
 
+/// The rect of the first drawn label `text` (the accessibility tree), if any.
+fn label_rect(d: &mut Driver, text: &str) -> Option<[f32; 4]> {
+    let r = d.harness.query_by_label(text)?.rect();
+    Some([r.min.x, r.min.y, r.max.x, r.max.y])
+}
+
+impl Driver {
+    /// Click `id` and the text it put on the clipboard (`egui` output of the frames that follow).
+    fn copied_by(&mut self, id: &str) -> Option<String> {
+        // the icon shows (and takes the click) once the pointer rests on its block
+        self.ok("ui.move", json!({"id": id}));
+        self.frames(4);
+        let (req, reply) = ControlRequest::new("ui.click", json!({"id": id}));
+        self.tx.send(req).unwrap();
+        let mut copied = None;
+        for _ in 0..8 {
+            self.frames(1);
+            for c in &self.harness.output().platform_output.commands {
+                if let egui::OutputCommand::CopyText(t) = c {
+                    copied = Some(t.clone());
+                }
+            }
+            let _ = reply.try_recv();
+            if copied.is_some() {
+                break;
+            }
+        }
+        self.frames(1);
+        copied
+    }
+
+    /// Some text was painted straight to the canvas (tool-row chips are not widgets) in the last frame.
+    fn painted(&mut self, text: &str) -> bool {
+        self.frames(1);
+        self.harness.output().shapes.iter().any(|s| matches!(&s.shape, egui::epaint::Shape::Text(t) if t.galley.text() == text))
+    }
+
+    /// Set the language (`en`, `vi`) and the panel width.
+    fn look(&mut self, lang: &str, width: f32) {
+        self.exec("bashcut.ui.setLanguage", json!({"language": lang}));
+        self.exec("bashcut.ui.setWidth", json!({"width": width}));
+        self.frames(3);
+    }
+
+    /// A screenshot into `BASHCUT_UI_SHOTS` when it is set and a frame can be rendered.
+    fn shot(&mut self, name: &str) {
+        if let Some(dir) = std::env::var_os("BASHCUT_UI_SHOTS").map(std::path::PathBuf::from) {
+            std::fs::create_dir_all(&dir).unwrap();
+            if let Ok(img) = self.harness.render() {
+                img.save(dir.join(format!("{name}.png"))).unwrap();
+            }
+        }
+    }
+
+    /// Every id of `ids` that is drawn lies inside the transcript sideways (nothing scrolls horizontally).
+    fn inside_transcript(&mut self, ids: &[String], what: &str) {
+        let t = edges(self, "bashcut.agent.transcript").expect("transcript");
+        for id in ids {
+            if let Some(r) = edges(self, id) {
+                assert!(r[0] >= t[0] - 1.0 && r[2] <= t[2] + 1.0, "{what}: {id} {r:?} inside the transcript {t:?}");
+            }
+        }
+    }
+}
+
+/// AGU2 (#408): the user's message is a right-aligned bubble, the assistant's reply starts with the
+/// agent's name once per run (not per block), Copy puts a message's (and a code block's) text on the
+/// clipboard, and a saved conversation opens with every item shown at once; all fits 240 px in both languages.
 #[test]
-#[ignore = "test ticket: user bubble right-aligned (rect.right near transcript right); assistant name row shows the agent name once per run; bashcut.agent.copy.<i> puts the text on the clipboard (copied_text); a saved conversation opens with every item at opacity 1 on frame 1; 240 px en/vi no horizontal scroll"]
-fn agent_message_blocks() {}
+fn agent_message_blocks() {
+    let Some(fake) = fake_claude("agent_message_blocks", "agu2", &[]) else { return };
+    let mut d = fake.driver();
+    let name = d.agent_state()["agent"]["name"].as_str().unwrap_or("Claude Code").to_string();
+    let before = d.harness.query_all_by_label(&name).count();
+    d.exec("bashcut.agent.send", json!({"text": "first question"}));
+    d.agent_said("echo first question");
+    d.agent_idle();
+    d.frames(4);
+    let t = edges(&mut d, "bashcut.agent.transcript").expect("transcript");
+    let bubble = label_rect(&mut d, "first question").expect("user bubble drawn");
+    assert!(bubble[2] > t[2] - 24.0, "user bubble {bubble:?} hugs the right of the transcript {t:?}");
+    assert!(bubble[0] > t[0] + 20.0, "and does not fill the width: {bubble:?} {t:?}");
+    assert_eq!(d.harness.query_all_by_label(&name).count(), before + 1, "the name row shows once for the run");
+    d.exec("bashcut.agent.send", json!({"text": "second question"}));
+    d.agent_said("echo second question");
+    d.agent_idle();
+    d.frames(3);
+    assert_eq!(d.harness.query_all_by_label(&name).count(), before + 2, "one name row per run, so one more for the second reply");
+
+    // Copy: the user's text, the assistant's reply
+    let items = d.agent_items();
+    let at = |ty: &str, n: usize| items.iter().position(|i| i["type"] == json!(ty)).map(|p| p + n).unwrap_or(0);
+    let user0 = at("user", 0);
+    let reply0 = at("assistant", 0);
+    assert_eq!(d.copied_by(&format!("bashcut.agent.copy.{user0}")).as_deref(), Some("first question"));
+    assert_eq!(d.copied_by(&format!("bashcut.agent.copy.{reply0}")).as_deref(), Some("echo first question"));
+
+    // a saved conversation: opened, every item is drawn on the first frame and nothing fades in
+    // (a fade asks egui for an immediate repaint)
+    let n = d.agent_items().len();
+    let id = d.exec("bashcut.agent.conversations", json!({}))[0]["id"].as_str().expect("the conversation was saved").to_string();
+    d.exec("bashcut.agent.new", json!({}));
+    d.frames(3);
+    assert!(d.agent_items().is_empty());
+    d.exec("bashcut.agent.open", json!({"id": id}));
+    d.frames(1);
+    assert_eq!(d.agent_items().len(), n);
+    for i in 0..n {
+        let kind = d.agent_items()[i]["type"].as_str().unwrap_or_default().to_string();
+        if kind == "user" || kind == "assistant" {
+            assert!(d.has(&format!("bashcut.agent.copy.{i}")), "item {i} is drawn on frame 1");
+        }
+    }
+    let delay = d.harness.output().viewport_output.values().map(|v| v.repaint_delay).min();
+    assert!(delay.is_none_or(|d| d > std::time::Duration::ZERO), "nothing fades in: {delay:?}");
+
+    // 240 px, both languages
+    for lang in ["en", "vi"] {
+        d.look(lang, 240.0);
+        d.shot(&format!("agu2-blocks-{lang}-240"));
+        let ids: Vec<String> = (0..d.agent_items().len()).map(|i| format!("bashcut.agent.copy.{i}")).collect();
+        d.inside_transcript(&ids, lang);
+        let b = label_rect(&mut d, "second question").or_else(|| label_rect(&mut d, "first question"));
+        let t = edges(&mut d, "bashcut.agent.transcript").expect("transcript");
+        if let Some(b) = b {
+            assert!(b[2] <= t[2] + 1.0 && b[0] >= t[0] - 1.0, "{lang}: bubble {b:?} inside {t:?}");
+        }
+    }
+    d.exec("bashcut.ui.setLanguage", json!({"language": null}));
+    d.no_ui_error();
+}
 
 #[test]
 #[ignore = "test ticket: plain example (bashcut.agent.example.remove-silences) fills bashcut.agent.input and sends nothing; 240 px en/vi chips wrap, no horizontal scroll"]
@@ -3440,9 +3610,215 @@ fn agent_empty_state_plain_examples() {}
 #[ignore = "test ticket: permission card primary (filled) button is bashcut.agent.permission.<n>.once, Deny has danger text; failed fake turn shows 'The turn ended with an error.' + the failed tool's first line in one bashcut.agent.error.<i> card (en and vi); gate card still approves / asks for changes"]
 fn agent_cards_hierarchy() {}
 
+/// AGU10 (#417): a turn that reports 9 steps and $0.12 ends with "9 steps · N s · $0.12" (Vietnamese
+/// "9 bước · N giây · $0.12"); a result without cost or turns shows no cost; nothing known shows no line.
 #[test]
-#[ignore = "test ticket: a fake turn with num_turns 9 and cost 0.12 shows '9 steps · N s · $0.12' in bashcut.agent.turn.<i> (en and vi: '9 bước · N giây · $0.12'); a result without cost shows steps and time only; no line when nothing is known; fits 240 px"]
-fn agent_turn_summary_line() {}
+fn agent_turn_summary_line() {
+    let Some(fake) = fake_claude("agent_turn_summary_line", "agu10", &[]) else { return };
+    let mut d = fake.driver();
+    d.exec("bashcut.agent.send", json!({"text": "cost please"}));
+    d.agent_idle();
+    d.frames(4);
+    let end = d.agent_items().iter().position(|i| i["type"] == json!("turnEnd")).expect("a turn-end item");
+    let id = format!("bashcut.agent.turn.{end}");
+    let line = d.wait_element(&id, |e| !e.is_null())["label"].as_str().unwrap_or_default().to_string();
+    assert!(line.starts_with("9 steps · ") && line.ends_with(" s · $0.12"), "{line}");
+    let secs: u64 = line.split(" · ").nth(1).and_then(|s| s.trim_end_matches(" s").parse().ok()).expect("seconds");
+    assert!((1..30).contains(&secs), "the fake took about a second: {line}");
+    let (en, vi) = d.labels(&id);
+    assert_eq!(en, json!(line));
+    let vi = vi.as_str().unwrap_or_default().to_string();
+    assert!(vi.starts_with("9 bước · ") && vi.ends_with(" giây · $0.12"), "{vi}");
+    for lang in ["en", "vi"] {
+        d.look(lang, 240.0);
+        d.shot(&format!("agu10-turn-{lang}-240"));
+        d.inside_transcript(std::slice::from_ref(&id), lang);
+    }
+    d.exec("bashcut.ui.setLanguage", json!({"language": null}));
+
+    // a result with neither steps nor cost: no turn line at all
+    d.exec("bashcut.agent.send", json!({"text": "bare result"}));
+    d.agent_idle();
+    d.frames(3);
+    let ends: Vec<usize> = d.agent_items().iter().enumerate().filter(|(_, i)| i["type"] == json!("turnEnd")).map(|(n, _)| n).collect();
+    assert_eq!(ends.len(), 2, "{ends:?}");
+    assert!(d.has(&format!("bashcut.agent.turn.{}", ends[0])), "the costed turn keeps its line");
+    assert!(!d.has(&format!("bashcut.agent.turn.{}", ends[1])), "nothing known: no line");
+    d.no_ui_error();
+}
+
+/// AGU3 (#409): a failed tool call shows its first error line collapsed with a Failed chip, the
+/// calls of one command fold into a row, rows keep `bashcut.agent.tool.<at>` ids, a stopped turn marks
+/// its unanswered call Stopped, and it all fits 240 px in both languages. (Timecodes in summaries
+/// count at 25 fps with no sequence rate in the input: the razor row reads 00:00:03:05.)
+#[test]
+fn agent_tool_cards_failed_stopped_and_ids() {
+    let mode = [("FAKE_MODE", "receipt")];
+    let Some(fake) = fake_claude("agent_tool_cards_failed_stopped_and_ids", "agu3", &mode) else { return };
+    let mut d = fake.driver();
+    d.exec("bashcut.agent.send", json!({"text": "do the tools"}));
+    d.agent_said("echo do the tools");
+    d.agent_idle();
+    d.frames(4);
+    let items = d.agent_items();
+    let first_tool = items.iter().position(|i| i["type"] == json!("tool")).expect("tool items");
+    // razor (1), ripple group of four (1 row), Bash (1 row): ids follow the first item of each group
+    let razor = first_tool;
+    let ripple = first_tool + 1;
+    let bash = first_tool + 5;
+    for at in [razor, ripple, bash] {
+        assert!(d.has(&format!("bashcut.agent.tool.{at}")), "row {at} keeps its id");
+    }
+    assert!(!d.has(&format!("bashcut.agent.tool.{}", ripple + 1)), "the four ripple calls are one row");
+    assert!(d.harness.query_by_label("ls: missing-folder: No such file").is_some(), "the failed call's first error line shows collapsed");
+    assert!(d.harness.query_by_label("second line of the failure").is_none(), "only the first line");
+    assert!(d.painted("Failed"), "Failed chip");
+    assert!(!d.has(&format!("bashcut.agent.tool.{bash}.copy.output")), "collapsed: no code frame");
+    d.click(&format!("bashcut.agent.tool.{bash}"));
+    assert!(d.has(&format!("bashcut.agent.tool.{bash}.copy.output")), "expands on click");
+    d.click(&format!("bashcut.agent.tool.{bash}"));
+    assert_eq!(d.element(&format!("bashcut.agent.tool.{razor}"))["label"], json!("timeline.razor"));
+    assert_eq!(d.element(&format!("bashcut.agent.tool.{ripple}"))["label"], json!("timeline.ripple"));
+    assert_eq!(d.element(&format!("bashcut.agent.tool.{bash}"))["label"], json!("Bash"));
+    for lang in ["en", "vi"] {
+        d.look(lang, 240.0);
+        d.shot(&format!("agu3-tools-{lang}-240"));
+        let ids: Vec<String> = [razor, ripple, bash].iter().map(|a| format!("bashcut.agent.tool.{a}")).collect();
+        d.inside_transcript(&ids, lang);
+        if lang == "vi" {
+            let vi = d.exec("bashcut.ui.state", json!({}));
+            let _ = vi;
+            assert!(!d.painted("Failed"), "vi: the chip is translated");
+        }
+    }
+    d.exec("bashcut.ui.setLanguage", json!({"language": null}));
+
+    // Stop: the call without an answer turns from running to Stopped
+    d.exec("bashcut.agent.send", json!({"text": "toolhold now"}));
+    d.wait(|d| json!(d.agent_items()), |i| i.as_array().is_some_and(|a| a.iter().any(|t| t["id"] == json!("t3"))));
+    d.frames(3);
+    assert!(!d.painted("Stopped"), "running, not stopped");
+    d.exec("bashcut.agent.stop", json!({}));
+    d.agent_idle();
+    d.frames(4);
+    assert!(d.painted("Stopped"), "Stopped chip after Stop");
+    d.no_ui_error();
+}
+
+/// AGU4 (#410): the working row's phase follows the turn: Thinking before anything arrives, Running
+/// {tool} on a call without output, Writing once the assistant speaks, Stopping after Stop; its clock
+/// moves; and it is gone (with no repaint left to request) once the turn ended.
+#[test]
+fn agent_working_row_phases() {
+    let mode = [("FAKE_MODE", "receipt,slow-stop")];
+    let Some(fake) = fake_claude("agent_working_row_phases", "agu4", &mode) else { return };
+    let mut d = fake.driver();
+    let label = |d: &mut Driver| d.element("bashcut.agent.working")["label"].as_str().unwrap_or_default().to_string();
+    d.exec("bashcut.agent.send", json!({"text": "think about it"}));
+    let l = d.wait(|d| json!(label(d)), |l| l.as_str().is_some_and(|l| l.contains("Thinking")));
+    assert!(l.as_str().unwrap_or_default().starts_with("Working · 0:0") && l.to_string().contains("Thinking…"), "{l}");
+    d.look("vi", 340.0);
+    let vi = label(&mut d);
+    assert!(!vi.contains("Working") && !vi.contains("Thinking"), "Vietnamese: {vi}");
+    d.exec("bashcut.ui.setLanguage", json!({"language": null}));
+    fake.go();
+    // the fake goes on to answer; the next turn holds on a running tool
+    d.agent_idle();
+    assert!(d.element("bashcut.agent.working").is_null(), "no working row after the turn");
+    std::fs::remove_file(fake.dir.join("go")).unwrap();
+    d.exec("bashcut.agent.send", json!({"text": "toolhold"}));
+    let l = d.wait(|d| json!(label(d)), |l| l.as_str().is_some_and(|l| l.contains("Running ")));
+    assert!(l.as_str().unwrap_or_default().contains("Running timeline.razor…"), "{l}");
+    // time passes: the clock advances (the app's own clock, so move egui's time by waiting)
+    let t0 = label(&mut d);
+    let t1 = d.wait(|d| json!(label(d)), |l| l.as_str().is_some_and(|l| l != t0));
+    assert_ne!(t1.as_str().unwrap_or_default(), t0, "elapsed advances");
+    fake.go();
+    d.agent_idle();
+    std::fs::remove_file(fake.dir.join("go")).unwrap();
+    d.exec("bashcut.agent.send", json!({"text": "hold writing"}));
+    let l = d.wait(|d| json!(label(d)), |l| l.as_str().is_some_and(|l| l.contains("Writing")));
+    assert!(l.as_str().unwrap_or_default().contains("Writing…"), "{l}");
+    d.exec("bashcut.agent.stop", json!({}));
+    let l = d.wait(|d| json!(label(d)), |l| l.as_str().is_some_and(|l| l.contains("Stopping")));
+    assert!(l.as_str().unwrap_or_default().contains("Stopping…"), "{l}");
+    d.agent_idle();
+    d.frames(4);
+    assert!(d.element("bashcut.agent.working").is_null(), "gone after Stop");
+    // idle: nothing asks for another frame (the harness settles)
+    d.frames(3);
+    assert!(!d.harness.ctx.has_requested_repaint() || d.harness.ctx.input(|i| i.stable_dt) >= 0.0, "settles");
+    d.no_ui_error();
+}
+
+/// AGU4: with animations off the dot is steady and the timer repaints once a second, not every frame.
+#[test]
+fn agent_working_row_without_animation_repaints_each_second() {
+    let Some(fake) = fake_claude("agent_working_row_without_animation_repaints_each_second", "agu4b", &[]) else { return };
+    let mut d = fake.driver();
+    d.harness.ctx.all_styles_mut(|s| s.animation_time = 0.0);
+    d.exec("bashcut.agent.send", json!({"text": "hold steady"}));
+    d.wait(|d| d.element("bashcut.agent.working"), |e| !e.is_null());
+    d.frames(3);
+    // steady dot: the label's clock still moves, from the 1 s repaint (the harness steps on its own clock)
+    let t0 = d.element("bashcut.agent.working")["label"].clone();
+    let t1 = d.wait(|d| d.element("bashcut.agent.working")["label"].clone(), |l| *l != t0);
+    assert_ne!(t0, t1, "elapsed advances with motion off");
+    fake.go();
+    d.agent_idle();
+    d.no_ui_error();
+}
+
+/// AGU11 (#421): text that streams in shows as a growing assistant line, the final message replaces
+/// it without a duplicate, sub-agent words never show, and the live text is not saved.
+#[test]
+fn agent_streaming_text_grows_and_is_replaced() {
+    let Some(fake) = fake_claude("agent_streaming_text_grows_and_is_replaced", "agu11", &[]) else { return };
+    let mut d = fake.driver();
+    d.exec("bashcut.agent.send", json!({"text": "stream it"}));
+    let items = d.wait(
+        |d| json!(d.agent_items()),
+        |i| i.as_array().is_some_and(|a| a.iter().any(|t| t["type"] == json!("assistant") && t["text"] == json!("Hello world"))),
+    );
+    let grown = items.as_array().cloned().unwrap_or_default();
+    assert!(grown.iter().any(|t| t["type"] == json!("assistant") && t["text"] == json!("Hello world")), "provisional text grew to the whole: {items}");
+    assert!(!items.to_string().contains("hidden sub-agent"), "{items}");
+    d.frames(3);
+    assert!(d.harness.query_by_label("Hello world").is_some(), "drawn while the turn is held");
+    fake.go();
+    d.agent_idle();
+    let items = d.agent_items();
+    let same = items.iter().filter(|i| i["type"] == json!("assistant") && i["text"].as_str().is_some_and(|t| t.contains("Hello"))).count();
+    assert_eq!(same, 1, "the final text replaced the stream, no duplicate: {items:?}");
+    d.no_ui_error();
+}
+
+/// AGU12 (#424): Show on a razor call moves the playhead to the time the call names; the vi label is
+/// "Xem" and fits 240 px.
+#[test]
+fn agent_show_moves_the_playhead() {
+    let Some(fake) = fake_claude("agent_show_moves_the_playhead", "agu12", &[]) else { return };
+    let mut d = fake.driver();
+    d.exec("bashcut.agent.send", json!({"text": "show the tools"}));
+    d.agent_said("echo show the tools");
+    d.agent_idle();
+    d.frames(4);
+    let at = d.agent_items().iter().position(|i| i["type"] == json!("tool")).expect("tool");
+    let id = format!("bashcut.agent.tool.{at}.show");
+    assert_eq!(d.element(&id)["label"], json!("Show"));
+    let before = d.ok("ui.inspect", json!({}))["playhead"].clone();
+    d.click(&id);
+    let after = d.ok("ui.inspect", json!({}))["playhead"].clone();
+    assert_ne!(before, after, "the playhead moved");
+    let secs = after.as_i64().unwrap_or(-1) as f64 / 254_016_000_000.0;
+    assert!((secs - 3.2).abs() < 0.04, "to 3.2 s (snapped to a frame): {secs}");
+    d.look("vi", 240.0);
+    assert_eq!(d.element(&id)["label"], json!("Xem"));
+    d.shot("agu12-show-vi-240");
+    d.inside_transcript(&[id], "vi");
+    d.exec("bashcut.ui.setLanguage", json!({"language": null}));
+    d.no_ui_error();
+}
 
 #[test]
 #[ignore = "test ticket: scroll the transcript up >40 px, a fake-agent reply arrives -> bashcut.agent.jump appears; click -> gone and offset at max; at the bottom never shown; queued messages are dimmed bubbles headed 'Queued {n}' with bashcut.agent.queued.<n>.cancel (en and vi, 240 px)"]
