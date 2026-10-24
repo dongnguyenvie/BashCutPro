@@ -14,6 +14,8 @@ struct Fake {
     programs: BTreeMap<String, Output>,
     files: BTreeMap<PathBuf, Vec<u8>>,
     hashes: BTreeMap<PathBuf, String>,
+    /// Symlinks `canonical` resolves (a Codex install links `~/.agents/skills/bcp-*` into the kit clone).
+    links: BTreeMap<PathBuf, PathBuf>,
     free: Option<u64>,
     ram: Option<u64>,
     /// `linux` when unset.
@@ -67,6 +69,9 @@ impl Env for Fake {
     }
     fn file_size(&self, path: &Path) -> Option<u64> {
         self.files.get(&norm(path)).map(|b| b.len() as u64)
+    }
+    fn canonical(&self, path: &Path) -> Option<PathBuf> {
+        self.links.get(&norm(path)).cloned()
     }
     fn hash_file(&self, path: &Path) -> Option<String> {
         self.hashes.get(&norm(path)).cloned()
@@ -410,10 +415,89 @@ fn version_prints_name_and_exits() {
     }
 }
 
-#[test]
-#[ignore = "test ticket: kit.commands is Ok for a matching kit index, Warn naming skills and ids when the fake `commands --json` lacks some, Info when the kit has no index"]
-fn kit_commands_compares_the_kit_index_with_the_engine() {}
+/// A kit index naming `skills`, each with its ids.
+fn kit_index(skills: &str) -> Vec<u8> {
+    format!(r#"{{"kit":"0.3.0","skills":{{{skills}}}}}"#).into_bytes()
+}
+
+fn finding_text(r: &Report, id: &str) -> String {
+    r.findings.iter().find(|f| f.id == id).map(|f| f.message.clone()).unwrap_or_else(|| panic!("no finding `{id}`: {}", r.to_text()))
+}
 
 #[test]
-#[ignore = "test ticket: fake `commands --json` listing core ids -> kit.commands Ok; kit naming a missing core id -> Warn naming the skill"]
-fn kit_commands_compares_core_ids() {}
+fn kit_commands_compares_the_kit_index_with_the_engine() {
+    // no index: Info, never a failure
+    let mut f = Fake::healthy();
+    let r = run_checks(&f, &Options::default());
+    assert_eq!(level(&r, "kit.commands"), Level::Info, "{}", r.to_text());
+    assert_eq!(r.exit_code(), 0, "{}", r.to_text());
+
+    // every engine id the index names is listed (plugin ids and non-ids are skipped): Ok
+    f.file("kit/scripts/skill-commands.json", &kit_index(r#""edit":["bashcut.profiles.list","bashcut.vision","note"],"voice":["bashcut.audio.polish"]"#));
+    let r = run_checks(&f, &Options::default());
+    assert_eq!(level(&r, "kit.commands"), Level::Ok, "{}", r.to_text());
+    assert!(finding_text(&r, "kit.commands").contains("kit 0.3.0 matches"), "{}", r.to_text());
+
+    // ids the fake engine lacks: Warn naming the skills and ids
+    f.file(
+        "kit/scripts/skill-commands.json",
+        &kit_index(r#""edit":["bashcut.profiles.list","bashcut.shorts.make"],"voice":["bashcut.tts.say"],"ok":["bashcut.audio.polish"]"#),
+    );
+    let r = run_checks(&f, &Options::default());
+    assert_eq!(level(&r, "kit.commands"), Level::Warn, "{}", r.to_text());
+    let m = finding_text(&r, "kit.commands");
+    assert!(m.contains("edit, voice") && m.contains("2 commands") && m.contains("bashcut.shorts.make") && m.contains("bashcut.tts.say"), "{m}");
+    assert!(!m.contains("ok,") && !m.contains("bashcut.audio.polish"), "{m}");
+    assert_eq!(r.exit_code(), 0, "a gap is advice, not a failure: {}", r.to_text());
+
+    // a malformed index counts as no index
+    f.file("kit/scripts/skill-commands.json", b"{not json");
+    assert_eq!(level(&run_checks(&f, &Options::default()), "kit.commands"), Level::Info);
+
+    // the index is found for the other kit places too: --kit, and Codex links ~/.agents/skills/bcp-* into the clone
+    let mut g = Fake::healthy();
+    g.vars.remove("BASHCUTPRO_KIT_DIR");
+    g.file(
+        "other/skills/setup/SKILL.md",
+        b"---
+",
+    );
+    g.file("other/scripts/skill-commands.json", &kit_index(r#""edit":["bashcut.shorts.make"]"#));
+    let opts = Options { kit_dir: Some(PathBuf::from("other")), ..Options::default() };
+    assert_eq!(level(&run_checks(&g, &opts), "kit.commands"), Level::Warn);
+
+    let mut h = Fake::healthy();
+    h.vars.remove("BASHCUTPRO_KIT_DIR");
+    h.vars.insert("HOME".into(), "home".into());
+    h.file(
+        "home/.agents/skills/bcp-setup/SKILL.md",
+        b"---
+",
+    );
+    h.file("clone/scripts/skill-commands.json", &kit_index(r#""edit":["bashcut.shorts.make"]"#));
+    // a plain copy (no link): nothing to compare
+    assert_eq!(level(&run_checks(&h, &Options::default()), "kit.commands"), Level::Info);
+    h.links.insert(PathBuf::from("home/.agents/skills/bcp-setup"), PathBuf::from("clone/skills/setup"));
+    let r = run_checks(&h, &Options::default());
+    assert_eq!(level(&r, "kit.commands"), Level::Warn, "{}", r.to_text());
+    assert!(finding_text(&r, "kit.commands").contains("bashcut.shorts.make"));
+}
+
+#[test]
+fn kit_commands_compares_core_ids() {
+    let mut f = Fake::healthy();
+    let mut ids: Vec<String> = REQUIRED_COMMANDS.iter().map(|id| id.to_string()).collect();
+    ids.push("sequence.addEdit".into());
+    let listing: Vec<String> = ids.iter().map(|id| format!("{{\"id\":\"{id}\"}}")).collect();
+    f.program("bashcutpro-cli commands --json", 0, &format!("[{}]", listing.join(",")));
+
+    f.file("kit/scripts/skill-commands.json", &kit_index(r#""edit":["sequence.addEdit","bashcut.profiles.list"]"#));
+    let r = run_checks(&f, &Options::default());
+    assert_eq!(level(&r, "kit.commands"), Level::Ok, "{}", r.to_text());
+
+    f.file("kit/scripts/skill-commands.json", &kit_index(r#""edit":["sequence.addEdit"],"trim":["clip.rippleTrim","sequence.addEdit"]"#));
+    let r = run_checks(&f, &Options::default());
+    assert_eq!(level(&r, "kit.commands"), Level::Warn, "{}", r.to_text());
+    let m = finding_text(&r, "kit.commands");
+    assert!(m.contains("trim") && m.contains("clip.rippleTrim") && !m.contains("edit"), "{m}");
+}
