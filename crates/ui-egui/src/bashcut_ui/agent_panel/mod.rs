@@ -39,6 +39,7 @@ mod cards;
 mod empty;
 mod input;
 mod setup;
+mod tool_summary;
 mod tools;
 mod transcript;
 
@@ -360,6 +361,11 @@ mod tests {
             "Remove this message from the queue",
             "Removing…",
             "{agent} wants to use {tool}",
+            "Failed",
+            "Stopped",
+            "Copy",
+            "Copied",
+            "Show all",
             "Allow once",
             "Always for this project",
             "Deny",
