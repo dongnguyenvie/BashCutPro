@@ -49,7 +49,7 @@ liệu, Tải về) khi dự án nằm ở đó: bấm **Cho phép**. Khi chưa 
 
 ### Dùng Claude Code trong terminal
 
-Dưới tiêu đề, **Mở trong Terminal** mở một cửa sổ terminal ở thư mục dự án, chạy đúng chương trình trợ lý mà mục
+Trong **menu** ở tiêu đề (biểu tượng ba gạch bên phải), **Mở trong Terminal** mở một cửa sổ terminal ở thư mục dự án, chạy đúng chương trình trợ lý mà mục
 Trợ lý đang dùng và tiếp tục cuộc trò chuyện của nó (`claude --resume <id>`, hoặc `codex resume <id>`): bạn có đầy đủ
 màn hình Claude Code (hỏi quyền, lệnh `/`, lịch sử) trên cùng cuộc trò chuyện. Quay lại mục Trợ lý và bấm **Gửi** để
 tiếp tục ở đây. Phiên trong terminal điều khiển cửa sổ đang mở qua công cụ của bộ agent kit; kết nối công cụ riêng của

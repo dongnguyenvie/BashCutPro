@@ -21,6 +21,12 @@ pub fn small_button(app: &mut FilmcraftApp, ui: &mut egui::Ui, id: &str, label: 
 /// A small icon-only button drawn with the app's icon painter (no font glyph, so it never renders
 /// as an empty box when the build lacks the extra fonts); `tip` is its tooltip and automation label.
 pub fn icon_button(app: &mut FilmcraftApp, ui: &mut egui::Ui, id: &str, icon: crate::icons::Icon, tip: &str, enabled: bool) -> bool {
+    let r = icon_button_response(app, ui, id, icon, tip, enabled);
+    enabled && r.clicked()
+}
+
+/// [`icon_button`] returning the response, to anchor a popup menu to.
+pub fn icon_button_response(app: &mut FilmcraftApp, ui: &mut egui::Ui, id: &str, icon: crate::icons::Icon, tip: &str, enabled: bool) -> egui::Response {
     let t = app.tokens;
     let (rect, r) = ui.allocate_exact_size(egui::vec2(20.0, 18.0), egui::Sense::click());
     let r = if enabled { r } else { r.on_disabled_hover_text(tip) };
@@ -37,7 +43,7 @@ pub fn icon_button(app: &mut FilmcraftApp, ui: &mut egui::Ui, id: &str, icon: cr
     };
     crate::icons::paint(ui.painter(), egui::Rect::from_center_size(rect.center(), egui::vec2(10.0, 10.0)), icon, color);
     app.auto.add_response(id, &r, tip);
-    enabled && r.clicked()
+    r
 }
 
 /// [`icon_button`] with the close cross: remove, dismiss, clear.
