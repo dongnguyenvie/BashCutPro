@@ -541,7 +541,6 @@ Agent Notifications	Thông báo của trợ lý
 Open BashCutPro to see the result.	Mở BashCutPro để xem kết quả.
 Open BashCutPro to see what went wrong.	Mở BashCutPro để xem lỗi ở đâu.
 A plan step is waiting for your answer.	Một bước trong kế hoạch đang chờ bạn trả lời.
-<<<<<<< HEAD
 Terminal Agent Event	Sự kiện trợ lý trong Terminal
 Back in the panel.	Đã quay lại bảng này.
 Terminal: opened	Terminal: đã mở
@@ -550,10 +549,8 @@ Terminal: waiting for your permission	Terminal: đang chờ bạn cho phép
 Terminal: done	Terminal: đã xong
 Terminal: stopped with an error	Terminal: dừng do lỗi
 Terminal: closed	Terminal: đã đóng
-=======
 What should we edit?	Chỉnh sửa gì đây?
 {agent} edits this project with you. It stops at each stage for your approval.	{agent} cùng bạn chỉnh sửa dự án này. Dừng ở mỗi bước để bạn duyệt.
 Type / for skills	Gõ / để xem kỹ năng
 Remove the silences	Cắt các đoạn im lặng
 Add captions to the main sequence	Thêm phụ đề cho sequence chính
->>>>>>> 60eedac4 (AGU8: agent empty state: centred block, plain and recipe example chips that wrap, Type / for skills hint)
