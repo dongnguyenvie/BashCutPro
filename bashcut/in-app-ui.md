@@ -579,9 +579,14 @@ labels or subclips (§1 rule 1). A project opened in upstream FilmCraft still wo
   each click), so the terminal agent reaches the app without the kit; with the kit it is not passed (two copies
   of the same tools). The empty transcript's recipe buttons say on hover that they need the kit.
   **AGT1** (terminal state): Open in Terminal on Claude Code also passes `--settings <data dir>/agent/terminal-hooks.json`
-  (`terminal::terminal_hooks_config`, rewritten per click; `~/.claude` is never edited): SessionStart, UserPromptSubmit,
-  PreToolUse, PostToolUse, Stop always, SessionEnd (>= 1.0.85), PostToolUseFailure and PermissionRequest (>= 2.0.45),
-  StopFailure (>= 2.1.78) by `claude --version` (unknown version: the base set; an unknown event is ignored by claude).
+  (`terminal::terminal_hooks_config`, rewritten per click; `~/.claude` is never edited), each event only from the
+  first `claude --version` that knows it (AGT4, `terminal::HOOK_EVENTS`): PreToolUse, PostToolUse 1.0.23, Stop 1.0.31,
+  UserPromptSubmit 1.0.53, SessionStart 1.0.62, SessionEnd 1.0.85, PermissionRequest 2.0.45, PostToolUseFailure 2.0.56,
+  StopFailure 2.1.78. Unlike what AGT1 assumed, an unknown event is NOT ignored: 1.0.23-2.1.100 discard the whole
+  settings file over it, so the floors matter. Sources: the Claude Code changelog (SessionEnd, PermissionRequest,
+  StopFailure "Added" entries) and Orca's `claude-hook-event-versions.ts` (floors read from each npm release's
+  `cli.js` enum; PostToolUseFailure is in no changelog entry and AGT1's 2.0.45 guess was 11 releases too early).
+  Unknown version: the events known since 1.0.62 (SessionEnd and later ones off).
   Every hook runs one `sh` line (`terminal::hook_command`): the hook JSON on stdin goes to `bashcutpro-cli --bridge
   <addr> run -` as `bashcut.agent.terminalEvent {event}` (token from the data folder as for every CLI; output dropped,
   failure ignored). `terminal::Watch` is the state machine (Orca's rules: a PermissionRequest stays "waiting" until the
