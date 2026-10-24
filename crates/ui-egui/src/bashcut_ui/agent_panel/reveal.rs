@@ -69,7 +69,45 @@ pub(super) fn link(app: &mut FilmcraftApp, ui: &mut egui::Ui, at: usize, target:
 
 #[cfg(test)]
 mod tests {
+    use super::*;
+
+    const RUN: &str = "mcp__bashcutpro__command_run";
+
     #[test]
-    #[ignore = "test ticket: target() maps seconds/timecode/frame to Time and clip to Clip, only for command_run"]
-    fn target_of_a_call() {}
+    fn target_of_a_call() {
+        let t = |name: &str, input: Value| target(name, &input);
+        assert_eq!(t(RUN, json!({"id": "edit.razor", "params": {"seconds": 3.2}})), Some(Target::Time(json!({"seconds": 3.2}))));
+        assert_eq!(t(RUN, json!({"params": {"timecode": "00:00:03:05"}})), Some(Target::Time(json!({"timecode": "00:00:03:05"}))));
+        assert_eq!(t(RUN, json!({"params": {"frame": 80}})), Some(Target::Time(json!({"frame": 80}))));
+        assert_eq!(t(RUN, json!({"params": {"time": 254016000000u64}})), Some(Target::Time(json!({"time": 254016000000u64}))));
+        // a time wins over a clip; a blank time is ignored
+        assert_eq!(t(RUN, json!({"params": {"seconds": 1, "clip": 4}})), Some(Target::Time(json!({"seconds": 1}))));
+        assert_eq!(t(RUN, json!({"params": {"timecode": "  ", "clip": 4}})), Some(Target::Clip(4)));
+        assert_eq!(t(RUN, json!({"params": {"clip": 17}})), Some(Target::Clip(17)));
+        assert_eq!(t(RUN, json!({"params": {"clip": " 18 "}})), Some(Target::Clip(18)));
+        // nothing to show
+        assert_eq!(t(RUN, json!({"params": {"clip": "abc"}})), None);
+        assert_eq!(t(RUN, json!({"params": {"text": "hi"}})), None);
+        assert_eq!(t(RUN, json!({"id": "edit.razor"})), None);
+        assert_eq!(t(RUN, json!({"params": "seconds"})), None);
+        assert_eq!(t(RUN, Value::Null), None);
+        // only command_run leads anywhere
+        assert!(t("command_run", json!({"params": {"seconds": 1}})).is_some());
+        assert_eq!(t("mcp__bashcutpro__doc_inspect", json!({"params": {"seconds": 1}})), None);
+        assert_eq!(t("Bash", json!({"params": {"seconds": 1}})), None);
+    }
+
+    #[test]
+    fn a_group_shows_its_first_target() {
+        let call = |name: &str, input: Value| Item::Tool { id: "t".into(), name: name.into(), input, output: None, is_error: false };
+        let group = [
+            call("Bash", json!({"command": "ls"})),
+            call(RUN, json!({"params": {"text": "x"}})),
+            call(RUN, json!({"params": {"clip": 9}})),
+            call(RUN, json!({"params": {"seconds": 2}})),
+        ];
+        assert_eq!(group_target(&group), Some(Target::Clip(9)));
+        assert_eq!(group_target(&group[..2]), None);
+        assert_eq!(group_target(&[Item::Notice { message: "n".into() }]), None);
+    }
 }

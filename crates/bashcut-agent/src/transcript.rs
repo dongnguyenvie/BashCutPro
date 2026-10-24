@@ -224,8 +224,53 @@ mod tests {
     use serde_json::json;
 
     #[test]
-    #[ignore = "test ticket: deltas grow one assistant item; the final Text replaces it without a duplicate; a second block joins with a blank line"]
-    fn streamed_text_is_replaced_by_the_message() {}
+    fn streamed_text_is_replaced_by_the_message() {
+        let delta = |d: &str| Event::TextDelta(d.into());
+        let mut t = Transcript::default();
+        t.apply(&Event::Text("first".into()));
+        // the next block streams: it grows after a blank line, in the same item
+        t.apply(&delta("Cut"));
+        t.apply(&delta("ting"));
+        assert_eq!(t.items, vec![Item::Assistant { text: "first\n\nCutting".into() }]);
+        // the finished block replaces its provisional text, no duplicate
+        t.apply(&Event::Text("Cutting now.".into()));
+        assert_eq!(t.items, vec![Item::Assistant { text: "first\n\nCutting now.".into() }]);
+        // with no live text a Text joins like before
+        t.apply(&Event::Text("more".into()));
+        assert_eq!(t.items, vec![Item::Assistant { text: "first\n\nCutting now.\n\nmore".into() }]);
+        // the live item is never saved: a reloaded transcript has a plain item to stream after
+        let mut back: Transcript = serde_json::from_value(serde_json::to_value(&t).unwrap()).unwrap();
+        assert_eq!(back, t);
+        back.apply(&delta("x"));
+        assert_eq!(back.items.len(), 1);
+        assert!(matches!(&back.items[0], Item::Assistant { text } if text.ends_with("more\n\nx")));
+    }
+
+    #[test]
+    fn streaming_starts_and_stops_with_the_turn() {
+        let delta = |d: &str| Event::TextDelta(d.into());
+        let mut t = Transcript::default();
+        t.push(Item::User { text: "hi".into() });
+        t.apply(&delta("Hel"));
+        t.apply(&delta("lo"));
+        assert_eq!(t.items[1], Item::Assistant { text: "Hello".into() });
+        // a tool call ends the live text: a later Text is a new item after it
+        t.apply(&Event::ToolUse { id: "1".into(), name: "Bash".into(), input: json!({"command": "ls"}) });
+        t.apply(&Event::Text("Hello".into()));
+        assert_eq!(t.items.len(), 4, "{:?}", t.items);
+        assert_eq!(t.items[1], Item::Assistant { text: "Hello".into() });
+        // a Text without deltas before it (Codex) is unchanged
+        let mut codex = Transcript::default();
+        codex.apply(&Event::Text("a".into()));
+        codex.apply(&Event::ToolUse { id: "1".into(), name: "shell".into(), input: json!({}) });
+        codex.apply(&Event::Text("b".into()));
+        assert_eq!(codex.items.len(), 3);
+        // deltas stop growing a message at the cap
+        let mut big = Transcript::default();
+        big.apply(&delta(&"x".repeat(crate::stream_json::MAX_TEXT)));
+        big.apply(&delta("more"));
+        assert!(matches!(&big.items[0], Item::Assistant { text } if text.len() == crate::stream_json::MAX_TEXT));
+    }
 
     #[test]
     fn builds_from_events() {
@@ -285,8 +330,42 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "test ticket: Result with cost/turns gives TurnEnd; without gives None fields; Codex steps from tool count; old JSON without TurnEnd loads"]
-    fn turn_end_item() {}
+    fn turn_end_item() {
+        let result = |cost_usd, turns| Event::Result { ok: true, text: String::new(), session: "s".into(), cost_usd, turns };
+        // Claude Code: its own count and cost, and the time the session measured
+        let mut t = Transcript::default();
+        t.apply_timed(&result(Some(0.12), Some(9)), Some(4200));
+        assert_eq!(t.items, vec![Item::TurnEnd { ok: true, turns: Some(9), cost_usd: Some(0.12), ms: Some(4200) }]);
+        // without any of it: no steps, no cost, no time
+        let mut t = Transcript::default();
+        t.apply(&result(None, None));
+        assert_eq!(t.items, vec![Item::TurnEnd { ok: true, turns: None, cost_usd: None, ms: None }]);
+        // Codex: steps are the tool calls since the user's message
+        let mut t = Transcript::default();
+        t.push(Item::User { text: "old".into() });
+        t.apply(&Event::ToolUse { id: "0".into(), name: "shell".into(), input: json!({}) });
+        t.push(Item::User { text: "new".into() });
+        for i in 1..=3 {
+            t.apply(&Event::ToolUse { id: i.to_string(), name: "shell".into(), input: json!({}) });
+        }
+        t.apply(&result(None, None));
+        assert!(matches!(t.items.last(), Some(Item::TurnEnd { turns: Some(3), cost_usd: None, .. })), "{:?}", t.items.last());
+        // a reported count wins over the tool count
+        t.apply(&result(None, Some(2)));
+        assert!(matches!(t.items.last(), Some(Item::TurnEnd { turns: Some(2), .. })));
+        // a failed result is an error, not a turn end
+        let mut t = Transcript::default();
+        t.apply(&Event::Result { ok: false, text: "boom".into(), session: "s".into(), cost_usd: Some(1.0), turns: Some(1) });
+        assert_eq!(t.items, vec![Item::Error { message: "boom".into() }]);
+        // saved conversations from before TurnEnd load, and a TurnEnd with missing fields loads
+        let old: Transcript = serde_json::from_value(json!({"items": [{"type": "user", "text": "hi"}, {"type": "assistant", "text": "yo"}]})).unwrap();
+        assert_eq!(old.items.len(), 2);
+        let sparse: Transcript = serde_json::from_value(json!({"items": [{"type": "turnEnd"}]})).unwrap();
+        assert_eq!(sparse.items, vec![Item::TurnEnd { ok: false, turns: None, cost_usd: None, ms: None }]);
+        let full = Transcript { items: vec![Item::TurnEnd { ok: true, turns: Some(9), cost_usd: Some(0.12), ms: Some(5) }], ..Default::default() };
+        let back: Transcript = serde_json::from_value(serde_json::to_value(&full).unwrap()).unwrap();
+        assert_eq!(back, full);
+    }
 
     #[test]
     fn keeps_at_most_max_items() {

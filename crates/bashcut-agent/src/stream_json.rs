@@ -414,8 +414,27 @@ mod tests {
     use super::*;
 
     #[test]
-    #[ignore = "test ticket: stream_event text_delta parses to TextDelta; sub-agent, thinking and empty deltas to nothing"]
-    fn text_deltas_are_parsed() {}
+    fn text_deltas_are_parsed() {
+        let delta = |extra: &str, delta: &str| {
+            parse_line(&format!(r#"{{"type":"stream_event"{extra},"event":{{"type":"content_block_delta","index":0,"delta":{delta}}}}}"#))
+        };
+        let text = r#"{"type":"text_delta","text":"Cut"}"#;
+        assert_eq!(delta("", text), vec![Event::TextDelta("Cut".into())]);
+        // the main thread has a null parent
+        assert_eq!(delta(r#","parent_tool_use_id":null"#, text), vec![Event::TextDelta("Cut".into())]);
+        // a sub-agent's text, thinking, tool input, empty text and other events show nothing
+        assert!(delta(r#","parent_tool_use_id":"toolu_1""#, text).is_empty());
+        assert!(delta("", r#"{"type":"thinking_delta","thinking":"hm"}"#).is_empty());
+        assert!(delta("", r#"{"type":"input_json_delta","partial_json":"{\"a\""}"#).is_empty());
+        assert!(delta("", r#"{"type":"text_delta","text":""}"#).is_empty());
+        assert!(delta("", r#"{"type":"text_delta"}"#).is_empty());
+        assert!(parse_line(r#"{"type":"stream_event","event":{"type":"message_start"}}"#).is_empty());
+        assert!(parse_line(r#"{"type":"stream_event"}"#).is_empty());
+        // a huge piece is bounded
+        let big = "x".repeat(MAX_TEXT + 100);
+        let events = delta("", &format!(r#"{{"type":"text_delta","text":"{big}"}}"#));
+        assert!(matches!(&events[..], [Event::TextDelta(t)] if t.len() <= MAX_TEXT + 4), "{:?}", events.len());
+    }
 
     #[test]
     fn parses_a_turn() {

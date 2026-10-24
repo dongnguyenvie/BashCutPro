@@ -48,7 +48,39 @@ pub fn hover_mix(ctx: &egui::Context, id: egui::Id, hovered: bool) -> f32 {
 
 #[cfg(test)]
 mod tests {
+    use super::*;
+
+    /// Run one frame of a fresh context (`animation_time` set first) and give `f` its context.
+    fn frame<R>(animation_time: f32, f: impl FnOnce(&egui::Context) -> R) -> R {
+        let ctx = egui::Context::default();
+        ctx.global_style_mut(|s| s.animation_time = animation_time);
+        let mut out = None;
+        let mut f = Some(f);
+        let mut output = ctx.run_ui(egui::RawInput::default(), |ui| {
+            if let Some(f) = f.take() {
+                out = Some(f(ui.ctx()));
+            }
+        });
+        output.textures_delta.clear();
+        out.expect("the frame ran")
+    }
+
     #[test]
-    #[ignore = "test ticket: appear goes 0 to 1 and is 1.0 at once with animation_time 0; pulse is 1.0 with motion off"]
-    fn appear_and_pulse() {}
+    fn appear_and_pulse() {
+        let id = egui::Id::new("item");
+        // motion on: a new id starts at 0 and has not arrived in its first frame
+        assert!(frame(0.18, on));
+        let first = frame(0.18, |ctx| appear(ctx, id));
+        assert!((0.0..1.0).contains(&first), "first frame {first}");
+        let p = frame(0.18, |ctx| pulse(ctx, 1.2));
+        assert!((0.1..=1.0).contains(&p), "pulse {p}");
+        // motion off (animation_time 0): at the end state at once, a steady dot
+        assert!(!frame(0.0, on));
+        assert_eq!(frame(0.0, |ctx| appear(ctx, id)), 1.0);
+        assert_eq!(frame(0.0, |ctx| pulse(ctx, 1.2)), 1.0);
+        assert_eq!(frame(0.0, |ctx| hover_mix(ctx, id, true)), 1.0);
+        assert_eq!(frame(0.0, |ctx| hover_mix(ctx, id, false)), 0.0);
+        // a period of 0 never divides: steady
+        assert_eq!(frame(0.18, |ctx| pulse(ctx, 0.0)), 1.0);
+    }
 }
