@@ -88,6 +88,10 @@ pub(super) fn input(
     agent: &str,
     context: &str,
 ) {
+    if super::super::agent::terminal_live(ctx) {
+        locked(app, ui, ctx, v);
+        return;
+    }
     let focused = ctx.memory(|m| m.has_focus(input_id()));
     // the `/` list: open while the caret ends a `/` word, the box (or the list under the pointer) has
     // focus, and Esc did not close it for this word
@@ -172,6 +176,50 @@ pub(super) fn input(
         Some((start, _, cmds)) => slash_list(app, ctx, v, box_rect, *start, at, cmds.is_none(), &hits),
         None => None,
     };
+}
+
+/// The box while the terminal holds the session (AGT3): off, with the reason and Take back (confirmed first).
+fn locked(app: &mut FilmcraftApp, ui: &mut egui::Ui, ctx: &egui::Context, v: &mut View) {
+    let tk = app.tokens;
+    let key = egui::Id::new("bashcut.agent.takeBack.confirm");
+    let asking = ctx.data(|d| d.get_temp::<bool>(key)).unwrap_or(false);
+    let reason = s("Claude Code is running in the terminal. Close it to continue here.");
+    let frame =
+        egui::Frame::new().fill(tk.field_bg).stroke(egui::Stroke::new(1.0, tk.field_border)).corner_radius(tk.radius).inner_margin(egui::Margin::same(6)).show(
+            ui,
+            |ui| {
+                ui.set_width(ui.available_width());
+                let r = note(ui, reason, NOTE, tk.text_dim);
+                app.auto.add_response("bashcut.agent.input", &r, reason);
+                ui.horizontal(|ui| {
+                    if asking {
+                        note(ui, s("Take back the conversation? Close the terminal window first, or two writers share one session."), META, tk.text_dim);
+                    }
+                });
+                ui.horizontal(|ui| {
+                    let (label, id) = if asking { (s("Yes, take back"), "bashcut.agent.takeBack.confirm") } else { (s("Take back"), "bashcut.agent.takeBack") };
+                    let r = ui.add(egui::Button::new(label).small());
+                    app.auto.add_response(id, &r, label);
+                    if r.clicked() {
+                        if asking {
+                            ctx.data_mut(|d| d.remove::<bool>(key));
+                            super::super::agent::take_back(app, ctx);
+                        } else {
+                            ctx.data_mut(|d| d.insert_temp(key, true));
+                        }
+                    }
+                    if asking {
+                        let r = ui.add(egui::Button::new(s("Cancel")).small());
+                        app.auto.add_response("bashcut.agent.takeBack.cancel", &r, s("Cancel"));
+                        if r.clicked() {
+                            ctx.data_mut(|d| d.remove::<bool>(key));
+                        }
+                    }
+                });
+            },
+        );
+    v.composer_h = frame.response.rect.height();
+    v.slash_rect = None;
 }
 
 /// The row under the text: the context chip on the left, Send (or Stop) on the right.
