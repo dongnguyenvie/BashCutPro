@@ -86,6 +86,7 @@ Lần đầu ở một thư mục, Claude Code hỏi bạn có tin thư mục đ
   giải nén vào. Dòng ghi chú bên dưới có lệnh tùy chọn nếu bạn muốn có kỹ năng trong mọi phiên Claude Code:
   `claude plugin marketplace add dongnguyenvie/bashcutpro-agent-kit && claude plugin install
   bcp@bashcutpro-agent-kit`. Các nút công thức của cuộc trò chuyện trống cũng cần bộ công cụ.
+- Khi bộ kỹ năng bạn đang dùng nhắc đến lệnh mà BashCutPro này chưa có (bộ cũ hoặc BashCutPro cũ), bảng nói **Bộ kỹ năng này dùng N lệnh mà BashCutPro này chưa có** kèm tên các kỹ năng dùng chúng, cùng nút **Tải bộ công cụ…** (cập nhật bản đã tải bằng `git pull`). Việc kiểm tra so danh sách lệnh của bộ kỹ năng với các lệnh có sẵn trong ứng dụng, không chạy gì thêm và lặp lại sau vài giây; bộ cũ không có danh sách thì không hiện dòng này. Nếu dòng vẫn còn sau khi tải, hãy cập nhật BashCutPro.
 - Cuộc trò chuyện trống hỏi "Chỉnh sửa gì đây?" và gợi ý vài nút mẫu (Cắt các đoạn im lặng, Thêm phụ đề cho sequence chính, cùng các công thức của bộ kit). Bấm nút chỉ điền vào ô nhắn, chưa gửi gì cho đến khi bạn bấm Gửi.
 - Bảng lệnh cũng có ba thao tác này: **Mở trợ lý trong Terminal**, **Đăng nhập Claude Code** và **Cài Claude Code**
   (trợ lý điều khiển BashCutPro có thể gọi chúng bằng `bashcut.agent.terminal`, `bashcut.agent.signIn` và
