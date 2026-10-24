@@ -59,7 +59,7 @@ pub(super) fn row(app: &mut FilmcraftApp, ui: &mut egui::Ui, items: &[Item], sta
     app.auto.add_response("bashcut.agent.working", &r, &text);
     if let Some(line) = quiet {
         let r = note(ui, s(line), NOTE, t.text);
-        app.auto.add_response("bashcut.agent.quiet", &r, line);
+        app.auto.add_response("bashcut.agent.quiet", &r, s(line));
     }
 }
 

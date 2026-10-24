@@ -135,6 +135,21 @@ impl Driver {
         self.rect(id).is_some()
     }
 
+    /// Brings `id` of the Agent header into view when AGU7 folded it away: the Setup strip expanded
+    /// ("n things to set up") or the header's overflow menu (More) opened. Does nothing when it shows.
+    fn reveal(&mut self, id: &str) {
+        if self.has(id) {
+            return;
+        }
+        if self.has("bashcut.agent.setup") {
+            self.click("bashcut.agent.setup");
+        }
+        if !self.has(id) && self.has("bashcut.agent.menu") {
+            self.click("bashcut.agent.menu");
+        }
+        assert!(self.has(id), "{id} not shown by the Setup strip or the More menu");
+    }
+
     fn state(&mut self) -> Value {
         self.exec("bashcut.ui.state", json!({}))
     }
@@ -1418,6 +1433,7 @@ fn agent_setting_writes_the_marker_and_turn_on_shows_only_when_the_setting_turne
         let marker = control::marker(&data);
         let mut d = Driver::with_data(&data, |_| {});
         d.click("bashcut.rail.agent");
+        d.reveal("bashcut.agent.allowControl");
         assert_eq!(d.element("bashcut.agent.allowControl")["label"], json!(control::ALLOW));
         assert!(!marker.exists(), "on by default");
         d.click("bashcut.agent.allowControl");
@@ -1428,6 +1444,7 @@ fn agent_setting_writes_the_marker_and_turn_on_shows_only_when_the_setting_turne
         assert!(d.has("bashcut.plugins.setup"));
         assert!(!d.has("bashcut.plugins.turnOn"));
         d.click("bashcut.rail.agent");
+        d.reveal("bashcut.agent.allowControl");
         d.click("bashcut.agent.allowControl");
         assert!(!marker.exists(), "ticked removes it");
         assert!(d.harness.state().ui_error.is_none(), "{:?}", d.harness.state().ui_error);
@@ -1513,6 +1530,7 @@ fn notes_still_render_in_plugins_batch_and_agent() {
         }
         d.exec("bashcut.ui.show.agent", json!({}));
         d.frames(2);
+        d.reveal("bashcut.agent.ready.control");
         assert_eq!(d.element("bashcut.agent.ready.control")["label"], json!(agent), "{lang}");
         assert!(d.harness.query_by_label(agent).is_some(), "{lang}: drawn, not only registered");
         if let Some(dir) = std::env::var_os("BASHCUT_UI_SHOTS").map(std::path::PathBuf::from) {
@@ -2400,6 +2418,7 @@ fn a_sign_in_failure_shows_the_not_signed_in_line_with_sign_in() {
     assert_eq!(d.element("bashcut.agent.ready.auth.message")["label"], json!("Not logged in · Please run /login"));
     let items = d.agent_items();
     assert!(!items.iter().any(|i| i["type"] == json!("error")), "no generic error: {items:?}");
+    d.reveal("bashcut.agent.signIn");
     let (en, vi) = d.labels("bashcut.agent.signIn");
     assert_eq!((en, vi), (json!("Sign in…"), json!("Đăng nhập…")));
     d.click("bashcut.agent.signIn");
@@ -2453,6 +2472,7 @@ fn open_in_terminal_ends_the_live_agent_first() {
     let mut d = fake.driver();
     d.exec("bashcut.agent.send", json!({"text": "hold the cut"}));
     d.agent_said("working on hold the cut");
+    d.reveal("bashcut.agent.terminal");
     d.click("bashcut.agent.terminal");
     let (en, vi) = d.labels("bashcut.agent.handoff");
     assert_eq!(en, json!("Ending the in-app session before the terminal opens…"));
@@ -2566,12 +2586,12 @@ fn queued_messages_are_numbered_and_cancel_with_x() {
     for (i, q) in ["q1", "q2", "q3"].iter().enumerate() {
         assert_eq!(d.element(&format!("bashcut.agent.queued.{i}"))["label"], json!(q));
         assert_eq!(d.element(&format!("bashcut.agent.queued.{i}.cancel"))["label"], json!("Remove this message from the queue"));
-        assert!(d.harness.query_by_label(&format!("You · queued {}", i + 1)).is_some(), "queued {}", i + 1);
+        assert!(d.harness.query_by_label(&format!("Queued {}", i + 1)).is_some(), "queued {}", i + 1);
     }
     d.exec("bashcut.ui.setLanguage", json!({"language": "vi"}));
     d.frames(2);
     for n in 1..=3 {
-        assert!(d.harness.query_by_label(&format!("Bạn · đang chờ {n}")).is_some(), "vi queued {n}");
+        assert!(d.harness.query_by_label(&format!("Đang chờ {n}")).is_some(), "vi queued {n}");
     }
     d.exec("bashcut.ui.setLanguage", json!({"language": null}));
     d.frames(2);
@@ -2647,8 +2667,10 @@ fn terminal_sign_in_and_install_follow_whether_claude_is_found() {
         let claude = agents.as_array().and_then(|a| a.iter().find(|a| a["id"] == json!("claude-code")).cloned()).unwrap_or_default();
         if fake.case == "found" {
             assert_eq!(claude["actions"], json!(["terminal", "signIn", "installKit"]), "{agents}");
+            d.reveal("bashcut.agent.terminal");
             let (en, vi) = d.labels("bashcut.agent.terminal");
             assert_eq!((en, vi), (json!("Open in Terminal"), json!("Mở trong Terminal")));
+            d.reveal("bashcut.agent.signIn");
             let (en, vi) = d.labels("bashcut.agent.signIn");
             assert_eq!((en, vi), (json!("Sign in…"), json!("Đăng nhập…")));
             assert!(!d.has("bashcut.agent.install"));
@@ -2988,8 +3010,12 @@ fn narrow_agent_panel_keeps_queued_x_and_checkbox_in_place() {
                 assert!(x[0] >= t[0] && x[1] >= t[1] && x[3] <= t[3], "{lang} {scale}: ✕ {i} {x:?} inside the transcript {t:?}");
                 assert!(x[2] <= t[2] - bar, "{lang} {scale}: ✕ {i} {x:?} clear of the scroll bar of {t:?}");
             }
+            d.reveal("bashcut.agent.allowControl");
             let c = edges(&mut d, "bashcut.agent.allowControl").expect("allow control checkbox");
-            assert!(c[3] <= t[1], "{lang} {scale}: checkbox {c:?} ends above the transcript {t:?}");
+            // in the Setup strip (channel off) it ends above the transcript; in the More menu (AGU7) it floats over it
+            if d.has("bashcut.agent.ready.control") {
+                assert!(c[3] <= t[1], "{lang} {scale}: checkbox {c:?} ends above the transcript {t:?}");
+            }
             assert!(c[2] <= t[2] + 1.0, "{lang} {scale}: checkbox {c:?} within the panel {t:?}");
         }
     }
