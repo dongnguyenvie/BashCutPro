@@ -717,6 +717,20 @@ pub fn commands() -> Vec<CommandInfo> {
     .collect()
 }
 
+/// Inject a terminal [`Watch`] with a backdated last-event [`Instant`] for headless tests.
+///
+/// Lets external test code (e.g. `tests/bashcut_ui.rs`) set up the full `terminal_maybe_closed`
+/// condition — elapsed ≥ `CLOSED_AFTER`, chosen phase, and an optional transcript path — without
+/// sleeping ten minutes.
+///
+/// Not part of the public API; exposed as `pub` only because integration tests in `tests/` cannot
+/// see `#[cfg(test)]`-gated items.
+#[doc(hidden)]
+pub fn inject_terminal_watch_for_test(ctx: &egui::Context, watch: terminal::Watch, age: std::time::Duration) {
+    let at = std::time::Instant::now().checked_sub(age).unwrap_or_else(std::time::Instant::now);
+    ctx.data_mut(|d| d.insert_temp(watch_key(), TerminalWatch(Some(watch), at)));
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
