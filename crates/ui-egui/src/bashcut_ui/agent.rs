@@ -221,11 +221,11 @@ pub fn invoke(app: &mut FilmcraftApp, ctx: &egui::Context, name: &str, params: &
                 let program = (a.agent.id == "claude-code").then(|| resume(a)).flatten().and_then(|v| v.into_iter().next());
                 (program, kit_present(a))
             });
-            let program = program.ok_or_else(|| s("Install kit works with Claude Code once it is installed.").to_string())?;
+            program.ok_or_else(|| s("Download kit works with Claude Code once it is installed.").to_string())?;
             if present {
                 return Err(s("The BashCutPro kit is already installed.").into());
             }
-            install_kit(&program, &bashcut_agent::session::turn_dir(context(app).project.as_deref()))?;
+            install_kit(&bashcut_agent::session::turn_dir(context(app).project.as_deref()))?;
             return Ok(json!({"opened": true}));
         }
         _ => {}
@@ -314,11 +314,27 @@ pub fn install(project: Option<&Path>) -> Result<(), String> {
     open_terminal(&bashcut_agent::session::turn_dir(project), &terminal::install_job(terminal::Os::current()), Some(hint))
 }
 
-/// Install kit (AG9's button and `bashcut.agent.installKit`): the agent kit's two `claude plugin`
-/// commands ([`terminal::kit_job`]) in a terminal in `cwd`; user-started only, never automatic.
-pub fn install_kit(program: &str, cwd: &Path) -> Result<(), String> {
-    let hint = s("Installing the BashCutPro kit for Claude Code. When it finishes, close this window and start a New conversation in BashCutPro.");
-    open_terminal(cwd, &terminal::kit_job(terminal::Os::current(), program), Some(hint))
+/// The folder Download kit puts the kit in: `<data dir>/bashcut-kit`, the first place the lookup reads (AG15).
+pub fn kit_target() -> Option<PathBuf> {
+    bashcut_dirs::data_dir().map(|d| d.join(bashcut_dirs::kit::DATA_SUBDIR))
+}
+
+/// `git` starts from `PATH` (Download kit needs it; without it the panel shows the zip URL).
+pub fn git_found() -> bool {
+    hints::program_found("git", std::env::var_os("PATH").as_deref())
+}
+
+/// Download kit (AG16's button and `bashcut.agent.installKit`): `git clone` of the agent kit into [`kit_target`], or
+/// `git pull` when it is already there ([`terminal::kit_job`]), in a terminal in `cwd`; user-started only, never
+/// automatic. The next message loads the kit with `--plugin-dir` (AG15).
+pub fn install_kit(cwd: &Path) -> Result<(), String> {
+    let dir = kit_target().ok_or_else(|| s("There is no data folder to keep the kit in.").to_string())?;
+    if !git_found() {
+        return Err(f("Git was not found. Download {url} and unpack it into {folder}.", &[("url", terminal::KIT_ZIP_URL), ("folder", &dir.to_string_lossy())]));
+    }
+    let hint = s("Downloading the BashCutPro kit. When it finishes, close this window: your next message in BashCutPro loads it.");
+    let job = terminal::kit_job(terminal::Os::current(), "git", &dir, dir.join(".git").exists());
+    open_terminal(cwd, &job, Some(hint))
 }
 
 fn hand_off_key() -> egui::Id {
@@ -400,7 +416,7 @@ pub fn commands() -> Vec<CommandInfo> {
         ("terminal", "Open Agent in Terminal"),
         ("signIn", "Sign In to Claude Code"),
         ("install", "Install Claude Code"),
-        ("installKit", "Install BashCutPro Kit"),
+        ("installKit", "Download BashCutPro Kit"),
     ]
     .into_iter()
     .map(|(id, label)| CommandInfo::new(&format!("bashcut.agent.{id}"), label, &[], None))
@@ -498,9 +514,9 @@ mod tests {
         with(&app, &ctx, |a| a.plugins = Some(vec!["other".into(), terminal::KIT_PLUGIN.into()]));
         assert_eq!(invoke(&mut app, &ctx, "installKit", &json!({})), Err("The BashCutPro kit is already installed.".into()));
         with(&app, &ctx, |a| a.use_agent("codex")).unwrap();
-        assert_eq!(invoke(&mut app, &ctx, "installKit", &json!({})), Err("Install kit works with Claude Code once it is installed.".into()));
+        assert_eq!(invoke(&mut app, &ctx, "installKit", &json!({})), Err("Download kit works with Claude Code once it is installed.".into()));
         let (mut app, ctx) = app_with(vec![AgentSpec::claude_code(Some(MISSING.into()))]);
-        assert_eq!(invoke(&mut app, &ctx, "installKit", &json!({})), Err("Install kit works with Claude Code once it is installed.".into()));
+        assert_eq!(invoke(&mut app, &ctx, "installKit", &json!({})), Err("Download kit works with Claude Code once it is installed.".into()));
         super::super::strings::set_language(None);
         // opening the kit terminal (kit missing or not known yet) needs a real terminal: manual check
     }

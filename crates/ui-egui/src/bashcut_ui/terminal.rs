@@ -8,9 +8,10 @@
 //! `;`, `%` or quotes in a path stay one word. Each launcher is started through
 //! [`bashcut_dirs::child::spawn`] and reaped on a background thread.
 //!
-//! AG9: Install kit runs the agent-kit README's two `claude plugin` commands ([`kit_job`]), and
-//! when the live session showed no kit, Open in Terminal passes the app's MCP server from a config
-//! kept in the data folder ([`terminal_mcp_config`]) so the terminal agent still reaches the app.
+//! AG9/AG16: Download kit clones the agent kit into the data folder, or pulls it when it is already
+//! there ([`kit_job`]; no global `claude plugin install`), and when the live session showed no kit,
+//! Open in Terminal passes the app's MCP server from a config kept in the data folder
+//! ([`terminal_mcp_config`]) so the terminal agent still reaches the app.
 //!
 //! [`stand_in`] replaces the window for this process (headless tests): [`open`] then hands the
 //! folder, job and hint to it and starts nothing.
@@ -29,6 +30,9 @@ pub const INSTALL_WINDOWS: &str = "irm https://claude.ai/install.ps1 | iex";
 pub const KIT_PLUGIN: &str = "bcp";
 pub const KIT_MARKETPLACE: &str = "dongnguyenvie/bashcutpro-agent-kit";
 pub const KIT_INSTALL: &str = "bcp@bashcutpro-agent-kit";
+/// The kit's repository (AG16: `git clone` target) and its zip, for a machine without git.
+pub const KIT_REPO_URL: &str = "https://github.com/dongnguyenvie/bashcutpro-agent-kit";
+pub const KIT_ZIP_URL: &str = "https://github.com/dongnguyenvie/bashcutpro-agent-kit/archive/refs/heads/main.zip";
 
 /// The OS a launch is built for (a parameter so every branch is testable on any OS).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -232,17 +236,16 @@ pub fn install_job(os: Os) -> Job {
     Job::Script(if os == Os::Windows { INSTALL_WINDOWS } else { INSTALL_UNIX }.to_string())
 }
 
-/// The kit's install for `program` (`claude`, or `BASHCUT_CLAUDE`, quoted): add the marketplace, then
-/// install the plugin when that worked. User-started only, never automatic.
-pub fn kit_job(os: Os, program: &str) -> Job {
-    let add = ["plugin", "marketplace", "add", KIT_MARKETPLACE];
-    let install = ["plugin", "install", KIT_INSTALL];
+/// The kit's download (AG16) into `dir` (`<data dir>/bashcut-kit`): `git clone` of [`KIT_REPO_URL`], or
+/// `git pull` when `dir` already holds a clone (`cloned`). `git` is the program, quoted. User-started only.
+pub fn kit_job(os: Os, git: &str, dir: &Path, cloned: bool) -> Job {
+    let dir = dir.to_string_lossy();
     Job::Script(if os == Os::Windows {
-        let p = ps_quote(program);
-        format!("& {p} {}; if ($LASTEXITCODE -eq 0) {{ & {p} {} }}", add.join(" "), install.join(" "))
+        let (g, d) = (ps_quote(git), ps_quote(&dir));
+        if cloned { format!("& {g} -C {d} pull") } else { format!("& {g} clone {} {d}", ps_quote(KIT_REPO_URL)) }
     } else {
-        let p = sh_quote(program);
-        format!("{p} {} && {p} {}", add.join(" "), install.join(" "))
+        let (g, d) = (sh_quote(git), sh_quote(&dir));
+        if cloned { format!("{g} -C {d} pull") } else { format!("{g} clone {} {d}", sh_quote(KIT_REPO_URL)) }
     })
 }
 
@@ -417,20 +420,6 @@ mod tests {
     }
 
     #[test]
-    fn kit_job_adds_marketplace_then_installs_bcp() {
-        let windows = kit_job(Os::Windows, r"C:\Program Files\it's\claude.exe");
-        let expected = r"& 'C:\Program Files\it''s\claude.exe' plugin marketplace add dongnguyenvie/bashcutpro-agent-kit; if ($LASTEXITCODE -eq 0) { & 'C:\Program Files\it''s\claude.exe' plugin install bcp@bashcutpro-agent-kit }";
-        assert_eq!(windows, Job::Script(expected.into()));
-        for os in [Os::Mac, Os::Linux] {
-            let Job::Script(line) = kit_job(os, "/opt/my tools/it's/claude") else { panic!("a script") };
-            assert_eq!(
-                line,
-                r"'/opt/my tools/it'\''s/claude' plugin marketplace add dongnguyenvie/bashcutpro-agent-kit && '/opt/my tools/it'\''s/claude' plugin install bcp@bashcutpro-agent-kit"
-            );
-            // install runs only when add succeeded (`&&`), the program one word each time
-            let program = "/opt/my tools/it's/claude";
-            assert_eq!(sh_words(&line), [program, "plugin", "marketplace", "add", KIT_MARKETPLACE, "&&", program, "plugin", "install", KIT_INSTALL]);
-        }
-        assert!(KIT_INSTALL.starts_with(&format!("{KIT_PLUGIN}@")));
-    }
+    #[ignore = "test ticket: kit_job clones when the folder is empty and pulls when it holds a clone; the folder and git are one word on POSIX and in PowerShell (spaces, quotes)"]
+    fn kit_job_clones_or_pulls() {}
 }

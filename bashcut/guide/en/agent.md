@@ -66,16 +66,19 @@ The first time in a folder, Claude Code asks whether you trust it: choose **Yes,
 - When Claude Code is not installed, the "not found" line has an **Install** button. It opens a terminal running the
   official installer (`curl -fsSL https://claude.ai/install.sh | bash` on macOS and Linux,
   `irm https://claude.ai/install.ps1 | iex` in PowerShell on Windows). Nothing is installed until you press it.
-- When Claude Code runs without the BashCutPro kit (its `bcp` plugin, which brings the `/bcp:` recipes and skills),
-  the panel says **BashCutPro skills are not installed** after the first message, with the two commands to install
-  it (`claude plugin marketplace add dongnguyenvie/bashcutpro-agent-kit`, then
-  `claude plugin install bcp@bashcutpro-agent-kit`) and an **Install kit…** button that runs them in a terminal.
-  Nothing is installed until you press it. When it finishes, press **New**: the line goes away once the new
-  conversation's first message shows the kit. The recipe buttons of an empty conversation need the kit too.
+- When BashCutPro finds no copy of the BashCutPro kit (the `bcp` plugin: the `/bcp:` recipes and skills) and Claude Code
+  runs without it, the panel says **BashCutPro skills are not downloaded** after the first message, with a
+  **Download kit…** button. It opens a terminal that clones the kit
+  (`https://github.com/dongnguyenvie/bashcutpro-agent-kit`) into BashCutPro's data folder (`bashcut-kit`), or runs
+  `git pull` when it is already there. Nothing is downloaded until you press it, and nothing is installed into
+  Claude Code itself. When it finishes, your next message loads the kit. Without git the panel shows the zip address
+  and the folder to unpack it into instead. A small note below gives the optional command for the skills in every
+  Claude Code session: `claude plugin marketplace add dongnguyenvie/bashcutpro-agent-kit && claude plugin install
+  bcp@bashcutpro-agent-kit`. The recipe buttons of an empty conversation need the kit too.
 - The command palette has the same three actions: **Open Agent in Terminal**, **Sign In to Claude Code** and
   **Install Claude Code** (an agent driving BashCutPro can call them as `bashcut.agent.terminal`,
   `bashcut.agent.signIn` and `bashcut.agent.install`). Install still runs only when you choose it.
-  **Install BashCutPro Kit** (`bashcut.agent.installKit`) does what **Install kit…** does; it refuses when the
+  **Download BashCutPro Kit** (`bashcut.agent.installKit`) does what **Download kit…** does; it refuses when the
   conversation already shows the kit.
 
 The terminal is Terminal on macOS, Windows Terminal (else a PowerShell window) on Windows, and your desktop's

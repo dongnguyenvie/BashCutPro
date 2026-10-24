@@ -526,12 +526,12 @@ labels or subclips (§1 rule 1). A project opened in upstream FilmCraft still wo
   through the string catalog (`strings::s`), so these three show in Vietnamese ("Mở trợ lý trong Terminal",
   "Đăng nhập Claude Code", "Cài Claude Code"); MCP `command_list` keeps the English labels. Switching agents
   (`use`) resets `Agent::plugins` to unknown, so the kit line never shows from the other agent's init.
-- **installKit and Vietnamese palette labels (AG11)**: `bashcut.agent.installKit` "Install BashCutPro Kit" runs
-  `agent::install_kit`, the same function as the kit line's **Install kit…** button (AG9): current agent Claude Code,
-  found (else "Install kit works with Claude Code once it is installed."); refused with "The BashCutPro kit is
+- **installKit and Vietnamese palette labels (AG11)**: `bashcut.agent.installKit` "Download BashCutPro Kit" (AG16; was Install) runs
+  `agent::install_kit`, the same function as the kit line's **Download kit…** button (AG9, AG16): current agent Claude Code,
+  found (else "Download kit works with Claude Code once it is installed."); refused with "The BashCutPro kit is
   already installed." once the session's last `system/init` lists `bcp`. Before any init (plugins unknown) the
-  explicit command still opens the kit terminal: the user asked for it, and the two `claude plugin` commands are
-  harmless when the kit is there. `bashcut.agent.agents` lists `installKit` among Claude Code's `actions` (AG14) on the
+  explicit command still opens the kit terminal: the user asked for it, and a download onto an existing clone is
+  a `git pull`. `bashcut.agent.agents` lists `installKit` among Claude Code's `actions` (AG14) on the
   same rule: the agent is found and the session's init does not list `bcp` (so also before any init). Only on this command or the click, never automatic. Every `bashcut.agent.*`
   palette label has a vi row ("Gửi cho trợ lý", "Dừng trợ lý", "Cài bộ công cụ BashCutPro", …); MCP
   `command_list` keeps the English labels.
@@ -545,12 +545,16 @@ labels or subclips (§1 rule 1). A project opened in upstream FilmCraft still wo
   `bcp` skills load only in sessions BashCutPro starts; `--strict-mcp-config` and the app's own server stay (the
   kit's MCP steps aside through `BASHCUT_IN_APP_AGENT=1`). `end_session` resets `plugins` and `commands` to unknown,
   so a finished session's init never shows a stale kit line. `agent::kit_missing` = no kit folder found and the last init
-  has no `bcp`. Then (the Install kit button is reworked in AG16), the readiness line `bashcut.agent.ready.kit` says "BashCutPro skills are not installed", shows the
-  agent-kit README's two commands selectable (`bashcut.agent.ready.kit.commands`) and **Install kit…**
-  (`bashcut.agent.installKit`), which opens a terminal running `<claude> plugin marketplace add
-  dongnguyenvie/bashcutpro-agent-kit` then, when that worked, `<claude> plugin install bcp@bashcutpro-agent-kit`
-  (`terminal::kit_job`, the program quoted). Never automatic. Before the first init nothing shows (unknown is not
-  missing). While the kit is not installed globally, **Open in Terminal** adds `--plugin-dir <kit>` (when a folder is found) and `--mcp-config <data dir>/agent/terminal-mcp.json`
+  has no `bcp`. Then the readiness line `bashcut.agent.ready.kit` says "BashCutPro skills are not downloaded", shows the
+  optional global-install command selectable (`bashcut.agent.ready.kit.commands`, with a note "Want the skills in
+  every Claude Code session? Run:"; the app never runs it) and **Download kit…** (AG16,
+  `bashcut.agent.installKit`, id unchanged), which opens a terminal running `git clone
+  https://github.com/dongnguyenvie/bashcutpro-agent-kit <data dir>/bashcut-kit`, or `git -C <dir> pull` when `.git`
+  is already there (`terminal::kit_job`, `agent::install_kit`; the folder AG15's lookup reads first, so the next
+  message loads it with `--plugin-dir`; the UI never runs `claude plugin install`). Without git on `PATH` the button
+  is replaced by the zip URL and target folder as selectable text (`bashcut.agent.ready.kit.zip`), and the command
+  refuses with the same sentence. Never automatic. Before the first init nothing shows (unknown is not missing).
+  While the kit is not installed globally, **Open in Terminal** adds `--plugin-dir <kit>` (when a folder is found) and `--mcp-config <data dir>/agent/terminal-mcp.json`
   (`terminal::terminal_mcp_config`: the app's `bashcutpro` server, `<engine> mcp --bridge <address>`, rewritten on
   each click), so the terminal agent reaches the app without the kit; with the kit it is not passed (two copies
   of the same tools). The empty transcript's recipe buttons say on hover that they need the kit.

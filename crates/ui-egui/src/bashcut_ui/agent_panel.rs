@@ -21,9 +21,10 @@
 //! decoded from the event stream only), a readiness line says so with Sign in, and the agent's own
 //! message stays selectable under it.
 //!
-//! AG9: when the live session's `system/init` lists no `bcp` plugin, a readiness line says the
-//! BashCutPro skills are not installed, with the kit's install commands and Install kit (a terminal
-//! the user starts; never automatic), and Open in Terminal passes the app's MCP server instead.
+//! AG9/AG16: when no kit folder is found and the live session's `system/init` lists no `bcp` plugin, a
+//! readiness line says the BashCutPro skills are not downloaded, with Download kit (a terminal the user
+//! starts that clones the kit into the data folder; never automatic; without git the zip URL instead) and
+//! the optional global install command, and Open in Terminal passes the app's MCP server instead.
 //!
 //! AG12: typing a `/` word in the message box lists the live session's slash commands and skills
 //! (from its `system/init`, [`bashcut_agent::stream_json::SlashCommand`]) above the box: prefix
@@ -397,31 +398,42 @@ fn auth_line(app: &mut FilmcraftApp, ui: &mut egui::Ui, snap: &Snapshot, categor
     }
 }
 
-/// The agent kit's install commands, as the agent-kit README gives them (shown selectable).
+/// The optional global install, as the agent-kit README gives it (shown selectable; the app never runs it).
 fn kit_commands() -> String {
-    format!("claude plugin marketplace add {}\nclaude plugin install {}", terminal::KIT_MARKETPLACE, terminal::KIT_INSTALL)
+    format!("claude plugin marketplace add {} && claude plugin install {}", terminal::KIT_MARKETPLACE, terminal::KIT_INSTALL)
 }
 
-/// "BashCutPro skills are not installed" (AG9): Install kit…, and the commands to run by hand.
+/// "BashCutPro skills are not downloaded" (AG9, AG16): Download kit… (git), or the zip URL without git, and the
+/// global install command to run by hand.
 fn kit_line(app: &mut FilmcraftApp, ui: &mut egui::Ui, snap: &Snapshot) {
     let t = app.tokens;
+    let git = agent::git_found();
     ui.horizontal_wrapped(|ui| {
-        let line = s("BashCutPro skills are not installed");
+        let line = s("BashCutPro skills are not downloaded");
         let r = note(ui, line, NOTE, t.danger).on_hover_text(s("The BashCutPro kit (bcp plugin for Claude Code) brings the /bcp: recipes and skills."));
         app.auto.add_response("bashcut.agent.ready.kit", &r, line);
-        let program = snap.resume.as_ref().and_then(|a| a.first()).cloned();
-        if let Some(program) = program
+        if git
+            && snap.resume.is_some()
             && hover_button(
                 app,
                 ui,
                 "bashcut.agent.installKit",
-                s("Install kit…"),
-                s("Open a terminal that installs the BashCutPro kit (bcp plugin) for Claude Code."),
+                s("Download kit…"),
+                s("Open a terminal that downloads the BashCutPro kit (git) into BashCutPro's data folder. Your next message loads it."),
             )
         {
-            report(app, agent::install_kit(&program, &snap.cwd()));
+            report(app, agent::install_kit(&snap.cwd()));
         }
     });
+    if git {
+        note(ui, s("When the download finishes, your next message loads the kit."), NOTE, t.text_dim);
+    } else {
+        let folder = agent::kit_target().map(|d| d.to_string_lossy().into_owned()).unwrap_or_default();
+        let text = f("Git was not found. Download {url} and unpack it into {folder}.", &[("url", terminal::KIT_ZIP_URL), ("folder", &folder)]);
+        let r = ui.add(egui::Label::new(egui::RichText::new(&text).size(NOTE).color(t.text_dim)).selectable(true).wrap());
+        app.auto.add_response("bashcut.agent.ready.kit.zip", &r, &text);
+    }
+    note(ui, s("Want the skills in every Claude Code session? Run:"), NOTE, t.text_dim);
     let cmds = kit_commands();
     let r = ui.add(egui::Label::new(code_text(&cmds, NOTE, t.text_dim)).selectable(true).wrap());
     app.auto.add_response("bashcut.agent.ready.kit.commands", &r, &cmds);
