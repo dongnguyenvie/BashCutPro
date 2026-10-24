@@ -13,8 +13,8 @@ const SUMMARY_MAX: usize = 240;
 const VALUE_MAX: usize = 80;
 /// Calls of a group whose values are listed before the "…".
 const LISTED: usize = 3;
-/// Timecodes in a summary count frames at this rate (the input carries seconds, not the sequence).
-const RATE: FrameRate = FrameRate::FPS_25;
+/// The rate timecodes count frames at when there is no active sequence (the input carries seconds, not the sequence).
+pub const FALLBACK_RATE: FrameRate = FrameRate::FPS_25;
 
 /// How a group of calls is doing.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -95,12 +95,12 @@ fn args(input: &Value) -> &Value {
 }
 
 /// A time as `00:00:03:05`: seconds as a number, or a timecode as given.
-fn time_text(v: &Value) -> Option<String> {
+fn time_text(v: &Value, rate: FrameRate, drop_frame: bool) -> Option<String> {
     match v {
         Value::Number(n) => {
             let secs = n.as_f64().filter(|s| s.is_finite())?;
-            let frame = (secs * 25.0).round();
-            (frame.abs() < 1.0e12).then(|| format_timecode_frames(frame as i64, RATE, false))
+            let frame = (secs * rate.as_f64()).round();
+            (frame.abs() < 1.0e12).then(|| format_timecode_frames(frame as i64, rate, drop_frame))
         }
         Value::String(s) if !s.trim().is_empty() => Some(bashcut_agent::clip(s.trim(), VALUE_MAX)),
         _ => None,
@@ -112,10 +112,10 @@ fn file_name(path: &str) -> &str {
 }
 
 /// The parts of one call's input worth a glance: time, clip, track, text, file, command.
-fn parts(input: &Value) -> Vec<String> {
+fn parts(input: &Value, rate: FrameRate, drop_frame: bool) -> Vec<String> {
     let a = args(input);
     let mut out = Vec::new();
-    if let Some(t) = ["seconds", "time", "timecode"].iter().find_map(|k| a.get(*k).and_then(time_text)) {
+    if let Some(t) = ["seconds", "time", "timecode"].iter().find_map(|k| a.get(*k).and_then(|v| time_text(v, rate, drop_frame))) {
         out.push(t);
     }
     if let Some(c) = a.get("clip") {
@@ -153,8 +153,9 @@ fn output_part(output: Option<&str>) -> Option<String> {
 
 /// One line for a group of calls (`inputs` and `outputs` side by side): a single call lists its
 /// time, clip, track, text or file; several give `×4 · 00:00:03:05, 00:00:18:20, …`; a Bash call is
-/// its command. `name` is the tool name (for Bash, the key is the command itself).
-pub fn summary(key: &str, name: &str, inputs: &[&Value], outputs: &[Option<&str>]) -> String {
+/// its command. `name` is the tool name (for Bash, the key is the command itself). `rate` and
+/// `drop_frame` are the active sequence's ([`FALLBACK_RATE`], non-drop without one).
+pub fn summary(key: &str, name: &str, inputs: &[&Value], outputs: &[Option<&str>], rate: FrameRate, drop_frame: bool) -> String {
     let _ = key;
     let text = if is_bash(name) {
         let cmd = |v: &Value| {
@@ -163,14 +164,14 @@ pub fn summary(key: &str, name: &str, inputs: &[&Value], outputs: &[Option<&str>
         let first = inputs.first().and_then(|v| cmd(v)).unwrap_or_default();
         if inputs.len() > 1 { format!("×{} · {first}", inputs.len()) } else { first }
     } else if inputs.len() > 1 {
-        let listed: Vec<String> = inputs.iter().take(LISTED).filter_map(|i| parts(i).into_iter().next()).collect();
+        let listed: Vec<String> = inputs.iter().take(LISTED).filter_map(|i| parts(i, rate, drop_frame).into_iter().next()).collect();
         let mut list = listed.join(", ");
         if inputs.len() > LISTED && !list.is_empty() {
             list.push_str(", …");
         }
         if list.is_empty() { format!("×{}", inputs.len()) } else { format!("×{} · {list}", inputs.len()) }
     } else {
-        let mut p = inputs.first().map(|i| parts(i)).unwrap_or_default();
+        let mut p = inputs.first().map(|i| parts(i, rate, drop_frame)).unwrap_or_default();
         p.extend(output_part(outputs.first().copied().flatten()));
         p.join(" ")
     };
@@ -182,6 +183,10 @@ mod tests {
     #[test]
     #[ignore = "test ticket: summaries for razor/ripple/title/Bash/Write/unknown, group of 4, long values clipped, Vietnamese labels"]
     fn summaries_by_kind() {}
+
+    #[test]
+    #[ignore = "test ticket: seconds 3.2 as a timecode at 25, 30, 29.97 drop-frame and the no-sequence fallback (25)"]
+    fn timecode_follows_sequence_rate() {}
 
     #[test]
     #[ignore = "test ticket: status is Failed, Running while the turn runs, Stopped after, else Ok"]
