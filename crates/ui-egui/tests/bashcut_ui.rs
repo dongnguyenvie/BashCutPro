@@ -3409,3 +3409,7 @@ fn agent_message_blocks() {}
 #[test]
 #[ignore = "test ticket: plain example (bashcut.agent.example.remove-silences) fills bashcut.agent.input and sends nothing; 240 px en/vi chips wrap, no horizontal scroll"]
 fn agent_empty_state_plain_examples() {}
+
+#[test]
+#[ignore = "test ticket: permission card primary (filled) button is bashcut.agent.permission.<n>.once, Deny has danger text; failed fake turn shows 'The turn ended with an error.' + the failed tool's first line in one bashcut.agent.error.<i> card (en and vi); gate card still approves / asks for changes"]
+fn agent_cards_hierarchy() {}

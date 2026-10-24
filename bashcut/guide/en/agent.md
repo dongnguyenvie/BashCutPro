@@ -34,7 +34,7 @@ nothing.
    … in the order the agent gets them. Click **✕** on one to remove it; the agent never answers it. One the agent
    has already picked up stays and is answered (use **Stop** for that).
 7. When Claude Code needs something that is not allowed up front (a shell command, writing a file…), the transcript
-   shows a card **Claude Code wants to use Bash** with the command or file: **Allow once** runs it this time;
+   shows a card **Claude Code wants to use Bash** with the command or file: **Allow once** (the filled button) runs it this time;
    **Always for this project** runs it and adds a rule to `.claude/settings.local.json` in the project's folder (this
    project only, never your global settings; offered once the project is saved); **Deny** does not run it and tells
    the agent you said no, so it carries on another way. The agent waits for your answer; **Stop** denies a waiting
