@@ -452,6 +452,12 @@ mod tests {
             "Message {agent}…",
             "Send (Enter sends, Shift+Enter for a new line)",
             "No sequence open",
+            "What should we edit?",
+            "{agent} edits this project with you. It stops at each stage for your approval.",
+            "Type / for skills",
+            "Remove the silences",
+            "Add captions to the main sequence",
+            "Needs the BashCutPro kit (bcp plugin) for Claude Code.",
         ] {
             assert_ne!(s(k), k);
         }
