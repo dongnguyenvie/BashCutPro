@@ -42,7 +42,7 @@ It does not copy BashCut's Swift UI. It is built for FilmCraft's egui shell and 
   It takes width from the dock area, so it behaves like a docked panel without being in FilmCraft's dock tree.
   Any section can pop out into a floating window (for a second monitor) and dock back.
 - **Agent**: chat with the editing agent (Claude Code, Codex, or another agent plugin), streamed replies, tool calls
-  collapsed to one line each ("timeline.razor ×12"), **gate cards** for the edit-workflow gates (brief, plan,
+  collapsed to one 22 px row per command (icon, title, summary: `timeline.razor · ×4 · 00:00:03:05, …`; a Bash call is titled "Bash" with its command as the summary; a running call pulses, a failed one shows a **Failed** chip and its first error line, a call cut off by Stop shows **Stopped**, a live call shows its duration; expanded: pretty-printed input and output with Copy, long output 12 lines then Show all), **gate cards** for the edit-workflow gates (brief, plan,
   rough cut, draft) with Approve / Change / Stop, and a Stop button that ends the turn.
 - **Plugins**: installed plugins from `registry.json`, install / update / remove, settings form generated from the
   manifest (secrets go to the OS key store), actions with a params form, and the plugin's own view when it has one.
