@@ -3871,9 +3871,12 @@ fn a_kit_naming_unknown_commands_shows_the_gap_line() {
     d.agent_idle();
     d.frames(2);
     // two distinct unknown ids across two skills; the plugin id and the known id are not gaps
+    // PLK7: the line ends with "Pinned to kit <tag>" in both languages
+    use filmcraft_ui_egui::bashcut_ui::terminal;
+    let tag = terminal::kit_tag();
     let (en, vi) = d.labels("bashcut.agent.ready.kitGap");
-    assert_eq!(en, json!("This kit uses 2 commands this BashCutPro doesn't have: edit, voice."), "{en}");
-    assert_eq!(vi, json!("Bộ kỹ năng này dùng 2 lệnh mà BashCutPro này chưa có: edit, voice."), "{vi}");
+    assert_eq!(en, json!(format!("This kit uses 2 commands this BashCutPro doesn't have: edit, voice. Pinned to kit {tag}.")), "{en}");
+    assert_eq!(vi, json!(format!("Bộ kỹ năng này dùng 2 lệnh mà BashCutPro này chưa có: edit, voice. Phiên bản bộ kỹ năng được ghim: {tag}.")), "{vi}");
     if filmcraft_ui_egui::bashcut_ui::agent::git_found() {
         assert!(d.has("bashcut.agent.kitGap.update"), "Download kit… beside the line");
     }
@@ -3897,6 +3900,39 @@ fn a_matching_kit_shows_no_gap_line() {
     assert!(d.element("bashcut.agent.ready.kitGap").is_null(), "a matching kit: no gap line");
     assert!(!d.has("bashcut.agent.kitGap.update"));
     d.no_ui_error();
+}
+
+/// PLK7: the kit-gap line ends with "Pinned to kit <tag>" (en) / "Phiên bản bộ kỹ năng được ghim: <tag>" (vi)
+/// so the user knows exactly which version this build expects, in both languages.
+#[test]
+fn kit_gap_line_shows_pinned_tag_en_and_vi() {
+    use filmcraft_ui_egui::bashcut_ui::terminal;
+    let scratch = kit_scratch("kitgaptag");
+    // one unknown id in one skill: N=1 variant of the string
+    let env = gap_kit(&scratch, r#"{"kit":"0.3.0","skills":{"edit":["bashcut.nosuch.cmd"]}}"#);
+    let env: Vec<(&str, &str)> = env.iter().map(|(k, v)| (*k, v.as_str())).collect();
+    let Some(fake) = fake_claude("kit_gap_line_shows_pinned_tag_en_and_vi", "kitgaptag", &env) else {
+        let _ = std::fs::remove_dir_all(&scratch);
+        return;
+    };
+    let mut d = fake.driver();
+    d.exec("bashcut.agent.send", json!({"text": "gaptag"}));
+    d.agent_said("echo gaptag");
+    d.agent_idle();
+    d.frames(2);
+    // the pinned tag from bashcut/kit.lock (built in at compile time)
+    let tag = terminal::kit_tag();
+    assert!(!tag.is_empty(), "kit_tag() is non-empty");
+    let (en, vi) = d.labels("bashcut.agent.ready.kitGap");
+    // N=1: singular form
+    assert_eq!(en, json!(format!("This kit uses 1 command this BashCutPro doesn't have: edit. Pinned to kit {tag}.")), "EN label includes pinned tag: {en}",);
+    assert_eq!(
+        vi,
+        json!(format!("Bộ kỹ năng này dùng 1 lệnh mà BashCutPro này chưa có: edit. Phiên bản bộ kỹ năng được ghim: {tag}.")),
+        "VI label includes pinned tag: {vi}",
+    );
+    d.no_ui_error();
+    let _ = std::fs::remove_dir_all(&scratch);
 }
 
 /// What [`Driver::frames`] reports as the window focus once [`Driver::set_focus`] chose one: 1 focused, 2 not, 0 as before.

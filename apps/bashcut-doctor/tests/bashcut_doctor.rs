@@ -272,6 +272,41 @@ fn updates_are_reported_not_installed() {
     assert!(quiet.iter().all(|x| x.level <= Level::Info));
 }
 
+/// PLK7: the kit check uses `git describe --tags --exact-match HEAD` to compare the installed kit tag
+/// against the pinned tag from `bashcut/kit.lock`. A newer tag → Info "newer kit available"; the
+/// pinned tag → Ok (no warning). Stays non-fatal (≤ Info) in all cases.
+#[test]
+fn kit_update_check_compares_tag_to_lock() {
+    // the pinned tag this build was compiled with (from bashcut/kit.lock at compile time)
+    let pinned = include_str!("../../../bashcut/kit.lock").trim();
+    let describe_cmd = "git -C kit describe --tags --exact-match HEAD";
+    let opts = Options { kit_dir: Some(PathBuf::from("kit")), ..Options::default() };
+
+    // installed tag equals the pinned tag → Ok, no "newer" message
+    let mut f = Fake::healthy();
+    f.program(describe_cmd, 0, &format!("{pinned}\n"));
+    let found = updates::check_updates(&f, &opts);
+    let kit_finding = found.iter().find(|x| x.id == "update.kit").expect("update.kit finding");
+    assert_eq!(kit_finding.level, Level::Ok, "pinned tag installed: should be Ok: {}", kit_finding.message);
+    assert!(!kit_finding.message.contains("newer"), "no 'newer' when tag matches: {}", kit_finding.message);
+    assert!(kit_finding.message.contains(pinned), "message names the tag: {}", kit_finding.message);
+
+    // installed tag is a newer tag (not the pinned one) → Info "newer kit available", still non-fatal
+    let mut g = Fake::healthy();
+    let newer_tag = "v99.0.0";
+    g.program(describe_cmd, 0, &format!("{newer_tag}\n"));
+    let found2 = updates::check_updates(&g, &opts);
+    let kit2 = found2.iter().find(|x| x.id == "update.kit").expect("update.kit finding");
+    assert_eq!(kit2.level, Level::Info, "different tag: should be Info: {}", kit2.message);
+    assert!(kit2.message.contains("newer"), "Info message mentions 'newer': {}", kit2.message);
+    assert!(kit2.message.contains(pinned), "Info message names the pinned tag: {}", kit2.message);
+    // fix command tells the user to fetch and checkout the pinned tag
+    let fix = kit2.fix.as_deref().unwrap_or("");
+    assert!(fix.contains("fetch --tags") && fix.contains(pinned), "fix fetches and checks out the pinned tag: {fix}");
+    // always non-fatal
+    assert!(found2.iter().all(|x| x.level <= Level::Info), "kit findings never fail a doctor run");
+}
+
 #[test]
 fn version_helpers() {
     assert_eq!(parse_version("Python 3.12.1"), Some((3, 12, 1)));
