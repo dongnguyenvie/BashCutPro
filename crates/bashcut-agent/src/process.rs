@@ -118,6 +118,9 @@ impl AgentSpec {
             "stream-json",
             "--verbose",
             "--replay-user-messages",
+            // AGU11: `stream_event` text deltas grow the reply while Claude writes (an older Claude Code
+            // rejects the flag: "unknown option" → the Update Claude Code path)
+            "--include-partial-messages",
             "--permission-prompt-tool",
             "stdio",
             "--allowedTools",

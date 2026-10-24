@@ -58,6 +58,9 @@ pub enum Event {
     },
     /// Assistant text.
     Text(String),
+    /// AGU11: the next piece of the text Claude Code is writing (`--include-partial-messages`'
+    /// `stream_event`); the message's [`Event::Text`] replaces what these built.
+    TextDelta(String),
     ToolUse {
         id: String,
         name: String,
@@ -182,6 +185,7 @@ pub fn parse_line(line: &str) -> Vec<Event> {
                 commands: slash_commands(&v),
             }]
         }
+        "stream_event" => stream_delta(&v).map(Event::TextDelta).into_iter().collect(),
         "user" if v.get("isReplay").and_then(Value::as_bool) == Some(true) => vec![Event::Picked { uuid: clip(&text(&v, "uuid"), 64) }],
         "system" if v.get("subtype").and_then(Value::as_str) == Some("api_retry") => match auth_error(&v) {
             Some(category) => vec![Event::Auth { category: category.into(), message: String::new() }],
@@ -244,6 +248,17 @@ pub fn parse_line(line: &str) -> Vec<Event> {
         "error" => vec![Event::Notice(clip(&v.get("error").map(|e| content_text(Some(e))).unwrap_or_else(|| text(&v, "message")), 2048))],
         _ => Vec::new(),
     }
+}
+
+/// The text of a main-thread `content_block_delta`/`text_delta` stream event (sub-agents' deltas,
+/// thinking and tool-input deltas are not shown).
+fn stream_delta(v: &Value) -> Option<String> {
+    if v.get("parent_tool_use_id").is_some_and(|p| !p.is_null()) {
+        return None;
+    }
+    let e = v.get("event").filter(|e| e.get("type").and_then(Value::as_str) == Some("content_block_delta"))?;
+    let d = e.get("delta").filter(|d| d.get("type").and_then(Value::as_str) == Some("text_delta"))?;
+    d.get("text").and_then(Value::as_str).filter(|t| !t.is_empty()).map(|t| clip(t, MAX_TEXT))
 }
 
 /// A `can_use_tool` request's fields (checked with Claude Code 2.1.309: `tool_name`, `input`,
@@ -397,6 +412,10 @@ pub fn interrupt_request(id: &str, cancel_queued: bool) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    #[ignore = "test ticket: stream_event text_delta parses to TextDelta; sub-agent, thinking and empty deltas to nothing"]
+    fn text_deltas_are_parsed() {}
 
     #[test]
     fn parses_a_turn() {

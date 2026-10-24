@@ -381,6 +381,12 @@ labels or subclips (§1 rule 1). A project opened in upstream FilmCraft still wo
   `result`s from one process (a fresh `system/init` before each turn, same `session_id`), and the process stays
   alive until stdin closes (then exits 0 in about a second). Claude Code runs with `--replay-user-messages`: when
   it takes a message from stdin it echoes it as a `user` line with `"isReplay": true` (`Event::Picked`).
+  **Streaming text (AGU11)**: it also runs with `--include-partial-messages` (checked with Claude Code 2.1.310): the
+  main thread's `stream_event` `content_block_delta`/`text_delta` lines become `Event::TextDelta`, which grows one
+  provisional assistant item (`Transcript::live`, never saved); the block's final `Event::Text` replaces it, so there is
+  no duplicate. Sub-agent (`parent_tool_use_id`), thinking and tool-input deltas are ignored; Codex sends none. A Claude
+  Code without the flag exits with "unknown option" and takes the existing Update Claude Code path. The panel repaints
+  on each new event only.
   **Working row (AGU4, `agent_panel/working.rs`)**: while a turn runs, the end of the transcript shows a pulsing dot and
   "Working · 0:12 · <phase>" (`bashcut.agent.working`); the phase comes from the last transcript item: Thinking… (sent,
   or the last item is not a tool without output or text), Running {tool}… (a tool call without output), Writing… (the
