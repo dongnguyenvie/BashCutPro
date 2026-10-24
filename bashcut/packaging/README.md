@@ -102,7 +102,7 @@ with `-Yes`, `-Skip…`):
    else `filmcraft-cli`.
 2. Writes the look pack as `.cube` LUTs + `looks.json` (`bashcut.looks.export`).
 3. Compiles the output profiles into the `BashCut <name>` export presets (`bashcut.profiles.compile`).
-4. Installs the agent kit as a Claude Code plugin when `claude` is found, and for Codex (clone + `install-codex.sh`) when `codex` is found.
+4. Installs the agent kit as a Claude Code plugin when `claude` is found, and for Codex (clone + `install-codex.sh`) when `codex` is found. The kit version is pinned in `bashcut/kit.lock` (one `vX.Y.Z` line). When releasing a new kit version: bump `.claude-plugin/plugin.json` in `bashcutpro-agent-kit`, merge, tag the commit (`git tag vX.Y.Z <sha> && git push origin vX.Y.Z`), then update `bashcut/kit.lock` in BashCutPro to the new tag and open a PR.
 5. Plugins come from the registry in the app; models download on first use, verified against `models.json`.
 6. Runs `bashcut-doctor`.
 

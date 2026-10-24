@@ -571,9 +571,9 @@ More	Thêm
 Queued {n}	Đang chờ {n}
 New messages	Tin nhắn mới
 
-# Kit commands this build lacks (PLK5)
-This kit uses 1 command this BashCutPro doesn't have: {skills}.	Bộ kỹ năng này dùng 1 lệnh mà BashCutPro này chưa có: {skills}.
-This kit uses {n} commands this BashCutPro doesn't have: {skills}.	Bộ kỹ năng này dùng {n} lệnh mà BashCutPro này chưa có: {skills}.
+# Kit commands this build lacks (PLK5/PLK7)
+This kit uses 1 command this BashCutPro doesn't have: {skills}. Pinned to kit {tag}.	Bộ kỹ năng này dùng 1 lệnh mà BashCutPro này chưa có: {skills}. Phiên bản bộ kỹ năng được ghim: {tag}.
+This kit uses {n} commands this BashCutPro doesn't have: {skills}. Pinned to kit {tag}.	Bộ kỹ năng này dùng {n} lệnh mà BashCutPro này chưa có: {skills}. Phiên bản bộ kỹ năng được ghim: {tag}.
 Update the kit or BashCutPro so the skills and the commands match.	Hãy cập nhật bộ kỹ năng hoặc BashCutPro để kỹ năng và lệnh khớp nhau.
 Message {agent}…	Nhắn {agent}…
 Send (Enter sends, Shift+Enter for a new line)	Gửi (Enter để gửi, Shift+Enter để xuống dòng)

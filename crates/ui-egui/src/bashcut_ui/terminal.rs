@@ -8,10 +8,11 @@
 //! `;`, `%` or quotes in a path stay one word. Each launcher is started through
 //! [`bashcut_dirs::child::spawn`] and reaped on a background thread.
 //!
-//! AG9/AG16: Download kit clones the agent kit into the data folder, or pulls it when it is already
-//! there ([`kit_job`]; no global `claude plugin install`), and when the live session showed no kit,
-//! Open in Terminal passes the app's MCP server from a config kept in the data folder
-//! ([`terminal_mcp_config`]) so the terminal agent still reaches the app.
+//! AG9/AG16/PLK7: Download kit clones the agent kit at the tag pinned in `bashcut/kit.lock` into the
+//! data folder, or checks out that tag when the folder already holds a clone ([`kit_job`]; no global
+//! `claude plugin install`), and when the live session showed no kit, Open in Terminal passes the
+//! app's MCP server from a config kept in the data folder ([`terminal_mcp_config`]) so the terminal
+//! agent still reaches the app.
 //!
 //! [`stand_in`] replaces the window for this process (headless tests): [`open`] then hands the
 //! folder, job and hint to it and starts nothing.
@@ -30,9 +31,23 @@ pub const INSTALL_WINDOWS: &str = "irm https://claude.ai/install.ps1 | iex";
 pub const KIT_PLUGIN: &str = "bcp";
 pub const KIT_MARKETPLACE: &str = "dongnguyenvie/bashcutpro-agent-kit";
 pub const KIT_INSTALL: &str = "bcp@bashcutpro-agent-kit";
-/// The kit's repository (AG16: `git clone` target) and its zip, for a machine without git.
+/// The kit's repository (AG16: `git clone` target).
 pub const KIT_REPO_URL: &str = "https://github.com/dongnguyenvie/bashcutpro-agent-kit";
-pub const KIT_ZIP_URL: &str = "https://github.com/dongnguyenvie/bashcutpro-agent-kit/archive/refs/heads/main.zip";
+
+/// The kit tag this build is pinned to (PLK7), from `bashcut/kit.lock` (one `vX.Y.Z` line).
+/// Download kit clones at this tag or checks it out in an existing clone.
+pub const KIT_TAG_RAW: &str = include_str!("../../../../bashcut/kit.lock");
+
+/// [`KIT_TAG_RAW`] with leading/trailing whitespace stripped (the `kit.lock` line ends with `\n`).
+pub fn kit_tag() -> &'static str {
+    static TAG: std::sync::OnceLock<&'static str> = std::sync::OnceLock::new();
+    TAG.get_or_init(|| KIT_TAG_RAW.trim())
+}
+
+/// The zip URL for the pinned kit tag, for a machine without git (PLK7).
+pub fn kit_zip_url() -> String {
+    format!("{KIT_REPO_URL}/archive/refs/tags/{}.zip", kit_tag())
+}
 
 /// The OS a launch is built for (a parameter so every branch is testable on any OS).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -236,16 +251,27 @@ pub fn install_job(os: Os) -> Job {
     Job::Script(if os == Os::Windows { INSTALL_WINDOWS } else { INSTALL_UNIX }.to_string())
 }
 
-/// The kit's download (AG16) into `dir` (`<data dir>/bashcut-kit`): `git clone` of [`KIT_REPO_URL`], or
-/// `git pull` when `dir` already holds a clone (`cloned`). `git` is the program, quoted. User-started only.
+/// The kit's download (AG16/PLK7) into `dir` (`<data dir>/bashcut-kit`): `git clone --branch <tag>
+/// --depth 1` of [`KIT_REPO_URL`] for a fresh directory, or `git fetch --tags && git checkout <tag>`
+/// when `dir` already holds a clone (`cloned`). `git` is the program, quoted. User-started only.
+/// The tag comes from `bashcut/kit.lock` via [`kit_tag`]; this pins the kit to the build.
 pub fn kit_job(os: Os, git: &str, dir: &Path, cloned: bool) -> Job {
     let dir = dir.to_string_lossy();
+    let tag = kit_tag();
     Job::Script(if os == Os::Windows {
-        let (g, d) = (ps_quote(git), ps_quote(&dir));
-        if cloned { format!("& {g} -C {d} pull") } else { format!("& {g} clone {} {d}", ps_quote(KIT_REPO_URL)) }
+        let (g, d, t) = (ps_quote(git), ps_quote(&dir), ps_quote(tag));
+        if cloned {
+            format!("& {g} -C {d} fetch --tags; & {g} -C {d} checkout {t}")
+        } else {
+            format!("& {g} clone --branch {t} --depth 1 {} {d}", ps_quote(KIT_REPO_URL))
+        }
     } else {
-        let (g, d) = (sh_quote(git), sh_quote(&dir));
-        if cloned { format!("{g} -C {d} pull") } else { format!("{g} clone {} {d}", sh_quote(KIT_REPO_URL)) }
+        let (g, d, t) = (sh_quote(git), sh_quote(&dir), sh_quote(tag));
+        if cloned {
+            format!("{g} -C {d} fetch --tags && {g} -C {d} checkout {t}")
+        } else {
+            format!("{g} clone --branch {t} --depth 1 {} {d}", sh_quote(KIT_REPO_URL))
+        }
     })
 }
 
@@ -610,15 +636,38 @@ mod tests {
             Job::Script(l) => l,
             other => panic!("{other:?}"),
         };
+        let tag = kit_tag();
         let (url_sh, url_ps) = (sh_quote(KIT_REPO_URL), ps_quote(KIT_REPO_URL));
-        assert_eq!(script(Os::Linux, "git", "/d/bashcut-kit", false), format!("'git' clone {url_sh} '/d/bashcut-kit'"));
-        assert_eq!(script(Os::Linux, "git", "/d/bashcut-kit", true), "'git' -C '/d/bashcut-kit' pull");
-        assert_eq!(script(Os::Windows, "git", r"C:\d\bashcut-kit", false), format!(r"& 'git' clone {url_ps} 'C:\d\bashcut-kit'"));
-        assert_eq!(script(Os::Windows, "git", r"C:\d\bashcut-kit", true), r"& 'git' -C 'C:\d\bashcut-kit' pull");
-        // spaces and quotes stay one word
-        assert_eq!(script(Os::Mac, "/opt/it's git/git", "/Users/a b/it's", true), r"'/opt/it'\''s git/git' -C '/Users/a b/it'\''s' pull");
-        assert_eq!(script(Os::Windows, "git", r"C:\Users\a b\it's", true), r"& 'git' -C 'C:\Users\a b\it''s' pull");
+        let (tag_sh, tag_ps) = (sh_quote(tag), ps_quote(tag));
+        // fresh clone: --branch <tag> --depth 1
+        assert_eq!(script(Os::Linux, "git", "/d/bashcut-kit", false), format!("'git' clone --branch {tag_sh} --depth 1 {url_sh} '/d/bashcut-kit'"));
+        // existing clone: fetch tags then checkout the pinned tag
+        assert_eq!(
+            script(Os::Linux, "git", "/d/bashcut-kit", true),
+            format!("'git' -C '/d/bashcut-kit' fetch --tags && 'git' -C '/d/bashcut-kit' checkout {tag_sh}")
+        );
+        assert_eq!(script(Os::Windows, "git", r"C:\d\bashcut-kit", false), format!(r"& 'git' clone --branch {tag_ps} --depth 1 {url_ps} 'C:\d\bashcut-kit'"));
+        assert_eq!(
+            script(Os::Windows, "git", r"C:\d\bashcut-kit", true),
+            format!(r"& 'git' -C 'C:\d\bashcut-kit' fetch --tags; & 'git' -C 'C:\d\bashcut-kit' checkout {tag_ps}")
+        );
+        // spaces and quotes in git path stay one word (cloned path)
+        let g_sh = sh_quote("/opt/it's git/git");
+        let d_sh = sh_quote("/Users/a b/it's");
+        assert_eq!(
+            script(Os::Mac, "/opt/it's git/git", "/Users/a b/it's", true),
+            format!("{g_sh} -C {d_sh} fetch --tags && {g_sh} -C {d_sh} checkout {tag_sh}")
+        );
+        let d_ps = ps_quote(r"C:\Users\a b\it's");
+        assert_eq!(script(Os::Windows, "git", r"C:\Users\a b\it's", true), format!("& 'git' -C {d_ps} fetch --tags; & 'git' -C {d_ps} checkout {tag_ps}"));
+        // the zip URL includes the pinned tag
+        assert!(kit_zip_url().contains(tag), "zip URL contains the tag");
+        assert!(kit_zip_url().starts_with(KIT_REPO_URL), "zip URL starts with the repo URL");
     }
+
+    #[test]
+    #[ignore = "test ticket: kit_job uses the locked tag for both clone and checkout; Windows semicolon separation; zip URL matches kit_tag"]
+    fn kit_job_pinned_tag_unit() {}
 
     #[test]
     fn hook_events_per_version_never_exceed_the_detected_one() {

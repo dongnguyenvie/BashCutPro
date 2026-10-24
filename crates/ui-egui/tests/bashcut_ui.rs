@@ -3484,13 +3484,13 @@ fn without_git_the_kit_line_shows_the_zip_address() {
     let (en, vi) = d.labels("bashcut.agent.ready.kit.zip");
     let (en, vi) = (en.as_str().unwrap_or_default().to_string(), vi.as_str().unwrap_or_default().to_string());
     for text in [&en, &vi] {
-        assert!(text.contains(terminal::KIT_ZIP_URL) && text.contains(&*folder.to_string_lossy()), "{text}");
+        assert!(text.contains(&terminal::kit_zip_url()) && text.contains(&*folder.to_string_lossy()), "{text}");
     }
     assert!(en.starts_with("Git was not found"), "{en}");
     assert!(vi.starts_with("Không tìm thấy Git"), "{vi}");
     let r = d.call("engine.execute", json!({"command": "bashcut.agent.installKit", "params": {}}));
     assert_eq!(r["ok"], json!(false), "{r}");
-    assert!(r.to_string().contains(terminal::KIT_ZIP_URL), "{r}");
+    assert!(r.to_string().contains(&terminal::kit_zip_url()), "{r}");
     assert!(opened().is_empty(), "nothing was opened");
     d.no_ui_error();
 }
