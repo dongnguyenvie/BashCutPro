@@ -558,6 +558,17 @@ labels or subclips (§1 rule 1). A project opened in upstream FilmCraft still wo
   (`terminal::terminal_mcp_config`: the app's `bashcutpro` server, `<engine> mcp --bridge <address>`, rewritten on
   each click), so the terminal agent reaches the app without the kit; with the kit it is not passed (two copies
   of the same tools). The empty transcript's recipe buttons say on hover that they need the kit.
+  **AGT1** (terminal state): Open in Terminal on Claude Code also passes `--settings <data dir>/agent/terminal-hooks.json`
+  (`terminal::terminal_hooks_config`, rewritten per click; `~/.claude` is never edited): SessionStart, UserPromptSubmit,
+  PreToolUse, PostToolUse, Stop always, SessionEnd (>= 1.0.85), PostToolUseFailure and PermissionRequest (>= 2.0.45),
+  StopFailure (>= 2.1.78) by `claude --version` (unknown version: the base set; an unknown event is ignored by claude).
+  Every hook runs one `sh` line (`terminal::hook_command`): the hook JSON on stdin goes to `bashcutpro-cli --bridge
+  <addr> run -` as `bashcut.agent.terminalEvent {event}` (token from the data folder as for every CLI; output dropped,
+  failure ignored). `terminal::Watch` is the state machine (Orca's rules: a PermissionRequest stays "waiting" until the
+  same `tool_use_id` (else tool name) runs or UserPromptSubmit/Stop/StopFailure; PreCompact and unknown events change
+  nothing); one status line under the terminal row (`bashcut.agent.terminal.status`). SessionEnd (not reason clear/resume)
+  adds "Back in the panel." (`Agent::returned_from_terminal`); the terminal window's own exit is not observed (no
+  SessionEnd when it is force-closed), so a closed window leaves the last state until the next message or click.
 - **Not signed in (AG6)**: `stream_json.rs` turns sign-in and account problems into `Event::Auth {category,
   message}`, read from the event stream only (credential files are never looked at). Categories
   (`stream_json::AUTH_ERRORS`): `authentication_failed` (needs `/login`), `oauth_org_not_allowed`, `billing_error`.

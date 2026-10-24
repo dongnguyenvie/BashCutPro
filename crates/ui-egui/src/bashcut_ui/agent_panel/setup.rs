@@ -135,21 +135,35 @@ pub(super) fn hover_button(app: &mut FilmcraftApp, ui: &mut egui::Ui, id: &str, 
     r.clicked()
 }
 
-/// Open in Terminal and Sign in, for an agent whose program was found (Claude Code, Codex); `true`
-/// when Open in Terminal was clicked.
+/// Open in Terminal and Sign in, for an agent whose program was found (Claude Code, Codex), and under them the
+/// terminal session's state from its hooks (AGT1); `true` when Open in Terminal was clicked.
 pub(super) fn terminal_row(app: &mut FilmcraftApp, ui: &mut egui::Ui, snap: &Snapshot) -> bool {
     let Some(argv) = snap.resume.as_ref() else { return false };
-    ui.horizontal_wrapped(|ui| {
-        let tip = f("Continue this conversation with {agent} in a terminal window.", &[("agent", &snap.agent.1)]);
-        let clicked = hover_button(app, ui, "bashcut.agent.terminal", s("Open in Terminal"), &tip);
-        // the sign-in line has its own Sign in (AG6)
-        if snap.agent.0 == "claude-code" && snap.auth.is_none() {
-            let program = argv.first().cloned().unwrap_or_default();
-            sign_in_button(app, ui, &program, snap.project.as_deref());
-        }
-        clicked
-    })
-    .inner
+    let clicked = ui
+        .horizontal_wrapped(|ui| {
+            let tip = f("Continue this conversation with {agent} in a terminal window.", &[("agent", &snap.agent.1)]);
+            let clicked = hover_button(app, ui, "bashcut.agent.terminal", s("Open in Terminal"), &tip);
+            // the sign-in line has its own Sign in (AG6)
+            if snap.agent.0 == "claude-code" && snap.auth.is_none() {
+                let program = argv.first().cloned().unwrap_or_default();
+                sign_in_button(app, ui, &program, snap.project.as_deref());
+            }
+            clicked
+        })
+        .inner;
+    if let Some(phase) = agent::terminal_phase(ui.ctx()) {
+        let (line, color) = match phase {
+            terminal::Phase::Opened => (s("Terminal: opened"), app.tokens.text_dim),
+            terminal::Phase::Working => (s("Terminal: working…"), app.tokens.text_dim),
+            terminal::Phase::Waiting => (s("Terminal: waiting for your permission"), app.tokens.danger),
+            terminal::Phase::Done => (s("Terminal: done"), app.tokens.text_dim),
+            terminal::Phase::Failed => (s("Terminal: stopped with an error"), app.tokens.danger),
+            terminal::Phase::Closed => (s("Terminal: closed"), app.tokens.text_dim),
+        };
+        let r = note(ui, line, NOTE, color);
+        app.auto.add_response("bashcut.agent.terminal.status", &r, line);
+    }
+    clicked
 }
 
 /// Sign in ([`agent::sign_in`], AG6 shows it when auth fails).
