@@ -12,7 +12,7 @@ _Last updated: 2026-10-23_
 - Wrote this folder (`bashcut/`): overview, decisions, status.
 - Rebrand (#25): builds show BashCutPro's name, icon, wordmark and links instead of the ArtCraft marks
   ([rebrand.md](rebrand.md), [brand/](brand/README.md)). Left: DMG window, Linux app id, web favicon.
-- Command inventory (#3): 701 commands in [commands.json](commands.json) / [commands.md](commands.md), per-skill
+- Command inventory (#3): 701 commands in [commands.json](https://github.com/dongnguyenvie/bashcutpro-agent-kit/blob/main/scripts/commands.json) / [commands.md](commands.md), per-skill
   needs in [skill-needs.md](skill-needs.md), [migration.md](migration.md) corrected. `filmcraft-cli` builds with and
   without `--features whisper`.
 - Kit (`bashcutpro-agent-kit`): scaffold + `setup` (#4), `check.py` validates every command id against

@@ -2,9 +2,8 @@
 
 The single source is the agent kit's **`scripts/commands.json`** ([bashcutpro-agent-kit](https://github.com/dongnguyenvie/bashcutpro-agent-kit)),
 generated from a build's own `command_list` (`bashcutpro-cli mcp --demo`, v0.10.0, upstream `dd525c93`, whisper,
-Windows, 2026-10-23). [commands.json](commands.json) here is a byte copy of it, kept so the links in this folder
-keep working: never edit or regenerate it here. After an upstream merge or a new `bashcut.*` command, refresh the
-kit (`python3 scripts/refresh_commands.py --cli <abs>/target/debug/bashcutpro-cli`), then copy the file over this one.
+Windows, 2026-10-23). BashCutPro keeps no copy of it. After an upstream merge or a new `bashcut.*` command, refresh the
+kit (`python3 scripts/refresh_commands.py --cli <abs>/target/debug/bashcutpro-cli`).
 Each row has id, label, menu, shortcut, params and enabled; `frontend` lists window-only ids a headless build lacks.
 
 `enabled` is the state in the demo project with nothing selected: 242 of 730 are `false` because they need a

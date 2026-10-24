@@ -1,7 +1,7 @@
 # What each BashCut skill needs from FilmCraft
 
 For every skill in `bashcut-agent-kit/skills`, the BashCut tools it calls (read from its `SKILL.md` and the
-files next to it) and how BashCutPro covers each need, checked against [commands.json](commands.json)
+files next to it) and how BashCutPro covers each need, checked against [commands.json](https://github.com/dongnguyenvie/bashcutpro-agent-kit/blob/main/scripts/commands.json)
 (`command_list`, 2026-10-20, default release build). Ids and params: [commands.md](commands.md).
 
 Classes:
