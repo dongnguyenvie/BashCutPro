@@ -51,6 +51,18 @@ pub enum Item {
         category: String,
         message: String,
     },
+    /// AGU10: a turn that finished: steps (`num_turns`, or the tool calls it made), cost when the
+    /// agent reports one and the wall-clock time the session measured. Every field may be missing.
+    TurnEnd {
+        #[serde(default)]
+        ok: bool,
+        #[serde(default)]
+        turns: Option<u64>,
+        #[serde(default)]
+        cost_usd: Option<f64>,
+        #[serde(default)]
+        ms: Option<u64>,
+    },
 }
 
 impl Item {
@@ -80,9 +92,15 @@ impl Transcript {
         self.items.push(item);
     }
 
-    /// Add what `e` shows. `Init`, `Picked` and `Result` change the conversation, not the transcript,
-    /// except a failed result, which shows as an error.
+    /// Add what `e` shows. `Init` and `Picked` change the conversation, not the transcript; a failed
+    /// result shows as an error and a successful one as an [`Item::TurnEnd`].
     pub fn apply(&mut self, e: &Event) {
+        self.apply_timed(e, None);
+    }
+
+    /// [`Self::apply`] with the turn's wall-clock time in ms (the session measures it from the
+    /// message it wrote to the result), which a successful result's [`Item::TurnEnd`] keeps.
+    pub fn apply_timed(&mut self, e: &Event, ms: Option<u64>) {
         match e {
             Event::Text(t) => {
                 // consecutive text blocks read as one message
@@ -123,8 +141,14 @@ impl Transcript {
                 let message = if text.is_empty() { "the agent stopped with an error".to_string() } else { text.clone() };
                 self.push(Item::Error { message });
             }
+            Event::Result { ok: true, cost_usd, turns, .. } => {
+                // Codex sends no step count: the tool calls since the last message
+                let tools = self.items.iter().rev().take_while(|i| !matches!(i, Item::User { .. })).filter(|i| matches!(i, Item::Tool { .. })).count();
+                let turns = turns.or(u64::try_from(tools).ok().filter(|n| *n > 0));
+                self.push(Item::TurnEnd { ok: true, turns, cost_usd: *cost_usd, ms });
+            }
             Event::Notice(m) => self.push(Item::Notice { message: m.clone() }),
-            Event::Init { .. } | Event::Result { .. } | Event::Picked { .. } | Event::Control { .. } => {}
+            Event::Init { .. } | Event::Picked { .. } | Event::Control { .. } => {}
             // the session keeps open requests; the answer is added as an Item::Permission
             Event::Permission(_) | Event::PermissionWithdrawn { .. } => {}
         }
@@ -195,7 +219,7 @@ mod tests {
         assert_eq!(t.auth_problem().map(|a| a.0), Some("authentication_failed"));
         // another category is its own item and the latest problem
         t.apply(&auth("billing_error", "Credit balance is too low"));
-        assert_eq!(t.items.len(), 3);
+        assert_eq!(t.items.len(), 4);
         assert_eq!(t.auth_problem(), Some(("billing_error", "Credit balance is too low")));
         // a later message clears it; a failed result then is a plain error again
         t.push(Item::User { text: "again".into() });
@@ -210,6 +234,10 @@ mod tests {
         let back: Transcript = serde_json::from_value(serde_json::to_value(&t).unwrap()).unwrap();
         assert_eq!(back, t);
     }
+
+    #[test]
+    #[ignore = "test ticket: Result with cost/turns gives TurnEnd; without gives None fields; Codex steps from tool count; old JSON without TurnEnd loads"]
+    fn turn_end_item() {}
 
     #[test]
     fn keeps_at_most_max_items() {

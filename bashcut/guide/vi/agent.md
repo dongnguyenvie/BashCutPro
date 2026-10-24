@@ -45,6 +45,10 @@ liệu, Tải về) khi dự án nằm ở đó: bấm **Cho phép**. Khi chưa 
    thẳng vào một dòng. Danh sách được tải khi bạn gửi tin nhắn đầu tiên trong cuộc trò chuyện; trước đó nó hiện
    *Gửi một tin nhắn để tải danh sách kỹ năng*. Codex không có danh sách này.
 
+9. Khi một lượt kết thúc, một dòng mờ dưới câu trả lời tóm tắt lượt đó, ví dụ `9 bước · 41 giây · $0.12`: số bước trợ lý
+   đã làm, thời gian làm việc và, khi Claude Code báo, chi phí của lượt. Phần nào trợ lý không báo thì bỏ đi, và không
+   có gì để hiện thì dòng này ẩn.
+
 **Mới** (New) bắt đầu cuộc trò chuyện mới; các cuộc trước được liệt kê và mở lại được.
 
 ### Dùng Claude Code trong terminal

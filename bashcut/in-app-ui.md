@@ -455,6 +455,11 @@ labels or subclips (§1 rule 1). A project opened in upstream FilmCraft still wo
   an error.") plus the failed tool's first line, and the agent's auth message; ids `bashcut.agent.error.<i>[.reason|.copy]`,
   `bashcut.agent.autherror.<i>`) and Info (reserved for the setup notes). The Sign in action stays on the readiness line.
   Answered permissions and gates are one line with a check or cross.
+- **Turn summary (AGU10)**: a successful result adds `Item::TurnEnd { ok, turns, cost_usd, ms }` to the conversation (all fields
+  `serde(default)`, so old saved conversations load; it shows as `turnEnd` in `bashcut.agent.transcript`). `turns` is Claude's
+  `num_turns`, else the tool calls since the last message (Codex); `ms` is measured by the session from the written message to the
+  result. The panel shows a faint centred line `9 steps · 41 s · $0.12` (id `bashcut.agent.turn.<i>`); each part is left out when
+  unknown and the whole line when nothing is known. Failed results keep their error card and get no line.
 - **Permission requests answered in the panel (AG8, checked with `claude` 2.1.309 on macOS)**: Claude Code runs with
   `--permission-prompt-tool stdio` (hidden in `--help`; `--permission-prompts` defaults to `host`), the stream-json
   control protocol the Agent SDK uses for `canUseTool`. Chosen over an MCP permission tool on our `bashcut-mcp` /
