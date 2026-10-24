@@ -3405,3 +3405,7 @@ fn without_git_the_kit_line_shows_the_zip_address() {
 #[test]
 #[ignore = "test ticket: user bubble right-aligned (rect.right near transcript right); assistant name row shows the agent name once per run; bashcut.agent.copy.<i> puts the text on the clipboard (copied_text); a saved conversation opens with every item at opacity 1 on frame 1; 240 px en/vi no horizontal scroll"]
 fn agent_message_blocks() {}
+
+#[test]
+#[ignore = "test ticket: plain example (bashcut.agent.example.remove-silences) fills bashcut.agent.input and sends nothing; 240 px en/vi chips wrap, no horizontal scroll"]
+fn agent_empty_state_plain_examples() {}

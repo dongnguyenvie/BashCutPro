@@ -83,6 +83,8 @@ The first time in a folder, Claude Code asks whether you trust it: choose **Yes,
   and the folder to unpack it into instead. A small note below gives the optional command for the skills in every
   Claude Code session: `claude plugin marketplace add dongnguyenvie/bashcutpro-agent-kit && claude plugin install
   bcp@bashcutpro-agent-kit`. The recipe buttons of an empty conversation need the kit too.
+- An empty conversation asks "What should we edit?" and offers example chips (Remove the silences, Add captions to
+  the main sequence, and kit recipes). A chip only fills the message box; nothing is sent until you press Send.
 - The command palette has the same three actions: **Open Agent in Terminal**, **Sign In to Claude Code** and
   **Install Claude Code** (an agent driving BashCutPro can call them as `bashcut.agent.terminal`,
   `bashcut.agent.signIn` and `bashcut.agent.install`). Install still runs only when you choose it.
