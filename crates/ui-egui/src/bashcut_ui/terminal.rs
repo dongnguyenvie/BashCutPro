@@ -260,6 +260,159 @@ pub fn terminal_mcp_config(cli: &str, bridge: &str) -> Result<std::path::PathBuf
     Ok(path)
 }
 
+/// The control command the hook commands post to (`agent::invoke`, `"terminalEvent"`).
+pub const EVENT_COMMAND: &str = "bashcut.agent.terminalEvent";
+
+/// Claude Code's hook events for Open in Terminal (AGT1) with the first version that has each; the base set works in
+/// every version we support, the rest are added by version (an event the installed `claude` does not know is only
+/// ignored by it, so a wrong row costs a missing status, never a failing session).
+const HOOK_EVENTS: &[(&str, (u32, u32, u32))] = &[
+    ("SessionStart", (0, 0, 0)),
+    ("UserPromptSubmit", (0, 0, 0)),
+    ("PreToolUse", (0, 0, 0)),
+    ("PostToolUse", (0, 0, 0)),
+    ("Stop", (0, 0, 0)),
+    ("SessionEnd", (1, 0, 85)),
+    ("PostToolUseFailure", (2, 0, 45)),
+    ("PermissionRequest", (2, 0, 45)),
+    ("StopFailure", (2, 1, 78)),
+];
+
+/// The hook events to pass to a Claude Code of `version` (`None`: unknown, the base set only).
+pub fn hook_events(version: Option<(u32, u32, u32)>) -> Vec<&'static str> {
+    HOOK_EVENTS.iter().filter(|(_, since)| *since == (0, 0, 0) || version.is_some_and(|v| v >= *since)).map(|(e, _)| *e).collect()
+}
+
+/// `(major, minor, patch)` from `claude --version` output ("2.1.310 (Claude Code)").
+pub fn parse_version(text: &str) -> Option<(u32, u32, u32)> {
+    let mut parts = text.split_whitespace().next()?.split('.').map(|p| p.parse::<u32>().ok());
+    Some((parts.next()??, parts.next()??, parts.next()??))
+}
+
+/// The version of the agent program at `program`; asked once per program (it starts the program).
+pub fn claude_version(program: &str) -> Option<(u32, u32, u32)> {
+    static SEEN: OnceLock<std::sync::Mutex<std::collections::HashMap<String, Option<(u32, u32, u32)>>>> = OnceLock::new();
+    let seen = SEEN.get_or_init(Default::default);
+    if let Some(v) = seen.lock().unwrap_or_else(std::sync::PoisonError::into_inner).get(program) {
+        return *v;
+    }
+    let out = Command::new(program).arg("--version").output().ok().filter(|o| o.status.success());
+    let v = out.and_then(|o| parse_version(&String::from_utf8_lossy(&o.stdout)));
+    seen.lock().unwrap_or_else(std::sync::PoisonError::into_inner).insert(program.to_string(), v);
+    v
+}
+
+/// The shell line every hook runs (Claude Code runs hooks with `sh`, also in Git Bash on Windows): the hook's JSON from
+/// stdin becomes the `event` of one `run -` request to the app through `cli --bridge`; the token comes from the data
+/// folder like for every `bashcutpro-cli`. Output is dropped (a `PermissionRequest` hook's stdout is read as a
+/// decision) and a failure is ignored: the status is for the panel, it never changes the session.
+pub fn hook_command(cli: &str, bridge: &str, data_dir_env: Option<&str>) -> String {
+    let env = data_dir_env.map(|d| format!("BASHCUTPRO_DATA_DIR={} ", sh_quote(d))).unwrap_or_default();
+    format!(
+        "printf '{{\"id\":\"{EVENT_COMMAND}\",\"params\":{{\"event\":%s}}}}\\n' \"$(cat)\" | {env}{} --bridge {} run - >/dev/null 2>&1 || true",
+        sh_quote(cli),
+        sh_quote(bridge)
+    )
+}
+
+/// The `--settings` file Open in Terminal passes (AGT1): the hooks for `events` in the data folder, rewritten on each
+/// click (the port can change); the user's own `~/.claude` is never touched.
+pub fn terminal_hooks_config(cli: &str, bridge: &str, events: &[&str]) -> Result<std::path::PathBuf, String> {
+    let dir = bashcut_dirs::data_dir().ok_or("no data folder")?;
+    let path = dir.join("agent").join("terminal-hooks.json");
+    let data_env = std::env::var("BASHCUTPRO_DATA_DIR").ok().filter(|d| !d.trim().is_empty());
+    let entry = serde_json::json!([{"hooks": [{"type": "command", "command": hook_command(cli, bridge, data_env.as_deref()), "timeout": 5}]}]);
+    let hooks: serde_json::Map<String, serde_json::Value> = events.iter().map(|e| (e.to_string(), entry.clone())).collect();
+    let v = serde_json::json!({"hooks": hooks});
+    bashcut_dirs::fs::write_atomic(&path, v.to_string().as_bytes()).map_err(|e| e.0)?;
+    Ok(path)
+}
+
+/// Where the terminal's Claude Code is (AGT1), from its hook events.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum Phase {
+    /// The window was opened; no event yet.
+    #[default]
+    Opened,
+    Working,
+    /// A permission request is open (sticky, see [`Watch`]).
+    Waiting,
+    Done,
+    /// The turn ended with an API error.
+    Failed,
+    /// The session ended: the panel takes the conversation back.
+    Closed,
+}
+
+/// The tool a permission request waits for: its `tool_use_id` when the event has one, else its tool name.
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct Waiting {
+    id: Option<String>,
+    tool: Option<String>,
+}
+
+/// The state machine of the terminal session's hook events (rules as Orca's Claude status): a `PermissionRequest` stays
+/// [`Phase::Waiting`] until the same tool runs (`PreToolUse` / `PostToolUse` / `PostToolUseFailure`) or the turn ends
+/// (`UserPromptSubmit`, `Stop`, `StopFailure`); other tools' events do not clear it. `PreCompact` and every event we
+/// do not know leave the state alone, `SessionEnd` closes it.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct Watch {
+    pub phase: Phase,
+    waiting: Option<Waiting>,
+}
+
+impl Watch {
+    /// Take one hook event (the JSON Claude Code sent); `true` when it closed the session.
+    pub fn apply(&mut self, event: &serde_json::Value) -> bool {
+        let text = |k: &str| event.get(k).and_then(serde_json::Value::as_str).filter(|s| !s.is_empty()).map(str::to_string);
+        let (id, tool) = (text("tool_use_id"), text("tool_name"));
+        let Some(name) = text("hook_event_name") else { return false };
+        if self.phase == Phase::Closed && name != "SessionStart" {
+            return false;
+        }
+        match name.as_str() {
+            "SessionStart" => *self = Watch::default(),
+            "UserPromptSubmit" => self.set(Phase::Working),
+            "PreToolUse" | "PostToolUse" | "PostToolUseFailure" => {
+                if self.phase == Phase::Waiting && !self.waits_for(id.as_deref(), tool.as_deref()) {
+                    return false;
+                }
+                self.set(Phase::Working);
+            }
+            "PermissionRequest" => {
+                self.phase = Phase::Waiting;
+                self.waiting = Some(Waiting { id, tool });
+            }
+            "Stop" => self.set(Phase::Done),
+            "StopFailure" => self.set(Phase::Failed),
+            // /clear and resume end one session and start the next in the same window
+            "SessionEnd" if matches!(text("reason").as_deref(), Some("clear" | "resume")) => {}
+            "SessionEnd" => {
+                self.set(Phase::Closed);
+                return true;
+            }
+            _ => {}
+        }
+        false
+    }
+
+    fn set(&mut self, phase: Phase) {
+        self.phase = phase;
+        self.waiting = None;
+    }
+
+    /// The event is the tool the open permission request waits for (ids when both have one, else tool names; an event
+    /// with neither clears it rather than leave the status stuck).
+    fn waits_for(&self, id: Option<&str>, tool: Option<&str>) -> bool {
+        let Some(w) = &self.waiting else { return true };
+        match (w.id.as_deref(), id, w.tool.as_deref(), tool) {
+            (Some(a), Some(b), ..) => a == b,
+            (_, _, Some(a), Some(b)) => a == b,
+            _ => true,
+        }
+    }
+}
+
 /// The agent program followed by its resume arguments for `session` (when the id looks like one).
 pub fn resume_argv(program: &str, resume_args: &[String], session: &str) -> Vec<String> {
     let mut v = vec![program.to_string()];
@@ -434,4 +587,12 @@ mod tests {
         assert_eq!(script(Os::Mac, "/opt/it's git/git", "/Users/a b/it's", true), r"'/opt/it'\''s git/git' -C '/Users/a b/it'\''s' pull");
         assert_eq!(script(Os::Windows, "git", r"C:\Users\a b\it's", true), r"& 'git' -C 'C:\Users\a b\it''s' pull");
     }
+
+    #[test]
+    #[ignore = "test ticket: terminal-hooks.json holds one command hook per event for the claude version (SessionEnd/PermissionRequest only when known), the command quotes cli, bridge and data dir, drops stdout"]
+    fn hook_events_and_command_per_version() {}
+
+    #[test]
+    #[ignore = "test ticket: Watch state machine: PermissionRequest stays Waiting through other tools' events until the same tool_use_id runs or Stop/UserPromptSubmit; PreCompact ignored; SessionEnd closes except reason clear/resume; SessionStart restarts"]
+    fn watch_permission_is_sticky_until_the_same_tool_runs() {}
 }

@@ -339,6 +339,7 @@ pub fn invoke(app: &mut FilmcraftApp, ctx: &egui::Context, name: &str, params: &
             }));
         }
         "terminal" => return open_in_terminal(app, ctx).map(|opened| json!({"opened": opened, "pending": !opened})),
+        "terminalEvent" => return terminal_event(app, ctx, params),
         "signIn" => {
             let program = with(app, ctx, |a| (a.agent.id == "claude-code").then(|| resume(a)).flatten().and_then(|v| v.into_iter().next()));
             let program = program.ok_or_else(|| s("Sign in works with Claude Code once it is installed.").to_string())?;
@@ -376,6 +377,10 @@ pub fn invoke(app: &mut FilmcraftApp, ctx: &egui::Context, name: &str, params: &
         a.command(name, params, &c)
     })
     .map_err(|e| e.0);
+    if r.is_ok() && name == "send" {
+        // the conversation is the panel's again
+        ctx.data_mut(|d| d.remove::<TerminalWatch>(watch_key()));
+    }
     if r.is_ok() && matches!(name, "send" | "approve" | "change") {
         super::State::update(ctx, |st| st.show(super::AGENT));
         ctx.request_repaint();
@@ -431,6 +436,18 @@ fn terminal_argv(mut argv: Vec<String>, not_installed: bool, kit: Option<&Path>,
             Ok(path) => argv.extend(["--mcp-config".to_string(), path.to_string_lossy().into_owned()]),
             Err(e) => log::warn!("bashcut terminal MCP config: {e}"),
         }
+    }
+    argv
+}
+
+/// `argv` (Claude Code) plus the per-session hooks file (AGT1): `--settings <data dir>/agent/terminal-hooks.json`, so the
+/// panel sees the terminal's state. Without the app's control address (or on a write error) the line is unchanged.
+fn with_hooks(mut argv: Vec<String>, c: &Context) -> Vec<String> {
+    let (Some(cli), Some(bridge), Some(program)) = (&c.cli, &c.bridge, argv.first()) else { return argv };
+    let events = terminal::hook_events(terminal::claude_version(program));
+    match terminal::terminal_hooks_config(cli, bridge, &events) {
+        Ok(path) => argv.extend(["--settings".to_string(), path.to_string_lossy().into_owned()]),
+        Err(e) => log::warn!("bashcut terminal hooks: {e}"),
     }
     argv
 }
@@ -498,7 +515,12 @@ fn hand_off_state(ctx: &egui::Context) -> HandOff {
 pub fn open_in_terminal(app: &FilmcraftApp, ctx: &egui::Context) -> Result<bool, String> {
     let c = context(app);
     let cwd = || bashcut_agent::session::turn_dir(c.project.as_deref());
-    let job = with(app, ctx, |a| resume(a).map(|argv| (terminal_argv(argv, not_installed(a), bashcut_dirs::kit::kit_dir().as_deref(), &c), cwd())));
+    let job = with(app, ctx, |a| {
+        resume(a).map(|argv| {
+            let argv = terminal_argv(argv, not_installed(a), bashcut_dirs::kit::kit_dir().as_deref(), &c);
+            (if a.agent.id == "claude-code" { with_hooks(argv, &c) } else { argv }, cwd())
+        })
+    });
     let job = job.ok_or_else(|| s("Open in Terminal works with Claude Code or Codex once it is installed.").to_string())?;
     ctx.data_mut(|d| d.insert_temp(hand_off_key(), HandOff { job: Some(job), error: None }));
     let done = with(app, ctx, |a| finish_hand_off(ctx, a));
@@ -517,10 +539,53 @@ fn finish_hand_off(ctx: &egui::Context, a: &mut Agent) -> Option<bool> {
         return Some(false);
     }
     a.continued_in_terminal();
+    let hooked = argv.iter().any(|a| a == "--settings");
     let error = open_terminal(&cwd, &Job::Program(argv), None).err();
     let opened = error.is_none();
+    ctx.data_mut(|d| {
+        if opened && hooked {
+            d.insert_temp(watch_key(), TerminalWatch(Some(terminal::Watch::default())));
+        } else {
+            d.remove::<TerminalWatch>(watch_key());
+        }
+    });
     ctx.data_mut(|d| d.insert_temp(hand_off_key(), HandOff { job: None, error }));
     opened.then_some(true)
+}
+
+fn watch_key() -> egui::Id {
+    egui::Id::new("bashcut.agent.terminal.watch")
+}
+
+/// What the terminal's hooks reported since Open in Terminal (`None`: no hooked terminal).
+#[derive(Clone)]
+struct TerminalWatch(Option<terminal::Watch>);
+
+/// The phase of the terminal opened with hooks, for the panel's status line.
+pub fn terminal_phase(ctx: &egui::Context) -> Option<terminal::Phase> {
+    ctx.data(|d| d.get_temp::<TerminalWatch>(watch_key())).and_then(|w| w.0).map(|w| w.phase)
+}
+
+/// `bashcut.agent.terminalEvent {event}`: one hook event of the terminal session (the hook JSON, an object or its text).
+/// When the session ended the panel takes the conversation back (a notice in the transcript; the next message
+/// resumes it here).
+fn terminal_event(app: &FilmcraftApp, ctx: &egui::Context, params: &Value) -> Result<Value, String> {
+    let event = match params.get("event") {
+        Some(Value::String(text)) => serde_json::from_str::<Value>(text).map_err(|e| format!("event: {e}"))?,
+        Some(v @ Value::Object(_)) => v.clone(),
+        _ => return Err("need `event`: the hook JSON".into()),
+    };
+    let Some(TerminalWatch(Some(mut watch))) = ctx.data(|d| d.get_temp::<TerminalWatch>(watch_key())) else {
+        return Ok(json!({"ignored": true}));
+    };
+    let ended = watch.apply(&event);
+    let phase = watch.phase;
+    ctx.data_mut(|d| d.insert_temp(watch_key(), TerminalWatch(Some(watch))));
+    if ended {
+        with(app, ctx, |a| a.returned_from_terminal());
+    }
+    ctx.request_repaint();
+    Ok(json!({"phase": format!("{phase:?}")}))
 }
 
 /// Open in Terminal is waiting for the in-app agent to end.
@@ -553,6 +618,7 @@ pub fn commands() -> Vec<CommandInfo> {
         ("approve", "Approve Gate"),
         ("change", "Request Gate Changes"),
         ("terminal", "Open Agent in Terminal"),
+        ("terminalEvent", "Terminal Agent Event"),
         ("signIn", "Sign In to Claude Code"),
         ("install", "Install Claude Code"),
         ("installKit", "Download BashCutPro Kit"),
@@ -652,6 +718,10 @@ mod tests {
     #[test]
     #[ignore = "test ticket: bashcut.agent.terminal while a turn runs returns pending, poll opens it once the agent ended and the transcript says Continued in Terminal"]
     fn terminal_command_hands_off_after_the_turn_ends() {}
+
+    #[test]
+    #[ignore = "test ticket: bashcut.agent.terminalEvent drives terminal_phase (Opened, Working, Waiting, Done, Closed), is ignored before Open in Terminal, and SessionEnd adds the Back in the panel notice once"]
+    fn terminal_event_command_updates_the_phase_and_hands_back() {}
 
     #[test]
     fn install_and_sign_in_commands_refuse_when_not_applicable() {

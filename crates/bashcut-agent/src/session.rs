@@ -378,6 +378,15 @@ impl Agent {
         self.save();
     }
 
+    /// The terminal session ended (AGT1, its `SessionEnd` hook): the conversation is the panel's again.
+    pub fn returned_from_terminal(&mut self) {
+        if self.conversation.session.is_empty() {
+            return;
+        }
+        self.conversation.transcript.push(Item::Notice { message: "Back in the panel.".into() });
+        self.save();
+    }
+
     /// How many events the agent has sent so far; unchanged while it is silent.
     pub fn events_seen(&self) -> u64 {
         self.events

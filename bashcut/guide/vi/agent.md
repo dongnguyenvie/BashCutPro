@@ -56,6 +56,11 @@ tiếp tục ở đây. Phiên trong terminal điều khiển cửa sổ đang m
 mục Trợ lý không được chuyển sang, trừ khi chưa cài bộ công cụ (xem bên dưới): khi đó phiên terminal nhận kết nối
 công cụ của ứng dụng, nên vẫn điều khiển được cửa sổ đang mở. Để chỉ một bên ghi vào cuộc trò chuyện, mục Trợ lý đóng
 phiên của mình trước (dừng lượt đang chạy); bản ghi sau đó hiện "Đã chuyển sang tiếp tục trong Terminal."
+
+Một dòng trạng thái dưới các nút theo dõi phiên trong terminal (chỉ Claude Code): "Terminal: đang làm việc…", "đang chờ bạn
+cho phép" (đến khi công cụ đó chạy hoặc lượt kết thúc), "đã xong", "dừng do lỗi", "đã đóng". Trạng thái lấy từ hook của Claude
+Code, chỉ truyền cho đúng phiên đó (`--settings <thư mục dữ liệu>/agent/terminal-hooks.json`); cài đặt Claude Code của bạn
+không bị đổi. Khi bạn thoát Claude Code trong terminal, bản ghi hiện "Đã quay lại bảng này." và **Gửi** tiếp tục ở đây.
 Lần đầu ở một thư mục, Claude Code hỏi bạn có tin thư mục đó không: chọn **Yes, I trust this folder**.
 
 - **Đăng nhập…** mở `claude` trong terminal: gõ `/login` rồi làm theo các bước trong trình duyệt. Bạn đăng nhập bằng

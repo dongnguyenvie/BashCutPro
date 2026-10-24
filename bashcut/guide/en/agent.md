@@ -58,6 +58,11 @@ kit's tools; the panel's own tool connection is not passed along, except when th
 the terminal session gets the app's own tool connection, so it still reaches the open window. So that only one of
 them writes the conversation, the panel first ends its own session (stopping a running turn); the transcript then
 says "Continued in Terminal."
+
+A status line under the buttons follows the terminal session (Claude Code only): "Terminal: working…", "waiting for your
+permission" (until that tool runs or the turn ends), "done", "stopped with an error", "closed". It comes from Claude Code
+hooks passed for that one session (`--settings <data folder>/agent/terminal-hooks.json`); your own Claude Code settings are
+never changed. When you quit Claude Code in the terminal, the transcript says "Back in the panel." and **Send** continues here.
 The first time in a folder, Claude Code asks whether you trust it: choose **Yes, I trust this folder**.
 
 - **Sign in…** opens `claude` in a terminal: type `/login` and follow the steps in your browser. You sign in with

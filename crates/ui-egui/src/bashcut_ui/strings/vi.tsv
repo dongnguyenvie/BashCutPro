@@ -541,3 +541,11 @@ Agent Notifications	Thông báo của trợ lý
 Open BashCutPro to see the result.	Mở BashCutPro để xem kết quả.
 Open BashCutPro to see what went wrong.	Mở BashCutPro để xem lỗi ở đâu.
 A plan step is waiting for your answer.	Một bước trong kế hoạch đang chờ bạn trả lời.
+Terminal Agent Event	Sự kiện trợ lý trong Terminal
+Back in the panel.	Đã quay lại bảng này.
+Terminal: opened	Terminal: đã mở
+Terminal: working…	Terminal: đang làm việc…
+Terminal: waiting for your permission	Terminal: đang chờ bạn cho phép
+Terminal: done	Terminal: đã xong
+Terminal: stopped with an error	Terminal: dừng do lỗi
+Terminal: closed	Terminal: đã đóng
