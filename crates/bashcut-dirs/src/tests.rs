@@ -278,3 +278,7 @@ fn kit_dir_follows_the_environment_then_the_default_places() {
     run(&[("BASHCUT_KIT", Path::new(""))], Some(&data_kit));
     let _ = std::fs::remove_dir_all(&root);
 }
+
+#[test]
+#[ignore = "test ticket: kit_command_gaps lists missing ids per skill, None for a malformed/huge/no-skills index, skips plugin ids (bashcut.vision) and core ids"]
+fn kit_command_gaps_names_the_skills_with_missing_ids() {}

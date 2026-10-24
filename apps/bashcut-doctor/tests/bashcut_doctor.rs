@@ -409,3 +409,7 @@ fn version_prints_name_and_exits() {
         assert_eq!(String::from_utf8_lossy(&out.stdout), format!("bashcut-doctor {}\n", env!("CARGO_PKG_VERSION")));
     }
 }
+
+#[test]
+#[ignore = "test ticket: kit.commands is Ok for a matching kit index, Warn naming skills and ids when the fake `commands bashcut --json` lacks some, Info when the kit has no index"]
+fn kit_commands_compares_the_kit_index_with_the_engine() {}
