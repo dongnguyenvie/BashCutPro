@@ -538,13 +538,19 @@ labels or subclips (§1 rule 1). A project opened in upstream FilmCraft still wo
 - **Kit missing (AG9)**: `stream_json` keeps the `name`s of `system/init`'s `plugins` (`Event::Init.plugins`,
   `Agent::plugins`: `None` until a live session sent one; also in `bashcut.agent.state`). Checked on 2026-10-23
   with Claude Code 2.1.309 on Windows: `plugins` is `[{"name", "path", "source", "version"}]`, builtin ones with
-  `path: "builtin"`; the kit shows as `name: "bcp"`. No file in `~/.claude` is read. When Claude Code's last init
-  has no `bcp`, the readiness line `bashcut.agent.ready.kit` says "BashCutPro skills are not installed", shows the
+  `path: "builtin"`; the kit shows as `name: "bcp"`. No file in `~/.claude` is read. **No global install (AG15,
+  owner decision 2026-10-24):** the live session and Open in Terminal pass `--plugin-dir <kit>` when a kit folder is
+  found (`bashcut_dirs::kit::kit_dir`, the one lookup also used by bashcut-batch: `$BASHCUT_KIT`,
+  `$BASHCUTPRO_KIT_DIR`, `<data dir>/bashcut-kit`, `~/.bashcutpro/bashcutpro-agent-kit`; `AgentSpec::kit_args`), so the
+  `bcp` skills load only in sessions BashCutPro starts; `--strict-mcp-config` and the app's own server stay (the
+  kit's MCP steps aside through `BASHCUT_IN_APP_AGENT=1`). `end_session` resets `plugins` and `commands` to unknown,
+  so a finished session's init never shows a stale kit line. `agent::kit_missing` = no kit folder found and the last init
+  has no `bcp`. Then (the Install kit button is reworked in AG16), the readiness line `bashcut.agent.ready.kit` says "BashCutPro skills are not installed", shows the
   agent-kit README's two commands selectable (`bashcut.agent.ready.kit.commands`) and **Install kit…**
   (`bashcut.agent.installKit`), which opens a terminal running `<claude> plugin marketplace add
   dongnguyenvie/bashcutpro-agent-kit` then, when that worked, `<claude> plugin install bcp@bashcutpro-agent-kit`
   (`terminal::kit_job`, the program quoted). Never automatic. Before the first init nothing shows (unknown is not
-  missing). While the kit is missing, **Open in Terminal** adds `--mcp-config <data dir>/agent/terminal-mcp.json`
+  missing). While the kit is not installed globally, **Open in Terminal** adds `--plugin-dir <kit>` (when a folder is found) and `--mcp-config <data dir>/agent/terminal-mcp.json`
   (`terminal::terminal_mcp_config`: the app's `bashcutpro` server, `<engine> mcp --bridge <address>`, rewritten on
   each click), so the terminal agent reaches the app without the kit; with the kit it is not passed (two copies
   of the same tools). The empty transcript's recipe buttons say on hover that they need the kit.

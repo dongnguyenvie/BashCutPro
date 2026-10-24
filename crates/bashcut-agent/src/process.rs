@@ -69,6 +69,9 @@ pub struct AgentSpec {
     pub mcp_args: Vec<String>,
     /// Arguments resuming a session (`{session}` is replaced by its id).
     pub resume_args: Vec<String>,
+    /// Arguments loading the agent kit folder (`{kit}` is replaced by it; AG15: Claude Code's `--plugin-dir`);
+    /// empty: the agent has no kit plugin.
+    pub kit_args: Vec<String>,
     /// Arguments after everything else (Codex: `-`, the prompt comes from stdin).
     pub prompt_args: Vec<String>,
     /// Event format of stdout, a [`format::FORMATS`] name; it also sets how the message is written
@@ -88,6 +91,7 @@ impl Default for AgentSpec {
             argv: Vec::new(),
             mcp_args: Vec::new(),
             resume_args: Vec::new(),
+            kit_args: Vec::new(),
             prompt_args: Vec::new(),
             events: stream_json::FORMAT.into(),
             env: Vec::new(),
@@ -124,6 +128,7 @@ impl AgentSpec {
             argv: argv.iter().map(|s| s.to_string()).chain(allowed_tools()).collect(),
             mcp_args: vec!["--mcp-config".into(), "{config}".into(), "--strict-mcp-config".into()],
             resume_args: vec!["--resume".into(), "{session}".into()],
+            kit_args: vec!["--plugin-dir".into(), "{kit}".into()],
             ..AgentSpec::default()
         }
     }
@@ -153,8 +158,9 @@ impl AgentSpec {
         Ok(())
     }
 
-    /// The command line of a turn.
-    pub fn command_line(&self, mcp_config: Option<&Path>, session: Option<&str>) -> Result<Vec<String>> {
+    /// The command line of a turn; `kit` is the agent kit folder, loaded for this process only when the agent
+    /// has [`AgentSpec::kit_args`] (AG15).
+    pub fn command_line(&self, mcp_config: Option<&Path>, session: Option<&str>, kit: Option<&Path>) -> Result<Vec<String>> {
         self.check()?;
         let mut argv = self.argv.clone();
         if !self.mcp_args.is_empty() {
@@ -169,6 +175,10 @@ impl AgentSpec {
                 return err("bad session id");
             }
             argv.extend(self.resume_args.iter().map(|a| a.replace("{session}", s)));
+        }
+        if let Some(k) = kit {
+            let k = k.to_string_lossy();
+            argv.extend(self.kit_args.iter().map(|a| a.replace("{kit}", &k)));
         }
         argv.extend(self.prompt_args.iter().cloned());
         Ok(argv)
@@ -186,6 +196,7 @@ impl From<bashcut_manifest::AgentLaunch> for AgentSpec {
             argv: a.argv,
             mcp_args: a.mcp_args,
             resume_args: a.resume_args,
+            kit_args: d.kit_args,
             prompt_args: a.prompt_args,
             events: if a.events.is_empty() { d.events } else { a.events },
             env: a.env,
@@ -611,14 +622,18 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "test ticket: command_line has --plugin-dir <kit> for Claude Code when a kit is given, not without one, and never for Codex"]
+    fn command_line_adds_the_kit_folder() {}
+
+    #[test]
     fn command_line_adds_mcp_and_resume() {
         let spec = AgentSpec::claude_code(None);
-        assert!(spec.command_line(None, None).is_err(), "Claude Code needs the bridge");
-        let argv = spec.command_line(Some(Path::new("/t/m.json")), Some("abc-1")).unwrap();
+        assert!(spec.command_line(None, None, None).is_err(), "Claude Code needs the bridge");
+        let argv = spec.command_line(Some(Path::new("/t/m.json")), Some("abc-1"), None).unwrap();
         assert_eq!(argv[0], "claude");
         assert!(argv.windows(2).any(|w| w == ["--mcp-config", "/t/m.json"]));
         assert!(argv.windows(2).any(|w| w == ["--resume", "abc-1"]));
-        assert!(spec.command_line(Some(Path::new("/t")), Some("x; rm -rf /")).is_err());
+        assert!(spec.command_line(Some(Path::new("/t")), Some("x; rm -rf /"), None).is_err());
         let bad = AgentSpec { events: "other".into(), ..spec };
         assert!(bad.check().is_err());
     }
@@ -627,9 +642,9 @@ mod tests {
     fn codex_gets_the_server_as_overrides_and_the_prompt_from_stdin() {
         let spec = AgentSpec::codex(Some("/opt/codex".into()));
         assert!(spec.check().is_ok());
-        assert!(spec.command_line(None, None).is_err(), "Codex needs the bridge");
+        assert!(spec.command_line(None, None, None).is_err(), "Codex needs the bridge");
         let cfg = write_mcp_config("/apps/filmcraft-cli", "127.0.0.1:9876").unwrap();
-        let argv = spec.command_line(Some(&cfg), Some("th-1")).unwrap();
+        let argv = spec.command_line(Some(&cfg), Some("th-1"), None).unwrap();
         let _ = std::fs::remove_file(&cfg);
         assert_eq!(&argv[..4], ["/opt/codex", "exec", "--json", "--skip-git-repo-check"]);
         assert!(argv.windows(2).any(|w| w == ["-c", r#"mcp_servers.bashcutpro.command="/apps/filmcraft-cli""#]), "{argv:?}");
@@ -714,7 +729,7 @@ mod tests {
     #[test]
     fn claude_code_allows_the_bashcutpro_server_only() {
         assert_eq!(SERVER, "bashcutpro");
-        let argv = AgentSpec::claude_code(Some("/opt/claude".into())).command_line(Some(Path::new("/t/m.json")), None).unwrap();
+        let argv = AgentSpec::claude_code(Some("/opt/claude".into())).command_line(Some(Path::new("/t/m.json")), None, None).unwrap();
         assert_eq!(argv[0], "/opt/claude");
         let at = |a: &str| argv.iter().position(|x| x == a);
         let allowed = at("--allowedTools").expect("--allowedTools");
@@ -777,7 +792,7 @@ mod tests {
         assert!(overrides.iter().all(|a| a.starts_with(&format!("mcp_servers.{SERVER}."))), "{overrides:?}");
         assert_eq!(spec.mcp_args.iter().filter(|a| *a == "-c").count(), 2);
         let cfg = write_mcp_config("bcpro", "127.0.0.1:47124").unwrap();
-        let argv = spec.command_line(Some(&cfg), None);
+        let argv = spec.command_line(Some(&cfg), None, None);
         let _ = std::fs::remove_file(&cfg);
         let argv = argv.unwrap();
         assert!(argv.windows(2).any(|w| w == ["-c", r#"mcp_servers.bashcutpro.command="bcpro""#]), "{argv:?}");

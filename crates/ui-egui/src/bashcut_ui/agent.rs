@@ -257,9 +257,20 @@ pub fn resume(a: &Agent) -> Option<Vec<String>> {
         .flatten()
 }
 
-/// Claude Code's last `system/init` listed no [`terminal::KIT_PLUGIN`] (unknown before one: `false`).
-pub fn kit_missing(a: &Agent) -> bool {
+/// Claude Code's last `system/init` listed no [`terminal::KIT_PLUGIN`] (unknown before one: `false`): the kit is not
+/// installed globally (the in-app session loads the kit folder itself, AG15).
+fn not_installed(a: &Agent) -> bool {
     a.agent.id == "claude-code" && a.plugins.as_ref().is_some_and(|p| !p.iter().any(|n| n == terminal::KIT_PLUGIN))
+}
+
+/// The agent kit cannot be used: no kit folder ([`bashcut_dirs::kit::kit_dir`]) and no global install (a user with
+/// one still works).
+pub fn kit_missing(a: &Agent) -> bool {
+    kit_missing_with(a, bashcut_dirs::kit::kit_dir().as_deref())
+}
+
+fn kit_missing_with(a: &Agent, kit: Option<&Path>) -> bool {
+    kit.is_none() && not_installed(a)
 }
 
 /// Claude Code's last `system/init` listed [`terminal::KIT_PLUGIN`] (unknown before one: `false`).
@@ -267,9 +278,16 @@ fn kit_present(a: &Agent) -> bool {
     a.agent.id == "claude-code" && a.plugins.as_ref().is_some_and(|p| p.iter().any(|n| n == terminal::KIT_PLUGIN))
 }
 
-/// `argv` plus, while the kit is missing (no `bashcutpro` server in the terminal), the app's own (AG9).
-fn terminal_argv(mut argv: Vec<String>, kit_missing: bool, c: &Context) -> Vec<String> {
-    if kit_missing && let (Some(cli), Some(bridge)) = (&c.cli, &c.bridge) {
+/// `argv` plus, while the kit is not installed globally, the kit folder as `--plugin-dir` (AG15) and the app's own
+/// `bashcutpro` server (AG9).
+fn terminal_argv(mut argv: Vec<String>, not_installed: bool, kit: Option<&Path>, c: &Context) -> Vec<String> {
+    if !not_installed {
+        return argv;
+    }
+    if let Some(k) = kit {
+        argv.extend(["--plugin-dir".to_string(), k.to_string_lossy().into_owned()]);
+    }
+    if let (Some(cli), Some(bridge)) = (&c.cli, &c.bridge) {
         match terminal::terminal_mcp_config(cli, bridge) {
             Ok(path) => argv.extend(["--mcp-config".to_string(), path.to_string_lossy().into_owned()]),
             Err(e) => log::warn!("bashcut terminal MCP config: {e}"),
@@ -325,7 +343,7 @@ fn hand_off_state(ctx: &egui::Context) -> HandOff {
 pub fn open_in_terminal(app: &FilmcraftApp, ctx: &egui::Context) -> Result<bool, String> {
     let c = context(app);
     let cwd = || bashcut_agent::session::turn_dir(c.project.as_deref());
-    let job = with(app, ctx, |a| resume(a).map(|argv| (terminal_argv(argv, kit_missing(a), &c), cwd())));
+    let job = with(app, ctx, |a| resume(a).map(|argv| (terminal_argv(argv, not_installed(a), bashcut_dirs::kit::kit_dir().as_deref(), &c), cwd())));
     let job = job.ok_or_else(|| s("Open in Terminal works with Claude Code or Codex once it is installed.").to_string())?;
     ctx.data_mut(|d| d.insert_temp(hand_off_key(), HandOff { job: Some(job), error: None }));
     let done = with(app, ctx, |a| finish_hand_off(ctx, a));
@@ -432,7 +450,7 @@ mod tests {
     fn use_agent_clears_the_kit_plugins() {
         let mut a = Agent::new(vec![AgentSpec::claude_code(Some(found())), AgentSpec::codex(Some(found()))]);
         a.plugins = Some(vec![terminal::KIT_PLUGIN.into()]);
-        assert!(kit_present(&a) && !kit_missing(&a));
+        assert!(kit_present(&a) && !kit_missing_with(&a, None));
         // the same agent keeps what its init said
         a.use_agent("claude-code").unwrap();
         assert_eq!(a.plugins.as_deref(), Some(&[terminal::KIT_PLUGIN.to_string()][..]));
@@ -440,10 +458,15 @@ mod tests {
         assert_eq!(a.plugins, None, "the plugins were Claude Code's");
         a.use_agent("claude-code").unwrap();
         assert_eq!(a.plugins, None, "unknown until this one's init");
-        assert!(!kit_present(&a) && !kit_missing(&a));
+        assert!(!kit_present(&a) && !kit_missing_with(&a, None));
         a.plugins = Some(vec!["other".into()]);
-        assert!(kit_missing(&a) && !kit_present(&a));
+        assert!(kit_missing_with(&a, None) && !kit_present(&a));
+        assert!(!kit_missing_with(&a, Some(Path::new("/kit"))), "a kit folder is enough");
     }
+
+    #[test]
+    #[ignore = "test ticket: terminal_argv adds --plugin-dir <kit> (and --mcp-config) only while the kit is not installed globally"]
+    fn terminal_argv_adds_the_kit_folder() {}
 
     #[test]
     #[ignore = "test ticket: bashcut.agent.terminal while a turn runs returns pending, poll opens it once the agent ended and the transcript says Continued in Terminal"]

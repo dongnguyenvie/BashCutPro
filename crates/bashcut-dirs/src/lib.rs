@@ -17,6 +17,7 @@ use std::path::{Path, PathBuf};
 pub mod child;
 pub mod engine;
 pub mod fs;
+pub mod kit;
 pub mod os;
 pub mod process;
 pub mod signal;
