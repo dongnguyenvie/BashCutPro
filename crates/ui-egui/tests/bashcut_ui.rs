@@ -3427,3 +3427,11 @@ fn agent_jump_to_latest_and_queued_bubbles() {}
 #[test]
 #[ignore = "test ticket: unknown id in a fake kit index shows bashcut.agent.ready.kitGap EN/VI and bashcut.agent.kitGap.update; matching kit shows none"]
 fn a_kit_naming_unknown_commands_shows_the_gap_line() {}
+
+#[test]
+#[ignore = "test ticket: Send is disabled with the missing-agent reason as its tooltip"]
+fn agent_composer_send_disabled_with_missing_reason() {}
+
+#[test]
+#[ignore = "test ticket: Stop is enabled while a turn runs; the box grows to 8 rows then scrolls; bashcut.agent.context contains the active sequence name"]
+fn agent_composer_stop_grow_and_context_chip() {}

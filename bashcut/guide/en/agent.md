@@ -127,3 +127,7 @@ Claude Code or Codex in a terminal can drive the open window too:
 
 Agents can only write inside the project's folder (and folders you allow), so a mistake cannot overwrite your other
 files.
+
+The message box grows as you type (up to 8 lines). Under it, a small line shows what is sent along with your message
+(sequence, playhead, selected clips; hover for the full line), and the round arrow button sends. While Claude works and
+the box is empty, the arrow becomes a square **Stop** button.

@@ -62,10 +62,10 @@ const GATE_EVERY: f64 = 1.0;
 /// After this long (seconds) with no event from a running agent, a hint says where it may be
 /// stuck (AG1: a macOS permission prompt holds `claude` before its first line). Not a stop.
 const QUIET_HINT: f64 = 30.0;
-/// Height kept for the message box and its buttons under the transcript.
-const INPUT_HEIGHT: f32 = 96.0;
 /// Scrolled up further than this (px) from the bottom, new items show the jump pill.
 const JUMP_AWAY: f32 = 40.0;
+/// Height kept for the composer before its first frame.
+const INPUT_HEIGHT: f32 = 60.0;
 
 /// What the section holds between frames (egui context data, not `UiState`).
 #[derive(Clone, Default)]
@@ -92,6 +92,8 @@ struct View {
     content_h: f32,
     new_below: bool,
     jump: bool,
+    /// The composer height last frame: the transcript gets the rest.
+    composer_h: f32,
 }
 
 fn key() -> egui::Id {
@@ -229,7 +231,8 @@ pub fn draw(app: &mut FilmcraftApp, ui: &mut egui::Ui) {
         cards::gate_card(app, ui, &ctx, &mut v, &g, running);
     }
 
-    let height = (ui.available_height() - INPUT_HEIGHT).max(80.0);
+    let composer = if v.composer_h > 0.0 { v.composer_h } else { INPUT_HEIGHT };
+    let height = (ui.available_height() - composer - ui.spacing().item_spacing.y * 2.0 - 4.0).max(80.0);
     let area = egui::ScrollArea::vertical().id_salt("bashcut.agent.transcript").max_height(height).auto_shrink([false, false]).stick_to_bottom(true);
     let out = scroll_clear_of_bar(ui, area, egui::Id::new("bashcut.agent.transcript.bar"), |ui| {
         // before anything can widen the content: a line wider than the area (a long tool title,
@@ -279,7 +282,7 @@ pub fn draw(app: &mut FilmcraftApp, ui: &mut egui::Ui) {
     // a live agent takes messages while it works; a stopping one is about to exit
     let busy = running && (!snap.live || snap.status == Status::Stopping);
     let slash = snap.slash.then_some(snap.commands.as_deref());
-    input::input(app, ui, &ctx, &mut v, busy, running, snap.missing.as_deref(), slash);
+    input::input(app, ui, &ctx, &mut v, busy, running, snap.missing.as_deref(), slash, &snap.agent.1, &c.line);
     super::shared::put_temp(&ctx, key(), v);
 }
 
@@ -446,6 +449,9 @@ mod tests {
             "↑/↓ to pick, Enter or Tab to insert, Esc to close",
             "More",
             "{n} things to set up",
+            "Message {agent}…",
+            "Send (Enter sends, Shift+Enter for a new line)",
+            "No sequence open",
         ] {
             assert_ne!(s(k), k);
         }

@@ -3,13 +3,17 @@
 use bashcut_agent::stream_json::SlashCommand;
 use serde_json::json;
 
-use super::super::strings::s;
-use super::super::widgets::{META, NOTE, button, note};
+use super::super::strings::{f, s};
+use super::super::widgets::{META, NOTE, note, note_text};
 use super::{View, call, input_id};
 use crate::FilmcraftApp;
 
 /// Rows the `/` list shows at most (AG12).
 const SLASH_ROWS: usize = 8;
+/// Rows the message box grows to before it scrolls.
+const COMPOSER_ROWS: f32 = 8.0;
+/// Diameter of the Send / Stop button (px).
+const BTN: f32 = 24.0;
 
 /// The `/` word the caret ends (AG12): its byte start (at the `/`) and what follows the `/`. A word
 /// is one at the start or after whitespace, with nothing but whitespace after the caret; a path
@@ -81,6 +85,8 @@ pub(super) fn input(
     running: bool,
     missing: Option<&str>,
     slash: Option<Option<&[SlashCommand]>>,
+    agent: &str,
+    context: &str,
 ) {
     let focused = ctx.memory(|m| m.has_focus(input_id()));
     // the `/` list: open while the caret ends a `/` word, the box (or the list under the pointer) has
@@ -132,37 +138,125 @@ pub(super) fn input(
             }
             hit
         });
-    let r = ui.add(
-        egui::TextEdit::multiline(&mut v.input)
-            .id(input_id())
-            .hint_text(s("Message the agent (Enter sends, Shift+Enter for a new line)"))
-            .desired_rows(3)
-            .desired_width(f32::INFINITY)
-            // while the `/` list is open, Tab and Esc are its keys, not focus moves (egui applies
-            // the filter to the next frame's keys)
-            .event_filter(egui::EventFilter { horizontal_arrows: true, vertical_arrows: true, tab: open.is_some(), escape: open.is_some() }),
-    );
-    app.auto.add_response("bashcut.agent.input", &r, "message");
+    let tk = app.tokens;
+    let stroke = egui::Stroke::new(1.0, if focused { tk.accent } else { tk.field_border });
+    let mut box_rect = ui.max_rect();
+    let frame = egui::Frame::new().fill(tk.field_bg).stroke(stroke).corner_radius(tk.radius).inner_margin(egui::Margin::same(6)).show(ui, |ui| {
+        let row_h = ui.text_style_height(&egui::TextStyle::Body);
+        let hint = f("Message {agent}…", &[("agent", agent)]);
+        // grows with its content from 1 row, then scrolls inside the frame
+        let r = egui::ScrollArea::vertical()
+            .id_salt("bashcut.agent.input.scroll")
+            .max_height(row_h * COMPOSER_ROWS)
+            .auto_shrink([false, true])
+            .show(ui, |ui| {
+                ui.add(
+                    egui::TextEdit::multiline(&mut v.input)
+                        .id(input_id())
+                        .hint_text(hint)
+                        .frame(egui::Frame::NONE)
+                        .desired_rows(1)
+                        .desired_width(f32::INFINITY)
+                        // while the `/` list is open, Tab and Esc are its keys, not focus moves (egui
+                        // applies the filter to the next frame's keys)
+                        .event_filter(egui::EventFilter { horizontal_arrows: true, vertical_arrows: true, tab: open.is_some(), escape: open.is_some() }),
+                )
+            })
+            .inner;
+        app.auto.add_response("bashcut.agent.input", &r, "message");
+        box_rect = r.rect;
+        bottom_row(app, ui, ctx, v, enter, busy, running, missing, context);
+    });
+    v.composer_h = frame.response.rect.height();
     v.slash_rect = match &open {
-        Some((start, _, cmds)) => slash_list(app, ctx, v, r.rect, *start, at, cmds.is_none(), &hits),
+        Some((start, _, cmds)) => slash_list(app, ctx, v, box_rect, *start, at, cmds.is_none(), &hits),
         None => None,
     };
+}
+
+/// The row under the text: the context chip on the left, Send (or Stop) on the right.
+#[allow(clippy::too_many_arguments)]
+fn bottom_row(
+    app: &mut FilmcraftApp,
+    ui: &mut egui::Ui,
+    ctx: &egui::Context,
+    v: &mut View,
+    enter: bool,
+    busy: bool,
+    running: bool,
+    missing: Option<&str>,
+    context: &str,
+) {
+    let tk = app.tokens;
+    let empty = v.input.trim().is_empty();
+    let can_send = !busy && !empty && missing.is_none();
+    // a running turn with nothing typed: Stop takes Send's place; typed text (live agent) shows both
+    let show_send = !(running && empty);
+    let mut send = false;
+    let mut stop = false;
     ui.horizontal(|ui| {
-        let can_send = !busy && !v.input.trim().is_empty() && missing.is_none();
-        let mut r = ui.add_enabled(can_send, egui::Button::new(s("Send")));
-        if let Some(why) = missing {
-            r = r.on_disabled_hover_text(why);
-        }
-        app.auto.add_response("bashcut.agent.send", &r, s("Send"));
-        let clicked = r.clicked();
-        let text = v.input.trim().to_string();
-        if (clicked || (enter && can_send)) && call(app, ctx, v, "send", json!({"text": text})) {
-            v.input.clear();
-        }
-        if button(app, ui, "bashcut.agent.stop", s("Stop"), running) {
-            call(app, ctx, v, "stop", json!({}));
-        }
+        let chip = chip_text(app);
+        let w = (ui.available_width() - 2.0 * (BTN + ui.spacing().item_spacing.x)).max(20.0);
+        ui.allocate_ui_with_layout(egui::vec2(w, BTN), egui::Layout::left_to_right(egui::Align::Center), |ui| {
+            let r = ui.add(egui::Label::new(note_text(chip.as_str(), META, tk.text_dim)).truncate().sense(egui::Sense::hover()));
+            r.on_hover_text(context);
+            app.auto.add("bashcut.agent.context", ui.min_rect(), &chip);
+        });
+        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+            let none = egui::Rect::from_min_size(ui.cursor().right_top(), egui::Vec2::ZERO);
+            if show_send {
+                let tip = missing.unwrap_or_else(|| s("Send (Enter sends, Shift+Enter for a new line)"));
+                send = round_button(app, ui, "bashcut.agent.send", crate::icons::Icon::ArrowUp, tip, can_send, true);
+            } else {
+                app.auto.add("bashcut.agent.send", none, s("Send"));
+            }
+            if running {
+                stop = round_button(app, ui, "bashcut.agent.stop", crate::icons::Icon::Square, s("Stop"), true, false);
+            } else {
+                app.auto.add("bashcut.agent.stop", none, s("Stop"));
+            }
+        });
     });
+    let text = v.input.trim().to_string();
+    if (send || (enter && can_send)) && call(app, ctx, v, "send", json!({"text": text})) {
+        v.input.clear();
+    }
+    if stop {
+        call(app, ctx, v, "stop", json!({}));
+    }
+}
+
+/// What the app sends with a message, short: the sequence, the playhead, the selection.
+fn chip_text(app: &FilmcraftApp) -> String {
+    let st = &app.session;
+    let Some(id) = st.state.active_sequence else {
+        return s("No sequence open").to_string();
+    };
+    let name = st.project.item(id).map(|i| i.name.clone()).unwrap_or_default();
+    let secs = st.playhead().seconds().max(0.0);
+    let mut parts = vec![bashcut_agent::clip(&name, 40), format!("{}:{:04.1}", (secs / 60.0) as u64, secs % 60.0)];
+    match st.state.selection.len() {
+        0 => {}
+        1 => parts.push(s("1 clip selected").to_string()),
+        n => parts.push(f("{n} clips selected", &[("n", &n.to_string())])),
+    }
+    parts.join(" · ")
+}
+
+/// A round icon button: accent fill for Send (`accent`), light for Stop, grey when off.
+fn round_button(app: &mut FilmcraftApp, ui: &mut egui::Ui, id: &str, icon: crate::icons::Icon, tip: &str, enabled: bool, accent: bool) -> bool {
+    let tk = app.tokens;
+    let (rect, r) = ui.allocate_exact_size(egui::vec2(BTN, BTN), egui::Sense::click());
+    let r = r.on_hover_text(tip);
+    let (fill, fg) = match (enabled, accent) {
+        (false, _) => (tk.field_border, tk.text_faint),
+        (true, true) => (if r.hovered() { tk.accent.gamma_multiply(0.85) } else { tk.accent }, egui::Color32::WHITE),
+        (true, false) => (if r.hovered() { tk.text } else { tk.text_dim }, tk.panel_bg),
+    };
+    ui.painter().circle_filled(rect.center(), BTN / 2.0, fill);
+    crate::icons::paint(ui.painter(), egui::Rect::from_center_size(rect.center(), egui::vec2(10.0, 10.0)), icon, fg);
+    app.auto.add_response(id, &r, tip);
+    enabled && r.clicked()
 }
 
 /// The `/` list above the message box at `rect` (AG12): `hits` as rows, or the line saying a message
