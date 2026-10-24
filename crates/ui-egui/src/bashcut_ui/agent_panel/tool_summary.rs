@@ -180,15 +180,105 @@ pub fn summary(key: &str, name: &str, inputs: &[&Value], outputs: &[Option<&str>
 
 #[cfg(test)]
 mod tests {
-    #[test]
-    #[ignore = "test ticket: summaries for razor/ripple/title/Bash/Write/unknown, group of 4, long values clipped, Vietnamese labels"]
-    fn summaries_by_kind() {}
+    use serde_json::json;
+
+    use super::*;
+
+    const RUN: &str = "mcp__bashcutpro__command_run";
+
+    fn tool(input: Value, output: Option<&str>, is_error: bool) -> Item {
+        Item::Tool { id: "t".into(), name: "x".into(), input, output: output.map(str::to_string), is_error }
+    }
+
+    /// The summary of one call as the panel builds it for a group of one.
+    fn one(name: &str, input: Value, output: Option<&str>) -> String {
+        summary("k", name, &[&input], &[output], FALLBACK_RATE, false)
+    }
 
     #[test]
-    #[ignore = "test ticket: seconds 3.2 as a timecode at 25, 30, 29.97 drop-frame and the no-sequence fallback (25)"]
-    fn timecode_follows_sequence_rate() {}
+    fn summaries_by_kind() {
+        assert_eq!(one(RUN, json!({"id": "edit.razor", "params": {"seconds": 3.2, "track": "V1"}}), None), "00:00:03:05 V1");
+        assert_eq!(one(RUN, json!({"id": "edit.ripple_delete", "params": {"clip": 17}}), None), "clip 17");
+        assert_eq!(one(RUN, json!({"id": "title.add", "params": {"text": "Hello\nworld", "seconds": 1}}), None), "00:00:01:00 “Hello world”");
+        // what the call made comes from its output
+        assert_eq!(one(RUN, json!({"params": {"seconds": 1}}), Some(r#"{"clip": 21}"#)), "00:00:01:00 → clip 21");
+        assert_eq!(one(RUN, json!({"params": {"seconds": 1}}), Some("not json")), "00:00:01:00");
+        // Bash is its command with the whitespace folded; Write the file's name
+        assert_eq!(one("Bash", json!({"command": "ls   -la\n  build"}), None), "ls -la build");
+        assert_eq!(one("Write", json!({"file_path": "C:\\work\\notes\\plan.md"}), None), "plan.md");
+        // an unknown tool without known fields has nothing to say
+        assert_eq!(one("mcp__x__mystery", json!({"foo": 1}), None), "");
+        assert_eq!(one("mcp__x__mystery", Value::Null, None), "");
+        // a timecode string is kept as given
+        assert_eq!(one(RUN, json!({"params": {"timecode": "00:00:10:00"}}), None), "00:00:10:00");
+        // titles and icons of the same kinds
+        assert_eq!(short_name("mcp__bashcutpro__doc_inspect"), "doc_inspect");
+        assert_eq!(title("edit.razor_all", RUN), "edit.razor all");
+        assert_eq!(title("ls -la", "Bash"), "Bash");
+        assert_eq!(icon_for("edit.razor", RUN), Icon::Razor);
+        assert_eq!(icon_for("ls", "Bash"), Icon::Code);
+        assert_eq!(icon_for("whatever", "mcp__x__mystery"), Icon::Wrench);
+    }
 
     #[test]
-    #[ignore = "test ticket: status is Failed, Running while the turn runs, Stopped after, else Ok"]
-    fn status_of_a_group() {}
+    fn groups_and_clipping() {
+        let calls: Vec<Value> = [3.2, 18.8, 40.0, 41.0].iter().map(|t| json!({"id": "edit.razor", "params": {"seconds": t}})).collect();
+        let refs: Vec<&Value> = calls.iter().collect();
+        let none: Vec<Option<&str>> = vec![None; 4];
+        // a group of four lists three and then "…"
+        assert_eq!(summary("edit.razor", RUN, &refs, &none, FALLBACK_RATE, false), "×4 · 00:00:03:05, 00:00:18:20, 00:00:40:00, …");
+        assert_eq!(summary("edit.razor", RUN, &refs[..3], &none[..3], FALLBACK_RATE, false), "×3 · 00:00:03:05, 00:00:18:20, 00:00:40:00");
+        // calls with nothing to show still count
+        let blank = [json!({}), json!({})];
+        assert_eq!(summary("x", "mcp__x__y", &[&blank[0], &blank[1]], &[None, None], FALLBACK_RATE, false), "×2");
+        // several Bash calls: the count and the first command
+        let b = [json!({"command": "echo a"}), json!({"command": "echo b"})];
+        assert_eq!(summary("echo a", "Bash", &[&b[0], &b[1]], &[None, None], FALLBACK_RATE, false), "×2 · echo a");
+        // long values are clipped
+        let long = "x".repeat(500);
+        let text = one(RUN, json!({"params": {"text": long}}), None);
+        assert!(text.chars().count() < 60, "{text}");
+        let cmd = one("Bash", json!({"command": long}), None);
+        assert!(cmd.chars().count() <= VALUE_MAX * 2 + 1, "{}", cmd.chars().count());
+        let file = one("Write", json!({"file_path": format!("/a/{long}.md")}), None);
+        assert!(file.chars().count() <= VALUE_MAX + 1, "{}", file.chars().count());
+        // hostile numbers do not panic
+        for secs in [json!(f64::MAX), json!(-1.0e300), json!(1.0e20)] {
+            assert_eq!(one(RUN, json!({"params": {"seconds": secs}}), None), "");
+        }
+    }
+
+    #[test]
+    fn timecode_follows_sequence_rate() {
+        let at = |rate, drop_frame| one_at(3.2, rate, drop_frame);
+        fn one_at(secs: f64, rate: FrameRate, drop_frame: bool) -> String {
+            let input = json!({"params": {"seconds": secs}});
+            summary("k", RUN, &[&input], &[None], rate, drop_frame)
+        }
+        assert_eq!(at(FrameRate::FPS_25, false), "00:00:03:05");
+        assert_eq!(at(FrameRate::FPS_30, false), "00:00:03:06");
+        // 3.2 s at 29.97 is frame 96: no frame is dropped this early
+        assert_eq!(at(FrameRate::FPS_29_97, true), "00;00;03;06");
+        assert_eq!(at(FrameRate::FPS_29_97, false), "00:00:03:06");
+        // drop-frame on a rate without it counts plainly
+        assert_eq!(at(FrameRate::FPS_25, true), "00:00:03:05");
+        // 60 s is frame 1798, the 29th frame of the first minute (drop-frame skips only from minute 1)
+        assert_eq!(one_at(60.0, FrameRate::FPS_29_97, true), "00;00;59;28");
+        // the no-sequence fallback counts at 25
+        assert_eq!(FALLBACK_RATE, FrameRate::FPS_25);
+    }
+
+    #[test]
+    fn status_of_a_group() {
+        let ok = tool(json!({}), Some("done"), false);
+        let failed = tool(json!({}), Some("boom"), true);
+        let waiting = tool(json!({}), None, false);
+        assert_eq!(status(std::slice::from_ref(&ok), true), ToolStatus::Ok);
+        assert_eq!(status(&[], true), ToolStatus::Ok);
+        assert_eq!(status(&[ok.clone(), waiting.clone()], true), ToolStatus::Running);
+        assert_eq!(status(&[ok.clone(), waiting.clone()], false), ToolStatus::Stopped);
+        // a failure wins over a call that never returned
+        assert_eq!(status(&[waiting, failed.clone()], true), ToolStatus::Failed);
+        assert_eq!(status(&[failed, ok], false), ToolStatus::Failed);
+    }
 }
