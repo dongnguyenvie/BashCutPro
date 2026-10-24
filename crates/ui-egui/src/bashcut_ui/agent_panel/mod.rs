@@ -42,6 +42,7 @@ mod setup;
 mod tool_summary;
 mod tools;
 mod transcript;
+mod working;
 
 use bashcut_agent::stream_json::SlashCommand;
 use bashcut_agent::{Gate, Item, Status};
@@ -75,6 +76,8 @@ struct View {
     project: Option<std::path::PathBuf>,
     /// While a turn runs: the agent's event count and when it last changed (egui time).
     heard: Option<(u64, f64)>,
+    /// When the running turn began (egui time), for the working row's elapsed time.
+    turn_start: Option<f64>,
     /// The `/` list (AG12): the picked row, the word it was picked for, the word Esc closed it on,
     /// and where it was drawn last frame (a click on it keeps it open while the box loses focus).
     slash_sel: usize,
@@ -200,6 +203,7 @@ pub fn draw(app: &mut FilmcraftApp, ui: &mut egui::Ui) {
         Some((n, at)) if n == snap.events => Some((n, at)),
         _ => Some((snap.events, now)),
     };
+    v.turn_start = if running { v.turn_start.or(Some(now)) } else { None };
     let quiet = v.heard.is_some_and(|(_, at)| now - at >= QUIET_HINT);
 
     setup::header(app, ui, &ctx, &mut v, &snap, running);
@@ -230,6 +234,10 @@ pub fn draw(app: &mut FilmcraftApp, ui: &mut egui::Ui) {
         for (i, p) in snap.permissions.iter().enumerate() {
             cards::permission_card(app, ui, &ctx, &mut v, i, p, &snap.agent.1);
         }
+        if running {
+            let hint = (quiet && snap.status == Status::Running && snap.permissions.is_empty()).then(quiet_line);
+            working::row(app, ui, &snap.items, &snap.status, v.turn_start.unwrap_or(now), hint);
+        }
         for (i, q) in snap.queued.iter().enumerate() {
             ui.add_space(6.0);
             let id = format!("bashcut.agent.queued.{i}");
@@ -248,19 +256,6 @@ pub fn draw(app: &mut FilmcraftApp, ui: &mut egui::Ui) {
             let r = ui.add(egui::Label::new(egui::RichText::new(&q.text).color(t.text_dim)).selectable(true).wrap());
             app.auto.add_response(&id, &r, &q.text);
         }
-        if running {
-            ui.horizontal(|ui| {
-                ui.spinner();
-                let label = if snap.status == Status::Stopping { s("Stopping…") } else { s("Working…") };
-                note(ui, label, NOTE, t.text_dim);
-            });
-            // a waiting permission card is the reason for the silence
-            if quiet && snap.status == Status::Running && snap.permissions.is_empty() {
-                let line = s(quiet_line());
-                let r = note(ui, line, NOTE, t.text);
-                app.auto.add_response("bashcut.agent.quiet", &r, line);
-            }
-        }
     });
     app.auto.add("bashcut.agent.transcript", out.inner_rect, &snap.title);
 
@@ -269,9 +264,6 @@ pub fn draw(app: &mut FilmcraftApp, ui: &mut egui::Ui) {
     let busy = running && (!snap.live || snap.status == Status::Stopping);
     let slash = snap.slash.then_some(snap.commands.as_deref());
     input::input(app, ui, &ctx, &mut v, busy, running, snap.missing.as_deref(), slash);
-    if running {
-        ctx.request_repaint_after(std::time::Duration::from_millis(100));
-    }
     super::shared::put_temp(&ctx, key(), v);
 }
 
@@ -366,6 +358,10 @@ mod tests {
             "Copy",
             "Copied",
             "Show all",
+            "Working",
+            "Thinking…",
+            "Running {tool}…",
+            "Writing…",
             "Allow once",
             "Always for this project",
             "Deny",
