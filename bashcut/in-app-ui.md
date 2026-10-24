@@ -381,6 +381,12 @@ labels or subclips (§1 rule 1). A project opened in upstream FilmCraft still wo
   `result`s from one process (a fresh `system/init` before each turn, same `session_id`), and the process stays
   alive until stdin closes (then exits 0 in about a second). Claude Code runs with `--replay-user-messages`: when
   it takes a message from stdin it echoes it as a `user` line with `"isReplay": true` (`Event::Picked`).
+  **Working row (AGU4, `agent_panel/working.rs`)**: while a turn runs, the end of the transcript shows a pulsing dot and
+  "Working · 0:12 · <phase>" (`bashcut.agent.working`); the phase comes from the last transcript item: Thinking… (sent,
+  or the last item is not a tool without output or text), Running {tool}… (a tool call without output), Writing… (the
+  last item is the agent's text), Stopping…. The 30 s quiet hint (`bashcut.agent.quiet`) stays under it, and queued
+  messages follow it. Repaints only while a turn runs: every 33 ms with the pulse, once a second with Animations off
+  (steady dot).
   **Send never blocks**: a message sent while Claude works is written at once and shown under the transcript as
   "You · queued" (`bashcut.agent.queued.<n>`, `bashcut.agent.state` → `queued`) until its echo arrives, then it
   joins the transcript (an agent without the echo: at its `result`). The `system/init` `capabilities` are kept on
