@@ -263,24 +263,32 @@ pub fn terminal_mcp_config(cli: &str, bridge: &str) -> Result<std::path::PathBuf
 /// The control command the hook commands post to (`agent::invoke`, `"terminalEvent"`).
 pub const EVENT_COMMAND: &str = "bashcut.agent.terminalEvent";
 
-/// Claude Code's hook events for Open in Terminal (AGT1) with the first version that has each; the base set works in
-/// every version we support, the rest are added by version (an event the installed `claude` does not know is only
-/// ignored by it, so a wrong row costs a missing status, never a failing session).
+/// Claude Code's hook events for Open in Terminal (AGT1) with the first version that knows each (AGT4). An event the
+/// installed `claude` does not know is NOT ignored: 1.0.23 - 2.1.100 discard the whole settings file over a hook key
+/// outside their event list, so a floor that is too low loses every hook. Sources: the `@anthropic-ai/claude-code`
+/// changelog (`PermissionRequest` 2.0.45, `SessionEnd` 1.0.85, `StopFailure` 2.1.78 - each "Added ... hook" entry) and
+/// Orca's `claude-hook-event-versions.ts`, whose floors come from the hook enum in each npm release's `cli.js`
+/// (`PostToolUseFailure` is in no changelog entry; that enum puts it at 2.0.56, not 2.0.45).
 const HOOK_EVENTS: &[(&str, (u32, u32, u32))] = &[
-    ("SessionStart", (0, 0, 0)),
-    ("UserPromptSubmit", (0, 0, 0)),
-    ("PreToolUse", (0, 0, 0)),
-    ("PostToolUse", (0, 0, 0)),
-    ("Stop", (0, 0, 0)),
+    ("PreToolUse", (1, 0, 23)),
+    ("PostToolUse", (1, 0, 23)),
+    ("Stop", (1, 0, 31)),
+    ("UserPromptSubmit", (1, 0, 53)),
+    ("SessionStart", (1, 0, 62)),
     ("SessionEnd", (1, 0, 85)),
-    ("PostToolUseFailure", (2, 0, 45)),
     ("PermissionRequest", (2, 0, 45)),
+    ("PostToolUseFailure", (2, 0, 56)),
     ("StopFailure", (2, 1, 78)),
 ];
 
-/// The hook events to pass to a Claude Code of `version` (`None`: unknown, the base set only).
+/// What an unknown version (`claude --version` failed) is assumed to be: old enough to keep to events known since
+/// 1.0.62 (Orca's floor for the same case), so settings are never rejected.
+const UNKNOWN_VERSION: (u32, u32, u32) = (1, 0, 64);
+
+/// The hook events to pass to a Claude Code of `version` (`None`: unknown, see [`UNKNOWN_VERSION`]).
 pub fn hook_events(version: Option<(u32, u32, u32)>) -> Vec<&'static str> {
-    HOOK_EVENTS.iter().filter(|(_, since)| *since == (0, 0, 0) || version.is_some_and(|v| v >= *since)).map(|(e, _)| *e).collect()
+    let v = version.unwrap_or(UNKNOWN_VERSION);
+    HOOK_EVENTS.iter().filter(|(_, since)| v >= *since).map(|(e, _)| *e).collect()
 }
 
 /// `(major, minor, patch)` from `claude --version` output ("2.1.310 (Claude Code)").
