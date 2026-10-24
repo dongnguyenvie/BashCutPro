@@ -172,8 +172,8 @@ pub fn cli_program(env: &dyn Env, opts: &Options) -> String {
 pub fn run_checks(env: &dyn Env, opts: &Options) -> Report {
     let mut r = Report::default();
     let data = opts.data_dir.clone().or_else(|| data_dir(env));
-    check_cli(env, opts, &mut r);
-    check_kit(env, opts, &mut r);
+    let engine_ids = check_cli(env, opts, &mut r);
+    check_kit(env, opts, engine_ids.as_deref(), &mut r);
     let plugins = opts.plugins_dir.clone().or_else(|| data.as_ref().map(|d| d.join(bashcut_dirs::PLUGINS_DIR)));
     check_plugins(env, plugins.as_deref(), &mut r);
     check_models(env, opts, data.as_deref(), &mut r);
@@ -184,14 +184,15 @@ pub fn run_checks(env: &dyn Env, opts: &Options) -> Report {
     r
 }
 
-fn check_cli(env: &dyn Env, opts: &Options, r: &mut Report) {
+/// Returns the `bashcut.*` ids the engine lists (None when it could not be listed).
+fn check_cli(env: &dyn Env, opts: &Options, r: &mut Report) -> Option<Vec<String>> {
     let cli = cli_program(env, opts);
     let Some(out) = env.run(&cli, &["--version"]).filter(Output::ok) else {
         r.findings.push(
             Finding::new("cli", Level::Fail, format!("`{cli}` was not found or does not start"))
                 .fix("install BashCutPro or build bashcutpro-cli (kit skill bcp:setup), or point BASHCUTPRO_CLI / --cli at it"),
         );
-        return;
+        return None;
     };
     let version = out.stdout.trim().to_string();
     r.findings.push(Finding::new("cli", Level::Ok, format!("{version} ({cli})")));
@@ -200,7 +201,7 @@ fn check_cli(env: &dyn Env, opts: &Options, r: &mut Report) {
         r.findings.push(
             Finding::new("cli.commands", Level::Warn, "`commands bashcut --json` gave no command list").fix("rebuild bashcutpro-cli from BashCutPro main"),
         );
-        return;
+        return None;
     };
     let have: Vec<&str> = list.iter().filter_map(|c| c.get("id").and_then(Value::as_str)).collect();
     let missing: Vec<&str> = REQUIRED_COMMANDS.iter().copied().filter(|id| !have.contains(id)).collect();
@@ -212,6 +213,7 @@ fn check_cli(env: &dyn Env, opts: &Options, r: &mut Report) {
         );
     }
     check_speech(env, &cli, r);
+    Some(have.into_iter().map(str::to_string).collect())
 }
 
 /// Speech-to-text: the batch presets and the kit's caption skills start with a transcription, which
@@ -256,7 +258,7 @@ fn read_json(env: &dyn Env, path: &Path) -> Option<Value> {
     serde_json::from_slice(&bytes).ok()
 }
 
-fn check_kit(env: &dyn Env, opts: &Options, r: &mut Report) {
+fn check_kit(env: &dyn Env, opts: &Options, engine_ids: Option<&[String]>, r: &mut Report) {
     let dir = opts.kit_dir.clone().or_else(|| env.var("BASHCUTPRO_KIT_DIR").map(PathBuf::from));
     if let Some(dir) = dir {
         let manifest = read_json(env, &dir.join(".claude-plugin").join("plugin.json"));
@@ -269,12 +271,14 @@ fn check_kit(env: &dyn Env, opts: &Options, r: &mut Report) {
             return;
         }
         r.findings.push(Finding::new("kit", Level::Ok, format!("bashcutpro-agent-kit {} at {}", version.as_deref().unwrap_or("(no version)"), dir.display())));
+        check_kit_commands(env, &dir, engine_ids, r);
         return;
     }
     // the Claude Code plugin (`claude plugin install bcp@bashcutpro-agent-kit`, the kit README's way)
     if let Some((path, version)) = home(env).and_then(|h| claude_plugin_kit(env, &h)) {
         let version = version.map(|v| format!(" {v}")).unwrap_or_default();
         r.findings.push(Finding::new("kit", Level::Ok, format!("Claude Code plugin bcp{version} at {}", path.display())));
+        check_kit_commands(env, &path, engine_ids, r);
         return;
     }
     // installed skills: Codex links them as ~/.agents/skills/bcp-<name>, Claude Code may copy them to ~/.claude/skills;
@@ -289,13 +293,46 @@ fn check_kit(env: &dyn Env, opts: &Options, r: &mut Report) {
         .find(|d| env.file_size(&d.join("SKILL.md")).is_some())
     });
     match found {
-        Some(d) => r.findings.push(Finding::new("kit", Level::Ok, format!("kit skills installed in {}", d.parent().unwrap_or(&d).display()))),
+        Some(d) => {
+            r.findings.push(Finding::new("kit", Level::Ok, format!("kit skills installed in {}", d.parent().unwrap_or(&d).display())));
+            // `<kit>/skills/<name>`: a Codex link resolves into the clone, a plain copy has no index and gets the Info
+            let root = env.canonical(&d).and_then(|c| c.parent()?.parent().map(Path::to_path_buf)).unwrap_or_else(|| d.clone());
+            check_kit_commands(env, &root, engine_ids, r);
+        }
         None => r.findings.push(
             Finding::new("kit", Level::Warn, "no bashcutpro-agent-kit found")
                 .fix("install the kit (its README: Claude Code plugin or scripts/install-codex.sh), or set BASHCUTPRO_KIT_DIR"),
         ),
     }
 }
+
+/// `kit.commands`: the commands the kit's skills name against the commands this engine lists (`bashcut_dirs::kit::kit_command_gaps`).
+fn check_kit_commands(env: &dyn Env, kit: &Path, engine_ids: Option<&[String]>, r: &mut Report) {
+    let Some(engine_ids) = engine_ids else { return };
+    let index = env.read(&kit.join(bashcut_dirs::kit::INDEX_FILE)).filter(|b| b.len() <= bashcut_dirs::kit::MAX_INDEX_BYTES);
+    let gaps = index.and_then(|b| bashcut_dirs::kit::kit_command_gaps(&String::from_utf8_lossy(&b), engine_ids));
+    let Some(gaps) = gaps else {
+        r.findings
+            .push(Finding::new("kit.commands", Level::Info, "this kit has no command index, so its commands were not compared with the engine").fix(KIT_FIX));
+        return;
+    };
+    if gaps.missing_by_skill.is_empty() {
+        let v = gaps.kit_version.map(|v| format!(" {v}")).unwrap_or_default();
+        r.findings.push(Finding::new("kit.commands", Level::Ok, format!("kit{v} matches this engine")));
+        return;
+    }
+    let mut ids: Vec<&str> = gaps.missing_by_skill.iter().flat_map(|(_, m)| m.iter().map(String::as_str)).collect();
+    ids.sort_unstable();
+    ids.dedup();
+    let skills: Vec<&str> = gaps.missing_by_skill.iter().map(|(s, _)| s.as_str()).collect();
+    let shown = |v: &[&str], n: usize| if v.len() > n { format!("{}, … (+{})", v[..n].join(", "), v.len() - n) } else { v.join(", ") };
+    r.findings.push(
+        Finding::new("kit.commands", Level::Warn, format!("skills {} name {} commands this engine lacks: {}", shown(&skills, 6), ids.len(), shown(&ids, 8)))
+            .fix(KIT_FIX),
+    );
+}
+
+const KIT_FIX: &str = "Download kit in the Agent panel / git -C <kit> pull, or update BashCutPro";
 
 /// The kit installed as a Claude Code plugin: `(install path, version)` from `~/.claude/plugins/installed_plugins.json`
 /// (`plugins["bcp@<marketplace>"]`), when its install path still holds the skills.

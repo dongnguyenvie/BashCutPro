@@ -30,3 +30,57 @@ pub fn kit_dir() -> Option<PathBuf> {
     let home = env("HOME").or_else(|| env("USERPROFILE"));
     kit_in(crate::data_dir().as_deref(), home.as_deref())
 }
+
+/// The kit's skill→command-id index (`scripts/skill-commands.json`, written by the kit's `check.py --write-index`).
+pub const INDEX_FILE: &str = "scripts/skill-commands.json";
+
+/// Largest index [`kit_command_gaps`] reads (the kit's own is about 10 KB).
+pub const MAX_INDEX_BYTES: usize = 1 << 20;
+
+/// What a kit names that an engine lacks.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct KitGaps {
+    /// The kit's version, when the index has one.
+    pub kit_version: Option<String>,
+    /// `(skill or agent name, ids it names that the engine lacks)`, only entries with gaps, sorted by name.
+    pub missing_by_skill: Vec<(String, Vec<String>)>,
+}
+
+/// Compares a kit index with the engine's command ids. Only engine ids (`bashcut.<group>.<name>`, three
+/// segments) are compared: the index also names core ids, which the engine list the doctor passes
+/// (`commands bashcut`) does not carry, and plugin ids (`bashcut.vision`), which are not engine commands.
+/// `None` when the text is not an index (not JSON, no `skills` object, over [`MAX_INDEX_BYTES`]).
+pub fn kit_command_gaps<S: AsRef<str>>(index_json: &str, engine_ids: &[S]) -> Option<KitGaps> {
+    if index_json.len() > MAX_INDEX_BYTES {
+        return None;
+    }
+    let index: serde_json::Value = serde_json::from_str(index_json).ok()?;
+    let have: std::collections::HashSet<&str> = engine_ids.iter().map(AsRef::as_ref).collect();
+    let mut gaps = KitGaps { kit_version: index.get("kit").and_then(|v| v.as_str()).map(str::to_string), ..KitGaps::default() };
+    let mut entries: Vec<(&String, &serde_json::Value)> = Vec::new();
+    for group in ["skills", "agents"] {
+        match index.get(group) {
+            Some(serde_json::Value::Object(m)) => entries.extend(m),
+            Some(_) => return None,
+            None if group == "skills" => return None,
+            None => {}
+        }
+    }
+    for (name, ids) in entries {
+        let mut missing: Vec<String> = ids
+            .as_array()
+            .into_iter()
+            .flatten()
+            .filter_map(|v| v.as_str())
+            .filter(|id| id.starts_with("bashcut.") && id.split('.').count() >= 3 && !have.contains(id))
+            .map(str::to_string)
+            .collect();
+        missing.sort();
+        missing.dedup();
+        if !missing.is_empty() {
+            gaps.missing_by_skill.push((name.clone(), missing));
+        }
+    }
+    gaps.missing_by_skill.sort();
+    Some(gaps)
+}

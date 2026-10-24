@@ -561,6 +561,7 @@ dependencies = [
  "ctrlc",
  "getrandom 0.3.4",
  "log",
+ "serde_json",
 ]
 
 [[package]]

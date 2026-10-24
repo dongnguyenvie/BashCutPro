@@ -39,6 +39,10 @@ pub trait Env {
     fn read(&self, path: &Path) -> Option<Vec<u8>>;
     /// Size of a file in bytes.
     fn file_size(&self, path: &Path) -> Option<u64>;
+    /// `path` with symlinks resolved (a Codex install links `~/.agents/skills/bcp-*` into the kit clone). None for fakes.
+    fn canonical(&self, _path: &Path) -> Option<PathBuf> {
+        None
+    }
     /// SHA-256 of a file, lower-case hex.
     fn hash_file(&self, path: &Path) -> Option<String>;
     /// Entries of a folder (full paths), sorted.
@@ -95,6 +99,10 @@ impl Env for RealEnv {
 
     fn file_size(&self, path: &Path) -> Option<u64> {
         std::fs::metadata(path).ok().filter(|m| m.is_file()).map(|m| m.len())
+    }
+
+    fn canonical(&self, path: &Path) -> Option<PathBuf> {
+        std::fs::canonicalize(path).ok()
     }
 
     fn hash_file(&self, path: &Path) -> Option<String> {
