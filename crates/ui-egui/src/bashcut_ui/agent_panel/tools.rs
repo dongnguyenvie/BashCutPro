@@ -185,6 +185,10 @@ pub(super) fn tool_group(app: &mut FilmcraftApp, ui: &mut egui::Ui, at: usize, k
         ui.add(egui::Label::new(egui::RichText::new(line).size(META).color(t.danger)).wrap());
     }
 
+    if let Some(target) = super::reveal::group_target(group) {
+        super::reveal::link(app, ui, at, &target);
+    }
+
     state.show_body_unindented(ui, |ui| {
         for (i, g) in group.iter().enumerate() {
             let Item::Tool { input, output, .. } = g else { continue };

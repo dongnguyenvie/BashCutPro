@@ -29,7 +29,8 @@ nothing.
    "Stopped.", your project stays as it is, and your next message goes on in the same conversation. Messages you
    queued and it had not started go back into the message box. A tool the stop cut off shows **Stopped**.
    Each tool call is one row (icon, name, what it did, how long it took); a failed one says **Failed** with the
-   reason under it, and a click on the row shows the details with a **Copy** link.
+   reason under it, and a click on the row shows the details with a **Copy** link. An edit that names a time
+   or a clip has a **Show** link: it moves the playhead there, or selects the clip.
 6. You can keep typing while the agent works: each message waits under the transcript as **Queued 1**, **2**,
    … in the order the agent gets them. Click **✕** on one to remove it; the agent never answers it. One the agent
    has already picked up stays and is answered (use **Stop** for that).
