@@ -372,18 +372,30 @@ struct Waiting {
 pub struct Watch {
     pub phase: Phase,
     waiting: Option<Waiting>,
+    /// The session's `.jsonl` as the last event named it (`transcript_path`); only ever read, for its mtime.
+    transcript: Option<std::path::PathBuf>,
 }
 
 impl Watch {
     /// Take one hook event (the JSON Claude Code sent); `true` when it closed the session.
     pub fn apply(&mut self, event: &serde_json::Value) -> bool {
+        let ended = self.step(event);
+        let path = event.get("transcript_path").and_then(serde_json::Value::as_str).filter(|s| !s.is_empty());
+        if let Some(path) = path.filter(|_| self.phase != Phase::Closed) {
+            self.transcript = Some(path.into());
+        }
+        ended
+    }
+
+    fn step(&mut self, event: &serde_json::Value) -> bool {
         let text = |k: &str| event.get(k).and_then(serde_json::Value::as_str).filter(|s| !s.is_empty()).map(str::to_string);
         let (id, tool) = (text("tool_use_id"), text("tool_name"));
         let Some(name) = text("hook_event_name") else { return false };
+        let name = name.as_str();
         if self.phase == Phase::Closed && name != "SessionStart" {
             return false;
         }
-        match name.as_str() {
+        match name {
             "SessionStart" => *self = Watch::default(),
             "UserPromptSubmit" => self.set(Phase::Working),
             "PreToolUse" | "PostToolUse" | "PostToolUseFailure" => {
@@ -407,6 +419,13 @@ impl Watch {
             _ => {}
         }
         false
+    }
+
+    /// The session file was not written to within `window` (`true` too when no event named it or it cannot be read, so the
+    /// hook silence alone decides, as before).
+    pub fn session_untouched(&self, window: std::time::Duration) -> bool {
+        let modified = self.transcript.as_deref().and_then(|p| std::fs::metadata(p).ok()).and_then(|m| m.modified().ok());
+        modified.and_then(|t| t.elapsed().ok()).is_none_or(|age| age >= window)
     }
 
     fn set(&mut self, phase: Phase) {
@@ -795,4 +814,8 @@ mod tests {
         w.apply(&ev(json!({"hook_event_name": "PreToolUse", "tool_name": "Read", "tool_use_id": "y"})));
         assert_eq!(w.phase, Phase::Working);
     }
+
+    #[test]
+    #[ignore = "test ticket: session_untouched is true for an old, missing or unnamed session file and false for one written within the window"]
+    fn session_untouched_follows_the_session_file() {}
 }
