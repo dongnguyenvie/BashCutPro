@@ -90,6 +90,11 @@ impl Driver {
             let ctx = self.harness.ctx.clone();
             let mut raw = std::mem::take(self.harness.input_mut());
             eframe::App::raw_input_hook(self.harness.state_mut(), &ctx, &mut raw);
+            match FOCUS.load(std::sync::atomic::Ordering::Relaxed) {
+                1 => raw.focused = true,
+                2 => raw.focused = false,
+                _ => {}
+            }
             *self.harness.input_mut() = raw;
             self.harness.step();
         }
@@ -2125,6 +2130,9 @@ fn runs_rows_stay_clear_of_the_section_scroll_bar() {
 const LIVE_FAKE: &str = r#"
 import json, os, queue, sys, threading, time
 args = sys.argv[1:]
+if args == ["--version"]:
+    print("2.1.310 (Claude Code)")
+    sys.exit(0)
 opts = set(os.environ.get("FAKE_MODE", "").split(","))
 resumed = args[args.index("--resume") + 1] if "--resume" in args else ""
 session = resumed or "live-1"
@@ -2375,6 +2383,7 @@ fn fake_claude(test: &str, case: &str, env: &[(&str, &str)]) -> Option<Fake> {
         .env(FAKE_CASE, case)
         .env(FAKE_DIR, &dir)
         .env("FILMCRAFT_CONTROL_PORT", "1")
+        .env("BASHCUTPRO_DATA_DIR", dir.join("data"))
         .env("BASHCUT_CLAUDE", &claude)
         .env("FAKE_LOG", dir.join("fake.log"))
         .env("FAKE_GO", dir.join("go"))
@@ -3837,3 +3846,312 @@ fn agent_composer_send_disabled_with_missing_reason() {}
 #[test]
 #[ignore = "test ticket: Stop is enabled while a turn runs; the box grows to 8 rows then scrolls; bashcut.agent.context contains the active sequence name"]
 fn agent_composer_stop_grow_and_context_chip() {}
+
+/// What [`Driver::frames`] reports as the window focus once [`Driver::set_focus`] chose one: 1 focused, 2 not, 0 as before.
+static FOCUS: std::sync::atomic::AtomicU8 = std::sync::atomic::AtomicU8::new(0);
+
+/// What the notification stand-in was asked to show in a [`fake_claude`] child: title and body, oldest first.
+static NOTES: std::sync::Mutex<Vec<(String, String)>> = std::sync::Mutex::new(Vec::new());
+
+fn record_note(title: &str, body: &str) {
+    NOTES.lock().unwrap_or_else(std::sync::PoisonError::into_inner).push((title.to_string(), body.to_string()));
+}
+
+fn notes() -> Vec<(String, String)> {
+    NOTES.lock().unwrap_or_else(std::sync::PoisonError::into_inner).clone()
+}
+
+/// A turn that ends while the Agent section is hidden: `send` shows the section, so the turn is held (`hold`), the
+/// section is hidden while it works, and then it is let go.
+fn hidden_turn(d: &mut Driver, fake: &Fake, text: &str) {
+    let _ = std::fs::remove_file(fake.dir.join("go"));
+    d.exec("bashcut.agent.send", json!({"text": format!("hold {text}")}));
+    d.agent_said(&format!("working on hold {text}"));
+    d.exec("bashcut.ui.section", json!({"section": "agent", "open": false}));
+    d.frames(2);
+    assert!(!d.has("bashcut.panel.agent"), "hidden while the turn works");
+    fake.go();
+    d.agent_idle();
+    d.frames(3);
+}
+
+impl Driver {
+    /// The window gains or loses focus (what `attention` reads to hold back the OS notification). The app's input hook
+    /// reports a focused window while a click or key is being sent, so click with the focus on.
+    fn set_focus(&mut self, on: bool) {
+        FOCUS.store(if on { 1 } else { 2 }, std::sync::atomic::Ordering::Relaxed);
+        self.frames(2);
+        assert_eq!(self.harness.ctx.input(|i| i.focused), on, "the window focus follows the event");
+    }
+
+    /// One turn of the fake agent through the control command, waited for until it is idle.
+    fn agent_turn(&mut self, text: &str) {
+        self.exec("bashcut.agent.send", json!({"text": text}));
+        self.agent_said(&format!("echo {text}"));
+        let st = self.agent_idle();
+        assert_ne!(st["status"]["state"], json!("running"), "{st}");
+        self.frames(3);
+    }
+
+    /// Open in Terminal after one turn (the fake's hooks file is written for its version): the argv the terminal got.
+    fn open_hooked_terminal(&mut self, fake: &Fake) -> Vec<String> {
+        self.agent_turn("hello");
+        self.reveal("bashcut.agent.terminal");
+        self.click("bashcut.agent.terminal");
+        let n = self.wait(|_| json!(opened().len()), |n| *n == json!(1));
+        assert_eq!(n, json!(1), "the terminal opened");
+        let (_, job, _) = opened().remove(0);
+        let filmcraft_ui_egui::bashcut_ui::terminal::Job::Program(argv) = job else { panic!("a program: {job:?}") };
+        assert_eq!(argv.first(), Some(&fake.claude));
+        self.frames(3);
+        argv
+    }
+
+    fn terminal_event(&mut self, event: Value) -> Value {
+        let r = self.exec("bashcut.agent.terminalEvent", json!({"event": event}));
+        self.frames(2);
+        r
+    }
+
+    fn back_notices(&mut self) -> usize {
+        self.agent_items().iter().filter(|i| i["message"] == json!("Back in the panel.")).count()
+    }
+}
+
+/// AGT2: a turn that ends with the Agent section hidden puts a dot on its rail button (cleared when the section is
+/// shown) and asks the OS for one notification (title with the agent's name, no sound), but not while the window is
+/// focused or after `bashcut.ui.setNotify {on: false}`. The notification text is in the app's language.
+#[test]
+fn attention_dot_and_notification() {
+    let Some(fake) = fake_claude("attention_dot_and_notification", "attn", &[]) else { return };
+    assert!(filmcraft_ui_egui::bashcut_ui::agent::notify_stand_in(record_note), "one driver per child");
+    let mut d = fake.driver();
+    let rail = |d: &mut Driver| d.element("bashcut.rail.agent")["label"].as_str().unwrap_or_default().to_string();
+    d.exec("bashcut.ui.section", json!({"section": "agent", "open": false}));
+    d.frames(2);
+    assert!(!d.has("bashcut.panel.agent"));
+    assert!(!rail(&mut d).contains("news"), "no news yet: {}", rail(&mut d));
+
+    // hidden, window not focused: dot + one notification
+    d.set_focus(false);
+    hidden_turn(&mut d, &fake, "one");
+    d.frames(3);
+    assert_eq!(rail(&mut d), "Agent: news", "the rail button carries the dot");
+    let n = notes();
+    assert_eq!(n.len(), 1, "{n:?}");
+    assert_eq!(n[0], ("Claude Code finished".to_string(), "Open BashCutPro to see the result.".to_string()));
+    // a dot is no new notification
+    d.frames(5);
+    assert_eq!(notes().len(), 1, "once per event");
+
+    // shown: the dot is cleared
+    d.set_focus(true);
+    d.click("bashcut.rail.agent");
+    d.frames(2);
+    assert!(d.has("bashcut.panel.agent"));
+    assert_eq!(rail(&mut d), "Agent", "seen: {}", rail(&mut d));
+    d.exec("bashcut.ui.section", json!({"section": "agent", "open": false}));
+    d.frames(2);
+    assert_eq!(rail(&mut d), "Agent", "stays cleared");
+
+    // the window is focused: the dot, no OS notification
+    d.set_focus(true);
+    hidden_turn(&mut d, &fake, "two");
+    d.frames(3);
+    assert_eq!(rail(&mut d), "Agent: news", "dot while hidden");
+    assert_eq!(notes().len(), 1, "focused: {:?}", notes());
+    d.click("bashcut.rail.agent");
+    d.frames(2);
+    assert_eq!(rail(&mut d), "Agent");
+
+    // Agent notifications off: the dot stays, the OS is not asked
+    assert_eq!(d.exec("bashcut.ui.setNotify", json!({"on": false})), json!(false));
+    d.exec("bashcut.ui.section", json!({"section": "agent", "open": false}));
+    d.set_focus(false);
+    hidden_turn(&mut d, &fake, "three");
+    d.frames(3);
+    assert_eq!(rail(&mut d), "Agent: news");
+    assert_eq!(notes().len(), 1, "notifications off: {:?}", notes());
+
+    // back on, drawn in Vietnamese: the text follows the language
+    assert_eq!(d.exec("bashcut.ui.setNotify", json!({"on": true})), json!(true));
+    d.set_focus(true);
+    d.click("bashcut.rail.agent");
+    d.exec("bashcut.ui.section", json!({"section": "agent", "open": false}));
+    d.exec("bashcut.ui.setLanguage", json!({"language": "vi"}));
+    d.set_focus(false);
+    hidden_turn(&mut d, &fake, "four");
+    d.frames(3);
+    let n = notes();
+    assert_eq!(n.len(), 2, "{n:?}");
+    assert_eq!(n[1], ("Claude Code đã xong".to_string(), "Mở BashCutPro để xem kết quả.".to_string()));
+    assert_eq!(rail(&mut d), "Trợ lý: có tin mới");
+    d.set_focus(true);
+    d.exec("bashcut.ui.setLanguage", json!({"language": null}));
+    d.no_ui_error();
+}
+
+/// AGT1/AGT4: Open in Terminal writes `agent/terminal-hooks.json` in the data folder with one command hook per event
+/// the installed Claude Code (2.1.310 here) knows and passes it as `--settings`; the user's own settings are not
+/// touched. `bashcut.agent.terminalEvent` is ignored before that, then drives `bashcut.agent.terminal.status` (EN and
+/// VI), and the session's end adds "Back in the panel." once.
+#[test]
+fn terminal_hook_events_drive_the_status_line() {
+    use filmcraft_ui_egui::bashcut_ui::terminal;
+    let Some(fake) = fake_claude("terminal_hook_events_drive_the_status_line", "hooks", &[]) else { return };
+    let mut d = fake.driver();
+    // before Open in Terminal: ignored, no status line
+    assert_eq!(d.terminal_event(json!({"hook_event_name": "UserPromptSubmit"})), json!({"ignored": true}));
+    assert!(!d.has("bashcut.agent.terminal.status"));
+
+    let argv = d.open_hooked_terminal(&fake);
+    let at = argv.iter().position(|a| a == "--settings").expect("the hooks are passed");
+    let file = std::path::PathBuf::from(&argv[at + 1]);
+    assert_eq!(file, fake.dir.join("data").join("agent").join("terminal-hooks.json"), "kept in the data folder");
+    let v: Value = serde_json::from_str(&std::fs::read_to_string(&file).unwrap()).unwrap();
+    let hooks = v["hooks"].as_object().unwrap();
+    let mut got: Vec<&str> = hooks.keys().map(String::as_str).collect();
+    let mut want = terminal::hook_events(Some((2, 1, 310)));
+    got.sort_unstable();
+    want.sort_unstable();
+    assert_eq!(got, want, "the events of the detected version");
+    assert!(want.contains(&"SessionEnd") && want.contains(&"PermissionRequest") && want.contains(&"StopFailure"));
+    for (event, groups) in hooks {
+        let hook = &groups[0]["hooks"][0];
+        assert_eq!((groups.as_array().map(Vec::len), hook["type"].as_str(), hook["timeout"].as_u64()), (Some(1), Some("command"), Some(5)), "{event}");
+        let cmd = hook["command"].as_str().unwrap();
+        assert!(
+            cmd.contains(terminal::EVENT_COMMAND) && cmd.contains("--bridge '127.0.0.1:1' run -") && cmd.ends_with(">/dev/null 2>&1 || true"),
+            "{event}: {cmd}"
+        );
+        assert!(cmd.contains(&format!("BASHCUTPRO_DATA_DIR={}", terminal::sh_quote(&fake.dir.join("data").to_string_lossy()))), "{cmd}");
+    }
+
+    // Opened, then each hook event; the line in both languages
+    let status = |d: &mut Driver| d.labels("bashcut.agent.terminal.status");
+    let line = |en: &str, vi: &str| (json!(en), json!(vi));
+    assert_eq!(status(&mut d), line("Terminal: opened", "Terminal: đã mở"));
+    let ev = |name: &str| json!({"hook_event_name": name});
+    let perm = json!({"hook_event_name": "PermissionRequest", "tool_name": "Bash", "tool_use_id": "t1"});
+    let other = json!({"hook_event_name": "PreToolUse", "tool_name": "Bash", "tool_use_id": "t2"});
+    let same = json!({"hook_event_name": "PostToolUse", "tool_name": "Bash", "tool_use_id": "t1"});
+    assert_eq!(d.terminal_event(ev("UserPromptSubmit")), json!({"phase": "Working"}));
+    assert_eq!(status(&mut d), line("Terminal: working…", "Terminal: đang làm việc…"));
+    assert_eq!(d.terminal_event(perm), json!({"phase": "Waiting"}));
+    assert_eq!(status(&mut d), line("Terminal: waiting for your permission", "Terminal: đang chờ bạn cho phép"));
+    assert_eq!(d.terminal_event(other), json!({"phase": "Waiting"}), "another tool_use_id does not clear it");
+    assert_eq!(status(&mut d).0, json!("Terminal: waiting for your permission"));
+    assert_eq!(d.terminal_event(same), json!({"phase": "Working"}));
+    assert_eq!(d.terminal_event(ev("Stop")), json!({"phase": "Done"}));
+    assert_eq!(status(&mut d), line("Terminal: done", "Terminal: đã xong"));
+    assert_eq!(d.terminal_event(ev("UserPromptSubmit")), json!({"phase": "Working"}));
+    assert_eq!(d.terminal_event(ev("StopFailure")), json!({"phase": "Failed"}));
+    assert_eq!(status(&mut d), line("Terminal: stopped with an error", "Terminal: dừng do lỗi"));
+
+    // /clear keeps the window's session; the end hands back, once
+    assert_eq!(d.terminal_event(json!({"hook_event_name": "SessionEnd", "reason": "clear"})), json!({"phase": "Failed"}));
+    assert_eq!(d.back_notices(), 0);
+    assert_eq!(d.terminal_event(json!({"hook_event_name": "SessionEnd", "reason": "prompt_input_exit"})), json!({"phase": "Closed"}));
+    assert_eq!(status(&mut d), line("Terminal: closed", "Terminal: đã đóng"));
+    assert_eq!(d.back_notices(), 1, "Back in the panel.");
+    d.terminal_event(ev("SessionEnd"));
+    d.terminal_event(ev("Stop"));
+    assert_eq!(d.back_notices(), 1, "once");
+    d.exec("bashcut.ui.setLanguage", json!({"language": "vi"}));
+    d.frames(3);
+    assert!(d.harness.query_by_label("Đã quay lại bảng này.").is_some(), "drawn in Vietnamese");
+    d.exec("bashcut.ui.setLanguage", json!({"language": null}));
+    // the user's own Claude Code settings are not part of this
+    assert!(argv.iter().filter(|a| a.as_str() == "--settings").count() == 1);
+    d.no_ui_error();
+}
+
+/// AGT3: while the hooked terminal holds the session (Opened / Working / Waiting / Done) `bashcut.agent.input` is the
+/// reason and there is no message box; Take back asks first (Cancel keeps it locked), Yes gives the box back with
+/// "Back in the panel." once; the session's end does the same without asking. EN and VI, and at 240 px.
+#[test]
+fn terminal_live_disables_composer_until_take_back() {
+    let Some(fake) = fake_claude("terminal_live_disables_composer_until_take_back", "live", &[]) else { return };
+    let mut d = fake.driver();
+    let box_shown = |d: &mut Driver| d.harness.query_by_role(egui::accesskit::Role::MultilineTextInput).is_some();
+    assert!(box_shown(&mut d), "the box before the terminal");
+    d.open_hooked_terminal(&fake);
+
+    const REASON: &str = "Claude Code is running in the terminal. Close it to continue here.";
+    const REASON_VI: &str = "Claude Code đang chạy trong terminal. Hãy đóng nó để tiếp tục tại đây.";
+    let ev = |name: &str| json!({"hook_event_name": name});
+    let locked = |d: &mut Driver, phase: &str| {
+        assert!(!box_shown(d), "{phase}: no message box");
+        assert!(d.has("bashcut.agent.takeBack"), "{phase}: Take back");
+        let (en, vi) = d.labels("bashcut.agent.input");
+        assert_eq!((en, vi), (json!(REASON), json!(REASON_VI)), "{phase}");
+    };
+    locked(&mut d, "Opened");
+    for (name, phase) in [("UserPromptSubmit", "Working"), ("Stop", "Done")] {
+        d.terminal_event(ev(name));
+        locked(&mut d, phase);
+    }
+    d.terminal_event(json!({"hook_event_name": "PermissionRequest", "tool_name": "Bash", "tool_use_id": "t1"}));
+    locked(&mut d, "Waiting");
+    d.terminal_event(ev("UserPromptSubmit"));
+
+    // Take back asks first; Cancel keeps it locked
+    d.click("bashcut.agent.takeBack");
+    assert!(d.has("bashcut.agent.takeBack.confirm") && d.has("bashcut.agent.takeBack.cancel"));
+    assert!(!d.has("bashcut.agent.takeBack"), "the button became the confirmation");
+    let (en, vi) = d.labels("bashcut.agent.takeBack.confirm");
+    assert_eq!((en, vi), (json!("Yes, take back"), json!("Đúng, lấy lại")));
+    assert!(d.harness.query_by_label("Take back the conversation? Close the terminal window first, or two writers share one session.").is_some());
+    d.click("bashcut.agent.takeBack.cancel");
+    assert!(d.has("bashcut.agent.takeBack") && !d.has("bashcut.agent.takeBack.confirm"));
+    locked(&mut d, "after Cancel");
+    assert_eq!(d.back_notices(), 0);
+
+    // 240 px, both languages: the reason, Take back, Yes and Cancel stay inside the panel
+    d.exec("bashcut.ui.setWidth", json!({"width": 240}));
+    d.frames(3);
+    for lang in [None, Some("vi")] {
+        d.exec("bashcut.ui.setLanguage", json!({"language": lang}));
+        d.frames(3);
+        let panel = d.rect("bashcut.panel.agent").expect("panel");
+        assert!((panel[2] - 240.0).abs() < 2.0, "{panel:?}");
+        let inside = |d: &mut Driver, id: &str| {
+            let r = d.rect(id).unwrap_or_else(|| panic!("{lang:?}: {id} not shown"));
+            assert!(r[0] >= panel[0] - 0.5 && r[0] + r[2] <= panel[0] + panel[2] + 0.5, "{lang:?}: {id} {r:?} leaves the panel {panel:?}");
+        };
+        inside(&mut d, "bashcut.agent.input");
+        inside(&mut d, "bashcut.agent.takeBack");
+        d.click("bashcut.agent.takeBack");
+        inside(&mut d, "bashcut.agent.takeBack.confirm");
+        inside(&mut d, "bashcut.agent.takeBack.cancel");
+        d.click("bashcut.agent.takeBack.cancel");
+    }
+    d.exec("bashcut.ui.setLanguage", json!({"language": null}));
+    d.exec("bashcut.ui.setWidth", json!({"width": 360}));
+    d.frames(3);
+
+    // Yes: the box is back, the status line is gone, one notice
+    d.click("bashcut.agent.takeBack");
+    d.click("bashcut.agent.takeBack.confirm");
+    assert!(box_shown(&mut d), "the box is back");
+    assert!(!d.has("bashcut.agent.takeBack") && !d.has("bashcut.agent.terminal.status"));
+    assert_eq!(d.back_notices(), 1, "Back in the panel.");
+    d.terminal_event(ev("Stop"));
+    assert_eq!(d.back_notices(), 1, "later hook events are ignored");
+    assert!(box_shown(&mut d));
+
+    // the session ending frees the box too
+    d.exec("bashcut.agent.send", json!({"text": "again"}));
+    d.agent_said("echo again");
+    d.agent_idle();
+    d.reveal("bashcut.agent.terminal");
+    d.click("bashcut.agent.terminal");
+    let n = d.wait(|_| json!(opened().len()), |n| *n == json!(2));
+    assert_eq!(n, json!(2), "opened again");
+    d.frames(3);
+    assert!(!box_shown(&mut d) && d.has("bashcut.agent.takeBack"), "locked again");
+    d.terminal_event(json!({"hook_event_name": "SessionEnd", "reason": "logout"}));
+    assert!(box_shown(&mut d), "the end gives the box back");
+    assert_eq!(d.back_notices(), 2);
+    d.no_ui_error();
+}

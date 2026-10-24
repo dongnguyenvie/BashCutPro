@@ -329,11 +329,16 @@ pub fn terminal_hooks_config(cli: &str, bridge: &str, events: &[&str]) -> Result
     let dir = bashcut_dirs::data_dir().ok_or("no data folder")?;
     let path = dir.join("agent").join("terminal-hooks.json");
     let data_env = std::env::var("BASHCUTPRO_DATA_DIR").ok().filter(|d| !d.trim().is_empty());
-    let entry = serde_json::json!([{"hooks": [{"type": "command", "command": hook_command(cli, bridge, data_env.as_deref()), "timeout": 5}]}]);
-    let hooks: serde_json::Map<String, serde_json::Value> = events.iter().map(|e| (e.to_string(), entry.clone())).collect();
-    let v = serde_json::json!({"hooks": hooks});
+    let v = hooks_json(cli, bridge, events, data_env.as_deref());
     bashcut_dirs::fs::write_atomic(&path, v.to_string().as_bytes()).map_err(|e| e.0)?;
     Ok(path)
+}
+
+/// The content of the `--settings` file: one command hook per event.
+fn hooks_json(cli: &str, bridge: &str, events: &[&str], data_dir_env: Option<&str>) -> serde_json::Value {
+    let entry = serde_json::json!([{"hooks": [{"type": "command", "command": hook_command(cli, bridge, data_dir_env), "timeout": 5}]}]);
+    let hooks: serde_json::Map<String, serde_json::Value> = events.iter().map(|e| (e.to_string(), entry.clone())).collect();
+    serde_json::json!({"hooks": hooks})
 }
 
 /// Where the terminal's Claude Code is (AGT1), from its hook events.
@@ -597,10 +602,197 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "test ticket: terminal-hooks.json holds one command hook per event for the claude version (SessionEnd/PermissionRequest only when known), the command quotes cli, bridge and data dir, drops stdout"]
-    fn hook_events_and_command_per_version() {}
+    fn hook_events_per_version_never_exceed_the_detected_one() {
+        let v = |s: &str| parse_version(s);
+        // every event is written only from the version that knows it (older CLIs discard the whole file otherwise)
+        for (version, expected) in [
+            ((1, 0, 22), &[][..]),
+            ((1, 0, 23), &["PreToolUse", "PostToolUse"][..]),
+            ((1, 0, 31), &["PreToolUse", "PostToolUse", "Stop"][..]),
+            ((1, 0, 62), &["PreToolUse", "PostToolUse", "Stop", "UserPromptSubmit", "SessionStart"][..]),
+            ((1, 0, 84), &["PreToolUse", "PostToolUse", "Stop", "UserPromptSubmit", "SessionStart"][..]),
+            ((1, 0, 85), &["PreToolUse", "PostToolUse", "Stop", "UserPromptSubmit", "SessionStart", "SessionEnd"][..]),
+            ((2, 0, 45), &["PreToolUse", "PostToolUse", "Stop", "UserPromptSubmit", "SessionStart", "SessionEnd", "PermissionRequest"][..]),
+            ((2, 0, 55), &["PreToolUse", "PostToolUse", "Stop", "UserPromptSubmit", "SessionStart", "SessionEnd", "PermissionRequest"][..]),
+            (
+                (2, 0, 56),
+                &["PreToolUse", "PostToolUse", "Stop", "UserPromptSubmit", "SessionStart", "SessionEnd", "PermissionRequest", "PostToolUseFailure"][..],
+            ),
+            (
+                (2, 1, 77),
+                &["PreToolUse", "PostToolUse", "Stop", "UserPromptSubmit", "SessionStart", "SessionEnd", "PermissionRequest", "PostToolUseFailure"][..],
+            ),
+            (
+                (2, 1, 78),
+                &[
+                    "PreToolUse",
+                    "PostToolUse",
+                    "Stop",
+                    "UserPromptSubmit",
+                    "SessionStart",
+                    "SessionEnd",
+                    "PermissionRequest",
+                    "PostToolUseFailure",
+                    "StopFailure",
+                ][..],
+            ),
+            (
+                (3, 0, 0),
+                &[
+                    "PreToolUse",
+                    "PostToolUse",
+                    "Stop",
+                    "UserPromptSubmit",
+                    "SessionStart",
+                    "SessionEnd",
+                    "PermissionRequest",
+                    "PostToolUseFailure",
+                    "StopFailure",
+                ][..],
+            ),
+        ] {
+            assert_eq!(hook_events(Some(version)), expected, "{version:?}");
+            for e in hook_events(Some(version)) {
+                let since = HOOK_EVENTS.iter().find(|(n, _)| *n == e).map(|(_, s)| *s).unwrap();
+                assert!(since <= version, "{e} needs {since:?}, detected {version:?}");
+            }
+        }
+        // unknown version: the 1.0.64 floor (no SessionEnd, no PermissionRequest)
+        assert_eq!(hook_events(None), ["PreToolUse", "PostToolUse", "Stop", "UserPromptSubmit", "SessionStart"]);
+        assert_eq!(hook_events(None), hook_events(Some((1, 0, 64))));
+        // the version comes from `claude --version`; anything else is unknown
+        assert_eq!(v("2.1.310 (Claude Code)"), Some((2, 1, 310)));
+        assert_eq!(v("1.0.64"), Some((1, 0, 64)));
+        for bad in ["", "claude", "2.1", "2.x.3", "v2.1.3", "-1.0.0"] {
+            assert_eq!(v(bad), None, "{bad:?}");
+        }
+        assert_eq!(hook_events(v("garbage")), hook_events(None));
+    }
 
     #[test]
-    #[ignore = "test ticket: Watch state machine: PermissionRequest stays Waiting through other tools' events until the same tool_use_id runs or Stop/UserPromptSubmit; PreCompact ignored; SessionEnd closes except reason clear/resume; SessionStart restarts"]
-    fn watch_permission_is_sticky_until_the_same_tool_runs() {}
+    fn hook_command_quotes_every_path_and_drops_output() {
+        let cmd = hook_command("/opt/it's cli/bashcutpro-cli", "127.0.0.1:9876", Some("/Users/a b/Phim; $HOME/it's"));
+        let words = sh_words(&cmd);
+        // `printf ... "$(cat)" | BASHCUTPRO_DATA_DIR=<dir> <cli> --bridge <addr> run - >/dev/null 2>&1 || true`
+        let pipe = words.iter().position(|w| w == "|").expect("pipes the event into the cli");
+        assert_eq!(words[pipe + 1], "BASHCUTPRO_DATA_DIR=/Users/a b/Phim; $HOME/it's");
+        assert_eq!(words[pipe + 2], "/opt/it's cli/bashcutpro-cli");
+        assert_eq!(words[pipe + 3..pipe + 7], ["--bridge", "127.0.0.1:9876", "run", "-"]);
+        assert!(cmd.contains(&format!("\"id\":\"{EVENT_COMMAND}\"")), "{cmd}");
+        assert!(cmd.contains("\"params\":{\"event\":%s}"), "{cmd}");
+        assert!(cmd.ends_with(">/dev/null 2>&1 || true"), "stdout dropped (a PermissionRequest hook's stdout is a decision), failure ignored: {cmd}");
+        // no data folder env: no assignment word
+        let plain = hook_command("cli", "b:1", None);
+        assert!(!plain.contains("BASHCUTPRO_DATA_DIR"), "{plain}");
+        assert!(plain.contains("| 'cli' --bridge 'b:1' run -"), "{plain}");
+    }
+
+    #[test]
+    fn terminal_hooks_json_has_one_command_hook_per_event() {
+        for version in [None, Some((1, 0, 85)), Some((2, 0, 45)), Some((2, 1, 78))] {
+            let events = hook_events(version);
+            let v = hooks_json("/bin/cli", "127.0.0.1:1", &events, Some("/d"));
+            let hooks = v["hooks"].as_object().unwrap();
+            assert_eq!(hooks.len(), events.len(), "{version:?}");
+            assert_eq!(v.as_object().unwrap().len(), 1, "only `hooks`");
+            for e in &events {
+                let groups = hooks[*e].as_array().unwrap();
+                assert_eq!(groups.len(), 1, "{e}");
+                let list = groups[0]["hooks"].as_array().unwrap();
+                assert_eq!(list.len(), 1, "{e}: one hook");
+                assert_eq!(list[0]["type"], "command");
+                assert_eq!(list[0]["timeout"], 5);
+                assert_eq!(list[0]["command"], hook_command("/bin/cli", "127.0.0.1:1", Some("/d")).as_str());
+            }
+        }
+        // SessionEnd / PermissionRequest only when the version knows them
+        let old = hooks_json("c", "b", &hook_events(None), None);
+        assert!(old["hooks"].get("SessionEnd").is_none() && old["hooks"].get("PermissionRequest").is_none());
+        let new = hooks_json("c", "b", &hook_events(Some((2, 1, 310))), None);
+        assert!(new["hooks"].get("SessionEnd").is_some() && new["hooks"].get("PermissionRequest").is_some());
+    }
+
+    fn ev(v: serde_json::Value) -> serde_json::Value {
+        v
+    }
+
+    #[test]
+    fn watch_permission_is_sticky_until_the_same_tool_runs() {
+        use serde_json::json;
+        let mut w = Watch::default();
+        assert_eq!(w.phase, Phase::Opened);
+        assert!(!w.apply(&ev(json!({"hook_event_name": "UserPromptSubmit"}))));
+        assert_eq!(w.phase, Phase::Working);
+        // permission request by id: other tools' events keep it Waiting
+        w.apply(&ev(json!({"hook_event_name": "PermissionRequest", "tool_name": "Bash", "tool_use_id": "t1"})));
+        assert_eq!(w.phase, Phase::Waiting);
+        for name in ["PreToolUse", "PostToolUse", "PostToolUseFailure"] {
+            w.apply(&ev(json!({"hook_event_name": name, "tool_name": "Bash", "tool_use_id": "t2"})));
+            assert_eq!(w.phase, Phase::Waiting, "{name} of another tool_use_id (same tool name)");
+        }
+        w.apply(&ev(json!({"hook_event_name": "PreCompact"})));
+        w.apply(&ev(json!({"hook_event_name": "Notification"})));
+        w.apply(&ev(json!({"no": "name"})));
+        assert_eq!(w.phase, Phase::Waiting, "PreCompact, unknown events and nameless events leave it");
+        w.apply(&ev(json!({"hook_event_name": "PostToolUse", "tool_name": "Bash", "tool_use_id": "t1"})));
+        assert_eq!(w.phase, Phase::Working, "the same tool_use_id ran");
+        // each of the three tool events of the same id clears it
+        for name in ["PreToolUse", "PostToolUse", "PostToolUseFailure"] {
+            w.apply(&ev(json!({"hook_event_name": "PermissionRequest", "tool_name": "Edit", "tool_use_id": "e1"})));
+            w.apply(&ev(json!({"hook_event_name": name, "tool_use_id": "e1"})));
+            assert_eq!(w.phase, Phase::Working, "{name}");
+        }
+        // no ids: compared by tool name
+        w.apply(&ev(json!({"hook_event_name": "PermissionRequest", "tool_name": "Write"})));
+        w.apply(&ev(json!({"hook_event_name": "PreToolUse", "tool_name": "Read"})));
+        assert_eq!(w.phase, Phase::Waiting, "another tool name");
+        w.apply(&ev(json!({"hook_event_name": "PreToolUse", "tool_name": "Write"})));
+        assert_eq!(w.phase, Phase::Working);
+        // id wins over the name: same name, different id stays; different name, same id clears
+        w.apply(&ev(json!({"hook_event_name": "PermissionRequest", "tool_name": "Bash", "tool_use_id": "a"})));
+        w.apply(&ev(json!({"hook_event_name": "PreToolUse", "tool_name": "Bash", "tool_use_id": "b"})));
+        assert_eq!(w.phase, Phase::Waiting);
+        w.apply(&ev(json!({"hook_event_name": "PreToolUse", "tool_name": "Other", "tool_use_id": "a"})));
+        assert_eq!(w.phase, Phase::Working);
+        // Stop / StopFailure / UserPromptSubmit end the wait
+        for (name, phase) in [("Stop", Phase::Done), ("StopFailure", Phase::Failed), ("UserPromptSubmit", Phase::Working)] {
+            w.apply(&ev(json!({"hook_event_name": "PermissionRequest", "tool_name": "Bash", "tool_use_id": "z"})));
+            w.apply(&ev(json!({"hook_event_name": name})));
+            assert_eq!(w.phase, phase, "{name}");
+            // the wait is gone: another tool's event now moves to Working
+            w.apply(&ev(json!({"hook_event_name": "PreToolUse", "tool_name": "Read", "tool_use_id": "q"})));
+            assert_eq!(w.phase, Phase::Working, "after {name}");
+        }
+    }
+
+    #[test]
+    fn watch_session_end_closes_unless_clear_or_resume_and_start_restarts() {
+        use serde_json::json;
+        let mut w = Watch::default();
+        w.apply(&ev(json!({"hook_event_name": "UserPromptSubmit"})));
+        for reason in ["clear", "resume"] {
+            assert!(!w.apply(&ev(json!({"hook_event_name": "SessionEnd", "reason": reason}))), "{reason}");
+            assert_eq!(w.phase, Phase::Working, "{reason} keeps the window's session");
+        }
+        for reason in [json!("logout"), json!("prompt_input_exit"), json!("other"), json!(""), json!(null)] {
+            let mut w = Watch::default();
+            w.apply(&ev(json!({"hook_event_name": "Stop"})));
+            assert!(w.apply(&ev(json!({"hook_event_name": "SessionEnd", "reason": reason}))), "{reason}");
+            assert_eq!(w.phase, Phase::Closed);
+        }
+        assert!(w.apply(&ev(json!({"hook_event_name": "SessionEnd"}))), "no reason closes");
+        assert_eq!(w.phase, Phase::Closed);
+        // closed ignores everything but SessionStart (and does not report a second close)
+        for name in ["UserPromptSubmit", "Stop", "PermissionRequest", "PreToolUse", "SessionEnd"] {
+            assert!(!w.apply(&ev(json!({"hook_event_name": name}))), "{name}");
+            assert_eq!(w.phase, Phase::Closed, "{name}");
+        }
+        assert!(!w.apply(&ev(json!({"hook_event_name": "SessionStart", "source": "startup"}))));
+        assert_eq!(w, Watch::default(), "SessionStart restarts");
+        // a pending permission does not survive a restart
+        w.apply(&ev(json!({"hook_event_name": "PermissionRequest", "tool_name": "Bash", "tool_use_id": "x"})));
+        w.apply(&ev(json!({"hook_event_name": "SessionStart"})));
+        w.apply(&ev(json!({"hook_event_name": "PreToolUse", "tool_name": "Read", "tool_use_id": "y"})));
+        assert_eq!(w.phase, Phase::Working);
+    }
 }

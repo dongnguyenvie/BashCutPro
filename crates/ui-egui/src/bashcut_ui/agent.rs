@@ -211,33 +211,58 @@ fn attention(ctx: &egui::Context, shown: bool, n: &News) {
     os_notify(&title, &body);
 }
 
-/// Show an OS notification with the platform's own tool (no new dependency): `osascript` on macOS,
-/// a PowerShell balloon on Windows, `notify-send` elsewhere. Text goes in as arguments / environment,
-/// never into a script. Best effort: a missing tool is logged and nothing else happens.
-fn os_notify(title: &str, body: &str) {
-    use std::process::{Command, Stdio};
+/// What [`os_notify`] calls instead of starting the platform's tool, once [`notify_stand_in`] set it.
+pub type Notifier = fn(&str, &str);
+
+static NOTIFIER: std::sync::OnceLock<Notifier> = std::sync::OnceLock::new();
+
+/// From now on notifications go to `f` (title, body) instead of the OS, for the rest of this process (headless tests:
+/// nothing is shown). `false` when one was set already (the first one stays).
+pub fn notify_stand_in(f: Notifier) -> bool {
+    NOTIFIER.set(f).is_ok()
+}
+
+/// The platform's own notification tool for `os` with `title` and `body` (no new dependency): `osascript` on macOS,
+/// a PowerShell balloon on Windows, `notify-send` elsewhere. Text goes in as arguments / environment, never into a
+/// script, so an agent name cannot inject AppleScript or PowerShell.
+fn notify_command(os: terminal::Os, title: &str, body: &str) -> std::process::Command {
+    use std::process::Command;
     let mut cmd;
-    if cfg!(target_os = "macos") {
-        cmd = Command::new("osascript");
-        cmd.args(["-e", "on run argv", "-e", "display notification (item 2 of argv) with title (item 1 of argv)", "-e", "end run", title, body]);
-    } else if cfg!(windows) {
-        cmd = Command::new("powershell");
-        cmd.args([
-            "-NoProfile",
-            "-WindowStyle",
-            "Hidden",
-            "-Command",
-            "Add-Type -AssemblyName System.Windows.Forms,System.Drawing; $n = New-Object System.Windows.Forms.NotifyIcon; \
-             $n.Icon = [System.Drawing.SystemIcons]::Information; $n.Visible = $true; \
-             $n.ShowBalloonTip(5000, $env:BASHCUT_NOTE_TITLE, $env:BASHCUT_NOTE_BODY, 'Info'); Start-Sleep -Seconds 6; $n.Dispose()",
-        ]);
-        cmd.env("BASHCUT_NOTE_TITLE", title).env("BASHCUT_NOTE_BODY", body);
-        #[cfg(windows)]
-        std::os::windows::process::CommandExt::creation_flags(&mut cmd, 0x0800_0000);
-    } else {
-        cmd = Command::new("notify-send");
-        cmd.args(["--app-name=BashCutPro", "--", title, body]);
+    match os {
+        terminal::Os::Mac => {
+            cmd = Command::new("osascript");
+            cmd.args(["-e", "on run argv", "-e", "display notification (item 2 of argv) with title (item 1 of argv)", "-e", "end run", title, body]);
+        }
+        terminal::Os::Windows => {
+            cmd = Command::new("powershell");
+            cmd.args([
+                "-NoProfile",
+                "-WindowStyle",
+                "Hidden",
+                "-Command",
+                "Add-Type -AssemblyName System.Windows.Forms,System.Drawing; $n = New-Object System.Windows.Forms.NotifyIcon; \
+                 $n.Icon = [System.Drawing.SystemIcons]::Information; $n.Visible = $true; \
+                 $n.ShowBalloonTip(5000, $env:BASHCUT_NOTE_TITLE, $env:BASHCUT_NOTE_BODY, 'Info'); Start-Sleep -Seconds 6; $n.Dispose()",
+            ]);
+            cmd.env("BASHCUT_NOTE_TITLE", title).env("BASHCUT_NOTE_BODY", body);
+            #[cfg(windows)]
+            std::os::windows::process::CommandExt::creation_flags(&mut cmd, 0x0800_0000);
+        }
+        terminal::Os::Linux => {
+            cmd = Command::new("notify-send");
+            cmd.args(["--app-name=BashCutPro", "--", title, body]);
+        }
     }
+    cmd
+}
+
+/// Show an OS notification ([`notify_command`]). Best effort: a missing tool is logged and nothing else happens.
+fn os_notify(title: &str, body: &str) {
+    use std::process::Stdio;
+    if let Some(f) = NOTIFIER.get() {
+        return f(title, body);
+    }
+    let mut cmd = notify_command(terminal::Os::current(), title, body);
     match cmd.stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null()).spawn() {
         // reap it off the UI thread
         Ok(mut child) => {
@@ -691,15 +716,92 @@ pub fn commands() -> Vec<CommandInfo> {
 
 #[cfg(test)]
 mod tests {
-    #[test]
-    #[ignore = "test ticket: watch(): turn ends -> Finished/Failed/Gate, stopped turn -> none, more permissions -> Permission"]
-    fn watch_reports_ended_turns_and_new_permissions() {}
-
-    #[test]
-    #[ignore = "test ticket (headless): turn ends with Agent hidden -> rail dot, shown -> cleared; focused window or bashcut.ui.setNotify off -> no OS notification"]
-    fn attention_dot_and_notification() {}
-
     use super::*;
+
+    fn tick(seen: &mut Seen, running: bool, stopping: bool, failed: bool, perms: &[&str], gate: bool) -> Option<News> {
+        let perms: Vec<String> = perms.iter().map(|p| p.to_string()).collect();
+        watch(seen, running, stopping, failed, &perms, || gate)
+    }
+
+    #[test]
+    fn watch_reports_ended_turns_and_new_permissions() {
+        // a turn that ends: Finished, Failed, or Gate (asked only when it ended without error)
+        for (failed, gate, expected) in [(false, false, News::Finished), (true, false, News::Failed), (false, true, News::Gate), (true, true, News::Failed)] {
+            let mut seen = Seen::default();
+            assert_eq!(tick(&mut seen, false, false, false, &[], false), None, "idle from the start");
+            assert_eq!(tick(&mut seen, true, false, false, &[], false), None, "running is no news");
+            assert_eq!(tick(&mut seen, true, false, false, &[], true), None, "the gate is not asked while running");
+            assert_eq!(tick(&mut seen, false, false, failed, &[], gate), Some(expected), "failed {failed}, gate {gate}");
+            assert_eq!(tick(&mut seen, false, false, failed, &[], gate), None, "once");
+        }
+        let mut seen = Seen::default();
+        let asked = std::cell::Cell::new(0);
+        tick(&mut seen, true, false, false, &[], false);
+        let n = watch(&mut seen, false, false, true, &[], || {
+            asked.set(asked.get() + 1);
+            true
+        });
+        assert_eq!((n, asked.get()), (Some(News::Failed), 0), "a failed turn never asks for a gate");
+
+        // a stopped turn (stopping seen while it ran) ends without news, also when its end reports an error
+        let mut seen = Seen::default();
+        tick(&mut seen, true, false, false, &[], false);
+        tick(&mut seen, true, true, false, &[], false);
+        tick(&mut seen, true, false, false, &[], false);
+        assert_eq!(tick(&mut seen, false, false, true, &[], false), None, "stopped: no news");
+        // the next turn is a fresh one
+        tick(&mut seen, true, false, false, &[], false);
+        assert_eq!(tick(&mut seen, false, false, false, &[], false), Some(News::Finished));
+
+        // more permission requests than before: the newest one, not the ones already waiting
+        let mut seen = Seen::default();
+        tick(&mut seen, true, false, false, &[], false);
+        assert_eq!(tick(&mut seen, true, false, false, &["Bash: ls"], false), Some(News::Permission("Bash: ls".into())));
+        assert_eq!(tick(&mut seen, true, false, false, &["Bash: ls"], false), None, "same request again");
+        assert_eq!(tick(&mut seen, true, false, false, &["Bash: ls", "Edit: a.rs"], false), Some(News::Permission("Edit: a.rs".into())));
+        assert_eq!(tick(&mut seen, true, false, false, &["Edit: a.rs"], false), None, "one answered: fewer is no news");
+        assert_eq!(tick(&mut seen, true, false, false, &["Edit: a.rs", "Write: b"], false), Some(News::Permission("Write: b".into())));
+        // a permission while the turn ends the same frame is reported first
+        assert_eq!(tick(&mut seen, false, false, false, &["Edit: a.rs", "Write: b", "Bash: x"], false), Some(News::Permission("Bash: x".into())));
+    }
+
+    /// The words `cmd` gets as arguments, and its environment.
+    fn parts(cmd: &std::process::Command) -> (String, Vec<String>, Vec<(String, String)>) {
+        let args = cmd.get_args().map(|a| a.to_string_lossy().into_owned()).collect();
+        let envs = cmd.get_envs().filter_map(|(k, v)| Some((k.to_string_lossy().into_owned(), v?.to_string_lossy().into_owned()))).collect();
+        (cmd.get_program().to_string_lossy().into_owned(), args, envs)
+    }
+
+    #[test]
+    fn notification_text_is_an_argument_never_part_of_a_script() {
+        // an agent name written to break out of an AppleScript / PowerShell / shell string
+        let title = "Evil\" & (do shell script \"touch /tmp/x\") & \"'; $(id); `id` $env:Path";
+        let body = "Bash: rm -rf ~ \\ \" ' ; | & > <\nline 2";
+
+        let (program, args, envs) = parts(&notify_command(terminal::Os::Mac, title, body));
+        assert_eq!(program, "osascript");
+        assert_eq!(args[args.len() - 2..], [title, body], "title and body are the last two words, handed to the script as argv");
+        let script = &args[..args.len() - 2];
+        assert!(script.iter().all(|w| !w.contains("Evil") && !w.contains("rm -rf")), "{script:?}");
+        assert!(script.iter().any(|w| w.contains("item 2 of argv") && w.contains("item 1 of argv")), "{script:?}");
+        assert!(envs.is_empty());
+
+        let (program, args, envs) = parts(&notify_command(terminal::Os::Linux, title, body));
+        assert_eq!(program, "notify-send");
+        assert_eq!(args, ["--app-name=BashCutPro", "--", title, body], "after `--`, so a title like `-h` is no option");
+
+        let (program, args, envs_win) = parts(&notify_command(terminal::Os::Windows, title, body));
+        assert_eq!(program, "powershell");
+        assert!(args.iter().all(|w| !w.contains("Evil") && !w.contains("rm -rf")), "the script holds no user text: {args:?}");
+        assert!(args.last().is_some_and(|w| w.contains("$env:BASHCUT_NOTE_TITLE") && w.contains("$env:BASHCUT_NOTE_BODY")));
+        assert!(envs_win.contains(&("BASHCUT_NOTE_TITLE".into(), title.into())), "{envs_win:?}");
+        assert!(envs_win.contains(&("BASHCUT_NOTE_BODY".into(), body.into())), "{envs_win:?}");
+        let _ = envs;
+
+        // empty text still builds a command with both words
+        let (_, args, _) = parts(&notify_command(terminal::Os::Mac, "", ""));
+        assert_eq!(args[args.len() - 2..], ["", ""]);
+    }
 
     /// A file that exists (the test binary), so an agent run with it counts as found.
     fn found() -> String {
@@ -780,9 +882,115 @@ mod tests {
     #[ignore = "test ticket: bashcut.agent.terminal while a turn runs returns pending, poll opens it once the agent ended and the transcript says Continued in Terminal"]
     fn terminal_command_hands_off_after_the_turn_ends() {}
 
+    /// The notices of `app`'s conversation that say "Back in the panel.".
+    fn back_notices(app: &FilmcraftApp, ctx: &egui::Context) -> usize {
+        with(app, ctx, |a| {
+            a.conversation.transcript.items.iter().filter(|i| matches!(i, bashcut_agent::Item::Notice { message } if message == "Back in the panel.")).count()
+        })
+    }
+
+    fn event(app: &mut FilmcraftApp, ctx: &egui::Context, e: Value) -> Result<Value, String> {
+        invoke(app, ctx, "terminalEvent", &json!({"event": e}))
+    }
+
     #[test]
-    #[ignore = "test ticket: bashcut.agent.terminalEvent drives terminal_phase (Opened, Working, Waiting, Done, Closed), is ignored before Open in Terminal, and SessionEnd adds the Back in the panel notice once"]
-    fn terminal_event_command_updates_the_phase_and_hands_back() {}
+    fn terminal_event_command_updates_the_phase_and_hands_back() {
+        use terminal::Phase;
+        let (mut app, ctx) = app_with(vec![AgentSpec::claude_code(Some(found()))]);
+        with(&app, &ctx, |a| a.conversation.session = "sess-1".into());
+        // before Open in Terminal (no hooked terminal): ignored, nothing changes
+        assert_eq!(event(&mut app, &ctx, json!({"hook_event_name": "UserPromptSubmit"})), Ok(json!({"ignored": true})));
+        assert_eq!(terminal_phase(&ctx), None);
+        assert!(!terminal_live(&ctx));
+        // a terminal without hooks has no watch either
+        ctx.data_mut(|d| d.insert_temp(watch_key(), TerminalWatch(None, Instant::now())));
+        assert_eq!(event(&mut app, &ctx, json!({"hook_event_name": "SessionEnd"})), Ok(json!({"ignored": true})));
+        assert_eq!(back_notices(&app, &ctx), 0);
+
+        // Open in Terminal with hooks: the watch starts at Opened
+        ctx.data_mut(|d| d.insert_temp(watch_key(), TerminalWatch(Some(terminal::Watch::default()), Instant::now())));
+        assert_eq!(terminal_phase(&ctx), Some(Phase::Opened));
+        assert!(terminal_live(&ctx) && !terminal_maybe_closed(&ctx));
+        for (e, phase) in [
+            (json!({"hook_event_name": "UserPromptSubmit"}), "Working"),
+            (json!({"hook_event_name": "PermissionRequest", "tool_name": "Bash", "tool_use_id": "t1"}), "Waiting"),
+            (json!({"hook_event_name": "PreToolUse", "tool_name": "Read", "tool_use_id": "t2"}), "Waiting"),
+            (json!({"hook_event_name": "PostToolUse", "tool_name": "Bash", "tool_use_id": "t1"}), "Working"),
+            (json!({"hook_event_name": "Stop"}), "Done"),
+            (json!({"hook_event_name": "UserPromptSubmit"}), "Working"),
+            (json!({"hook_event_name": "StopFailure"}), "Failed"),
+        ] {
+            assert_eq!(event(&mut app, &ctx, e.clone()), Ok(json!({"phase": phase})), "{e}");
+            assert_eq!(format!("{:?}", terminal_phase(&ctx).unwrap()), phase);
+            assert!(terminal_live(&ctx));
+        }
+        // the hook JSON may arrive as text; garbage and a missing event are errors
+        assert_eq!(invoke(&mut app, &ctx, "terminalEvent", &json!({"event": "{\"hook_event_name\": \"Stop\"}"})), Ok(json!({"phase": "Done"})));
+        assert!(invoke(&mut app, &ctx, "terminalEvent", &json!({"event": "not json"})).is_err());
+        assert!(invoke(&mut app, &ctx, "terminalEvent", &json!({})).is_err());
+        assert_eq!(terminal_phase(&ctx), Some(Phase::Done), "errors change nothing");
+
+        // /clear and resume do not end it; the real end hands the conversation back once
+        assert_eq!(event(&mut app, &ctx, json!({"hook_event_name": "SessionEnd", "reason": "clear"})), Ok(json!({"phase": "Done"})));
+        assert_eq!(back_notices(&app, &ctx), 0);
+        assert_eq!(event(&mut app, &ctx, json!({"hook_event_name": "SessionEnd", "reason": "prompt_input_exit"})), Ok(json!({"phase": "Closed"})));
+        assert_eq!(back_notices(&app, &ctx), 1, "Back in the panel.");
+        assert!(!terminal_live(&ctx), "the composer is the panel's again");
+        assert_eq!(event(&mut app, &ctx, json!({"hook_event_name": "SessionEnd"})), Ok(json!({"phase": "Closed"})));
+        assert_eq!(event(&mut app, &ctx, json!({"hook_event_name": "Stop"})), Ok(json!({"phase": "Closed"})), "closed ignores the rest");
+        assert_eq!(back_notices(&app, &ctx), 1, "once");
+        // a new session in the same window (SessionStart) starts over
+        assert_eq!(event(&mut app, &ctx, json!({"hook_event_name": "SessionStart"})), Ok(json!({"phase": "Opened"})));
+        assert!(terminal_live(&ctx));
+    }
+
+    #[test]
+    fn terminal_without_a_session_adds_no_back_notice() {
+        let (mut app, ctx) = app_with(vec![AgentSpec::claude_code(Some(found()))]);
+        ctx.data_mut(|d| d.insert_temp(watch_key(), TerminalWatch(Some(terminal::Watch::default()), Instant::now())));
+        assert_eq!(event(&mut app, &ctx, json!({"hook_event_name": "SessionEnd"})), Ok(json!({"phase": "Closed"})));
+        assert_eq!(back_notices(&app, &ctx), 0, "nothing was continued");
+    }
+
+    #[test]
+    fn terminal_done_with_no_event_for_ten_minutes_may_be_closed() {
+        use terminal::Phase;
+        let (mut app, ctx) = app_with(vec![AgentSpec::claude_code(Some(found()))]);
+        let watch_at = |phase_events: &[Value], age: Duration| {
+            let mut w = terminal::Watch::default();
+            for e in phase_events {
+                w.apply(e);
+            }
+            let at = Instant::now().checked_sub(age).unwrap_or_else(Instant::now);
+            ctx.data_mut(|d| d.insert_temp(watch_key(), TerminalWatch(Some(w), at)));
+        };
+        let (stop, work, fail) =
+            (json!({"hook_event_name": "Stop"}), json!({"hook_event_name": "UserPromptSubmit"}), json!({"hook_event_name": "StopFailure"}));
+        watch_at(std::slice::from_ref(&stop), Duration::from_secs(9 * 60));
+        assert!(!terminal_maybe_closed(&ctx), "9 minutes");
+        watch_at(std::slice::from_ref(&stop), Duration::from_secs(10 * 60 + 1));
+        assert!(terminal_maybe_closed(&ctx) && terminal_live(&ctx), "Done and 10 minutes");
+        watch_at(&[fail], Duration::from_secs(11 * 60));
+        assert!(terminal_maybe_closed(&ctx), "Failed too");
+        // working / opened for a long time is a long turn, not a closed window
+        watch_at(std::slice::from_ref(&work), Duration::from_secs(60 * 60));
+        assert!(!terminal_maybe_closed(&ctx));
+        watch_at(&[], Duration::from_secs(60 * 60));
+        assert_eq!(terminal_phase(&ctx), Some(Phase::Opened));
+        assert!(!terminal_maybe_closed(&ctx));
+        // any event restarts the clock
+        watch_at(std::slice::from_ref(&stop), Duration::from_secs(20 * 60));
+        assert!(terminal_maybe_closed(&ctx));
+        event(&mut app, &ctx, work).unwrap();
+        assert!(!terminal_maybe_closed(&ctx));
+        // no watch: never
+        take_back(&app, &ctx);
+        assert!(!terminal_maybe_closed(&ctx) && !terminal_live(&ctx));
+        // the line is translated
+        super::super::strings::set_language(Some("vi"));
+        assert_eq!(s("Terminal: closed?"), "Terminal: đã đóng chưa?");
+        super::super::strings::set_language(None);
+    }
 
     #[test]
     fn install_and_sign_in_commands_refuse_when_not_applicable() {
@@ -802,10 +1010,6 @@ mod tests {
         assert_ne!(e, "Sign in works with Claude Code once it is installed.");
         super::super::strings::set_language(None);
     }
-
-    #[test]
-    #[ignore = "test ticket: terminal live (Opened/Working/Waiting/Done) -> composer disabled with the reason; Take back (confirm) re-enables and adds the Back notice; Done with no event for 10 minutes shows Terminal: closed?"]
-    fn terminal_live_disables_composer_until_take_back() {}
 
     #[test]
     fn install_kit_command_refuses_when_kit_present() {
