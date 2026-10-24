@@ -348,6 +348,9 @@ impl Agent {
             self.closing = Some(l);
         }
         self.idle_since = None;
+        // the next process lists its own plugins and commands (AG15: no stale kit line from the ended one)
+        self.plugins = None;
+        self.commands = None;
     }
 
     /// Open in Terminal (AG3): the terminal resumes this conversation's session, which must not have
@@ -525,7 +528,7 @@ impl Agent {
         };
         self.mcp_config = mcp.clone();
         let session = Some(self.conversation.session.as_str()).filter(|s| !s.is_empty());
-        self.agent.command_line(mcp.as_deref(), session)
+        self.agent.command_line(mcp.as_deref(), session, bashcut_dirs::kit::kit_dir().as_deref())
     }
 
     /// Write `message` to the live agent, starting it (with `argv`) when there is none.
@@ -590,7 +593,7 @@ impl Agent {
     fn restart_live(&mut self) -> Result<()> {
         let launch = self.launch.clone().ok_or_else(|| Error("the agent cannot be restarted".into()))?;
         let session = Some(self.conversation.session.as_str()).filter(|s| !s.is_empty());
-        let argv = self.agent.command_line(launch.mcp.as_deref(), session)?;
+        let argv = self.agent.command_line(launch.mcp.as_deref(), session, bashcut_dirs::kit::kit_dir().as_deref())?;
         self.start_live(&argv, &launch)?;
         for p in self.pending.iter().filter(|p| !p.held) {
             self.write(&p.message, &p.uuid)?;
@@ -1105,6 +1108,10 @@ fn unsaved_cwd() -> PathBuf {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    #[ignore = "test ticket: end_session clears plugins and commands"]
+    fn end_session_clears_plugins() {}
 
     #[test]
     fn a_saved_project_runs_in_its_folder() {

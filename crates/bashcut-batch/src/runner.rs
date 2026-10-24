@@ -123,14 +123,14 @@ pub struct Choices {
     pub data_dir: Option<PathBuf>,
     /// `bashcut-mcp`; default `$BASHCUT_MCP`, else next to this program.
     pub mcp: Option<PathBuf>,
-    /// The agent kit; default `$BASHCUT_KIT`, else `<data dir>/bashcut-kit` when it is there.
+    /// The agent kit; default `$BASHCUT_KIT`, else the default places ([`bashcut_dirs::kit::kit_in`]).
     pub kit: Option<PathBuf>,
     pub speech_model: Option<String>,
     /// Let the machine sleep while the batch runs.
     pub no_keep_awake: bool,
 }
 
-/// The agent kit (#204): `named`, `$BASHCUT_KIT`, else `<data dir>/bashcut-kit` when it is there. A folder named
+/// The agent kit (#204): `named`, `$BASHCUT_KIT`, else the default places ([`bashcut_dirs::kit::kit_in`]). A folder named
 /// on purpose that is not a kit (no `skills/`) is an error; the default is skipped quietly.
 fn find_kit(named: Option<PathBuf>, data_dir: Option<&Path>) -> Result<Option<PathBuf>, String> {
     let named = named.or_else(|| std::env::var_os("BASHCUT_KIT").filter(|v| !v.is_empty()).map(PathBuf::from));
@@ -141,8 +141,9 @@ fn find_kit(named: Option<PathBuf>, data_dir: Option<&Path>) -> Result<Option<Pa
         }
         return Ok(Some(k));
     }
-    let default = data_dir.map(Path::to_path_buf).or_else(bashcut_dirs::data_dir).map(|d| d.join("bashcut-kit"));
-    Ok(default.filter(|k| k.join("skills").is_dir()))
+    let data = data_dir.map(Path::to_path_buf).or_else(bashcut_dirs::data_dir);
+    let home = std::env::var_os("HOME").or_else(|| std::env::var_os("USERPROFILE")).filter(|v| !v.is_empty()).map(PathBuf::from);
+    Ok(bashcut_dirs::kit::kit_in(data.as_deref(), home.as_deref()))
 }
 
 /// `bashcut-mcp` for agent steps: `named`, `$BASHCUT_MCP`, else next to this program.
