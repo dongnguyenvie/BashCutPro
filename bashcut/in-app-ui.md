@@ -409,7 +409,7 @@ labels or subclips (§1 rule 1). A project opened in upstream FilmCraft still wo
   then its process group is killed 5 s later (`Agent::shutdown` waits up to 3 s). Codex keeps the per-message
   path (`process::Turn`, `live: false`: its CLI reads the prompt to EOF; Send is disabled while it works).
   Edits the agent makes appear in History as normal commands, so Undo works. Tool calls with the same command
-  fold into one row ("edit.razor ×12"). Enter sends; Shift+Enter starts a new line.
+  fold into one row ("edit.razor ×12"). A `command_run` row with `seconds`/`timecode`/`frame`/`time` or `clip` shows **Show** (`agent_panel/reveal.rs`, id `bashcut.agent.tool.<at>.show`): `playhead.set` with that time (the session's own rate) or `timeline.select` of the clip. Enter sends; Shift+Enter starts a new line.
 - **Conversations**: kept in `<project>.fcproj.bashcut/conversations/<id>.json` (`bashcut-conversation/1`: the
   transcript and the agent's session id), listed newest first in the picker; an unsaved project keeps none.
 - **Gates**: the edit-workflow skill writes gates into `plan.json` (`{"gates": [{stage, summary, evidence, state}]}`,

@@ -38,6 +38,7 @@
 mod cards;
 mod empty;
 mod input;
+mod reveal;
 mod setup;
 mod tool_summary;
 mod tools;
@@ -422,6 +423,7 @@ mod tests {
             "Copy",
             "Copied",
             "Show all",
+            "Show",
             "Working",
             "Thinking…",
             "Running {tool}…",

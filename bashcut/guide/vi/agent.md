@@ -28,7 +28,8 @@ liệu, Tải về) khi dự án nằm ở đó: bấm **Cho phép**. Khi chưa 
    "Đã dừng.", dự án giữ nguyên như lúc đó, và tin nhắn tiếp theo tiếp tục trong cùng cuộc trò chuyện. Những tin
    bạn xếp hàng mà trợ lý chưa bắt đầu sẽ quay lại ô nhập tin. Công cụ bị dừng giữa chừng hiện **Đã dừng**.
    Mỗi lệnh công cụ là một dòng (biểu tượng, tên, việc đã làm, thời gian chạy); lệnh lỗi hiện **Lỗi** kèm lý do
-   ngay bên dưới, và bấm vào dòng để xem chi tiết cùng nút **Sao chép**.
+   ngay bên dưới, và bấm vào dòng để xem chi tiết cùng nút **Sao chép**. Lệnh sửa có nêu thời điểm hoặc clip có liên kết **Xem**:
+   đưa đầu phát tới đó, hoặc chọn clip.
 6. Bạn vẫn gõ tiếp được khi trợ lý đang làm: mỗi tin nhắn chờ dưới bản ghi với nhãn **Đang chờ 1**, **2**, …
    theo đúng thứ tự trợ lý sẽ nhận. Bấm **✕** ở một tin để bỏ nó; trợ lý sẽ không trả lời tin đó. Tin trợ lý đã nhận
    rồi thì vẫn được trả lời (muốn ngừng thì bấm **Dừng**).
