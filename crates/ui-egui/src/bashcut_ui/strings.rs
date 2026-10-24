@@ -181,9 +181,20 @@ mod tests {
     /// Our sources, without their test modules, as (file name, code).
     fn sources() -> Vec<(String, String)> {
         let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src/bashcut_ui");
-        let mut v: Vec<(String, String)> = std::fs::read_dir(&dir)
-            .unwrap()
-            .map(|e| e.unwrap().path())
+        let mut files = Vec::new();
+        let mut dirs = vec![dir.clone()];
+        while let Some(d) = dirs.pop() {
+            for e in std::fs::read_dir(&d).unwrap() {
+                let p = e.unwrap().path();
+                if p.is_dir() {
+                    dirs.push(p);
+                } else {
+                    files.push(p);
+                }
+            }
+        }
+        let mut v: Vec<(String, String)> = files
+            .into_iter()
             .filter(|p| p.extension().is_some_and(|x| x == "rs") && p.file_name().is_some_and(|n| n != "strings.rs"))
             .map(|p| {
                 let text = std::fs::read_to_string(&p).unwrap();
