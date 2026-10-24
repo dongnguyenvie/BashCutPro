@@ -62,10 +62,3 @@ pub(super) fn row(app: &mut FilmcraftApp, ui: &mut egui::Ui, items: &[Item], sta
         app.auto.add_response("bashcut.agent.quiet", &r, s(line));
     }
 }
-
-#[cfg(test)]
-mod tests {
-    #[test]
-    #[ignore = "test ticket: phase word follows fake_claude steps (Thinking, Running {tool}, Writing, Stopping); elapsed advances when the driver jumps time; no repaint requested after the turn ends"]
-    fn working_row_phases() {}
-}

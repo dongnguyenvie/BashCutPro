@@ -15,8 +15,7 @@ use crate::FilmcraftApp;
 pub(super) enum Tone {
     Needs,
     Problem,
-    /// Setup notes (kit missing, project not saved); their rows in setup.rs adopt it in a later ticket.
-    #[allow(dead_code)]
+    /// Setup notes (kit missing, kit gap, project not saved, control off, auth): the readiness lines in setup.rs.
     Info,
 }
 

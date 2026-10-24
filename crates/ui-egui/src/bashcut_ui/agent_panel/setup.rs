@@ -7,6 +7,7 @@ use super::super::hints::{self, HOW_TO_TURN_ON};
 use super::super::strings::{f, s};
 use super::super::terminal;
 use super::super::widgets::{NOTE, button, code_text, icon_button, icon_button_response, note};
+use super::cards::{Tone, card};
 use super::{Snapshot, View, call, report};
 use crate::FilmcraftApp;
 use crate::icons::Icon;
@@ -49,46 +50,63 @@ pub(super) fn readiness(app: &mut FilmcraftApp, ui: &mut egui::Ui, ctx: &egui::C
 fn lines(app: &mut FilmcraftApp, ui: &mut egui::Ui, ctx: &egui::Context, snap: &Snapshot, control_off: bool) {
     let t = app.tokens;
     if let Some(line) = &snap.missing {
-        ui.horizontal_wrapped(|ui| {
-            let r = note(ui, line, NOTE, t.danger);
-            app.auto.add_response("bashcut.agent.ready.agent", &r, line);
-            if snap.agent.0 == "claude-code"
-                && hover_button(app, ui, "bashcut.agent.install", s("Install"), s("Open a terminal with the official Claude Code installer."))
-            {
-                report(app, agent::install(snap.project.as_deref()));
-            }
+        let line = line.clone();
+        card(app, ui, Tone::Info, |app, ui| {
+            ui.horizontal_wrapped(|ui| {
+                let r = note(ui, &line, NOTE, t.danger);
+                app.auto.add_response("bashcut.agent.ready.agent", &r, &line);
+                if snap.agent.0 == "claude-code"
+                    && hover_button(app, ui, "bashcut.agent.install", s("Install"), s("Open a terminal with the official Claude Code installer."))
+                {
+                    report(app, agent::install(snap.project.as_deref()));
+                }
+            });
         });
     }
     if snap.outdated {
         let line = s(super::OUTDATED_LINE);
-        let r = note(ui, line, NOTE, t.danger);
-        app.auto.add_response("bashcut.agent.ready.update", &r, line);
+        card(app, ui, Tone::Info, |app, ui| {
+            let r = note(ui, line, NOTE, t.danger);
+            app.auto.add_response("bashcut.agent.ready.update", &r, line);
+        });
     }
     if let Some((category, message)) = &snap.auth {
-        auth_line(app, ui, snap, category, message);
+        let (category, message) = (category.clone(), message.clone());
+        card(app, ui, Tone::Info, |app, ui| {
+            auth_line(app, ui, snap, &category, &message);
+        });
     }
     if snap.kit_missing {
-        kit_line(app, ui, snap);
+        card(app, ui, Tone::Info, |app, ui| {
+            kit_line(app, ui, snap);
+        });
     }
     if let Some((n, skills)) = &snap.kit_gap {
-        kit_gap_line(app, ui, snap, *n, skills);
+        let (n, skills) = (*n, skills.clone());
+        card(app, ui, Tone::Info, |app, ui| {
+            kit_gap_line(app, ui, snap, n, &skills);
+        });
     }
     if control_off {
-        let line = s("Control channel off: the agent cannot edit the open project.");
-        let r = note(ui, line, NOTE, t.text_dim).on_hover_text(s(HOW_TO_TURN_ON));
-        app.auto.add_response("bashcut.agent.ready.control", &r, line);
-        super::super::control::setting(app, ui);
+        card(app, ui, Tone::Info, |app, ui| {
+            let line = s("Control channel off: the agent cannot edit the open project.");
+            let r = note(ui, line, NOTE, t.text_dim).on_hover_text(s(HOW_TO_TURN_ON));
+            app.auto.add_response("bashcut.agent.ready.control", &r, line);
+            super::super::control::setting(app, ui);
+        });
     }
     if !snap.has_project {
-        ui.horizontal_wrapped(|ui| {
-            let line = s("Project not saved: conversations will not be kept");
-            let r = note(ui, line, NOTE, t.text_dim);
-            app.auto.add_response("bashcut.agent.ready.project", &r, line);
-            if button(app, ui, "bashcut.agent.save", s("Save…"), true)
-                && let Err(e) = crate::menus::invoke(app, ctx, "file.save", json!({}))
-            {
-                app.ui.status = e;
-            }
+        card(app, ui, Tone::Info, |app, ui| {
+            ui.horizontal_wrapped(|ui| {
+                let line = s("Project not saved: conversations will not be kept");
+                let r = note(ui, line, NOTE, t.text_dim);
+                app.auto.add_response("bashcut.agent.ready.project", &r, line);
+                if button(app, ui, "bashcut.agent.save", s("Save…"), true)
+                    && let Err(e) = crate::menus::invoke(app, ctx, "file.save", json!({}))
+                {
+                    app.ui.status = e;
+                }
+            });
         });
     }
 }
