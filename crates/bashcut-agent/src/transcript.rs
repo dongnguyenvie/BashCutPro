@@ -81,6 +81,10 @@ impl Item {
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct Transcript {
     pub items: Vec<Item>,
+    /// AGU11: the assistant item that streamed text is growing (item index, byte offset where the
+    /// streamed block starts). Never saved; the block's final [`Event::Text`] replaces it.
+    #[serde(skip)]
+    live: Option<(usize, usize)>,
 }
 
 impl Transcript {
@@ -101,7 +105,20 @@ impl Transcript {
     /// [`Self::apply`] with the turn's wall-clock time in ms (the session measures it from the
     /// message it wrote to the result), which a successful result's [`Item::TurnEnd`] keeps.
     pub fn apply_timed(&mut self, e: &Event, ms: Option<u64>) {
+        if !matches!(e, Event::TextDelta(_) | Event::Text(_)) {
+            self.live = None;
+        }
         match e {
+            Event::TextDelta(d) => self.stream(d),
+            Event::Text(t) if self.live.is_some() => {
+                // the finished block replaces its provisional text
+                if let Some((at, start)) = self.live.take()
+                    && let Some(Item::Assistant { text }) = self.items.get_mut(at)
+                {
+                    text.truncate(start);
+                    text.push_str(t);
+                }
+            }
             Event::Text(t) => {
                 // consecutive text blocks read as one message
                 if let Some(Item::Assistant { text }) = self.items.last_mut()
@@ -154,6 +171,34 @@ impl Transcript {
         }
     }
 
+    /// Grow the provisional assistant text with a streamed piece; a new block after text joins it
+    /// like consecutive text blocks do.
+    fn stream(&mut self, d: &str) {
+        match self.live {
+            Some((at, _)) => {
+                if let Some(Item::Assistant { text }) = self.items.get_mut(at)
+                    && text.len() < crate::stream_json::MAX_TEXT
+                {
+                    text.push_str(d);
+                }
+            }
+            None => {
+                let at = self.items.len().saturating_sub(1);
+                if let Some(Item::Assistant { text }) = self.items.last_mut()
+                    && text.len() < crate::stream_json::MAX_TEXT
+                {
+                    text.push_str("\n\n");
+                    let start = text.len();
+                    text.push_str(d);
+                    self.live = Some((at, start));
+                } else {
+                    self.push(Item::Assistant { text: d.to_string() });
+                    self.live = Some((self.items.len().saturating_sub(1), 0));
+                }
+            }
+        }
+    }
+
     /// The sign-in or account problem the latest turn ended on (category, message): the last
     /// [`Item::Auth`] when no message was sent after it.
     pub fn auth_problem(&self) -> Option<(&str, &str)> {
@@ -177,6 +222,10 @@ impl Transcript {
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[test]
+    #[ignore = "test ticket: deltas grow one assistant item; the final Text replaces it without a duplicate; a second block joins with a blank line"]
+    fn streamed_text_is_replaced_by_the_message() {}
 
     #[test]
     fn builds_from_events() {
