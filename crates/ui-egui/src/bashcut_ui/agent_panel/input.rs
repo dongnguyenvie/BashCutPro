@@ -294,8 +294,9 @@ fn chip_text(app: &FilmcraftApp) -> String {
 /// A round icon button: accent fill for Send (`accent`), light for Stop, grey when off.
 fn round_button(app: &mut FilmcraftApp, ui: &mut egui::Ui, id: &str, icon: crate::icons::Icon, tip: &str, enabled: bool, accent: bool) -> bool {
     let tk = app.tokens;
-    let (rect, r) = ui.allocate_exact_size(egui::vec2(BTN, BTN), egui::Sense::click());
-    let r = r.on_hover_text(tip);
+    // off, it reports itself disabled (automation, screen readers) and still shows the reason on hover
+    let (rect, r) = ui.add_enabled_ui(enabled, |ui| ui.allocate_exact_size(egui::vec2(BTN, BTN), egui::Sense::click())).inner;
+    let r = if enabled { r.on_hover_text(tip) } else { r.on_disabled_hover_text(tip) };
     let (fill, fg) = match (enabled, accent) {
         (false, _) => (tk.field_border, tk.text_faint),
         (true, true) => (if r.hovered() { tk.accent.gamma_multiply(0.85) } else { tk.accent }, egui::Color32::WHITE),
