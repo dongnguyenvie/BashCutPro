@@ -449,6 +449,12 @@ labels or subclips (§1 rule 1). A project opened in upstream FilmCraft still wo
   queue (`cancel_queued: true`, held ones never written) and puts the queued text back into the message box (AG3
   behaviour, kept: nothing typed is lost, and one click stops everything). Claude Code merges messages it takes
   together into one turn; a message cancelled before that never reaches it.
+- **Cards (AGU6)**: `agent_panel/cards.rs` has one `card()` (3 px left bar, `t.radius`, bar colour at 10 % over `panel_bg`) in three
+  tones: Needs you (accent: permission, pending gate; one filled primary button, Deny as plain danger text, detail in a code frame
+  with Copy), Problem (danger: `Item::Error` as a sentence from `result_error` (`error_during_execution` is "The turn ended with
+  an error.") plus the failed tool's first line, and the agent's auth message; ids `bashcut.agent.error.<i>[.reason|.copy]`,
+  `bashcut.agent.autherror.<i>`) and Info (reserved for the setup notes). The Sign in action stays on the readiness line.
+  Answered permissions and gates are one line with a check or cross.
 - **Permission requests answered in the panel (AG8, checked with `claude` 2.1.309 on macOS)**: Claude Code runs with
   `--permission-prompt-tool stdio` (hidden in `--help`; `--permission-prompts` defaults to `host`), the stream-json
   control protocol the Agent SDK uses for `canUseTool`. Chosen over an MCP permission tool on our `bashcut-mcp` /
