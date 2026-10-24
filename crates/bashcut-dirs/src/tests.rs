@@ -199,3 +199,82 @@ fn clip_cuts_on_char_boundaries() {
     assert_eq!(fs::clip("日本", 2, "…"), "…", "nothing fits: just the ellipsis");
     assert_eq!(fs::clip("", 0, "…"), "");
 }
+
+/// A kit folder (it has `skills/`) at `root/rel`.
+fn make_kit(root: &Path, rel: &str) -> PathBuf {
+    let dir = root.join(rel);
+    std::fs::create_dir_all(dir.join("skills")).unwrap();
+    dir
+}
+
+#[test]
+fn kit_in_reads_the_data_folder_then_home_and_skips_a_folder_without_skills() {
+    let root = std::env::temp_dir().join(format!("bashcut-ta12-kit-in-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&root);
+    let (data, home) = (root.join("data"), root.join("home"));
+    // a folder without skills/ is not the kit
+    std::fs::create_dir_all(data.join(kit::DATA_SUBDIR)).unwrap();
+    std::fs::create_dir_all(home.join(kit::HOME_SUBDIR)).unwrap();
+    assert!(!kit::is_kit(&data.join(kit::DATA_SUBDIR)));
+    assert_eq!(kit::kit_in(Some(&data), Some(&home)), None);
+    // home only
+    let home_kit = make_kit(&home, kit::HOME_SUBDIR);
+    assert_eq!(kit::kit_in(Some(&data), Some(&home)), Some(home_kit.clone()));
+    assert_eq!(kit::kit_in(None, Some(&home)), Some(home_kit));
+    // the data folder wins
+    let data_kit = make_kit(&data, kit::DATA_SUBDIR);
+    assert_eq!(kit::kit_in(Some(&data), Some(&home)), Some(data_kit.clone()));
+    assert_eq!(kit::kit_in(Some(&data), None), Some(data_kit));
+    assert_eq!(kit::kit_in(None, None), None);
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+/// [`kit_dir_follows_the_environment_then_the_default_places`]'s child: `KIT_TEST_EXPECT` is the answer
+/// (empty: none) for the environment the parent gave this process.
+#[test]
+fn kit_dir_child() {
+    let Some(expect) = std::env::var_os("KIT_TEST_EXPECT") else { return };
+    let expect = Some(PathBuf::from(expect)).filter(|p| !p.as_os_str().is_empty());
+    assert_eq!(kit::kit_dir(), expect);
+}
+
+/// The lookup order of [`kit::kit_dir`]: `$BASHCUT_KIT`, `$BASHCUTPRO_KIT_DIR`, `<data dir>/bashcut-kit`, `~/.bashcutpro/bashcutpro-agent-kit`;
+/// a variable naming a folder without `skills/` (or empty) is skipped. The environment is the process's, and `unsafe` is
+/// forbidden, so each case runs in a child test process.
+#[test]
+fn kit_dir_follows_the_environment_then_the_default_places() {
+    let root = std::env::temp_dir().join(format!("bashcut-ta12-kit-dir-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&root);
+    let (data, home) = (root.join("data"), root.join("home"));
+    let bare = root.join("bare");
+    std::fs::create_dir_all(&bare).unwrap();
+    let (a, b) = (make_kit(&root, "a"), make_kit(&root, "b"));
+    let run = |env: &[(&str, &Path)], expect: Option<&Path>| {
+        let mut cmd = std::process::Command::new(std::env::current_exe().unwrap());
+        cmd.args(["--exact", "tests::kit_dir_child", "--test-threads=1"])
+            .env_remove("BASHCUT_KIT")
+            .env_remove("BASHCUTPRO_KIT_DIR")
+            .env_remove("USERPROFILE")
+            .env("HOME", &home)
+            .env("BASHCUTPRO_DATA_DIR", &data)
+            .env("KIT_TEST_EXPECT", expect.unwrap_or(Path::new("")));
+        for (k, v) in env {
+            cmd.env(k, v);
+        }
+        let out = cmd.output().unwrap();
+        let log = format!("{}{}", String::from_utf8_lossy(&out.stdout), String::from_utf8_lossy(&out.stderr));
+        assert!(out.status.success() && log.contains("1 passed"), "{env:?} -> {expect:?}:\n{log}");
+    };
+    run(&[], None);
+    let home_kit = make_kit(&home, kit::HOME_SUBDIR);
+    run(&[], Some(&home_kit));
+    let data_kit = make_kit(&data, kit::DATA_SUBDIR);
+    run(&[], Some(&data_kit));
+    run(&[("BASHCUTPRO_KIT_DIR", &b)], Some(&b));
+    run(&[("BASHCUT_KIT", &a), ("BASHCUTPRO_KIT_DIR", &b)], Some(&a));
+    // a variable that names no kit, or an empty one, is skipped
+    run(&[("BASHCUT_KIT", &bare), ("BASHCUTPRO_KIT_DIR", &b)], Some(&b));
+    run(&[("BASHCUT_KIT", &bare), ("BASHCUTPRO_KIT_DIR", &bare)], Some(&data_kit));
+    run(&[("BASHCUT_KIT", Path::new(""))], Some(&data_kit));
+    let _ = std::fs::remove_dir_all(&root);
+}
