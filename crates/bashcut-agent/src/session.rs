@@ -1110,8 +1110,13 @@ mod tests {
     use super::*;
 
     #[test]
-    #[ignore = "test ticket: end_session clears plugins and commands"]
-    fn end_session_clears_plugins() {}
+    fn end_session_clears_plugins() {
+        let mut a = Agent::new(Vec::new());
+        a.plugins = Some(vec!["bcp".into()]);
+        a.commands = Some(Vec::new());
+        a.end_session();
+        assert_eq!((a.plugins.as_ref(), a.commands.as_ref()), (None, None), "the next process lists its own");
+    }
 
     #[test]
     fn a_saved_project_runs_in_its_folder() {

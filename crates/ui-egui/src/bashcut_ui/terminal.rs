@@ -420,6 +420,18 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "test ticket: kit_job clones when the folder is empty and pulls when it holds a clone; the folder and git are one word on POSIX and in PowerShell (spaces, quotes)"]
-    fn kit_job_clones_or_pulls() {}
+    fn kit_job_clones_or_pulls() {
+        let script = |os, git: &str, dir: &str, cloned| match kit_job(os, git, Path::new(dir), cloned) {
+            Job::Script(l) => l,
+            other => panic!("{other:?}"),
+        };
+        let (url_sh, url_ps) = (sh_quote(KIT_REPO_URL), ps_quote(KIT_REPO_URL));
+        assert_eq!(script(Os::Linux, "git", "/d/bashcut-kit", false), format!("'git' clone {url_sh} '/d/bashcut-kit'"));
+        assert_eq!(script(Os::Linux, "git", "/d/bashcut-kit", true), "'git' -C '/d/bashcut-kit' pull");
+        assert_eq!(script(Os::Windows, "git", r"C:\d\bashcut-kit", false), format!(r"& 'git' clone {url_ps} 'C:\d\bashcut-kit'"));
+        assert_eq!(script(Os::Windows, "git", r"C:\d\bashcut-kit", true), r"& 'git' -C 'C:\d\bashcut-kit' pull");
+        // spaces and quotes stay one word
+        assert_eq!(script(Os::Mac, "/opt/it's git/git", "/Users/a b/it's", true), r"'/opt/it'\''s git/git' -C '/Users/a b/it'\''s' pull");
+        assert_eq!(script(Os::Windows, "git", r"C:\Users\a b\it's", true), r"& 'git' -C 'C:\Users\a b\it''s' pull");
+    }
 }

@@ -622,8 +622,23 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "test ticket: command_line has --plugin-dir <kit> for Claude Code when a kit is given, not without one, and never for Codex"]
-    fn command_line_adds_the_kit_folder() {}
+    fn command_line_adds_the_kit_folder() {
+        let (cfg, kit) = (Path::new("/t/m.json"), Path::new("/opt/my kit"));
+        let spec = AgentSpec::claude_code(None);
+        let with = spec.command_line(Some(cfg), None, Some(kit)).unwrap();
+        assert!(with.windows(2).any(|w| w == ["--plugin-dir", "/opt/my kit"]), "{with:?}");
+        let without = spec.command_line(Some(cfg), None, None).unwrap();
+        assert!(!without.iter().any(|a| a == "--plugin-dir"), "{without:?}");
+        // only the kit differs, and it comes after --resume, before the prompt arguments
+        let resumed = spec.command_line(Some(cfg), Some("abc-1"), Some(kit)).unwrap();
+        let (r, k) = (resumed.iter().position(|a| a == "--resume"), resumed.iter().position(|a| a == "--plugin-dir"));
+        assert!(r.is_some() && k.is_some() && r < k, "{resumed:?}");
+        let codex = AgentSpec::codex(Some("/opt/codex".into()));
+        let cfg = write_mcp_config("/apps/kit-test-cli", "127.0.0.1:9881").unwrap();
+        let argv = codex.command_line(Some(&cfg), None, Some(kit)).unwrap();
+        let _ = std::fs::remove_file(&cfg);
+        assert!(!argv.iter().any(|a| a == "--plugin-dir" || a.contains("my kit")), "{argv:?}");
+    }
 
     #[test]
     fn command_line_adds_mcp_and_resume() {

@@ -2507,7 +2507,10 @@ fn terminal_command_hands_off_after_the_turn_ends() {
 #[test]
 fn a_session_without_the_bcp_plugin_shows_the_kit_line() {
     use filmcraft_ui_egui::bashcut_ui::terminal;
-    let Some(fake) = fake_claude("a_session_without_the_bcp_plugin_shows_the_kit_line", "kit", &[]) else { return };
+    let scratch = kit_scratch("kit");
+    let env = kit_env(&scratch, None, true);
+    let env: Vec<(&str, &str)> = env.iter().map(|(k, v)| (*k, v.as_str())).collect();
+    let Some(fake) = fake_claude("a_session_without_the_bcp_plugin_shows_the_kit_line", "kit", &env) else { return };
     let mut d = fake.driver();
     assert!(d.element("bashcut.agent.ready.kit").is_null(), "unknown before an init");
     d.exec("bashcut.agent.send", json!({"text": "no kit here"}));
@@ -2524,6 +2527,15 @@ fn a_session_without_the_bcp_plugin_shows_the_kit_line() {
     let (_, job, hint) = opened().pop().expect("Download kit opened a terminal");
     assert!(matches!(&job, terminal::Job::Script(l) if l.contains("git") && (l.contains(terminal::KIT_REPO_URL) || l.contains("pull"))), "{job:?}");
     assert!(hint.is_some_and(|h| h.contains("kit")));
+    // AG16: the first download clones into <data dir>/bashcut-kit, a folder that holds a clone is pulled
+    let target = std::path::PathBuf::from(std::env::var_os("BASHCUTPRO_DATA_DIR").unwrap_or_default()).join("bashcut-kit");
+    let Some(terminal::Job::Script(first)) = Some(job) else { panic!("a script") };
+    assert!(first.contains("clone") && !first.contains("pull") && first.contains(&*target.to_string_lossy()), "{first}");
+    std::fs::create_dir_all(target.join(".git")).unwrap();
+    d.click("bashcut.agent.installKit");
+    let (_, job, _) = opened().pop().expect("Download kit again opened a terminal");
+    assert!(matches!(&job, terminal::Job::Script(l) if l.contains("pull") && !l.contains("clone")), "{job:?}");
+    std::fs::remove_dir_all(target.join(".git")).unwrap();
 
     d.exec("bashcut.agent.send", json!({"text": "with the kit"}));
     d.agent_said("echo with the kit");
@@ -3285,4 +3297,107 @@ fn control_token_goes_only_with_the_windows_own_bridge() {
     assert_eq!(plugins::control_token_for(Some("10.0.0.1:9876")), None, "another host");
     assert_eq!(plugins::control_token_for(Some("localhost:9876")), None, "only the exact address the window published");
     assert_eq!(plugins::control_token_for(None), None, "no bridge");
+}
+
+/// A scratch folder for the kit tests (the parent makes and removes it; the child only reads the paths from its environment).
+fn kit_scratch(case: &str) -> std::path::PathBuf {
+    let dir = std::env::temp_dir().join(format!("bashcut-ta12-{case}-{}", std::process::id()));
+    if std::env::var_os(FAKE_CHILD).is_none() {
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(dir.join("data")).unwrap();
+        std::fs::create_dir_all(dir.join("home")).unwrap();
+    }
+    dir
+}
+
+/// The environment of a kit test: the data folder and home in `scratch` (so the real ones never decide whether a
+/// kit exists), `BASHCUT_KIT` unset, `PATH` the given one when `path` is set. `cleared`: no kit variables.
+fn kit_env(scratch: &std::path::Path, path: Option<&std::path::Path>, cleared: bool) -> Vec<(&'static str, String)> {
+    let p = |x: &std::path::Path| x.to_string_lossy().into_owned();
+    let mut env = vec![("BASHCUTPRO_DATA_DIR", p(&scratch.join("data"))), ("HOME", p(&scratch.join("home")))];
+    if cleared {
+        env.push(("BASHCUT_KIT", String::new()));
+        env.push(("BASHCUTPRO_KIT_DIR", String::new()));
+    }
+    if let Some(path) = path {
+        env.push(("PATH", p(path)));
+    }
+    env
+}
+
+/// AG15: with a kit folder (`$BASHCUT_KIT`), a session whose init lists no `bcp` shows no kit line and no Download
+/// kit…, and the agent was started with `--plugin-dir <kit>` (the kit loads for that process only).
+#[test]
+fn a_kit_folder_hides_the_kit_line_and_is_passed_as_plugin_dir() {
+    let scratch = kit_scratch("kitdir");
+    let kit = scratch.join("my kit");
+    if std::env::var_os(FAKE_CHILD).is_none() {
+        std::fs::create_dir_all(kit.join("skills")).unwrap();
+    }
+    let mut env = kit_env(&scratch, None, false);
+    env.push(("BASHCUT_KIT", kit.to_string_lossy().into_owned()));
+    let env: Vec<(&str, &str)> = env.iter().map(|(k, v)| (*k, v.as_str())).collect();
+    let Some(fake) = fake_claude("a_kit_folder_hides_the_kit_line_and_is_passed_as_plugin_dir", "kitdir", &env) else {
+        let _ = std::fs::remove_dir_all(&scratch);
+        return;
+    };
+    let mut d = fake.driver();
+    d.exec("bashcut.agent.send", json!({"text": "no kit here"}));
+    d.agent_said("echo no kit here");
+    d.agent_idle();
+    d.frames(2);
+    assert!(d.element("bashcut.agent.ready.kit").is_null(), "a kit folder: no kit line");
+    assert!(!d.has("bashcut.agent.installKit"));
+    let want = std::env::var("BASHCUT_KIT").unwrap_or_default();
+    let started = fake.notes("start");
+    assert!(
+        started.iter().any(|n| n["args"].as_array().is_some_and(|a| a.windows(2).any(|w| w[0] == json!("--plugin-dir") && w[1] == json!(want)))),
+        "--plugin-dir {want}: {started:?}"
+    );
+    d.no_ui_error();
+}
+
+/// AG16: without `git` on `PATH` the kit line shows the zip address and the folder to unpack it into (both languages),
+/// no Download kit… button, and `bashcut.agent.installKit` answers with the same sentence.
+#[cfg(unix)]
+#[test]
+fn without_git_the_kit_line_shows_the_zip_address() {
+    use filmcraft_ui_egui::bashcut_ui::terminal;
+    let scratch = kit_scratch("nogit");
+    // a PATH with `dirname` (the fake's wrapper needs it) and no git
+    let bin = scratch.join("path");
+    if std::env::var_os(FAKE_CHILD).is_none() {
+        std::fs::create_dir_all(&bin).unwrap();
+        let Some(dirname) = ["/usr/bin/dirname", "/bin/dirname"].into_iter().find(|p| std::path::Path::new(p).is_file()) else {
+            eprintln!("dirname not found: skipped");
+            return;
+        };
+        std::os::unix::fs::symlink(dirname, bin.join("dirname")).unwrap();
+    }
+    let env = kit_env(&scratch, Some(&bin), true);
+    let env: Vec<(&str, &str)> = env.iter().map(|(k, v)| (*k, v.as_str())).collect();
+    let Some(fake) = fake_claude("without_git_the_kit_line_shows_the_zip_address", "nogit", &env) else {
+        let _ = std::fs::remove_dir_all(&scratch);
+        return;
+    };
+    let mut d = fake.driver();
+    d.exec("bashcut.agent.send", json!({"text": "no kit here"}));
+    d.agent_said("echo no kit here");
+    d.agent_idle();
+    d.frames(2);
+    assert!(!d.element("bashcut.agent.ready.kit").is_null(), "the kit line shows");
+    assert!(!d.has("bashcut.agent.installKit"), "no git: no button");
+    let folder = std::path::PathBuf::from(std::env::var_os("BASHCUTPRO_DATA_DIR").unwrap_or_default()).join("bashcut-kit");
+    let (en, vi) = d.labels("bashcut.agent.ready.kit.zip");
+    let (en, vi) = (en.as_str().unwrap_or_default().to_string(), vi.as_str().unwrap_or_default().to_string());
+    for text in [&en, &vi] {
+        assert!(text.contains(terminal::KIT_ZIP_URL) && text.contains(&*folder.to_string_lossy()), "{text}");
+    }
+    assert!(en.starts_with("Git was not found"), "{en}");
+    assert!(vi.starts_with("Không tìm thấy Git"), "{vi}");
+    let r = d.call("engine.execute", json!({"command": "bashcut.agent.installKit", "params": {}}));
+    assert_eq!(r["ok"], json!(false), "{r}");
+    assert!(r.to_string().contains(terminal::KIT_ZIP_URL), "{r}");
+    assert!(opened().is_empty(), "nothing was opened");
+    d.no_ui_error();
 }

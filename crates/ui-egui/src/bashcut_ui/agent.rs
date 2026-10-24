@@ -481,8 +481,26 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "test ticket: terminal_argv adds --plugin-dir <kit> (and --mcp-config) only while the kit is not installed globally"]
-    fn terminal_argv_adds_the_kit_folder() {}
+    fn terminal_argv_adds_the_kit_folder() {
+        let argv = || vec!["claude".to_string(), "--resume".into(), "abc".into()];
+        let kit = Path::new("/opt/my kit");
+        let c = Context::default();
+        // kit listed globally: the resume line as it is
+        assert_eq!(terminal_argv(argv(), false, Some(kit), &c), argv());
+        // not listed: the kit folder
+        let v = terminal_argv(argv(), true, Some(kit), &c);
+        assert_eq!(v[..3], argv()[..]);
+        assert_eq!(v[3..], ["--plugin-dir", "/opt/my kit"]);
+        // not listed, no kit folder, no bridge: nothing added
+        assert_eq!(terminal_argv(argv(), true, None, &c), argv());
+        // not listed with a bridge: the app's server too, in a config file; listed: none
+        let c = Context { cli: Some("/apps/bashcutpro-cli".into()), bridge: Some("127.0.0.1:9876".into()), ..Context::default() };
+        let v = terminal_argv(argv(), true, Some(kit), &c);
+        let at = v.iter().position(|a| a == "--mcp-config");
+        assert!(at.is_some_and(|i| v.get(i + 1).is_some_and(|p| p.ends_with("terminal-mcp.json"))), "{v:?}");
+        assert_eq!(v.windows(2).filter(|w| w[0] == "--plugin-dir").count(), 1, "{v:?}");
+        assert_eq!(terminal_argv(argv(), false, Some(kit), &c), argv());
+    }
 
     #[test]
     #[ignore = "test ticket: bashcut.agent.terminal while a turn runs returns pending, poll opens it once the agent ended and the transcript says Continued in Terminal"]
