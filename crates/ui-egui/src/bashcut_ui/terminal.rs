@@ -865,6 +865,47 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "test ticket: session_untouched is true for an old, missing or unnamed session file and false for one written within the window"]
-    fn session_untouched_follows_the_session_file() {}
+    fn session_untouched_follows_the_session_file() {
+        use std::time::Duration;
+
+        // --- unnamed: no transcript path set → always untouched (falls back to hook-silence rule) ---
+        let w = Watch::default();
+        assert!(w.session_untouched(Duration::from_secs(600)), "unnamed: no path → true");
+        assert!(w.session_untouched(Duration::ZERO), "unnamed: zero window → true");
+
+        // --- missing file: path set but the file does not exist → always untouched (unreadable = old rule) ---
+        let mut w = Watch::default();
+        let tmp = std::env::temp_dir().join(format!("bcp-tfx39-missing-{}.jsonl", std::process::id()));
+        let _ = std::fs::remove_file(&tmp); // ensure it does not exist
+        w.apply(&serde_json::json!({
+            "hook_event_name": "UserPromptSubmit",
+            "transcript_path": tmp.to_string_lossy().as_ref(),
+        }));
+        assert!(w.session_untouched(Duration::from_secs(600)), "missing file → true");
+        assert!(w.session_untouched(Duration::ZERO), "missing file, zero window → true");
+
+        // --- touched file: write it now; a large window (1 h) means age < window → false ---
+        let mut w = Watch::default();
+        let touched = std::env::temp_dir().join(format!("bcp-tfx39-touched-{}.jsonl", std::process::id()));
+        std::fs::write(&touched, b"{}").expect("write touched file");
+        w.apply(&serde_json::json!({
+            "hook_event_name": "UserPromptSubmit",
+            "transcript_path": touched.to_string_lossy().as_ref(),
+        }));
+        // just written: its age is tiny; a 1-hour window is larger → not untouched
+        assert!(!w.session_untouched(Duration::from_secs(3600)), "touched file, 1 h window → false");
+        let _ = std::fs::remove_file(&touched);
+
+        // --- old file: any file's age is >= 0; a zero window means age >= 0 always → true ---
+        let mut w = Watch::default();
+        let old = std::env::temp_dir().join(format!("bcp-tfx39-old-{}.jsonl", std::process::id()));
+        std::fs::write(&old, b"{}").expect("write old-scenario file");
+        w.apply(&serde_json::json!({
+            "hook_event_name": "UserPromptSubmit",
+            "transcript_path": old.to_string_lossy().as_ref(),
+        }));
+        // zero window: age >= 0 is always true → untouched (the file's age exceeds the window)
+        assert!(w.session_untouched(Duration::ZERO), "old-scenario file, zero window → true");
+        let _ = std::fs::remove_file(&old);
+    }
 }

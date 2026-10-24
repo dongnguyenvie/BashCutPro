@@ -4208,6 +4208,54 @@ fn terminal_live_disables_composer_until_take_back() {
     d.no_ui_error();
 }
 
+/// TFX39 / FX39: `terminal_maybe_closed` is false when the session's transcript file was written
+/// within `CLOSED_AFTER` (the window force-close guard), and true when the file is absent or was
+/// not written (the hook-silence path).  The test injects a backdated terminal watch so it does not
+/// sleep ten minutes; it uses a scratch `data` dir and never touches `~/.claude`.
+#[test]
+fn terminal_maybe_closed_with_touched_transcript_file() {
+    use filmcraft_ui_egui::bashcut_ui::{agent, terminal};
+    use std::time::Duration;
+
+    let data = std::env::temp_dir().join(format!("bashcut-ui-tfx39-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&data);
+    let mut d = Driver::with_data(&data, |_| {});
+    d.click("bashcut.rail.agent");
+    d.frames(4);
+
+    let over_ten_min = Duration::from_secs(10 * 60 + 5);
+
+    // Helper: build a Watch in Done phase, optionally with a transcript_path.
+    let make_watch = |transcript: Option<&std::path::Path>| {
+        let mut w = terminal::Watch::default();
+        let mut ev = serde_json::json!({"hook_event_name": "Stop"});
+        if let Some(p) = transcript {
+            ev["transcript_path"] = serde_json::Value::String(p.to_string_lossy().into_owned());
+        }
+        w.apply(&ev);
+        w
+    };
+
+    // --- no transcript path: session_untouched falls back to true → maybe_closed = true ---
+    let watch = make_watch(None);
+    agent::inject_terminal_watch_for_test(&d.harness.ctx, watch, over_ten_min);
+    d.frames(4);
+    let (en, _vi) = d.labels("bashcut.agent.terminal.status");
+    assert_eq!(en, serde_json::json!("Terminal: closed?"), "no transcript: closed?");
+
+    // --- touched transcript (written now): session_untouched = false → maybe_closed = false ---
+    let transcript = data.join("session.jsonl");
+    std::fs::write(&transcript, b"{}").expect("write transcript");
+    let watch = make_watch(Some(&transcript));
+    agent::inject_terminal_watch_for_test(&d.harness.ctx, watch, over_ten_min);
+    d.frames(4);
+    let (en, _vi) = d.labels("bashcut.agent.terminal.status");
+    assert_eq!(en, serde_json::json!("Terminal: done"), "touched transcript: not closed");
+
+    d.no_ui_error();
+    let _ = std::fs::remove_dir_all(&data);
+}
+
 /// Empty the message box after a chip filled it: a click at its right edge puts the caret at the end of the text.
 fn wipe_message(d: &mut Driver) {
     d.ok("ui.click", json!({"id": "bashcut.agent.input", "fx": 0.99}));
