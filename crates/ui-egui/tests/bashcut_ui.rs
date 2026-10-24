@@ -3835,9 +3835,65 @@ fn agent_jump_to_latest_and_queued_bubbles() {}
 
 /// PLK5: a kit whose `scripts/skill-commands.json` names an id this build lacks shows "This kit uses N commands this
 /// BashCutPro doesn't have: <skills>." (EN and VI) with Download kit…; a matching kit shows none.
+/// A kit folder under `scratch` whose index is `index` (written by the parent test process only), and the
+/// environment that points the fake agent at it.
+fn gap_kit(scratch: &std::path::Path, index: &str) -> Vec<(&'static str, String)> {
+    let kit = scratch.join("gap kit");
+    if std::env::var_os(FAKE_CHILD).is_none() {
+        std::fs::create_dir_all(kit.join("skills")).unwrap();
+        std::fs::create_dir_all(kit.join("scripts")).unwrap();
+        std::fs::write(kit.join("scripts").join("skill-commands.json"), index).unwrap();
+    }
+    let mut env = kit_env(scratch, None, false);
+    env.push(("BASHCUT_KIT", kit.to_string_lossy().into_owned()));
+    env
+}
+
 #[test]
-#[ignore = "test ticket: unknown id in a fake kit index shows bashcut.agent.ready.kitGap EN/VI and bashcut.agent.kitGap.update; matching kit shows none"]
-fn a_kit_naming_unknown_commands_shows_the_gap_line() {}
+fn a_kit_naming_unknown_commands_shows_the_gap_line() {
+    let scratch = kit_scratch("kitgap");
+    let env = gap_kit(
+        &scratch,
+        r#"{"kit":"0.3.0","skills":{"edit":["bashcut.profiles.list","bashcut.nosuch.one","bashcut.vision"],"voice":["bashcut.nosuch.one","bashcut.nosuch.two"]}}"#,
+    );
+    let env: Vec<(&str, &str)> = env.iter().map(|(k, v)| (*k, v.as_str())).collect();
+    let Some(fake) = fake_claude("a_kit_naming_unknown_commands_shows_the_gap_line", "kitgap", &env) else {
+        let _ = std::fs::remove_dir_all(&scratch);
+        return;
+    };
+    let mut d = fake.driver();
+    d.exec("bashcut.agent.send", json!({"text": "gap"}));
+    d.agent_said("echo gap");
+    d.agent_idle();
+    d.frames(2);
+    // two distinct unknown ids across two skills; the plugin id and the known id are not gaps
+    let (en, vi) = d.labels("bashcut.agent.ready.kitGap");
+    assert_eq!(en, json!("This kit uses 2 commands this BashCutPro doesn't have: edit, voice."), "{en}");
+    assert_eq!(vi, json!("Bộ kỹ năng này dùng 2 lệnh mà BashCutPro này chưa có: edit, voice."), "{vi}");
+    if filmcraft_ui_egui::bashcut_ui::agent::git_found() {
+        assert!(d.has("bashcut.agent.kitGap.update"), "Download kit… beside the line");
+    }
+    d.no_ui_error();
+}
+
+#[test]
+fn a_matching_kit_shows_no_gap_line() {
+    let scratch = kit_scratch("kitnogap");
+    let env = gap_kit(&scratch, r#"{"kit":"0.3.0","skills":{"edit":["bashcut.profiles.list","bashcut.vision","note"]}}"#);
+    let env: Vec<(&str, &str)> = env.iter().map(|(k, v)| (*k, v.as_str())).collect();
+    let Some(fake) = fake_claude("a_matching_kit_shows_no_gap_line", "kitnogap", &env) else {
+        let _ = std::fs::remove_dir_all(&scratch);
+        return;
+    };
+    let mut d = fake.driver();
+    d.exec("bashcut.agent.send", json!({"text": "gap"}));
+    d.agent_said("echo gap");
+    d.agent_idle();
+    d.frames(2);
+    assert!(d.element("bashcut.agent.ready.kitGap").is_null(), "a matching kit: no gap line");
+    assert!(!d.has("bashcut.agent.kitGap.update"));
+    d.no_ui_error();
+}
 
 #[test]
 #[ignore = "test ticket: Send is disabled with the missing-agent reason as its tooltip"]

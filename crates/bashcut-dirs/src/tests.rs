@@ -279,6 +279,67 @@ fn kit_dir_follows_the_environment_then_the_default_places() {
     let _ = std::fs::remove_dir_all(&root);
 }
 
+const INDEX: &str = r#"{"kit":"0.3.1","skills":{
+    "edit":["bashcut.profiles.list","bashcut.shorts.make","bashcut.vision","sequence.addEdit","note"],
+    "voice":["bashcut.tts.say","bashcut.tts.say"],
+    "fine":["bashcut.profiles.list"]},
+  "agents":{"critic":["bashcut.review.run","bashcut.review.run"]}}"#;
+
 #[test]
-#[ignore = "test ticket: kit_command_gaps lists missing ids per skill, None for a malformed/huge/no-skills index, skips plugin ids (bashcut.vision) and core ids"]
-fn kit_command_gaps_names_the_skills_with_missing_ids() {}
+fn kit_command_gaps_names_the_skills_with_missing_ids() {
+    let have = ["bashcut.profiles.list"];
+    let g = kit::kit_command_gaps(INDEX, &have).expect("an index");
+    assert_eq!(g.kit_version.as_deref(), Some("0.3.1"));
+    // only engine ids (bashcut.<group>.<name>) are compared: the plugin id, the core id and the non-id are skipped
+    assert_eq!(
+        g.missing_by_skill,
+        vec![
+            ("critic".to_string(), vec!["bashcut.review.run".to_string()]),
+            ("edit".to_string(), vec!["bashcut.shorts.make".to_string()]),
+            ("voice".to_string(), vec!["bashcut.tts.say".to_string()]),
+        ]
+    );
+    // nothing missing
+    let all = ["bashcut.profiles.list", "bashcut.shorts.make", "bashcut.tts.say", "bashcut.review.run"];
+    assert!(kit::kit_command_gaps(INDEX, &all).expect("an index").missing_by_skill.is_empty());
+    // an empty engine list: every engine id is missing
+    assert_eq!(kit::kit_command_gaps(INDEX, &[] as &[&str]).expect("an index").missing_by_skill.len(), 4);
+    // a version-less index
+    assert_eq!(kit::kit_command_gaps(r#"{"skills":{}}"#, &have).expect("an index").kit_version, None);
+
+    // not an index: None, never a panic
+    for bad in ["", "{not json", "[]", "null", r#"{"kit":"1"}"#, r#"{"skills":[]}"#, r#"{"skills":{},"agents":3}"#] {
+        assert_eq!(kit::kit_command_gaps(bad, &have), None, "{bad:?}");
+    }
+    // non-array and non-string entries are ignored
+    let odd = r#"{"skills":{"a":"bashcut.x.y","b":[1,null,{"id":"bashcut.x.z"}],"c":["bashcut.x.w"]}}"#;
+    let g = kit::kit_command_gaps(odd, &have).expect("an index");
+    assert_eq!(g.missing_by_skill, vec![("c".to_string(), vec!["bashcut.x.w".to_string()])]);
+    // an index over the cap is refused
+    let huge = format!(r#"{{"skills":{{"a":["{}"]}}}}"#, "x".repeat(kit::MAX_INDEX_BYTES));
+    assert_eq!(kit::kit_command_gaps(&huge, &have), None);
+    let edge = format!(r#"{{"skills":{{"a":["bashcut.a.b"]}},"pad":"{}"}}"#, "x".repeat(kit::MAX_INDEX_BYTES - 60));
+    assert!(edge.len() <= kit::MAX_INDEX_BYTES);
+    assert!(kit::kit_command_gaps(&edge, &have).is_some());
+}
+
+#[test]
+fn kit_all_command_gaps_compares_core_ids_too() {
+    let have = ["bashcut.profiles.list"];
+    let g = kit::kit_all_command_gaps(INDEX, &have).expect("an index");
+    // core ids (sequence.addEdit) are compared; plugin ids (bashcut.vision) and entries without a dot are not
+    assert_eq!(
+        g.missing_by_skill,
+        vec![
+            ("critic".to_string(), vec!["bashcut.review.run".to_string()]),
+            ("edit".to_string(), vec!["bashcut.shorts.make".to_string(), "sequence.addEdit".to_string()]),
+            ("voice".to_string(), vec!["bashcut.tts.say".to_string()]),
+        ]
+    );
+    let all = ["bashcut.profiles.list", "bashcut.shorts.make", "sequence.addEdit", "bashcut.tts.say", "bashcut.review.run"];
+    assert!(kit::kit_all_command_gaps(INDEX, &all).expect("an index").missing_by_skill.is_empty());
+    assert_eq!(kit::kit_all_command_gaps("{not json", &have), None);
+    // the engine-only variant ignores the core id
+    let engine = kit::kit_command_gaps(INDEX, &have).expect("an index");
+    assert!(engine.missing_by_skill.iter().all(|(_, ids)| !ids.contains(&"sequence.addEdit".to_string())));
+}
