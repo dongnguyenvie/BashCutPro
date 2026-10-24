@@ -549,3 +549,8 @@ Terminal: waiting for your permission	Terminal: đang chờ bạn cho phép
 Terminal: done	Terminal: đã xong
 Terminal: stopped with an error	Terminal: dừng do lỗi
 Terminal: closed	Terminal: đã đóng
+What should we edit?	Chỉnh sửa gì đây?
+{agent} edits this project with you. It stops at each stage for your approval.	{agent} cùng bạn chỉnh sửa dự án này. Dừng ở mỗi bước để bạn duyệt.
+Type / for skills	Gõ / để xem kỹ năng
+Remove the silences	Cắt các đoạn im lặng
+Add captions to the main sequence	Thêm phụ đề cho sequence chính

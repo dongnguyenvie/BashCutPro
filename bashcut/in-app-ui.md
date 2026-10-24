@@ -488,9 +488,12 @@ labels or subclips (§1 rule 1). A project opened in upstream FilmCraft still wo
   plugin's `handoff.then` as the next message.
 - **Agent replies (UX8)** render minimal Markdown (`bashcut_ui/markdown.rs`): `#`/`##` headings, `-`/`1.` lists,
   `**bold**`, `*em*`, inline code, fenced code in a monospace frame; replies past 256 KB are cut with "…".
-- **Empty transcript (UX8)**: three kit recipes (Plan a vlog, Hook and script, Finish for posting) as example
-  prompts; a click fills the message box with `Use the bcp:<id> recipe on this project.` and does not send. Under
-  them: "The agent stops at each stage for your approval." Automation ids `bashcut.agent.example.<recipe id>`.
+- **Empty transcript (UX8, AGU8)**: a centred block: the Chat icon (accent), "What should we edit?", one line
+  ("Claude Code edits this project with you. It stops at each stage for your approval."), then wrapping chips (so
+  240 px works): two plain ones (Remove the silences, Add captions to the main sequence; the chip's text fills the
+  box) and three kit recipes (Plan a vlog, Hook and script, Finish for posting; fills `Use the bcp:<id> recipe on
+  this project.`). A click fills the message box and never sends. A faint "Type / for skills" closes the block.
+  Automation ids `bashcut.agent.example.{remove-silences, add-captions, <recipe id>}`.
 - **Commands**: `bashcut.agent.{send, stop, cancel, state, transcript, conversations, open, new, agents, use, gate, approve,
   change, terminal, signIn, install}`; automation ids `bashcut.agent.{input, send, stop, picker, conversations, new, transcript}`,
   `bashcut.gate.{approve, change, note}`.
