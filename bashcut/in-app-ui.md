@@ -393,8 +393,11 @@ labels or subclips (§1 rule 1). A project opened in upstream FilmCraft still wo
   last item is the agent's text), Stopping…. The 30 s quiet hint (`bashcut.agent.quiet`) stays under it, and queued
   messages follow it. Repaints only while a turn runs: every 33 ms with the pulse, once a second with Animations off
   (steady dot).
+  **Jump to latest** (AGU9): when the transcript is scrolled up more than 40 px from the bottom and content grows, a
+  pill "↓ New messages" (`bashcut.agent.jump`, an `egui::Area` over the transcript's bottom, fades with
+  `animate_bool`) appears; a click scrolls to the bottom (stick-to-bottom again). Hidden at the bottom.
   **Send never blocks**: a message sent while Claude works is written at once and shown under the transcript as
-  "You · queued" (`bashcut.agent.queued.<n>`, `bashcut.agent.state` → `queued`) until its echo arrives, then it
+  a dimmed user bubble headed "Queued {n}" with ✕ (`bashcut.agent.queued.<n>`, `bashcut.agent.state` → `queued`) until its echo arrives, then it
   joins the transcript (an agent without the echo: at its `result`). The `system/init` `capabilities` are kept on
   the session (`Agent::capabilities`, in `bashcut.agent.state`) for AG3/AG4. **Restart**: a process that exits
   (crash, app restart, idle close) is started again with `--resume <session_id>` by the next message; one that

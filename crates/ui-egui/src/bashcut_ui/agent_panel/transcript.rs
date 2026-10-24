@@ -14,6 +14,8 @@ use crate::FilmcraftApp;
 
 /// Widest share of the panel a user bubble takes.
 const BUBBLE_SHARE: f32 = 0.85;
+/// Opacity of a queued message's bubble.
+const QUEUED_OPACITY: f32 = 0.55;
 /// Items that arrive in one frame beyond this many are a conversation being opened, not a live turn.
 const RELOAD_JUMP: usize = 8;
 /// A gap between frames longer than this (egui seconds) means the panel was closed meanwhile.
@@ -111,26 +113,37 @@ fn turn_separator(app: &FilmcraftApp, ui: &mut egui::Ui) {
 }
 
 fn user_block(app: &mut FilmcraftApp, ui: &mut egui::Ui, i: usize, text: &str) {
-    let t = app.tokens;
     if i > 0 {
         turn_separator(app, ui);
     }
     ui.add_space(6.0);
-    let width = ui.available_width();
-    let max = (width * BUBBLE_SHARE).max(60.0);
     ui.with_layout(egui::Layout::right_to_left(egui::Align::Min), |ui| {
-        let bubble = ui.scope(|ui| {
-            ui.set_max_width(max);
-            egui::Frame::new().fill(t.field_bg).corner_radius(t.radius).inner_margin(egui::Margin::symmetric(8, 6)).show(ui, |ui| {
-                ui.set_max_width((max - 16.0).max(40.0));
-                ui.add(egui::Label::new(egui::RichText::new(text).color(t.text)).selectable(true).wrap());
-            });
-        });
+        let bubble = ui.scope(|ui| user_bubble(app, ui, text, false));
         // the Copy button sits at the bubble's top-left, outside it
         let hot = ui.rect_contains_pointer(bubble.response.rect.expand2(egui::vec2(24.0, 0.0)));
         let mix = motion::hover_mix(ui.ctx(), egui::Id::new(("bashcut.agent.copy.hover", i)), hot);
         copy_button(app, ui, &format!("bashcut.agent.copy.{i}"), text, mix);
     });
+}
+
+/// The user's message in a bubble, for a right-to-left row; `dim` is a message still queued.
+/// Returns its text label.
+pub(super) fn user_bubble(app: &FilmcraftApp, ui: &mut egui::Ui, text: &str, dim: bool) -> egui::Response {
+    let t = app.tokens;
+    if dim {
+        ui.multiply_opacity(QUEUED_OPACITY);
+    }
+    let max = (ui.available_width() * BUBBLE_SHARE).max(60.0);
+    ui.set_max_width(max);
+    egui::Frame::new()
+        .fill(t.field_bg)
+        .corner_radius(t.radius)
+        .inner_margin(egui::Margin::symmetric(8, 6))
+        .show(ui, |ui| {
+            ui.set_max_width((max - 16.0).max(40.0));
+            ui.add(egui::Label::new(egui::RichText::new(text).color(t.text)).selectable(true).wrap())
+        })
+        .inner
 }
 
 fn assistant_block(app: &mut FilmcraftApp, ui: &mut egui::Ui, i: usize, text: &str, name: &str, with_name: bool) {

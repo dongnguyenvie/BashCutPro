@@ -63,6 +63,8 @@ const GATE_EVERY: f64 = 1.0;
 const QUIET_HINT: f64 = 30.0;
 /// Height kept for the message box and its buttons under the transcript.
 const INPUT_HEIGHT: f32 = 96.0;
+/// Scrolled up further than this (px) from the bottom, new items show the jump pill.
+const JUMP_AWAY: f32 = 40.0;
 
 /// What the section holds between frames (egui context data, not `UiState`).
 #[derive(Clone, Default)]
@@ -84,6 +86,11 @@ struct View {
     slash_word: String,
     slash_closed: Option<String>,
     slash_rect: Option<egui::Rect>,
+    /// Jump to latest (§3.10): the transcript's content height last frame, whether content arrived
+    /// while it was scrolled up, and a click waiting to scroll to the bottom.
+    content_h: f32,
+    new_below: bool,
+    jump: bool,
 }
 
 fn key() -> egui::Id {
@@ -242,7 +249,7 @@ pub fn draw(app: &mut FilmcraftApp, ui: &mut egui::Ui) {
             ui.add_space(6.0);
             let id = format!("bashcut.agent.queued.{i}");
             row_within(ui, width, |ui| {
-                strong_note(ui, f("You · queued {n}", &[("n", &(i + 1).to_string())]), META, t.text_dim);
+                strong_note(ui, f("Queued {n}", &[("n", &(i + 1).to_string())]), META, t.text_dim);
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     if q.cancelling {
                         note(ui, s("Removing…"), META, t.text_dim);
@@ -253,11 +260,16 @@ pub fn draw(app: &mut FilmcraftApp, ui: &mut egui::Ui) {
                     }
                 });
             });
-            let r = ui.add(egui::Label::new(egui::RichText::new(&q.text).color(t.text_dim)).selectable(true).wrap());
+            let r =
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Min), |ui| ui.scope(|ui| transcript::user_bubble(app, ui, &q.text, true)).inner).inner;
             app.auto.add_response(&id, &r, &q.text);
+        }
+        if std::mem::take(&mut v.jump) {
+            ui.scroll_to_cursor(Some(egui::Align::BOTTOM));
         }
     });
     app.auto.add("bashcut.agent.transcript", out.inner_rect, &snap.title);
+    jump_pill(app, &ctx, &mut v, &out);
 
     ui.separator();
     // a live agent takes messages while it works; a stopping one is about to exit
@@ -265,6 +277,54 @@ pub fn draw(app: &mut FilmcraftApp, ui: &mut egui::Ui) {
     let slash = snap.slash.then_some(snap.commands.as_deref());
     input::input(app, ui, &ctx, &mut v, busy, running, snap.missing.as_deref(), slash);
     super::shared::put_temp(&ctx, key(), v);
+}
+
+/// "↓ New messages" over the bottom of the transcript (§3.10): shown when it is scrolled up more than
+/// [`JUMP_AWAY`] and content arrived since; a click scrolls to the bottom (and sticks there again).
+fn jump_pill<R>(app: &mut FilmcraftApp, ctx: &egui::Context, v: &mut View, out: &egui::scroll_area::ScrollAreaOutput<R>) {
+    let t = app.tokens;
+    let away = out.content_size.y - out.inner_rect.height() - out.state.offset.y;
+    if away <= JUMP_AWAY {
+        v.new_below = false;
+    } else if out.content_size.y > v.content_h + 0.5 {
+        v.new_below = true;
+    }
+    v.content_h = out.content_size.y;
+    let show = v.new_below && !v.jump;
+    let a = if super::motion::on(ctx) { ctx.animate_bool_with_time(egui::Id::new("bashcut.agent.jump.fade"), show, 0.12) } else { f32::from(u8::from(show)) };
+    if a <= 0.0 {
+        return;
+    }
+    let at = egui::pos2(out.inner_rect.center().x, out.inner_rect.bottom() - 8.0);
+    let label = s("New messages");
+    let clicked = egui::Area::new(egui::Id::new("bashcut.agent.jump.area"))
+        .order(egui::Order::Foreground)
+        .fixed_pos(at)
+        .pivot(egui::Align2::CENTER_BOTTOM)
+        .show(ctx, |ui| {
+            ui.multiply_opacity(a);
+            egui::Frame::new()
+                .fill(t.field_bg)
+                .stroke(egui::Stroke::new(1.0, t.field_border))
+                .corner_radius(t.radius)
+                .inner_margin(egui::Margin::symmetric(8, 3))
+                .show(ui, |ui| {
+                    ui.horizontal(|ui| {
+                        let (rect, _) = ui.allocate_exact_size(egui::vec2(12.0, 12.0), egui::Sense::hover());
+                        crate::icons::paint(ui.painter(), rect, crate::icons::Icon::ChevronDown, t.text);
+                        ui.add(egui::Label::new(super::widgets::note_text(label, NOTE, t.text)).selectable(false));
+                    });
+                })
+                .response
+                .interact(egui::Sense::click())
+        });
+    let r = clicked.inner;
+    app.auto.add_response("bashcut.agent.jump", &r, label);
+    if r.on_hover_cursor(egui::CursorIcon::PointingHand).clicked() {
+        v.jump = true;
+        v.new_below = false;
+        ctx.request_repaint();
+    }
 }
 
 /// A left-to-right row exactly `width` wide from the left edge, so its right-aligned part (a ✕)
@@ -349,7 +409,8 @@ mod tests {
             "Project not saved: conversations will not be kept",
             "Save…",
             OUTDATED_LINE,
-            "You · queued {n}",
+            "Queued {n}",
+            "New messages",
             "Remove this message from the queue",
             "Removing…",
             "{agent} wants to use {tool}",

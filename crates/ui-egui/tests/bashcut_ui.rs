@@ -3417,3 +3417,7 @@ fn agent_cards_hierarchy() {}
 #[test]
 #[ignore = "test ticket: a fake turn with num_turns 9 and cost 0.12 shows '9 steps · N s · $0.12' in bashcut.agent.turn.<i> (en and vi: '9 bước · N giây · $0.12'); a result without cost shows steps and time only; no line when nothing is known; fits 240 px"]
 fn agent_turn_summary_line() {}
+
+#[test]
+#[ignore = "test ticket: scroll the transcript up >40 px, a fake-agent reply arrives -> bashcut.agent.jump appears; click -> gone and offset at max; at the bottom never shown; queued messages are dimmed bubbles headed 'Queued {n}' with bashcut.agent.queued.<n>.cancel (en and vi, 240 px)"]
+fn agent_jump_to_latest_and_queued_bubbles() {}

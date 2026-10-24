@@ -29,9 +29,10 @@ liệu, Tải về) khi dự án nằm ở đó: bấm **Cho phép**. Khi chưa 
    bạn xếp hàng mà trợ lý chưa bắt đầu sẽ quay lại ô nhập tin. Công cụ bị dừng giữa chừng hiện **Đã dừng**.
    Mỗi lệnh công cụ là một dòng (biểu tượng, tên, việc đã làm, thời gian chạy); lệnh lỗi hiện **Lỗi** kèm lý do
    ngay bên dưới, và bấm vào dòng để xem chi tiết cùng nút **Sao chép**.
-6. Bạn vẫn gõ tiếp được khi trợ lý đang làm: mỗi tin nhắn chờ dưới bản ghi với nhãn **Bạn · đang chờ 1**, **2**, …
+6. Bạn vẫn gõ tiếp được khi trợ lý đang làm: mỗi tin nhắn chờ dưới bản ghi với nhãn **Đang chờ 1**, **2**, …
    theo đúng thứ tự trợ lý sẽ nhận. Bấm **✕** ở một tin để bỏ nó; trợ lý sẽ không trả lời tin đó. Tin trợ lý đã nhận
    rồi thì vẫn được trả lời (muốn ngừng thì bấm **Dừng**).
+   Nếu bạn cuộn lên trong lúc có tin mới, nút **↓ Tin nhắn mới** hiện ra; bấm vào để nhảy xuống tin mới nhất.
 7. Khi Claude Code cần chạy thứ chưa được cho phép sẵn (ví dụ một lệnh shell hay ghi một tệp), bản ghi hiện một thẻ
    **Claude Code muốn dùng Bash** kèm lệnh hoặc tệp đó: **Cho phép lần này** (nút tô màu) chạy nó một lần; **Luôn cho phép trong
    dự án này** chạy nó và ghi một quy tắc vào `.claude/settings.local.json` trong thư mục dự án (chỉ dự án này, không
