@@ -6,9 +6,9 @@ use bashcut_agent::Item;
 
 use super::super::markdown::copy_button;
 use super::super::strings::{f, s};
-use super::super::widgets::{CODE, META, NOTE, code_note, note, note_text, strong_note};
+use super::super::widgets::{CODE, META, NOTE, code_note, note_text, strong_note};
 use super::super::{motion, shared};
-use super::cards::permission_line;
+use super::cards::{failed_reason, permission_line, problem_card, result_error};
 use super::tools::tool_group;
 use crate::FilmcraftApp;
 
@@ -95,7 +95,7 @@ pub(super) fn transcript(app: &mut FilmcraftApp, ui: &mut egui::Ui, items: &[Ite
                     tool_group(app, ui, i, &key, group);
                     next = end;
                 }
-                other => status_item(app, ui, other),
+                other => status_item(app, ui, items.get(..i).unwrap_or_default(), i, other),
             }
         });
         i = next;
@@ -153,8 +153,18 @@ fn assistant_block(app: &mut FilmcraftApp, ui: &mut egui::Ui, i: usize, text: &s
     copy_button(app, &mut child, &format!("bashcut.agent.copy.{i}"), text, mix);
 }
 
+/// One answered line with a small check or cross in front.
+fn answered_line(ui: &mut egui::Ui, text: String, ok: bool, color: egui::Color32) {
+    ui.horizontal_top(|ui| {
+        let (rect, _) = ui.allocate_exact_size(egui::vec2(10.0, 14.0), egui::Sense::hover());
+        let icon = if ok { crate::icons::Icon::Marker } else { crate::icons::Icon::Close };
+        crate::icons::paint(ui.painter(), egui::Rect::from_center_size(rect.center(), egui::vec2(9.0, 9.0)), icon, color);
+        ui.add(egui::Label::new(super::super::widgets::note_text(text, NOTE, color)).selectable(true).wrap());
+    });
+}
+
 /// A gate answer, an error, a notice, an answered permission or the agent's own auth message.
-fn status_item(app: &mut FilmcraftApp, ui: &mut egui::Ui, item: &Item) {
+fn status_item(app: &mut FilmcraftApp, ui: &mut egui::Ui, before: &[Item], i: usize, item: &Item) {
     let t = app.tokens;
     match item {
         Item::Gate { stage, state, note } => {
@@ -163,10 +173,12 @@ fn status_item(app: &mut FilmcraftApp, ui: &mut egui::Ui, item: &Item) {
             if !note.is_empty() {
                 line.push_str(&format!(" — {note}"));
             }
-            super::super::widgets::note(ui, line, NOTE, t.accent);
+            let ok = state == bashcut_agent::plan::APPROVED;
+            answered_line(ui, line, ok, t.accent);
         }
         Item::Error { message } => {
-            note(ui, super::super::strings::agent(message), NOTE, t.danger);
+            ui.add_space(4.0);
+            problem_card(app, ui, &format!("bashcut.agent.error.{i}"), &result_error(message), failed_reason(before).as_deref());
         }
         Item::Notice { message } => {
             // centered, no bullet
@@ -177,13 +189,15 @@ fn status_item(app: &mut FilmcraftApp, ui: &mut egui::Ui, item: &Item) {
         }
         Item::Permission { tool, detail, answer } => {
             let color = if answer == "denied" { t.danger } else { t.text_dim };
-            note(ui, permission_line(tool, answer), META, color);
+            let ok = matches!(answer.as_str(), "allowed" | "always");
+            answered_line(ui, permission_line(tool, answer), ok, color);
             code_note(ui, bashcut_agent::clip(detail, 300), CODE, t.text_dim);
         }
         Item::Auth { category, message } => {
-            // the readiness line says what to do; here the agent's own words, selectable
+            // the readiness line carries Sign in; here the agent's own words in a problem card
             let text = if message.is_empty() { category } else { message };
-            ui.add(egui::Label::new(egui::RichText::new(text).size(META).color(t.text_dim)).selectable(true).wrap());
+            ui.add_space(4.0);
+            problem_card(app, ui, &format!("bashcut.agent.autherror.{i}"), text, None);
         }
         Item::User { .. } | Item::Assistant { .. } | Item::Tool { .. } => {}
     }
