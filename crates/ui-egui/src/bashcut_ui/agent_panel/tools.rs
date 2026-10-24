@@ -106,7 +106,8 @@ pub(super) fn tool_group(app: &mut FilmcraftApp, ui: &mut egui::Ui, at: usize, k
     let inputs: Vec<&Value> = group.iter().filter_map(|g| if let Item::Tool { input, .. } = g { Some(input) } else { None }).collect();
     let outputs: Vec<Option<&str>> = group.iter().filter_map(|g| if let Item::Tool { output, .. } = g { Some(output.as_deref()) } else { None }).collect();
     let title = tool_summary::title(key, name);
-    let summary = tool_summary::summary(key, name, &inputs, &outputs);
+    let (rate, drop_frame) = app.session.active_sequence().map_or((tool_summary::FALLBACK_RATE, false), |q| (q.settings.frame_rate, q.settings.drop_frame));
+    let summary = tool_summary::summary(key, name, &inputs, &outputs, rate, drop_frame);
     let icon = tool_summary::icon_for(key, name);
     let bash = tool_summary::short_name(name) == "Bash";
 
