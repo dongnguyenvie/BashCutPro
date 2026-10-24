@@ -362,7 +362,8 @@ pub fn invoke(app: &mut FilmcraftApp, ctx: &egui::Context, name: &str, params: &
                 (program, kit_present(a))
             });
             program.ok_or_else(|| s("Download kit works with Claude Code once it is installed.").to_string())?;
-            if present {
+            // a kit that names commands this build lacks may be updated even though the session lists it (PLK5)
+            if present && kit_gap_now().is_none() {
                 return Err(s("The BashCutPro kit is already installed.").into());
             }
             install_kit(&bashcut_agent::session::turn_dir(context(app).project.as_deref()))?;
@@ -411,6 +412,43 @@ fn not_installed(a: &Agent) -> bool {
 /// one still works).
 pub fn kit_missing(a: &Agent) -> bool {
     kit_missing_with(a, bashcut_dirs::kit::kit_dir().as_deref())
+}
+
+/// What the kit's index names that this build lacks (PLK5): `(command count, skill names)`. The registry is the
+/// in-process one, core ids and `bashcut.*` ([`bashcut_dirs::kit::kit_all_command_gaps`]); no CLI is started. `None`
+/// when there is no kit, no index (an older kit), or nothing is missing.
+pub fn kit_gap_now() -> Option<(usize, Vec<String>)> {
+    let kit = bashcut_dirs::kit::kit_dir()?;
+    let file = std::fs::File::open(kit.join(bashcut_dirs::kit::INDEX_FILE)).ok()?;
+    let mut text = String::new();
+    std::io::Read::read_to_string(&mut std::io::Read::take(file, bashcut_dirs::kit::MAX_INDEX_BYTES as u64 + 1), &mut text).ok()?;
+    let mut ids: Vec<String> = filmcraft_engine::commands::command_specs().iter().map(|c| c.id.to_string()).collect();
+    ids.extend(crate::menus::external_commands().into_iter().map(|c| c.id));
+    let gaps = bashcut_dirs::kit::kit_all_command_gaps(&text, &ids)?;
+    let mut all: Vec<&String> = gaps.missing_by_skill.iter().flat_map(|(_, ids)| ids).collect();
+    all.sort();
+    all.dedup();
+    let count = all.len();
+    (count > 0).then(|| (count, gaps.missing_by_skill.into_iter().map(|(name, _)| name).collect()))
+}
+
+/// How often the panel looks at the kit again (a pull changes the index; a frame is too often).
+const KIT_GAP_EVERY: f64 = 5.0;
+
+/// [`kit_gap_now`], read at most every [`KIT_GAP_EVERY`] seconds.
+pub fn kit_gap(ctx: &egui::Context) -> Option<(usize, Vec<String>)> {
+    type Seen = Option<(f64, Option<(usize, Vec<String>)>)>;
+    let id = egui::Id::new("bashcut.agent.kit_gap");
+    let now = ctx.input(|i| i.time);
+    let seen: Seen = super::shared::temp(ctx, id);
+    if let Some((at, gap)) = seen
+        && now - at < KIT_GAP_EVERY
+    {
+        return gap;
+    }
+    let gap = kit_gap_now();
+    super::shared::put_temp::<Seen>(ctx, id, Some((now, gap.clone())));
+    gap
 }
 
 fn kit_missing_with(a: &Agent, kit: Option<&Path>) -> bool {

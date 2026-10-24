@@ -128,6 +128,8 @@ struct Snapshot {
     auth: Option<(String, String)>,
     /// [`agent::kit_missing`].
     kit_missing: bool,
+    /// [`agent::kit_gap`]: commands the kit names that this build lacks, and the skills using them.
+    kit_gap: Option<(usize, Vec<String>)>,
     /// [`bashcut_agent::Agent::permissions`].
     permissions: Vec<bashcut_agent::session::PermissionView>,
     /// The agent's events are Claude Code's stream-json, whose init lists slash commands (AG12).
@@ -187,6 +189,7 @@ pub fn draw(app: &mut FilmcraftApp, ui: &mut egui::Ui) {
             // FX28: a program that is not found wins over an earlier sign-in problem
             auth: a.conversation.transcript.auth_problem().filter(|_| hints::agent_found(&a.agent)).map(|(c, m)| (c.to_string(), m.to_string())),
             kit_missing: agent::kit_missing(a),
+            kit_gap: agent::kit_gap(&ctx),
             permissions: a.permissions(),
             slash: a.agent.events == bashcut_agent::stream_json::FORMAT,
             commands: if has_slash { a.commands.clone() } else { None },

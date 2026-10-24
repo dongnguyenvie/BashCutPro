@@ -53,3 +53,5 @@ store; `BASHCUT_PLUGIN_HOST=1`; RC3), and answers with `bashcut-result/1`. Exit 
 other = `failed` (the row carries stderr's tail); a failed `required` hook stops the command. `timeoutSeconds`
 (default 300, max 3600) stops a stuck hook: TERM to its process group, KILL after 1.5 s. `BASHCUT_HOOKS=off` or
 `hooks: false` turns them off. `bashcut.hooks.list {event?}` shows what is declared.
+
+Note (PLK5): the Agent panel compares every id the kit index names (core and `bashcut.*`, plugin ids excluded) with the in-process registry (`kit_all_command_gaps`). The doctor still sees only `commands bashcut`; listing all ids (`commands --json` without the filter) in `check_cli` would let `kit.commands` cover core ids too (follow-up).

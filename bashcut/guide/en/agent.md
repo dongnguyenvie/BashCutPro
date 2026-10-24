@@ -88,6 +88,11 @@ The first time in a folder, Claude Code asks whether you trust it: choose **Yes,
   and the folder to unpack it into instead. A small note below gives the optional command for the skills in every
   Claude Code session: `claude plugin marketplace add dongnguyenvie/bashcutpro-agent-kit && claude plugin install
   bcp@bashcutpro-agent-kit`. The recipe buttons of an empty conversation need the kit too.
+- When the kit you have names commands this BashCutPro does not have (an old kit, or an old BashCutPro), the panel says
+  **This kit uses N commands this BashCutPro doesn't have** followed by the skills that use them, with the same
+  **Download kit…** button (it updates the clone with `git pull`). The check reads the kit's command index against the
+  commands built into the app, starts nothing, and repeats every few seconds; an older kit without an index shows no
+  line. If the line stays after the download, update BashCutPro.
 - An empty conversation asks "What should we edit?" and offers example chips (Remove the silences, Add captions to
   the main sequence, and kit recipes). A chip only fills the message box; nothing is sent until you press Send.
 - The command palette has the same three actions: **Open Agent in Terminal**, **Sign In to Claude Code** and

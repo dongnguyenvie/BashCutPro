@@ -51,6 +51,17 @@ pub struct KitGaps {
 /// (`commands bashcut`) does not carry, and plugin ids (`bashcut.vision`), which are not engine commands.
 /// `None` when the text is not an index (not JSON, no `skills` object, over [`MAX_INDEX_BYTES`]).
 pub fn kit_command_gaps<S: AsRef<str>>(index_json: &str, engine_ids: &[S]) -> Option<KitGaps> {
+    gaps(index_json, engine_ids, false)
+}
+
+/// Like [`kit_command_gaps`] for a caller that holds the whole registry (the app's in-process one: core ids and
+/// `bashcut.*`): every id the index names is compared, except plugin ids (`bashcut.<plugin>`, two segments). A
+/// dotted id that is neither is a core command (`sequence.addEdit`); entries without a dot are not command ids.
+pub fn kit_all_command_gaps<S: AsRef<str>>(index_json: &str, engine_ids: &[S]) -> Option<KitGaps> {
+    gaps(index_json, engine_ids, true)
+}
+
+fn gaps<S: AsRef<str>>(index_json: &str, engine_ids: &[S], core: bool) -> Option<KitGaps> {
     if index_json.len() > MAX_INDEX_BYTES {
         return None;
     }
@@ -72,7 +83,7 @@ pub fn kit_command_gaps<S: AsRef<str>>(index_json: &str, engine_ids: &[S]) -> Op
             .into_iter()
             .flatten()
             .filter_map(|v| v.as_str())
-            .filter(|id| id.starts_with("bashcut.") && id.split('.').count() >= 3 && !have.contains(id))
+            .filter(|id| is_compared(id, core) && !have.contains(id))
             .map(str::to_string)
             .collect();
         missing.sort();
@@ -83,4 +94,9 @@ pub fn kit_command_gaps<S: AsRef<str>>(index_json: &str, engine_ids: &[S]) -> Op
     }
     gaps.missing_by_skill.sort();
     Some(gaps)
+}
+
+/// Whether `id` is compared: engine ids (`bashcut.<group>.<name>`) always, core ids only when `core`.
+fn is_compared(id: &str, core: bool) -> bool {
+    if id.starts_with("bashcut.") { id.split('.').count() >= 3 } else { core && id.contains('.') }
 }

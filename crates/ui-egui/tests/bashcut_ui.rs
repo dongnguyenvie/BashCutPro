@@ -3421,3 +3421,9 @@ fn agent_turn_summary_line() {}
 #[test]
 #[ignore = "test ticket: scroll the transcript up >40 px, a fake-agent reply arrives -> bashcut.agent.jump appears; click -> gone and offset at max; at the bottom never shown; queued messages are dimmed bubbles headed 'Queued {n}' with bashcut.agent.queued.<n>.cancel (en and vi, 240 px)"]
 fn agent_jump_to_latest_and_queued_bubbles() {}
+
+/// PLK5: a kit whose `scripts/skill-commands.json` names an id this build lacks shows "This kit uses N commands this
+/// BashCutPro doesn't have: <skills>." (EN and VI) with Download kit…; a matching kit shows none.
+#[test]
+#[ignore = "test ticket: unknown id in a fake kit index shows bashcut.agent.ready.kitGap EN/VI and bashcut.agent.kitGap.update; matching kit shows none"]
+fn a_kit_naming_unknown_commands_shows_the_gap_line() {}

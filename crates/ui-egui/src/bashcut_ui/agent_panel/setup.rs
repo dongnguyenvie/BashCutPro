@@ -20,6 +20,7 @@ pub(super) fn readiness(app: &mut FilmcraftApp, ui: &mut egui::Ui, ctx: &egui::C
         + usize::from(snap.outdated)
         + usize::from(snap.auth.is_some())
         + usize::from(snap.kit_missing)
+        + usize::from(snap.kit_gap.is_some())
         + usize::from(control_off)
         + usize::from(!snap.has_project);
     match issues {
@@ -68,6 +69,9 @@ fn lines(app: &mut FilmcraftApp, ui: &mut egui::Ui, ctx: &egui::Context, snap: &
     }
     if snap.kit_missing {
         kit_line(app, ui, snap);
+    }
+    if let Some((n, skills)) = &snap.kit_gap {
+        kit_gap_line(app, ui, snap, *n, skills);
     }
     if control_off {
         let line = s("Control channel off: the agent cannot edit the open project.");
@@ -159,6 +163,40 @@ pub(super) fn kit_line(app: &mut FilmcraftApp, ui: &mut egui::Ui, snap: &Snapsho
     let cmds = kit_commands();
     let r = ui.add(egui::Label::new(code_text(&cmds, NOTE, t.text_dim)).selectable(true).wrap());
     app.auto.add_response("bashcut.agent.ready.kit.commands", &r, &cmds);
+}
+
+/// Skill names shown in the kit-gap line before "…".
+const GAP_SKILLS: usize = 4;
+
+/// "This kit uses N commands this BashCutPro doesn't have: <skills>." with Download kit… (PLK5).
+fn kit_gap_line(app: &mut FilmcraftApp, ui: &mut egui::Ui, snap: &Snapshot, n: usize, skills: &[String]) {
+    let t = app.tokens;
+    let mut names = skills.iter().take(GAP_SKILLS).cloned().collect::<Vec<_>>().join(", ");
+    if skills.len() > GAP_SKILLS {
+        names.push('…');
+    }
+    let key = if n == 1 {
+        "This kit uses 1 command this BashCutPro doesn't have: {skills}."
+    } else {
+        "This kit uses {n} commands this BashCutPro doesn't have: {skills}."
+    };
+    let line = f(key, &[("n", &n.to_string()), ("skills", &names)]);
+    ui.horizontal_wrapped(|ui| {
+        let r = note(ui, &line, NOTE, t.danger).on_hover_text(s("Update the kit or BashCutPro so the skills and the commands match."));
+        app.auto.add_response("bashcut.agent.ready.kitGap", &r, &line);
+        if snap.resume.is_some()
+            && agent::git_found()
+            && hover_button(
+                app,
+                ui,
+                "bashcut.agent.kitGap.update",
+                s("Download kit…"),
+                s("Open a terminal that downloads the BashCutPro kit (git) into BashCutPro's data folder. Your next message loads it."),
+            )
+        {
+            report(app, agent::install_kit(&snap.cwd()));
+        }
+    });
 }
 
 pub(super) fn hover_button(app: &mut FilmcraftApp, ui: &mut egui::Ui, id: &str, label: &str, hover: &str) -> bool {
