@@ -199,6 +199,36 @@ fn status_item(app: &mut FilmcraftApp, ui: &mut egui::Ui, before: &[Item], i: us
             ui.add_space(4.0);
             problem_card(app, ui, &format!("bashcut.agent.autherror.{i}"), text, None);
         }
+        Item::TurnEnd { turns, cost_usd, ms, .. } => turn_end(app, ui, i, *turns, *cost_usd, *ms),
         Item::User { .. } | Item::Assistant { .. } | Item::Tool { .. } => {}
     }
+}
+
+/// AGU10: the faint centred line after a finished turn, `9 steps · 41 s · $0.12`; nothing when
+/// the agent reported none of it.
+fn turn_end(app: &mut FilmcraftApp, ui: &mut egui::Ui, i: usize, turns: Option<u64>, cost_usd: Option<f64>, ms: Option<u64>) {
+    let mut parts = Vec::new();
+    if let Some(n) = turns.filter(|n| *n > 0) {
+        parts.push(if n == 1 { s("1 step").to_string() } else { f("{n} steps", &[("n", &n.to_string())]) });
+    }
+    if let Some(secs) = ms.map(|ms| ms / 1000).filter(|s| *s > 0) {
+        parts.push(if secs < 60 {
+            f("{n} s", &[("n", &secs.to_string())])
+        } else {
+            f("{m} min {s} s", &[("m", &(secs / 60).to_string()), ("s", &(secs % 60).to_string())])
+        });
+    }
+    if let Some(c) = cost_usd.filter(|c| c.is_finite() && *c > 0.0) {
+        parts.push(format!("${c:.2}"));
+    }
+    if parts.is_empty() {
+        return;
+    }
+    ui.add_space(4.0);
+    let line = parts.join(" · ");
+    let text = note_text(line.clone(), META, app.tokens.text_dim);
+    let r = ui
+        .with_layout(egui::Layout::top_down(egui::Align::Center), |ui| ui.add(egui::Label::new(text).halign(egui::Align::Center).selectable(true).wrap()))
+        .inner;
+    app.auto.add_response(&format!("bashcut.agent.turn.{i}"), &r, &line);
 }

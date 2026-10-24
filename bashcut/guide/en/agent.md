@@ -46,6 +46,10 @@ nothing.
    one. The list loads with your first message in a conversation; before that it says *Start a message to load
    skills*. Codex has no such list.
 
+9. When a turn finishes, a faint line under the answer sums it up, like `9 steps · 41 s · $0.12`: the steps the agent
+   took, how long it worked and, when Claude Code reports it, what the turn cost. Parts the agent does not report are
+   left out, and the line is hidden when there is nothing to show.
+
 **New** starts a new conversation; earlier ones are listed and can be opened again.
 
 ### Use Claude Code in a terminal

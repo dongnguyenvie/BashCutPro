@@ -58,6 +58,11 @@ const DENIED: &str = "The user denied this in BashCutPro.";
 /// What a request denied because the turn stopped tells the agent.
 const STOPPED: &str = "The user stopped the turn in BashCutPro.";
 
+/// Milliseconds since `since`, saturating.
+fn elapsed_ms(since: Instant) -> u64 {
+    u64::try_from(since.elapsed().as_millis()).unwrap_or(u64::MAX)
+}
+
 /// An interrupt request written to the live agent and not finished yet.
 struct Interrupt {
     id: String,
@@ -147,6 +152,8 @@ pub struct Agent {
     in_turn: bool,
     /// When the current turn started (the timeout runs from here).
     busy_since: Option<Instant>,
+    /// When the one-shot turn's message was written (its [`Item::TurnEnd`] time).
+    turn_began: Option<Instant>,
     /// When the live agent became idle ([`IDLE_CLOSE`]).
     idle_since: Option<Instant>,
     timed_out: bool,
@@ -209,6 +216,7 @@ impl Agent {
             pending: VecDeque::new(),
             in_turn: false,
             busy_since: None,
+            turn_began: None,
             idle_since: None,
             timed_out: false,
             restarts: 0,
@@ -513,6 +521,7 @@ impl Agent {
         let turn = Turn::start(&argv, &cwd, &env, &message, &self.agent.events, Duration::from_secs(self.agent.timeout_secs.max(1)))?;
         self.conversation.transcript.push(Item::User { text: text.to_string() });
         self.turn = Some(turn);
+        self.turn_began = Some(Instant::now());
         self.status = Status::Running;
         Ok(())
     }
@@ -714,7 +723,8 @@ impl Agent {
                     {
                         self.commands = Some(commands.clone());
                     }
-                    self.conversation.transcript.apply(&ev);
+                    let ms = self.turn_began.map(elapsed_ms);
+                    self.conversation.transcript.apply_timed(&ev, ms);
                 }
                 TurnEvent::Ended(end) => ended = Some(end),
             }
@@ -847,7 +857,7 @@ impl Agent {
                     // the interrupted turn's end (its error result is not news); a turn that
                     // finished first keeps its answer
                     if *ok {
-                        self.conversation.transcript.apply(&ev);
+                        self.conversation.transcript.apply_timed(&ev, self.busy_since.map(elapsed_ms));
                     }
                     return self.stopped_in_place();
                 }
@@ -855,7 +865,7 @@ impl Agent {
                 if !*ok && self.status == Status::Stopping {
                     return;
                 }
-                self.conversation.transcript.apply(&ev);
+                self.conversation.transcript.apply_timed(&ev, self.busy_since.map(elapsed_ms));
                 if let Err(e) = self.write_held() {
                     return self.live_failed(e.0);
                 }

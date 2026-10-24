@@ -3413,3 +3413,7 @@ fn agent_empty_state_plain_examples() {}
 #[test]
 #[ignore = "test ticket: permission card primary (filled) button is bashcut.agent.permission.<n>.once, Deny has danger text; failed fake turn shows 'The turn ended with an error.' + the failed tool's first line in one bashcut.agent.error.<i> card (en and vi); gate card still approves / asks for changes"]
 fn agent_cards_hierarchy() {}
+
+#[test]
+#[ignore = "test ticket: a fake turn with num_turns 9 and cost 0.12 shows '9 steps · N s · $0.12' in bashcut.agent.turn.<i> (en and vi: '9 bước · N giây · $0.12'); a result without cost shows steps and time only; no line when nothing is known; fits 240 px"]
+fn agent_turn_summary_line() {}

@@ -565,3 +565,8 @@ The turn stopped at its turn limit.	Lượt này dừng vì hết số bước c
 The turn stopped at its spending limit.	Lượt này dừng vì hết ngân sách cho phép.
 More	Thêm
 {n} things to set up	{n} việc cần thiết lập
+# Turn summary (AGU10)
+1 step	1 bước
+{n} steps	{n} bước
+{n} s	{n} giây
+{m} min {s} s	{m} phút {s} giây
