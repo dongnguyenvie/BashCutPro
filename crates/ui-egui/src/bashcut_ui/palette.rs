@@ -982,8 +982,8 @@ mod tests {
         assert_eq!(label(&vi, "file.exportSelectionProject"), "Vùng chọn thành dự án BashCutPro…");
         assert_eq!(label(&vi, "help.filmcraftHelp"), "Trợ giúp BashCutPro…");
         // ours in the UI language (AG11's rows)
-        assert_eq!(label(&en, "bashcut.agent.installKit"), "Install BashCutPro Kit");
-        assert_ne!(label(&vi, "bashcut.agent.installKit"), "Install BashCutPro Kit");
+        assert_eq!(label(&en, "bashcut.agent.installKit"), "Download BashCutPro Kit");
+        assert_ne!(label(&vi, "bashcut.agent.installKit"), "Download BashCutPro Kit");
         assert_eq!(named(&en), Vec::<String>::new(), "English labels that name FilmCraft");
         assert_eq!(named(&vi), Vec::<String>::new(), "Vietnamese labels that name FilmCraft");
     }

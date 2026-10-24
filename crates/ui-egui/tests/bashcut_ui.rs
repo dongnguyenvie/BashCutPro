@@ -2502,7 +2502,7 @@ fn terminal_command_hands_off_after_the_turn_ends() {
 }
 
 /// AG9: a session whose init lists no `bcp` plugin shows "BashCutPro skills are not installed" (both
-/// languages) with Install kit… and the commands; Install kit… opens the kit's commands in a
+/// languages) with Download kit… and the global install command; Download kit… opens the kit download in a
 /// terminal. Before any init, or with `bcp`, the line is absent and `installKit` is refused.
 #[test]
 fn a_session_without_the_bcp_plugin_shows_the_kit_line() {
@@ -2515,14 +2515,14 @@ fn a_session_without_the_bcp_plugin_shows_the_kit_line() {
     d.agent_idle();
     d.frames(2);
     let (en, vi) = d.labels("bashcut.agent.ready.kit");
-    assert_eq!((en, vi), (json!("BashCutPro skills are not installed"), json!("Chưa cài kỹ năng BashCutPro")));
+    assert_eq!((en, vi), (json!("BashCutPro skills are not downloaded"), json!("Chưa tải kỹ năng BashCutPro")));
     let (en, vi) = d.labels("bashcut.agent.installKit");
-    assert_eq!((en, vi), (json!("Install kit…"), json!("Cài bộ công cụ…")));
+    assert_eq!((en, vi), (json!("Download kit…"), json!("Tải bộ công cụ…")));
     let cmds = d.element("bashcut.agent.ready.kit.commands")["label"].as_str().unwrap_or_default().to_string();
     assert!(cmds.contains(terminal::KIT_MARKETPLACE) && cmds.contains(terminal::KIT_INSTALL), "{cmds}");
     d.click("bashcut.agent.installKit");
-    let (_, job, hint) = opened().pop().expect("Install kit opened a terminal");
-    assert_eq!(job, terminal::kit_job(terminal::Os::current(), &fake.claude));
+    let (_, job, hint) = opened().pop().expect("Download kit opened a terminal");
+    assert!(matches!(&job, terminal::Job::Script(l) if l.contains("git") && (l.contains(terminal::KIT_REPO_URL) || l.contains("pull"))), "{job:?}");
     assert!(hint.is_some_and(|h| h.contains("kit")));
 
     d.exec("bashcut.agent.send", json!({"text": "with the kit"}));
@@ -2694,7 +2694,7 @@ fn agent_palette_labels_are_vietnamese_under_vi() {
         let vi = label(&mut d, &c.id);
         assert!(vi.as_str().is_some_and(|l| !l.is_empty() && l != c.label), "{}: {vi} (English: {})", c.id, c.label);
     }
-    assert_eq!(label(&mut d, "bashcut.agent.installKit"), json!("Cài bộ công cụ BashCutPro"));
+    assert_eq!(label(&mut d, "bashcut.agent.installKit"), json!("Tải bộ công cụ BashCutPro"));
     assert_eq!(label(&mut d, "bashcut.agent.send"), json!("Gửi cho trợ lý"));
     d.exec("bashcut.ui.setLanguage", json!({"language": null}));
 }

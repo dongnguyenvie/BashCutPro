@@ -358,11 +358,11 @@ the agent ended unexpectedly	Trợ lý thoát bất ngờ
 {agent} account problem: {category}	{agent} gặp vấn đề tài khoản: {category}
 Continued in Terminal.	Đã chuyển sang tiếp tục trong Terminal.
 Ending the in-app session before the terminal opens…	Đang đóng phiên trong ứng dụng trước khi mở Terminal…
-BashCutPro skills are not installed	Chưa cài kỹ năng BashCutPro
+BashCutPro skills are not downloaded	Chưa tải kỹ năng BashCutPro
 The BashCutPro kit (bcp plugin for Claude Code) brings the /bcp: recipes and skills.	Bộ công cụ BashCutPro (plugin bcp cho Claude Code) mang theo các công thức /bcp: và kỹ năng.
-Install kit…	Cài bộ công cụ…
-Open a terminal that installs the BashCutPro kit (bcp plugin) for Claude Code.	Mở cửa sổ dòng lệnh để cài bộ công cụ BashCutPro (plugin bcp) cho Claude Code.
-Installing the BashCutPro kit for Claude Code. When it finishes, close this window and start a New conversation in BashCutPro.	Đang cài bộ công cụ BashCutPro cho Claude Code. Khi xong, đóng cửa sổ này và bắt đầu cuộc trò chuyện Mới trong BashCutPro.
+Download kit…	Tải bộ công cụ…
+Open a terminal that downloads the BashCutPro kit (git) into BashCutPro's data folder. Your next message loads it.	Mở cửa sổ dòng lệnh để tải bộ công cụ BashCutPro (git) về thư mục dữ liệu của BashCutPro. Tin nhắn kế tiếp sẽ nạp bộ công cụ này.
+Downloading the BashCutPro kit. When it finishes, close this window: your next message in BashCutPro loads it.	Đang tải bộ công cụ BashCutPro. Khi xong, đóng cửa sổ này: tin nhắn kế tiếp trong BashCutPro sẽ nạp bộ công cụ.
 Needs the BashCutPro kit (bcp plugin) for Claude Code.	Cần bộ công cụ BashCutPro (plugin bcp) cho Claude Code.
 You · queued {n}	Bạn · đang chờ {n}
 Remove this message from the queue	Bỏ tin nhắn này khỏi hàng chờ
@@ -441,8 +441,12 @@ Use Agent	Dùng trợ lý
 Pending Gate	Bước duyệt đang chờ
 Approve Gate	Duyệt bước này
 Request Gate Changes	Yêu cầu sửa bước này
-Install BashCutPro Kit	Cài bộ công cụ BashCutPro
-Install kit works with Claude Code once it is installed.	Cài bộ công cụ chỉ dùng được khi đã cài Claude Code.
+Download BashCutPro Kit	Tải bộ công cụ BashCutPro
+Download kit works with Claude Code once it is installed.	Tải bộ công cụ chỉ dùng được khi đã cài Claude Code.
+There is no data folder to keep the kit in.	Không có thư mục dữ liệu để lưu bộ công cụ.
+Git was not found. Download {url} and unpack it into {folder}.	Không tìm thấy Git. Hãy tải {url} rồi giải nén vào {folder}.
+When the download finishes, your next message loads the kit.	Tải xong, tin nhắn kế tiếp của bạn sẽ nạp bộ công cụ.
+Want the skills in every Claude Code session? Run:	Muốn có các kỹ năng trong mọi phiên Claude Code? Chạy:
 The BashCutPro kit is already installed.	Bộ công cụ BashCutPro đã được cài.
 # bashcut-agent errors the VI4 list missed (TA4: strings::tests::every_agent_crate_message_has_a_vietnamese_row)
 no such gate	Không có bước duyệt này

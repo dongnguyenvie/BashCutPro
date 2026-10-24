@@ -64,16 +64,19 @@ Lần đầu ở một thư mục, Claude Code hỏi bạn có tin thư mục đ
 - Khi chưa cài Claude Code, dòng "không tìm thấy" có nút **Cài đặt**. Nút này mở terminal chạy trình cài đặt chính
   thức (`curl -fsSL https://claude.ai/install.sh | bash` trên macOS và Linux, `irm https://claude.ai/install.ps1 | iex`
   trong PowerShell trên Windows). Không có gì được cài cho đến khi bạn bấm.
-- Khi Claude Code chạy mà chưa có bộ công cụ BashCutPro (plugin `bcp`, mang theo các công thức `/bcp:` và kỹ năng),
-  sau tin nhắn đầu tiên bảng hiện dòng **Chưa cài kỹ năng BashCutPro**, kèm hai lệnh để cài
-  (`claude plugin marketplace add dongnguyenvie/bashcutpro-agent-kit`, rồi
-  `claude plugin install bcp@bashcutpro-agent-kit`) và nút **Cài bộ công cụ…** chạy chúng trong terminal. Không có gì
-  được cài cho đến khi bạn bấm. Cài xong, bấm **Mới**: dòng này biến mất khi tin nhắn đầu tiên của cuộc trò chuyện mới
-  thấy bộ công cụ. Các nút công thức của cuộc trò chuyện trống cũng cần bộ công cụ.
+- Khi BashCutPro không tìm thấy bản bộ công cụ BashCutPro (plugin `bcp`, mang theo các công thức `/bcp:` và kỹ năng) và
+  Claude Code chạy mà thiếu nó, sau tin nhắn đầu tiên bảng hiện dòng **Chưa tải kỹ năng BashCutPro**, kèm nút
+  **Tải bộ công cụ…**. Nút này mở terminal để tải (clone) bộ công cụ
+  (`https://github.com/dongnguyenvie/bashcutpro-agent-kit`) về thư mục dữ liệu của BashCutPro (`bashcut-kit`), hoặc
+  chạy `git pull` nếu đã có. Không có gì được tải cho đến khi bạn bấm, và không có gì được cài vào chính Claude Code.
+  Tải xong, tin nhắn kế tiếp của bạn sẽ nạp bộ công cụ. Máy không có git thì bảng hiện địa chỉ file zip và thư mục để
+  giải nén vào. Dòng ghi chú bên dưới có lệnh tùy chọn nếu bạn muốn có kỹ năng trong mọi phiên Claude Code:
+  `claude plugin marketplace add dongnguyenvie/bashcutpro-agent-kit && claude plugin install
+  bcp@bashcutpro-agent-kit`. Các nút công thức của cuộc trò chuyện trống cũng cần bộ công cụ.
 - Bảng lệnh cũng có ba thao tác này: **Mở trợ lý trong Terminal**, **Đăng nhập Claude Code** và **Cài Claude Code**
   (trợ lý điều khiển BashCutPro có thể gọi chúng bằng `bashcut.agent.terminal`, `bashcut.agent.signIn` và
-  `bashcut.agent.install`). Việc cài vẫn chỉ chạy khi bạn chọn. **Cài bộ công cụ BashCutPro**
-  (`bashcut.agent.installKit`) làm đúng như nút **Cài bộ công cụ…**; lệnh sẽ báo lỗi nếu cuộc trò chuyện đã thấy bộ
+  `bashcut.agent.install`). Việc cài vẫn chỉ chạy khi bạn chọn. **Tải bộ công cụ BashCutPro**
+  (`bashcut.agent.installKit`) làm đúng như nút **Tải bộ công cụ…**; lệnh sẽ báo lỗi nếu cuộc trò chuyện đã thấy bộ
   công cụ.
 
 Terminal là Terminal trên macOS, Windows Terminal (không có thì một cửa sổ PowerShell) trên Windows, và terminal mặc
