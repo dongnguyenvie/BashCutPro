@@ -21,7 +21,8 @@ nothing.
 2. Open **Agent** on the rail (**Cmd+Alt+Shift+A**). Type what you want ("cut the ums, keep it under a minute, add
    Vietnamese captions") and press **Enter** (**Shift+Enter** for a new line).
 3. The agent's replies stream in; the commands it runs are folded into one line each. Every edit it makes is a normal
-   undo step.
+   undo step. Your messages are bubbles on the right, the agent's replies sit under its name; point at either (or at a
+   code block in a reply) to get a **Copy** button.
 4. At each stage (brief, plan, rough cut, draft) it shows a **gate** card with what it did and the measurements behind
    it: **Approve** to go on, or write a note and **Ask for changes**.
 5. **Stop** ends its turn within a few seconds, also in the middle of a long tool call; the transcript says

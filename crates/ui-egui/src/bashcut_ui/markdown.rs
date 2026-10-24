@@ -148,8 +148,38 @@ pub fn spans(text: &str) -> Vec<Span> {
     out
 }
 
-/// Draw `text` as Markdown in `color` (list markers in `dim`).
-pub fn show(ui: &mut egui::Ui, text: &str, color: egui::Color32, dim: egui::Color32) {
+/// How long the Copy button shows its done state (egui seconds).
+const COPIED_FOR: f64 = 1.0;
+
+/// A Copy icon button that puts `text` on the clipboard; for [`COPIED_FOR`] seconds the icon turns
+/// into a "done" mark and the tooltip says Copied. `mix` (0..1) is how visible it is: hover-only
+/// buttons fade in with the hover but stay registered and clickable. Upstream has no Copy or Check
+/// icon, so the pair is the closest existing two.
+pub fn copy_button(app: &mut crate::FilmcraftApp, ui: &mut egui::Ui, id: &str, text: &str, mix: f32) {
+    use super::strings::s;
+    let ctx = ui.ctx().clone();
+    let key = egui::Id::new(("bashcut.copied", id));
+    let now = ctx.input(|i| i.time);
+    let done = super::shared::temp::<Option<f64>>(&ctx, key).filter(|at| now - at < COPIED_FOR);
+    let (icon, tip) = if done.is_some() { (crate::icons::Icon::Marker, s("Copied")) } else { (crate::icons::Icon::NewItem, s("Copy")) };
+    let clicked = ui
+        .scope(|ui| {
+            ui.multiply_opacity(if done.is_some() { 1.0 } else { mix.clamp(0.0, 1.0) });
+            super::widgets::icon_button(app, ui, id, icon, tip, true)
+        })
+        .inner;
+    if clicked {
+        ctx.copy_text(text.to_string());
+        super::shared::put_temp(&ctx, key, Some(now));
+        ctx.request_repaint_after(std::time::Duration::from_secs_f64(COPIED_FOR + 0.05));
+    }
+}
+
+/// Draw `text` as Markdown in `color` (list markers in `dim`). Code blocks get a Copy button at
+/// their top-right (hover), registered as `{id}.code.{n}`.
+pub fn show(app: &mut crate::FilmcraftApp, ui: &mut egui::Ui, id: &str, text: &str, color: egui::Color32, dim: egui::Color32) {
+    let t = app.tokens;
+    let mut codes = 0usize;
     for b in blocks(text) {
         match b {
             Block::Heading(level, h) => {
@@ -167,9 +197,17 @@ pub fn show(ui: &mut egui::Ui, text: &str, color: egui::Color32, dim: egui::Colo
                 });
             }
             Block::Code(c) => {
-                egui::Frame::new().fill(ui.visuals().extreme_bg_color).inner_margin(6.0).corner_radius(3.0).show(ui, |ui| {
-                    ui.add(egui::Label::new(egui::RichText::new(c).monospace().size(11.0).color(color)).selectable(true).wrap());
+                let frame = egui::Frame::new().fill(t.field_bg).inner_margin(6.0).corner_radius(t.radius).show(ui, |ui| {
+                    ui.add(egui::Label::new(egui::RichText::new(&c).monospace().size(11.0).color(color)).selectable(true).wrap());
                 });
+                let rect = frame.response.rect;
+                let hot = ui.rect_contains_pointer(rect);
+                let code_id = format!("{id}.code.{codes}");
+                let mix = super::motion::hover_mix(ui.ctx(), egui::Id::new(("bashcut.code.hover", &code_id)), hot);
+                let slot = egui::Rect::from_min_size(egui::pos2(rect.right() - 24.0, rect.top() + 2.0), egui::vec2(20.0, 18.0));
+                let mut child = ui.new_child(egui::UiBuilder::new().max_rect(slot));
+                copy_button(app, &mut child, &code_id, &c, mix);
+                codes += 1;
             }
         }
     }
