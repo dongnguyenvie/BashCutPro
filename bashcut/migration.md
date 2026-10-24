@@ -2,7 +2,7 @@
 
 What to bring over from `bashcut-agent-kit` and `bashcut-plugins`, what to skip, and why. Checked against
 FilmCraft's live command catalogue (**701 commands**, MCP `command_list` on a release `filmcraft-cli`,
-2026-10-20): [commands.json](commands.json), summary in [commands.md](commands.md). What each skill needs, need
+2026-10-20): [commands.json](https://github.com/dongnguyenvie/bashcutpro-agent-kit/blob/main/scripts/commands.json), summary in [commands.md](commands.md). What each skill needs, need
 by need: [skill-needs.md](skill-needs.md). (The first version of this file guessed ~1,000 ids from source.)
 
 Verdicts: **migrate** (now), **later** (worth it, blocked on something), **skip** (FilmCraft already
