@@ -28,7 +28,7 @@ impl Fake {
         f.vars.insert("BASHCUTPRO_KIT_DIR".into(), "kit".into());
         f.program("bashcutpro-cli --version", 0, "bashcutpro-cli 0.9.0\n");
         let ids: Vec<String> = REQUIRED_COMMANDS.iter().map(|id| format!("{{\"id\":\"{id}\"}}")).collect();
-        f.program("bashcutpro-cli commands bashcut --json", 0, &format!("[{}]", ids.join(",")));
+        f.program("bashcutpro-cli commands --json", 0, &format!("[{}]", ids.join(",")));
         f.program("bashcutpro-cli exec transcript.models", 0, &speech(true, true));
         f.program("python3 --version", 0, "Python 3.12.1\n");
         f.program("claude --version", 0, "2.1.0 (Claude Code)\n");
@@ -188,7 +188,7 @@ fn speech_to_text_missing_or_not_downloaded_warns() {
 #[test]
 fn an_old_build_without_our_commands_fails() {
     let mut f = Fake::healthy();
-    f.program("bashcutpro-cli commands bashcut --json", 0, r#"[{"id":"bashcut.profiles.list"}]"#);
+    f.program("bashcutpro-cli commands --json", 0, r#"[{"id":"bashcut.profiles.list"}]"#);
     let r = run_checks(&f, &Options::default());
     assert_eq!(level(&r, "cli.commands"), Level::Fail);
 }
@@ -242,7 +242,7 @@ fn hostile_files_do_not_crash() {
     f.file("data/bashcut-plugins/models.json", br#"{"models":[{"id":"../../x","files":[{"path":"../../etc/passwd"}]},{"id":"m2","files":"no"},7]}"#);
     f.file("data/bashcut-plugins/bad/bashcut-plugin.json", b"{");
     f.file("data/bashcut-plugins/odd/bashcut-plugin.json", br#"{"schema":"bashcut-plugin/1","runtime":{"type":"python"},"entry":{"command":[]}}"#);
-    f.program("bashcutpro-cli commands bashcut --json", 0, "not json");
+    f.program("bashcutpro-cli commands --json", 0, "not json");
     let r = run_checks(&f, &Options::default());
     assert!(!r.findings.iter().any(|x| x.id.contains("..")), "{}", r.to_text());
     assert_eq!(level(&r, "cli.commands"), Level::Warn);
@@ -411,5 +411,9 @@ fn version_prints_name_and_exits() {
 }
 
 #[test]
-#[ignore = "test ticket: kit.commands is Ok for a matching kit index, Warn naming skills and ids when the fake `commands bashcut --json` lacks some, Info when the kit has no index"]
+#[ignore = "test ticket: kit.commands is Ok for a matching kit index, Warn naming skills and ids when the fake `commands --json` lacks some, Info when the kit has no index"]
 fn kit_commands_compares_the_kit_index_with_the_engine() {}
+
+#[test]
+#[ignore = "test ticket: fake `commands --json` listing core ids -> kit.commands Ok; kit naming a missing core id -> Warn naming the skill"]
+fn kit_commands_compares_core_ids() {}

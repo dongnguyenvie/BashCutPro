@@ -10,7 +10,7 @@ use bashcut_dirs::child;
 /// How long a probe (`--version`, `commands`, `exec transcript.models`, `df`) may run before it is
 /// stopped (I7, DR1): a stuck engine must not hang the doctor.
 pub const RUN_TIMEOUT: Duration = Duration::from_secs(30);
-/// What a probe's stdout may hold (the `commands bashcut --json` list is a few KiB); the rest is read and dropped.
+/// What a probe's stdout may hold (the whole `commands --json` list is a few hundred KiB); the rest is read and dropped.
 const MAX_STDOUT: usize = 4 << 20;
 /// The tail of stderr a probe keeps.
 const MAX_STDERR: usize = 64 << 10;
