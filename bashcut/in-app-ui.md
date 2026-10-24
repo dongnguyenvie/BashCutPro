@@ -265,6 +265,9 @@ preview need an HTTP image loader / player (later, or through plugin views #37).
 - **UI state** (open section, width, popped-out sections, panel scroll, draft message) is a `bashcut_ui::State`
   kept in egui's context data (`ctx.data_mut(|d| d.get_temp_mut_or_default::<State>(id))`), so `FilmcraftApp`
   gains no field. It is saved to `<data dir>/bashcut/ui.json` when it changes, not in upstream's workspace files.
+  A session with no data dir (a bare test harness, autosave off) starts with the rail hidden (FX38): upstream's `tests/it` suites, which
+  assert FilmCraft's own widths, run in such a session and the rail's 36 px (plus an open panel) would narrow their panels. The app always
+  has a data dir, so users see the rail as before; `bashcut.ui.toggleRail` shows it anywhere. The fork's own tests use a driver with a data dir.
   The failed runs Runs has shown (for the rail's dot) are kept there too but never saved: job ids restart with the app.
 - **Background work** (plugin runs, agent processes) runs on threads owned by `bashcut-plugin-host` /
   `bashcut-agent`; the UI polls their channels each frame and asks for a repaint while anything runs. Nothing

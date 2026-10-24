@@ -26,7 +26,16 @@ struct Driver {
 }
 
 impl Driver {
+    /// The demo project open. The session saves into a scratch dir: with no data dir the rail
+    /// starts hidden (`State::load_once`), so the fork's tests get it the way the app does.
     fn demo() -> Self {
+        static N: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
+        let n = N.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        Self::build(&std::env::temp_dir().join(format!("bashcut-ui-demo-{}-{n}", std::process::id())), |_| {}, |_| {})
+    }
+
+    /// The demo project open and no data dir (rail hidden at first, see [`Driver::demo`]).
+    fn bare() -> Self {
         let mut session = Session::default();
         session.execute("file.openDemoProject", json!({})).expect("demo project");
         let (tx, rx) = channel();
@@ -337,7 +346,8 @@ fn language_menu_switches_and_checks_the_current_language() {
 
 #[test]
 fn plugins_and_runs_sections_draw_and_commands_answer() {
-    let mut d = Driver::demo();
+    let mut d = Driver::bare();
+    d.exec("bashcut.ui.toggleRail", json!({}));
     d.click("bashcut.rail.plugins");
     assert!(d.has("bashcut.panel.plugins"));
     assert!(d.has("bashcut.plugins.registry.refresh"), "registry button");
