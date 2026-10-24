@@ -639,10 +639,13 @@ pub fn terminal_live(ctx: &egui::Context) -> bool {
     terminal_phase(ctx).is_some_and(|p| p != terminal::Phase::Closed)
 }
 
-/// The terminal's turn ended and no hook event came for [`CLOSED_AFTER`]: probably closed (AGT3 heartbeat rule).
+/// The terminal's turn ended, no hook event came for [`CLOSED_AFTER`] and the session file (`transcript_path` of the
+/// events) was not written either: probably closed (AGT3 heartbeat rule).
 pub fn terminal_maybe_closed(ctx: &egui::Context) -> bool {
-    ctx.data(|d| d.get_temp::<TerminalWatch>(watch_key()))
-        .is_some_and(|w| w.0.is_some_and(|w| matches!(w.phase, terminal::Phase::Done | terminal::Phase::Failed)) && w.1.elapsed() >= CLOSED_AFTER)
+    ctx.data(|d| d.get_temp::<TerminalWatch>(watch_key())).is_some_and(|w| {
+        w.1.elapsed() >= CLOSED_AFTER
+            && w.0.is_some_and(|w| matches!(w.phase, terminal::Phase::Done | terminal::Phase::Failed) && w.session_untouched(CLOSED_AFTER))
+    })
 }
 
 /// Take back (AGT3): stop watching the terminal and make the panel the writer again (a notice in the transcript).
@@ -877,10 +880,6 @@ mod tests {
         assert_eq!(v.windows(2).filter(|w| w[0] == "--plugin-dir").count(), 1, "{v:?}");
         assert_eq!(terminal_argv(argv(), false, Some(kit), &c), argv());
     }
-
-    #[test]
-    #[ignore = "test ticket: bashcut.agent.terminal while a turn runs returns pending, poll opens it once the agent ended and the transcript says Continued in Terminal"]
-    fn terminal_command_hands_off_after_the_turn_ends() {}
 
     /// The notices of `app`'s conversation that say "Back in the panel.".
     fn back_notices(app: &FilmcraftApp, ctx: &egui::Context) -> usize {

@@ -344,7 +344,6 @@ Type /login and follow the steps in your browser, then close this window.	Gõ /l
 Open a terminal with the official Claude Code installer.	Mở terminal chạy trình cài đặt chính thức của Claude Code.
 Installing Claude Code with the official installer. When it finishes, run claude and type /login, then go back to BashCutPro.	Đang cài Claude Code bằng trình cài đặt chính thức. Cài xong, chạy claude và gõ /login, rồi quay lại BashCutPro.
 Could not open a terminal: {error}	Không mở được terminal: {error}
-You · queued	Bạn · đang chờ
 Update Claude Code: run `claude update`	Hãy cập nhật Claude Code: chạy `claude update`
 Stopped.	Đã dừng.
 the agent is stopping: wait a moment	Trợ lý đang dừng: chờ một chút
@@ -364,7 +363,6 @@ Download kit…	Tải bộ công cụ…
 Open a terminal that downloads the BashCutPro kit (git) into BashCutPro's data folder. Your next message loads it.	Mở cửa sổ dòng lệnh để tải bộ công cụ BashCutPro (git) về thư mục dữ liệu của BashCutPro. Tin nhắn kế tiếp sẽ nạp bộ công cụ này.
 Downloading the BashCutPro kit. When it finishes, close this window: your next message in BashCutPro loads it.	Đang tải bộ công cụ BashCutPro. Khi xong, đóng cửa sổ này: tin nhắn kế tiếp trong BashCutPro sẽ nạp bộ công cụ.
 Needs the BashCutPro kit (bcp plugin) for Claude Code.	Cần bộ công cụ BashCutPro (plugin bcp) cho Claude Code.
-You · queued {n}	Bạn · đang chờ {n}
 Remove this message from the queue	Bỏ tin nhắn này khỏi hàng chờ
 Removing…	Đang bỏ…
 that message is not queued any more	Tin nhắn đó không còn trong hàng chờ
