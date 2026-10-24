@@ -215,6 +215,7 @@ fn status_row(app: &mut FilmcraftApp, ui: &mut egui::Ui, snap: &Snapshot) {
             terminal::Phase::Opened => (s("Terminal: opened"), app.tokens.text_dim),
             terminal::Phase::Working => (s("Terminal: working…"), app.tokens.text_dim),
             terminal::Phase::Waiting => (s("Terminal: waiting for your permission"), app.tokens.danger),
+            terminal::Phase::Done if agent::terminal_maybe_closed(ui.ctx()) => (s("Terminal: closed?"), app.tokens.text_dim),
             terminal::Phase::Done => (s("Terminal: done"), app.tokens.text_dim),
             terminal::Phase::Failed => (s("Terminal: stopped with an error"), app.tokens.danger),
             terminal::Phase::Closed => (s("Terminal: closed"), app.tokens.text_dim),

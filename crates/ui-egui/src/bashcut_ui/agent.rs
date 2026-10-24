@@ -8,7 +8,7 @@
 
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, PoisonError};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use bashcut_agent::{Agent, AgentSpec, Context, Status};
 use filmcraft_engine::shortcuts::CommandInfo;
@@ -582,7 +582,7 @@ fn finish_hand_off(ctx: &egui::Context, a: &mut Agent) -> Option<bool> {
     let opened = error.is_none();
     ctx.data_mut(|d| {
         if opened && hooked {
-            d.insert_temp(watch_key(), TerminalWatch(Some(terminal::Watch::default())));
+            d.insert_temp(watch_key(), TerminalWatch(Some(terminal::Watch::default()), Instant::now()));
         } else {
             d.remove::<TerminalWatch>(watch_key());
         }
@@ -597,11 +597,34 @@ fn watch_key() -> egui::Id {
 
 /// What the terminal's hooks reported since Open in Terminal (`None`: no hooked terminal).
 #[derive(Clone)]
-struct TerminalWatch(Option<terminal::Watch>);
+struct TerminalWatch(Option<terminal::Watch>, Instant);
 
 /// The phase of the terminal opened with hooks, for the panel's status line.
 pub fn terminal_phase(ctx: &egui::Context) -> Option<terminal::Phase> {
     ctx.data(|d| d.get_temp::<TerminalWatch>(watch_key())).and_then(|w| w.0).map(|w| w.phase)
+}
+
+/// No hook event this long after the terminal's turn ended: its window may have been force-closed (a closed window sends
+/// no `SessionEnd`).
+const CLOSED_AFTER: Duration = Duration::from_secs(10 * 60);
+
+/// The terminal opened with hooks still holds the session (AGT3): the panel's message box stays off until it ends or
+/// the user takes the conversation back.
+pub fn terminal_live(ctx: &egui::Context) -> bool {
+    terminal_phase(ctx).is_some_and(|p| p != terminal::Phase::Closed)
+}
+
+/// The terminal's turn ended and no hook event came for [`CLOSED_AFTER`]: probably closed (AGT3 heartbeat rule).
+pub fn terminal_maybe_closed(ctx: &egui::Context) -> bool {
+    ctx.data(|d| d.get_temp::<TerminalWatch>(watch_key()))
+        .is_some_and(|w| w.0.is_some_and(|w| matches!(w.phase, terminal::Phase::Done | terminal::Phase::Failed)) && w.1.elapsed() >= CLOSED_AFTER)
+}
+
+/// Take back (AGT3): stop watching the terminal and make the panel the writer again (a notice in the transcript).
+pub fn take_back(app: &FilmcraftApp, ctx: &egui::Context) {
+    ctx.data_mut(|d| d.remove::<TerminalWatch>(watch_key()));
+    with(app, ctx, |a| a.returned_from_terminal());
+    ctx.request_repaint();
 }
 
 /// `bashcut.agent.terminalEvent {event}`: one hook event of the terminal session (the hook JSON, an object or its text).
@@ -613,12 +636,12 @@ fn terminal_event(app: &FilmcraftApp, ctx: &egui::Context, params: &Value) -> Re
         Some(v @ Value::Object(_)) => v.clone(),
         _ => return Err("need `event`: the hook JSON".into()),
     };
-    let Some(TerminalWatch(Some(mut watch))) = ctx.data(|d| d.get_temp::<TerminalWatch>(watch_key())) else {
+    let Some(TerminalWatch(Some(mut watch), _)) = ctx.data(|d| d.get_temp::<TerminalWatch>(watch_key())) else {
         return Ok(json!({"ignored": true}));
     };
     let ended = watch.apply(&event);
     let phase = watch.phase;
-    ctx.data_mut(|d| d.insert_temp(watch_key(), TerminalWatch(Some(watch))));
+    ctx.data_mut(|d| d.insert_temp(watch_key(), TerminalWatch(Some(watch), Instant::now())));
     if ended {
         with(app, ctx, |a| a.returned_from_terminal());
     }
@@ -779,6 +802,10 @@ mod tests {
         assert_ne!(e, "Sign in works with Claude Code once it is installed.");
         super::super::strings::set_language(None);
     }
+
+    #[test]
+    #[ignore = "test ticket: terminal live (Opened/Working/Waiting/Done) -> composer disabled with the reason; Take back (confirm) re-enables and adds the Back notice; Done with no event for 10 minutes shows Terminal: closed?"]
+    fn terminal_live_disables_composer_until_take_back() {}
 
     #[test]
     fn install_kit_command_refuses_when_kit_present() {

@@ -581,3 +581,8 @@ Show	Xem
 Message {agent}…	Nhắn {agent}…
 Send (Enter sends, Shift+Enter for a new line)	Gửi (Enter để gửi, Shift+Enter để xuống dòng)
 No sequence open	Chưa mở sequence nào
+Terminal: closed?	Terminal: đã đóng chưa?
+Claude Code is running in the terminal. Close it to continue here.	Claude Code đang chạy trong terminal. Hãy đóng nó để tiếp tục tại đây.
+Take back the conversation? Close the terminal window first, or two writers share one session.	Lấy lại cuộc trò chuyện? Hãy đóng cửa sổ terminal trước, nếu không hai bên sẽ cùng ghi vào một phiên.
+Take back	Lấy lại
+Yes, take back	Đúng, lấy lại
