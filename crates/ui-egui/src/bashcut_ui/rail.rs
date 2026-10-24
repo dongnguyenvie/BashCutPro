@@ -40,6 +40,8 @@ pub enum Badge {
     Busy,
     /// A run failed that the user has not seen.
     Failed,
+    /// The agent finished or needs the user and Agent was not on screen (AGT2).
+    Unread,
 }
 
 /// A plugin job that ended badly (the states Runs draws in `danger`).
@@ -68,6 +70,15 @@ pub fn runs_badge(ctx: &egui::Context, st: &mut State, on_screen: bool) -> Optio
 /// Batch's dot: a batch runs.
 pub fn batch_badge(ctx: &egui::Context, _: &mut State, _: bool) -> Option<Badge> {
     batch::lock(&batch::shared(ctx)).is_running().then_some(Badge::Busy)
+}
+
+/// Agent's dot: its turn ended or it asks for something while the section was hidden; cleared once
+/// the section is on screen.
+pub fn agent_badge(ctx: &egui::Context, _: &mut State, on_screen: bool) -> Option<Badge> {
+    if on_screen {
+        super::agent::clear_unread(ctx);
+    }
+    super::agent::unread(ctx).then_some(Badge::Unread)
 }
 
 /// The keys that open `sec` (its [`Section::shortcut`] command, else its show command), from the live map.
@@ -123,6 +134,7 @@ pub fn show(app: &mut FilmcraftApp, ui: &mut egui::Ui, rect: Rect, st: &mut Stat
         let label = match badge {
             Some(Badge::Failed) => f("{section}: failed", &[("section", title)]),
             Some(Badge::Busy) => f("{section}: running", &[("section", title)]),
+            Some(Badge::Unread) => f("{section}: news", &[("section", title)]),
             None => title.to_string(),
         };
         app.auto.add_response(&id, &resp, &label);
@@ -137,6 +149,9 @@ pub fn show(app: &mut FilmcraftApp, ui: &mut egui::Ui, rect: Rect, st: &mut Stat
                 }
                 Some(Badge::Busy) => {
                     note(ui, s("Running now."), NOTE, t.accent);
+                }
+                Some(Badge::Unread) => {
+                    note(ui, s("The agent finished or needs you."), NOTE, t.accent);
                 }
                 None => {}
             }

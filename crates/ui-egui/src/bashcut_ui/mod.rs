@@ -82,7 +82,7 @@ pub const SECTIONS: &[Section] = &[
         icon: Icon::Chat,
         blurb: "Chat with the editing agent (Claude Code, Codex) about this project.",
         draw: agent_panel::draw,
-        badge: None,
+        badge: Some(rail::agent_badge),
         shortcut: Some("bashcut.ui.focusAgent"),
     },
     Section {
@@ -356,6 +356,13 @@ pub fn invoke(app: &mut FilmcraftApp, ctx: &egui::Context, id: &str, params: &Va
             State::update(ctx, |st| st.language = lang.clone());
             Ok(json!(lang))
         }
+        "bashcut.ui.setNotify" => {
+            let on = State::update(ctx, |st| {
+                st.notify = params.get("on").and_then(Value::as_bool).unwrap_or(!st.notify);
+                st.notify
+            });
+            Ok(json!(on))
+        }
         _ => {
             let sec = id.strip_prefix("bashcut.ui.show.").filter(|s| is_section(s))?;
             State::update(ctx, |st| st.show(sec));
@@ -379,6 +386,7 @@ pub fn params(id: &str) -> &'static str {
         "bashcut.ui.popOut" => &hints[1],
         "bashcut.ui.dockBack" => &hints[2],
         "bashcut.ui.setLanguage" => r#"{"language":"en|vi"?}"#,
+        "bashcut.ui.setNotify" => r#"{"on":bool?}"#,
         _ => "",
     }
 }
@@ -395,6 +403,7 @@ pub fn commands() -> Vec<CommandInfo> {
         CommandInfo::new("bashcut.ui.popOut", "Pop Out Section", &[], None),
         CommandInfo::new("bashcut.ui.dockBack", "Dock Section Back", &[], None),
         CommandInfo::new("bashcut.ui.setLanguage", "BashCutPro Language", &[], None),
+        CommandInfo::new("bashcut.ui.setNotify", "Agent Notifications", &[], None),
         CommandInfo::new("bashcut.ui.state", "Rail State", &[], None),
     ];
     for sec in SECTIONS {

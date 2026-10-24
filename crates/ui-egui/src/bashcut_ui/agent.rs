@@ -10,7 +10,7 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, PoisonError};
 use std::time::Duration;
 
-use bashcut_agent::{Agent, AgentSpec, Context};
+use bashcut_agent::{Agent, AgentSpec, Context, Status};
 use filmcraft_engine::shortcuts::CommandInfo;
 use serde_json::{Value, json};
 
@@ -114,6 +114,141 @@ fn shown(ctx: &egui::Context) -> bool {
     st.rail && st.on_screen(super::AGENT)
 }
 
+/// What happened that the user may want to know about (AGT2).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum News {
+    /// The turn ended.
+    Finished,
+    /// The turn ended with an error.
+    Failed,
+    /// The agent asks to use a tool.
+    Permission(String),
+    /// The turn ended at a plan gate waiting for an answer.
+    Gate,
+}
+
+/// The previous frame's turn, to see what changed.
+#[derive(Clone, Default)]
+struct Seen {
+    running: bool,
+    /// The turn was stopped by the user: its end is no news.
+    stopped: bool,
+    permissions: usize,
+}
+
+/// Turn states in, news out: a turn that ended (not one the user stopped), or more permission
+/// requests waiting than before. `gate` is asked only when a turn ended without error.
+fn watch(seen: &mut Seen, running: bool, stopping: bool, failed: bool, permissions: &[String], gate: impl FnOnce() -> bool) -> Option<News> {
+    let ended = seen.running && !running && !seen.stopped;
+    let asked = permissions.len() > seen.permissions;
+    seen.stopped = if running { seen.stopped || stopping } else { false };
+    seen.running = running;
+    seen.permissions = permissions.len();
+    if asked && let Some(tool) = permissions.last() {
+        return Some(News::Permission(tool.clone()));
+    }
+    match (ended, failed) {
+        (true, true) => Some(News::Failed),
+        (true, false) if gate() => Some(News::Gate),
+        (true, false) => Some(News::Finished),
+        _ => None,
+    }
+}
+
+/// [`watch`] for the live agent, with the previous frame's state kept in context data.
+fn news(ctx: &egui::Context, a: &Agent) -> Option<News> {
+    let id = egui::Id::new("bashcut.agent.seen");
+    let mut seen = super::shared::temp::<Seen>(ctx, id);
+    let running = matches!(a.status, Status::Running | Status::Stopping);
+    let permissions: Vec<String> = a.permissions().into_iter().map(|p| clip_line(&p.tool, &p.detail)).collect();
+    let n = watch(&mut seen, running, a.status == Status::Stopping, matches!(a.status, Status::Failed { .. }), &permissions, || a.gate().is_some());
+    super::shared::put_temp(ctx, id, seen);
+    n
+}
+
+/// "Tool: detail" cut to one short line, for a notification body.
+fn clip_line(tool: &str, detail: &str) -> String {
+    let line = detail.lines().next().unwrap_or_default();
+    bashcut_agent::clip(&format!("{tool}: {line}"), 100)
+}
+
+/// The Agent rail icon has news the user has not seen (set by [`attention`]).
+#[derive(Clone, Default)]
+struct Unread(bool);
+
+fn unread_key() -> egui::Id {
+    egui::Id::new("bashcut.agent.unread")
+}
+
+/// The Agent icon carries a dot (the rail draws it only while the section is hidden).
+pub fn unread(ctx: &egui::Context) -> bool {
+    super::shared::temp::<Unread>(ctx, unread_key()).0
+}
+
+/// The Agent section was shown: the news is seen.
+pub fn clear_unread(ctx: &egui::Context) {
+    if unread(ctx) {
+        super::shared::put_temp(ctx, unread_key(), Unread(false));
+    }
+}
+
+/// `news` happened: an unread dot while the Agent section is hidden, and one OS notification while
+/// the app window is not focused (unless the user turned them off). Never a sound.
+fn attention(ctx: &egui::Context, shown: bool, n: &News) {
+    if !shown {
+        super::shared::put_temp(ctx, unread_key(), Unread(true));
+    }
+    if ctx.input(|i| i.focused) || !super::State::get(ctx).notify {
+        return;
+    }
+    let name = super::shared::existing::<Agent>(ctx, key()).map_or_else(String::new, |h| h.lock().unwrap_or_else(PoisonError::into_inner).agent.name.clone());
+    let (title, body) = match n {
+        News::Finished => (f("{agent} finished", &[("agent", name.as_str())]), s("Open BashCutPro to see the result.").to_string()),
+        News::Failed => (f("{agent} stopped with an error", &[("agent", name.as_str())]), s("Open BashCutPro to see what went wrong.").to_string()),
+        News::Permission(what) => (f("{agent} needs your permission", &[("agent", name.as_str())]), what.clone()),
+        News::Gate => (f("{agent} needs your decision", &[("agent", name.as_str())]), s("A plan step is waiting for your answer.").to_string()),
+    };
+    os_notify(&title, &body);
+}
+
+/// Show an OS notification with the platform's own tool (no new dependency): `osascript` on macOS,
+/// a PowerShell balloon on Windows, `notify-send` elsewhere. Text goes in as arguments / environment,
+/// never into a script. Best effort: a missing tool is logged and nothing else happens.
+fn os_notify(title: &str, body: &str) {
+    use std::process::{Command, Stdio};
+    let mut cmd;
+    if cfg!(target_os = "macos") {
+        cmd = Command::new("osascript");
+        cmd.args(["-e", "on run argv", "-e", "display notification (item 2 of argv) with title (item 1 of argv)", "-e", "end run", title, body]);
+    } else if cfg!(windows) {
+        cmd = Command::new("powershell");
+        cmd.args([
+            "-NoProfile",
+            "-WindowStyle",
+            "Hidden",
+            "-Command",
+            "Add-Type -AssemblyName System.Windows.Forms,System.Drawing; $n = New-Object System.Windows.Forms.NotifyIcon; \
+             $n.Icon = [System.Drawing.SystemIcons]::Information; $n.Visible = $true; \
+             $n.ShowBalloonTip(5000, $env:BASHCUT_NOTE_TITLE, $env:BASHCUT_NOTE_BODY, 'Info'); Start-Sleep -Seconds 6; $n.Dispose()",
+        ]);
+        cmd.env("BASHCUT_NOTE_TITLE", title).env("BASHCUT_NOTE_BODY", body);
+        #[cfg(windows)]
+        std::os::windows::process::CommandExt::creation_flags(&mut cmd, 0x0800_0000);
+    } else {
+        cmd = Command::new("notify-send");
+        cmd.args(["--app-name=BashCutPro", "--", title, body]);
+    }
+    match cmd.stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null()).spawn() {
+        // reap it off the UI thread
+        Ok(mut child) => {
+            std::thread::spawn(move || {
+                let _ = child.wait();
+            });
+        }
+        Err(e) => log::debug!("agent notification: {e}"),
+    }
+}
+
 /// Collect the agent's events (called by `layout` every frame); an idle live agent is closed while
 /// the Agent section is hidden (AG2: the next message resumes its session), unless a client other
 /// than the panel drives it (AG3: `bashcut.agent.*` called while hidden; the idle close still applies).
@@ -123,12 +258,16 @@ pub fn poll(ctx: &egui::Context) {
     let mut a = h.lock().unwrap_or_else(PoisonError::into_inner);
     let running = a.poll();
     let handing_off = finish_hand_off(ctx, &mut a) == Some(false);
+    let news = news(ctx, &a);
     if shown {
         a.driven = false;
     } else if !running && !a.driven {
         a.end_session();
     }
     drop(a);
+    if let Some(n) = news {
+        attention(ctx, shown, &n);
+    }
     if running || handing_off {
         ctx.request_repaint_after(Duration::from_millis(100));
     }
@@ -425,6 +564,14 @@ pub fn commands() -> Vec<CommandInfo> {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    #[ignore = "test ticket: watch(): turn ends -> Finished/Failed/Gate, stopped turn -> none, more permissions -> Permission"]
+    fn watch_reports_ended_turns_and_new_permissions() {}
+
+    #[test]
+    #[ignore = "test ticket (headless): turn ends with Agent hidden -> rail dot, shown -> cleared; focused window or bashcut.ui.setNotify off -> no OS notification"]
+    fn attention_dot_and_notification() {}
+
     use super::*;
 
     /// A file that exists (the test binary), so an agent run with it counts as found.

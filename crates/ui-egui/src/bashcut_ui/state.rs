@@ -34,6 +34,9 @@ pub struct State {
     pub popped: Vec<String>,
     /// Our language override (`"vi"`); `None` follows the interface language.
     pub language: Option<String>,
+    /// An OS notification when the agent finishes or needs you while the app is in the background
+    /// (`bashcut.ui.setNotify`).
+    pub notify: bool,
     /// Where each popped-out window was, per monitor: `"<section>@<width>x<height>"` →
     /// `[x, y, width, height]` (see [`window_key`]).
     pub windows: BTreeMap<String, [f32; 4]>,
@@ -57,6 +60,7 @@ impl Default for State {
             width: DEFAULT_WIDTH,
             popped: Vec::new(),
             language: None,
+            notify: true,
             windows: BTreeMap::new(),
             seen_failures: BTreeSet::new(),
             loaded: false,

@@ -531,3 +531,13 @@ Open the editor	Mở trình chỉnh sửa
 Copy	Sao chép
 Copied	Đã sao chép
 Show all	Xem tất cả
+{section}: news	{section}: có tin mới
+The agent finished or needs you.	Trợ lý đã xong hoặc cần bạn.
+Agent Notifications	Thông báo của trợ lý
+{agent} finished	{agent} đã xong
+{agent} stopped with an error	{agent} dừng vì lỗi
+{agent} needs your permission	{agent} cần bạn cho phép
+{agent} needs your decision	{agent} cần bạn quyết định
+Open BashCutPro to see the result.	Mở BashCutPro để xem kết quả.
+Open BashCutPro to see what went wrong.	Mở BashCutPro để xem lỗi ở đâu.
+A plan step is waiting for your answer.	Một bước trong kế hoạch đang chờ bạn trả lời.
