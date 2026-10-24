@@ -665,9 +665,52 @@ mod tests {
         assert!(kit_zip_url().starts_with(KIT_REPO_URL), "zip URL starts with the repo URL");
     }
 
+    /// PLK7: `kit_job` reads the tag from `bashcut/kit.lock` (not a hardcoded string); the locked tag
+    /// appears in both the fresh-clone (`--branch <tag>`) and existing-clone (`checkout <tag>`) forms;
+    /// Windows uses PowerShell `;` to separate the two git commands (not `&&`); `kit_zip_url` contains
+    /// the same tag.
     #[test]
-    #[ignore = "test ticket: kit_job uses the locked tag for both clone and checkout; Windows semicolon separation; zip URL matches kit_tag"]
-    fn kit_job_pinned_tag_unit() {}
+    fn kit_job_pinned_tag_unit() {
+        let tag = kit_tag();
+        // the tag comes from kit.lock (compile-time include_str!), not empty and not a raw path
+        assert!(!tag.is_empty(), "kit_tag() is non-empty");
+        assert!(!tag.contains('\n') && !tag.contains('\r'), "kit_tag() is a single line (no newline): {tag:?}");
+        assert!(!tag.contains('/') && !tag.contains('\\'), "kit_tag() looks like a version tag, not a path: {tag:?}");
+
+        let script = |os, git: &str, dir: &str, cloned| match kit_job(os, git, Path::new(dir), cloned) {
+            Job::Script(l) => l,
+            other => panic!("{other:?}"),
+        };
+
+        // POSIX fresh clone: --branch <tag> --depth 1
+        let posix_clone = script(Os::Linux, "git", "/kit", false);
+        assert!(posix_clone.contains(&format!("--branch {}", sh_quote(tag))), "POSIX clone has --branch <tag>: {posix_clone}");
+        assert!(posix_clone.contains("--depth 1"), "POSIX clone has --depth 1: {posix_clone}");
+        assert!(!posix_clone.contains("fetch --tags"), "POSIX clone does not fetch tags: {posix_clone}");
+
+        // POSIX existing clone: fetch --tags && checkout <tag>   (&&, not ;)
+        let posix_pull = script(Os::Linux, "git", "/kit", true);
+        assert!(posix_pull.contains("fetch --tags"), "POSIX pull fetches tags: {posix_pull}");
+        assert!(posix_pull.contains(&format!("checkout {}", sh_quote(tag))), "POSIX pull checks out <tag>: {posix_pull}");
+        assert!(posix_pull.contains("&&") && !posix_pull.contains(';'), "POSIX uses && not ;: {posix_pull}");
+
+        // Windows fresh clone: & <git> clone --branch <tag> --depth 1
+        let win_clone = script(Os::Windows, "git", r"C:\kit", false);
+        assert!(win_clone.contains(&format!("--branch {}", ps_quote(tag))), "Windows clone has --branch <tag>: {win_clone}");
+        assert!(win_clone.contains("--depth 1"), "Windows clone has --depth 1: {win_clone}");
+
+        // Windows existing clone: & <git> fetch --tags; & <git> checkout <tag>  (;, not &&)
+        let win_pull = script(Os::Windows, "git", r"C:\kit", true);
+        assert!(win_pull.contains("fetch --tags"), "Windows pull fetches tags: {win_pull}");
+        assert!(win_pull.contains(&format!("checkout {}", ps_quote(tag))), "Windows pull checks out <tag>: {win_pull}");
+        // PowerShell uses ; to chain commands, not &&
+        assert!(win_pull.contains("; &") && !win_pull.contains("&&"), "Windows uses PowerShell ; not &&: {win_pull}");
+
+        // zip URL contains the same locked tag (no-git fallback, PLK7)
+        let zip = kit_zip_url();
+        assert!(zip.contains(tag), "zip URL contains the locked tag: {zip}");
+        assert!(zip.starts_with(KIT_REPO_URL), "zip URL starts with the repo URL: {zip}");
+    }
 
     #[test]
     fn hook_events_per_version_never_exceed_the_detected_one() {
