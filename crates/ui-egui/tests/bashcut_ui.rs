@@ -3659,7 +3659,8 @@ fn agent_message_blocks() {
 }
 
 /// AGU10 (#417): a turn that reports 9 steps and $0.12 ends with "9 steps · N s · $0.12" (Vietnamese
-/// "9 bước · N giây · $0.12"); a result without cost or turns shows no cost; nothing known shows no line.
+/// "9 bước · N s · $0.12" — FX45: "s" not "giây" in vi to prevent clipping at 240 px); a result
+/// without cost or turns shows no cost; nothing known shows no line.
 #[test]
 fn agent_turn_summary_line() {
     let Some(fake) = fake_claude("agent_turn_summary_line", "agu10", &[]) else { return };
@@ -3677,7 +3678,8 @@ fn agent_turn_summary_line() {
     let (en, vi) = d.labels(&id);
     assert_eq!(en, json!(line));
     let vi = vi.as_str().unwrap_or_default().to_string();
-    assert!(vi.starts_with("9 bước · ") && vi.ends_with(" giây · $0.12 · Fake"), "{vi}");
+    // FX45: "{n} s" is now "s" in vi too (same as EN) to avoid clipping at 240 px; AGM1 chip "Fake" appended
+    assert!(vi.starts_with("9 bước · ") && vi.ends_with(" s · $0.12 · Fake"), "{vi}");
     for lang in ["en", "vi"] {
         d.look(lang, 240.0);
         d.shot(&format!("agu10-turn-{lang}-240"));
@@ -3685,13 +3687,16 @@ fn agent_turn_summary_line() {
     }
     d.exec("bashcut.ui.setLanguage", json!({"language": null}));
 
-    // a result with neither steps nor cost: no turn line at all
+    // a result with neither steps nor cost: AGM1 still shows the model chip when the agent reported
+    // a model (fake reports "fake" in system/init → chip "Fake"); truly nothing-known would need
+    // an agent that sends no model in init.
     d.exec("bashcut.agent.send", json!({"text": "bare result"}));
     d.agent_idle();
     d.frames(3);
     let ends: Vec<usize> = d.agent_items().iter().enumerate().filter(|(_, i)| i["type"] == json!("turnEnd")).map(|(n, _)| n).collect();
     assert_eq!(ends.len(), 2, "{ends:?}");
     assert!(d.has(&format!("bashcut.agent.turn.{}", ends[0])), "the costed turn keeps its line");
+    // TAGM: the model alone does not make a line (nothing known: steps/cost empty, early return)
     assert!(!d.has(&format!("bashcut.agent.turn.{}", ends[1])), "nothing known: no line");
     d.no_ui_error();
 }

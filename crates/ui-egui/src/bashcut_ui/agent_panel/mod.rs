@@ -455,7 +455,7 @@ mod tests {
             "The turn stopped at its spending limit.",
             "1 step",
             "{n} steps",
-            "{n} s",
+            // FX45: "{n} s" is intentionally "s" in vi too (shorter at 240 px); skip the vi≠en check
             "{m} min {s} s",
             "Allow once",
             "Always for this project",

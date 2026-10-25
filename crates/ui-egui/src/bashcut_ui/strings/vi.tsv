@@ -566,8 +566,8 @@ More	Thêm
 # Turn summary (AGU10)
 1 step	1 bước
 {n} steps	{n} bước
-{n} s	{n} giây
-{m} min {s} s	{m} phút {s} giây
+{n} s	{n} s
+{m} min {s} s	{m} phút {s} s
 Queued {n}	Đang chờ {n}
 New messages	Tin nhắn mới
 
@@ -592,8 +592,8 @@ Model changes when this turn ends	Mô hình sẽ đổi khi lượt này xong
 Model: {model}	Mô hình: {model}
 Model not changed: {error}	Chưa đổi được mô hình: {error}
 the agent refused it	Trợ lý đã từ chối
+# TAGM: bashcut.agent.model refuses an id (process.rs, session.rs)
+bad model id	Mã mô hình không hợp lệ
 Add captions	Thêm phụ đề
 Hide	Ẩn
 Hide this note for this project.	Ẩn ghi chú này cho dự án này.
-# TAGM: bashcut.agent.model refuses an id
-bad model id	Mã mô hình không hợp lệ

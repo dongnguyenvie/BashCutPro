@@ -326,11 +326,6 @@ pub(super) fn header(app: &mut FilmcraftApp, ui: &mut egui::Ui, ctx: &egui::Cont
             call(app, ctx, v, "use", json!({"agent": id}));
         }
 
-        // AGM1: model picker (or chip) — only when the agent supports model selection
-        if !narrow {
-            model_row(app, ui, ctx, v, snap);
-        }
-
         // icons first from the right, so a long conversation title truncates instead of pushing them out
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
             overflow_menu(app, ui, ctx, snap);
@@ -340,9 +335,12 @@ pub(super) fn header(app: &mut FilmcraftApp, ui: &mut egui::Ui, ctx: &egui::Cont
             }
         });
     });
+    // AGM1: model picker (+ init-model chip) always on its own row below the agent/conversation row,
+    // at both 340 px and 240 px. Inside the horizontal it was squeezed to zero width by the
+    // conversation picker — moving it here guarantees it always renders with the full available width.
+    // FX45: fixed for both narrow and non-narrow widths.
+    model_row(app, ui, ctx, v, snap);
     if narrow {
-        // AGM1: narrow: model picker goes under the agent picker (before conversation picker)
-        model_row(app, ui, ctx, v, snap);
         conversation_picker(app, ui, ctx, v, snap);
     }
 }
