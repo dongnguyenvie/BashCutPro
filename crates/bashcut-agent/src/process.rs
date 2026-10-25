@@ -898,7 +898,28 @@ mod tests {
     // TAGM: the 240 px picker check is a UI test (`agm1_model_picker_fits_240px` in ui-egui's tests/bashcut_ui.rs)
 
     /// FX47: model list contains current Claude ids (5-5/fable-5-1) and none of the stale 4-5 ids.
+    /// The picker adds its own Default entry (empty id, `setup.rs::model_row`); this list holds the aliases and the
+    /// versioned ids, each one an id `command_line` accepts.
     #[test]
-    #[ignore = "test ticket: FX47 model list — current ids present, no stale 4-5 ids"]
-    fn fx47_model_list_current_ids() {}
+    fn fx47_model_list_current_ids() {
+        let models = claude_code_models();
+        let ids: Vec<&str> = models.iter().map(|(id, _)| id.as_str()).collect();
+        assert_eq!(ids.get(..3), Some(&["sonnet", "opus", "haiku"][..]), "the aliases come first: {ids:?}");
+        for id in ["claude-sonnet-5-5", "claude-opus-5-5", "claude-haiku-5-5", "claude-fable-5-1"] {
+            assert!(ids.contains(&id), "{id} in {ids:?}");
+        }
+        assert!(!ids.iter().any(|id| id.contains("4-5")), "no stale 4-5 id: {ids:?}");
+        assert!(!models.iter().any(|(_, label)| label.contains("(default)")), "no '(default)' label: {models:?}");
+        assert!(!ids.iter().any(|id| id.is_empty()), "the empty id is the picker's own Default entry");
+        let mut unique = ids.clone();
+        unique.sort_unstable();
+        unique.dedup();
+        assert_eq!(unique.len(), ids.len(), "no duplicate id: {ids:?}");
+        assert_eq!(AgentSpec::claude_code(None).model_options, models, "Claude Code's spec offers this list");
+        let spec = AgentSpec::claude_code(None);
+        for id in &ids {
+            let argv = spec.command_line(Some(Path::new("/t/m.json")), None, None, Some(id));
+            assert!(argv.as_ref().is_ok_and(|a| a.windows(2).any(|w| w == ["--model", *id])), "{id}: {argv:?}");
+        }
+    }
 }

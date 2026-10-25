@@ -346,9 +346,46 @@ mod tests {
         assert!(st.windows.len() <= MAX_WINDOWS);
     }
 
+    /// FX44: hide_unsaved_card remembers per project name, caps the set, sanitize drops long keys.
     #[test]
-    #[ignore = "test ticket: FX44 hide_unsaved_card remembers per project name, caps the set, sanitize drops long keys"]
-    fn unsaved_card_hidden_per_project() {}
+    fn unsaved_card_hidden_per_project() {
+        let mut st = State::default();
+        assert!(!st.unsaved_card_is_hidden("Demo"));
+        st.hide_unsaved_card("Demo");
+        assert!(st.unsaved_card_is_hidden("Demo"));
+        assert!(!st.unsaved_card_is_hidden("Other"), "per project name");
+        assert!(!st.unsaved_card_is_hidden(""));
+        st.hide_unsaved_card("Demo");
+        assert_eq!(st.unsaved_card_hidden.len(), 1, "hiding twice keeps one key");
+        // a long name (multibyte too) is cut to the same key both ways, never over MAX_PROJECT_KEY bytes
+        let long = "đ".repeat(MAX_PROJECT_KEY * 2);
+        st.hide_unsaved_card(&long);
+        assert!(st.unsaved_card_is_hidden(&long));
+        assert!(st.unsaved_card_hidden.iter().all(|k| k.len() <= MAX_PROJECT_KEY));
+        let wide = "𝄞".repeat(MAX_PROJECT_KEY);
+        st.hide_unsaved_card(&wide);
+        st.sanitize(KNOWN);
+        assert!(st.unsaved_card_is_hidden(&wide), "a cut 4-byte key survives sanitize");
+        // capped: the set never grows past MAX_WINDOWS, the newest key is kept
+        for i in 0..(MAX_WINDOWS + 10) {
+            st.hide_unsaved_card(&format!("p{i}"));
+        }
+        assert_eq!(st.unsaved_card_hidden.len(), MAX_WINDOWS);
+        assert!(st.unsaved_card_is_hidden(&format!("p{}", MAX_WINDOWS + 9)));
+        // round trip through JSON (ui.json)
+        let back: State = serde_json::from_str(&serde_json::to_string(&st).unwrap()).unwrap();
+        assert_eq!(back.unsaved_card_hidden, st.unsaved_card_hidden);
+        // a hostile file: over-long keys dropped, too many keys capped
+        let too_long = "x".repeat(MAX_PROJECT_KEY + 1);
+        let many: Vec<String> = (0..(MAX_WINDOWS + 20)).map(|i| format!("k{i}")).collect();
+        let mut st: State = serde_json::from_value(serde_json::json!({"unsavedCardHidden": [too_long.clone(), "ok"]})).unwrap();
+        st.sanitize(KNOWN);
+        assert!(!st.unsaved_card_hidden.contains(&too_long));
+        assert!(st.unsaved_card_is_hidden("ok"));
+        let mut st: State = serde_json::from_value(serde_json::json!({"unsavedCardHidden": many})).unwrap();
+        st.sanitize(KNOWN);
+        assert_eq!(st.unsaved_card_hidden.len(), MAX_WINDOWS);
+    }
 
     #[test]
     fn saves_and_loads_through_the_data_dir() {

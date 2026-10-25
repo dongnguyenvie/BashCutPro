@@ -299,6 +299,8 @@ pub fn sign_in_button(app: &mut FilmcraftApp, ui: &mut egui::Ui, program: &str, 
 
 /// Below this the conversation picker gets its own row (240 px panel).
 const NARROW: f32 = 300.0;
+/// Tallest the model picker's list grows before it scrolls (px).
+const MODEL_LIST_HEIGHT: f32 = 480.0;
 
 pub(super) fn header(app: &mut FilmcraftApp, ui: &mut egui::Ui, ctx: &egui::Context, v: &mut View, snap: &Snapshot, running: bool) {
     let narrow = ui.available_width() < NARROW;
@@ -339,7 +341,11 @@ pub(super) fn header(app: &mut FilmcraftApp, ui: &mut egui::Ui, ctx: &egui::Cont
     // at both 340 px and 240 px. Inside the horizontal it was squeezed to zero width by the
     // conversation picker — moving it here guarantees it always renders with the full available width.
     // FX45: fixed for both narrow and non-narrow widths.
-    model_row(app, ui, ctx, v, snap);
+    // TFX4: the picker and the init-model chip share that row (the chip follows the picker, AGM1), the note goes under
+    if !snap.model_options.is_empty() || snap.agent.0 == "codex" {
+        ui.horizontal(|ui| model_row(app, ui, ctx, v, snap));
+        model_note(app, ui, snap);
+    }
     if narrow {
         conversation_picker(app, ui, ctx, v, snap);
     }
@@ -364,7 +370,9 @@ fn model_row(app: &mut FilmcraftApp, ui: &mut egui::Ui, ctx: &egui::Context, v: 
     let mut new_model: Option<String> = None;
     // TAGM: with the free-text field, a click into it must not close the list (egui's default)
     let close = if snap.model_options.is_empty() { egui::PopupCloseBehavior::CloseOnClickOutside } else { egui::PopupCloseBehavior::CloseOnClick };
-    let picker = egui::ComboBox::from_id_salt("bashcut.agent.model").close_behavior(close);
+    // TFX4: tall enough for Default + every option (egui's 200 px default hid the last one, claude-fable-5-1, behind
+    // a scroll); egui still caps it to the screen
+    let picker = egui::ComboBox::from_id_salt("bashcut.agent.model").close_behavior(close).height(MODEL_LIST_HEIGHT);
     let combo = picker.selected_text(chosen_label.as_str()).width(picker_w).show_ui(ui, |ui| {
         // Default entry (empty string = agent decides)
         let default_label = s("Default");
@@ -416,7 +424,10 @@ fn model_row(app: &mut FilmcraftApp, ui: &mut egui::Ui, ctx: &egui::Context, v: 
         app.auto.add_response("bashcut.agent.model.chip", &r, &chip);
         r.on_hover_text(s("Model reported by the running session"));
     }
+}
 
+/// AGM2: the note under the model row while a chosen model waits for the turn's end or the next session.
+fn model_note(app: &mut FilmcraftApp, ui: &mut egui::Ui, snap: &Snapshot) {
     // AGM2: a live session switches when its turn ends; another agent (Codex) from its next start
     let note_text = if snap.live {
         snap.model_queued.then(|| s("Model changes when this turn ends"))

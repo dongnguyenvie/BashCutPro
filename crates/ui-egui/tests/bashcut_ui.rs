@@ -4932,7 +4932,7 @@ fn fx42_model_command_is_saved_and_survives_a_frame() {
     d.frames(5);
     assert_eq!(d.agent_state()["chosenModel"], json!("sonnet"), "the panel's next frames keep it");
     assert_eq!(d.saved_model("claude-code").as_deref(), Some("sonnet"));
-    assert_eq!(d.element("bashcut.agent.model")["label"], json!("Sonnet (default)"));
+    assert_eq!(d.element("bashcut.agent.model")["label"], json!("Sonnet"));
 
     let r = d.call("engine.execute", json!({"command": "bashcut.agent.model", "params": {"id": "bad id!"}}));
     assert_ne!(r["ok"], json!(true), "{r}");
@@ -4940,7 +4940,7 @@ fn fx42_model_command_is_saved_and_survives_a_frame() {
     d.frames(5);
     assert_eq!(d.agent_state()["chosenModel"], json!("sonnet"));
     assert_eq!(d.saved_model("claude-code").as_deref(), Some("sonnet"));
-    assert_eq!(d.element("bashcut.agent.model")["label"], json!("Sonnet (default)"));
+    assert_eq!(d.element("bashcut.agent.model")["label"], json!("Sonnet"));
     d.no_ui_error();
     let _ = std::fs::remove_dir_all(&data);
 }
@@ -4991,16 +4991,183 @@ fn fx43_model_picker_bad_custom_id_is_not_saved() {
 
 /// FX44 (N8): the Agent intro line shows once (empty state only, no section blurb above it), en and vi.
 #[test]
-#[ignore = "test ticket: FX44 agent blurb shown once"]
-fn agent_blurb_shown_once() {}
+fn agent_blurb_shown_once() {
+    let data = std::env::temp_dir().join(format!("bashcut-ui-fx44-blurb-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&data);
+    let mut d = Driver::with_data(&data, |_| {});
+    d.click("bashcut.rail.agent");
+    let agent = "Claude Code";
+    let cases = [
+        (
+            "en",
+            "Chat with the editing agent (Claude Code, Codex) about this project.",
+            format!("{agent} edits this project with you. It stops at each stage for your approval."),
+        ),
+        ("vi", "Trò chuyện với trợ lý dựng phim về dự án này.", format!("{agent} cùng bạn chỉnh sửa dự án này. Dừng ở mỗi bước để bạn duyệt.")),
+    ];
+    for (lang, blurb, intro) in cases {
+        d.exec("bashcut.ui.setLanguage", json!({"language": lang}));
+        d.frames(3);
+        assert_eq!(d.harness.query_all_by_label(blurb).count(), 0, "{lang}: no section blurb in the Agent panel");
+        assert_eq!(d.harness.query_all_by_label(&intro).count(), 1, "{lang}: the intro line shows once");
+    }
+    // other sections keep their blurb
+    d.exec("bashcut.ui.setLanguage", json!({"language": null}));
+    d.click("bashcut.rail.plugins");
+    assert_eq!(d.harness.query_all_by_label("Installed plugins, their settings and actions.").count(), 1, "Plugins keeps its blurb");
+    d.no_ui_error();
+    drop(d);
+    let _ = std::fs::remove_dir_all(&data);
+}
+
+impl Driver {
+    /// The Agent panel with its readiness lines on screen (the Setup strip expanded when it folds them).
+    fn agent_lines(&mut self) {
+        if self.has("bashcut.agent.setup") && !self.has("bashcut.agent.ready.control") {
+            self.click("bashcut.agent.setup");
+        }
+    }
+}
 
 /// FX44 (N4): Hide on the "Project not saved" card hides it and it stays hidden for that project (ui.json), not for
 /// another project name; Save… still there before hiding.
 #[test]
-#[ignore = "test ticket: FX44 not-saved card hides per project"]
-fn agent_unsaved_card_hides_per_project() {}
+fn agent_unsaved_card_hides_per_project() {
+    if std::env::var_os("FILMCRAFT_CONTROL_PORT").is_some() {
+        eprintln!("FILMCRAFT_CONTROL_PORT is set: skipped");
+        return;
+    }
+    let data = std::env::temp_dir().join(format!("bashcut-ui-fx44-card-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&data);
+    let mut d = Driver::with_data(&data, |_| {});
+    d.click("bashcut.rail.agent");
+    d.agent_lines();
+    for id in ["bashcut.agent.ready.project", "bashcut.agent.save", "bashcut.agent.ready.project.hide"] {
+        assert!(d.has(id), "before hiding: {id}");
+    }
+    let (en, vi) = d.labels("bashcut.agent.ready.project.hide");
+    assert_eq!((en, vi), (json!("Hide"), json!("Ẩn")));
+    d.click("bashcut.agent.ready.project.hide");
+    d.agent_lines();
+    assert!(!d.has("bashcut.agent.ready.project") && !d.has("bashcut.agent.save"), "hidden");
+    assert!(d.has("bashcut.agent.ready.control"), "the other lines stay");
+    let hidden = d.state()["unsavedCardHidden"].clone();
+    let name = hidden.as_array().and_then(|a| a.first()).and_then(Value::as_str).unwrap_or_default().to_string();
+    assert!(!name.is_empty() && hidden.as_array().is_some_and(|a| a.len() == 1), "the project's name is kept: {hidden}");
+    let ui_json = data.join("bashcut").join("ui.json");
+    let saved = d.wait(|_| json!(std::fs::read_to_string(&ui_json).unwrap_or_default()), |t| t.as_str().is_some_and(|t| t.contains("unsavedCardHidden")));
+    assert!(saved.as_str().is_some_and(|t| t.contains(&name)), "ui.json keeps it: {saved}");
+    d.no_ui_error();
+    drop(d);
+
+    // the same project after a restart: still hidden
+    let mut d = Driver::with_data(&data, |_| {});
+    if d.has("recovery.later") {
+        d.click("recovery.later");
+    }
+    if !d.has("bashcut.panel.agent") {
+        d.click("bashcut.rail.agent");
+    }
+    d.agent_lines();
+    assert!(d.has("bashcut.agent.ready.control"), "the panel's lines show");
+    assert!(!d.has("bashcut.agent.ready.project"), "still hidden after a restart");
+    d.no_ui_error();
+    drop(d);
+
+    // another project name: the card shows
+    let other = format!("{name} other");
+    let mut d = Driver::with_data(&data, |app| std::sync::Arc::make_mut(&mut app.session.project).name = other.clone());
+    if d.has("recovery.later") {
+        d.click("recovery.later");
+    }
+    if !d.has("bashcut.panel.agent") {
+        d.click("bashcut.rail.agent");
+    }
+    d.agent_lines();
+    assert!(d.has("bashcut.agent.ready.project") && d.has("bashcut.agent.save"), "another project still shows the card");
+    d.no_ui_error();
+    drop(d);
+    let _ = std::fs::remove_dir_all(&data);
+}
 
 /// FX44 (N9/N17): the agent picker's "(not installed)" suffix is translated under vi.
 #[test]
-#[ignore = "test ticket: FX44 vi not-installed suffix"]
-fn agent_picker_not_installed_suffix_vi() {}
+fn agent_picker_not_installed_suffix_vi() {
+    let Some(fake) = fake_claude("agent_picker_not_installed_suffix_vi", "fx44-picker", &[("BASHCUT_CODEX", "bashcut-no-such-codex")]) else { return };
+    let mut d = fake.driver();
+    for (lang, codex) in [("en", "Codex (not installed)"), ("vi", "Codex (chưa cài)")] {
+        d.exec("bashcut.ui.setLanguage", json!({"language": lang}));
+        d.frames(2);
+        d.click("bashcut.agent.picker");
+        let e = d.wait_element("bashcut.agent.picker.codex", |e| !e.is_null());
+        assert_eq!(e["label"], json!(codex), "{lang}: {e}");
+        assert_eq!(d.element("bashcut.agent.picker.claude-code")["label"], json!("Claude Code"), "{lang}: an installed agent has no suffix");
+        d.ok("ui.key", json!({"key": "Escape"}));
+        d.frames(3);
+    }
+    d.exec("bashcut.ui.setLanguage", json!({"language": null}));
+    d.no_ui_error();
+}
+
+/// FX45 (bug 1): the model picker has its own row under the agent / conversation row and keeps its width at 340 and
+/// 240 px, in English and Vietnamese (it was squeezed to zero at 340 px by the conversation picker).
+#[test]
+fn agent_model_row_on_screen_at_340_and_240() {
+    let data = std::env::temp_dir().join(format!("bashcut-ui-fx45-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&data);
+    let mut d = Driver::with_data(&data, |_| {});
+    d.click("bashcut.rail.agent");
+    for width in [340.0, 240.0] {
+        for lang in ["en", "vi"] {
+            d.exec("bashcut.ui.setLanguage", json!({"language": lang}));
+            d.exec("bashcut.ui.setWidth", json!({"width": width}));
+            d.frames(3);
+            let panel = edges(&mut d, "bashcut.panel.agent").expect("panel");
+            let model = edges(&mut d, "bashcut.agent.model").unwrap_or_else(|| panic!("{lang} {width}: model picker on screen"));
+            let picker = edges(&mut d, "bashcut.agent.picker").expect("agent picker");
+            assert!(model[2] - model[0] >= 60.0 && model[3] - model[1] >= 10.0, "{lang} {width}: the model picker keeps its size {model:?}");
+            assert!(model[0] >= panel[0] - 0.5 && model[2] <= panel[2] + 0.5, "{lang} {width}: {model:?} inside {panel:?}");
+            assert!(model[1] >= picker[3] - 0.5, "{lang} {width}: its own row under the agent picker {picker:?}: {model:?}");
+            if width > 300.0 {
+                let conv = edges(&mut d, "bashcut.agent.conversations").expect("conversation picker");
+                assert!(model[1] >= conv[3] - 0.5, "{lang} {width}: under the conversation picker {conv:?}: {model:?}");
+            }
+        }
+    }
+    d.exec("bashcut.ui.setLanguage", json!({"language": null}));
+    d.exec("bashcut.ui.setWidth", json!({"width": 340.0}));
+    d.no_ui_error();
+    drop(d);
+    let _ = std::fs::remove_dir_all(&data);
+}
+
+/// FX47: the open model picker lists Default, the aliases and every versioned id, claude-fable-5-1 included and
+/// on screen (not clipped below the list), and no stale 4-5 id; picking it saves it.
+#[test]
+fn agent_model_picker_lists_fable() {
+    let data = std::env::temp_dir().join(format!("bashcut-ui-fx47-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&data);
+    let mut d = Driver::with_data(&data, |_| {});
+    d.click("bashcut.rail.agent");
+    d.click("bashcut.agent.model");
+    let picker = edges(&mut d, "bashcut.agent.model").expect("model picker");
+    let mut bottom = picker[3];
+    for option in ["default", "sonnet", "opus", "haiku", "claude-sonnet-5-5", "claude-opus-5-5", "claude-haiku-5-5", "claude-fable-5-1"] {
+        let id = format!("bashcut.agent.model.{option}");
+        let r = edges(&mut d, &id).unwrap_or_else(|| panic!("{id} in the open picker"));
+        assert!(r[1] >= bottom - 0.5, "{id} {r:?} below the one before ({bottom})");
+        assert!(r[3] <= H, "{id} {r:?} on screen");
+        bottom = r[3];
+    }
+    assert!(d.harness.query_by_label("claude-fable-5-1").is_some(), "claude-fable-5-1 drawn");
+    let all = d.ok("ui.elements", json!({"prefix": "bashcut.agent.model."}));
+    let ids: Vec<String> = all.as_array().cloned().unwrap_or_default().iter().filter_map(|e| e["id"].as_str().map(str::to_string)).collect();
+    assert!(!ids.iter().any(|id| id.contains("4-5")), "no stale 4-5 id: {ids:?}");
+    // a click on the last option reaches it (egui's 200 px list hid it behind a scroll and the click closed the list)
+    d.click("bashcut.agent.model.claude-fable-5-1");
+    assert_eq!(d.saved_model("claude-code").as_deref(), Some("claude-fable-5-1"));
+    assert_eq!(d.element("bashcut.agent.model")["label"], json!("claude-fable-5-1"));
+    d.no_ui_error();
+    drop(d);
+    let _ = std::fs::remove_dir_all(&data);
+}
