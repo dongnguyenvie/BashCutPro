@@ -316,6 +316,11 @@ pub(super) fn header(app: &mut FilmcraftApp, ui: &mut egui::Ui, ctx: &egui::Cont
             call(app, ctx, v, "use", json!({"agent": id}));
         }
 
+        // AGM1: model picker (or chip) — only when the agent supports model selection
+        if !narrow {
+            model_row(app, ui, ctx, v, snap);
+        }
+
         // icons first from the right, so a long conversation title truncates instead of pushing them out
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
             overflow_menu(app, ui, ctx, snap);
@@ -326,8 +331,97 @@ pub(super) fn header(app: &mut FilmcraftApp, ui: &mut egui::Ui, ctx: &egui::Cont
         });
     });
     if narrow {
+        // AGM1: narrow: model picker goes under the agent picker (before conversation picker)
+        model_row(app, ui, ctx, v, snap);
         conversation_picker(app, ui, ctx, v, snap);
     }
+}
+
+/// AGM1: The model picker + init-model chip. Shown only when the agent has `model_arg`.
+/// In the overflow menu (☰) below [`NARROW`].
+fn model_row(app: &mut FilmcraftApp, ui: &mut egui::Ui, ctx: &egui::Context, v: &mut View, snap: &Snapshot) {
+    if snap.model_options.is_empty() && snap.agent.0 != "codex" {
+        // Agent plugin with no model support: nothing to show
+        return;
+    }
+    // The label shown in the picker button: chosen label, else "Default"
+    let chosen_label = snap
+        .model_options
+        .iter()
+        .find(|(id, _)| *id == snap.chosen_model)
+        .map(|(_, label)| label.clone())
+        .unwrap_or_else(|| if snap.chosen_model.is_empty() { s("Default").to_string() } else { snap.chosen_model.clone() });
+    let picker_text = egui::WidgetText::from(chosen_label.as_str()).into_galley(ui, Some(egui::TextWrapMode::Extend), f32::INFINITY, egui::TextStyle::Button);
+    let picker_w = (picker_text.size().x + 28.0).clamp(70.0, 140.0);
+    let mut new_model: Option<String> = None;
+    let combo = egui::ComboBox::from_id_salt("bashcut.agent.model").selected_text(chosen_label.as_str()).width(picker_w).show_ui(ui, |ui| {
+        // Default entry (empty string = agent decides)
+        let default_label = s("Default");
+        let r = ui.add(egui::Button::selectable(snap.chosen_model.is_empty(), default_label));
+        app.auto.add_response("bashcut.agent.model.default", &r, default_label);
+        if r.clicked() {
+            new_model = Some(String::new());
+        }
+        // Named options
+        for (id, label) in &snap.model_options {
+            let r = ui.add(egui::Button::selectable(*id == snap.chosen_model, label.as_str()));
+            app.auto.add_response(&format!("bashcut.agent.model.{id}"), &r, label.as_str());
+            if r.clicked() {
+                new_model = Some(id.clone());
+            }
+        }
+        // Codex or agent with no fixed list: also offer a free-text field
+        if snap.model_options.is_empty() {
+            ui.separator();
+            let mut custom = snap.chosen_model.clone();
+            let r = ui.text_edit_singleline(&mut custom);
+            app.auto.add_response("bashcut.agent.model.custom", &r, &snap.chosen_model);
+            if r.lost_focus() && custom != snap.chosen_model {
+                new_model = Some(custom);
+            }
+        }
+    });
+    app.auto.add_response("bashcut.agent.model", &combo.response, &chosen_label);
+    if let Some(m) = new_model {
+        // Persist in state; takes effect on the next session start
+        super::super::State::update(ctx, |st| {
+            st.agent_model.insert(snap.agent.0.clone(), m.clone());
+        });
+        call(app, ctx, v, "model", json!({"id": m}));
+    }
+
+    // AGM1: init-model chip — show what the running session actually uses, after the picker
+    if !snap.init_model.is_empty() {
+        let chip = model_chip(&snap.init_model);
+        let t = app.tokens;
+        let r = ui.add(egui::Label::new(egui::RichText::new(chip.as_str()).size(super::super::widgets::META).color(t.text_dim)).selectable(false));
+        app.auto.add_response("bashcut.agent.model.chip", &r, &chip);
+        r.on_hover_text(s("Model reported by the running session"));
+    }
+
+    // Changing model while running: one-line note that it takes effect next session (AGM2 makes it live)
+    if !snap.chosen_model.is_empty() && !snap.init_model.is_empty() && snap.chosen_model != snap.init_model {
+        let note_text = s("Model change takes effect on the next session");
+        let t = app.tokens;
+        let r = super::super::widgets::note(ui, note_text, super::super::widgets::NOTE, t.text_dim);
+        app.auto.add_response("bashcut.agent.model.pending", &r, note_text);
+    }
+}
+
+/// AGM1: Short display string for the init model chip, e.g. "claude-sonnet-4-6" → "Sonnet 4.6",
+/// or the raw id when it does not match a known alias.
+pub(super) fn model_chip(model: &str) -> String {
+    // Strip the "claude-" prefix and prettify dashes/version
+    let s = model.strip_prefix("claude-").unwrap_or(model);
+    // "sonnet" → "Sonnet", "sonnet-4-6" → "Sonnet 4.6", etc.
+    let mut parts = s.splitn(2, '-');
+    let name = parts.next().unwrap_or(s);
+    let ver = parts.next().unwrap_or("").replace('-', ".");
+    let name_cap = {
+        let mut chars = name.chars();
+        chars.next().map_or_else(String::new, |c| c.to_uppercase().collect::<String>() + chars.as_str())
+    };
+    if ver.is_empty() { name_cap } else { format!("{name_cap} {ver}") }
 }
 
 fn new_button(app: &mut FilmcraftApp, ui: &mut egui::Ui, ctx: &egui::Context, v: &mut View, snap: &Snapshot, running: bool) {

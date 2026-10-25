@@ -62,6 +62,9 @@ pub enum Item {
         cost_usd: Option<f64>,
         #[serde(default)]
         ms: Option<u64>,
+        /// AGM1: The model from the session's `system/init`; empty when the agent did not report one.
+        #[serde(default)]
+        model: String,
     },
 }
 
@@ -99,12 +102,13 @@ impl Transcript {
     /// Add what `e` shows. `Init` and `Picked` change the conversation, not the transcript; a failed
     /// result shows as an error and a successful one as an [`Item::TurnEnd`].
     pub fn apply(&mut self, e: &Event) {
-        self.apply_timed(e, None);
+        self.apply_timed(e, None, "");
     }
 
     /// [`Self::apply`] with the turn's wall-clock time in ms (the session measures it from the
     /// message it wrote to the result), which a successful result's [`Item::TurnEnd`] keeps.
-    pub fn apply_timed(&mut self, e: &Event, ms: Option<u64>) {
+    /// `init_model` is the model from the session's last `system/init` (AGM1).
+    pub fn apply_timed(&mut self, e: &Event, ms: Option<u64>, init_model: &str) {
         if !matches!(e, Event::TextDelta(_) | Event::Text(_)) {
             self.live = None;
         }
@@ -162,7 +166,8 @@ impl Transcript {
                 // Codex sends no step count: the tool calls since the last message
                 let tools = self.items.iter().rev().take_while(|i| !matches!(i, Item::User { .. })).filter(|i| matches!(i, Item::Tool { .. })).count();
                 let turns = turns.or(u64::try_from(tools).ok().filter(|n| *n > 0));
-                self.push(Item::TurnEnd { ok: true, turns, cost_usd: *cost_usd, ms });
+                // AGM1: record the model so the turn summary line can show it
+                self.push(Item::TurnEnd { ok: true, turns, cost_usd: *cost_usd, ms, model: init_model.to_string() });
             }
             Event::Notice(m) => self.push(Item::Notice { message: m.clone() }),
             Event::Init { .. } | Event::Picked { .. } | Event::Control { .. } => {}
@@ -334,12 +339,12 @@ mod tests {
         let result = |cost_usd, turns| Event::Result { ok: true, text: String::new(), session: "s".into(), cost_usd, turns };
         // Claude Code: its own count and cost, and the time the session measured
         let mut t = Transcript::default();
-        t.apply_timed(&result(Some(0.12), Some(9)), Some(4200));
-        assert_eq!(t.items, vec![Item::TurnEnd { ok: true, turns: Some(9), cost_usd: Some(0.12), ms: Some(4200) }]);
+        t.apply_timed(&result(Some(0.12), Some(9)), Some(4200), "claude-sonnet-4-6");
+        assert_eq!(t.items, vec![Item::TurnEnd { ok: true, turns: Some(9), cost_usd: Some(0.12), ms: Some(4200), model: "claude-sonnet-4-6".into() }]);
         // without any of it: no steps, no cost, no time
         let mut t = Transcript::default();
         t.apply(&result(None, None));
-        assert_eq!(t.items, vec![Item::TurnEnd { ok: true, turns: None, cost_usd: None, ms: None }]);
+        assert_eq!(t.items, vec![Item::TurnEnd { ok: true, turns: None, cost_usd: None, ms: None, model: String::new() }]);
         // Codex: steps are the tool calls since the user's message
         let mut t = Transcript::default();
         t.push(Item::User { text: "old".into() });
@@ -361,8 +366,12 @@ mod tests {
         let old: Transcript = serde_json::from_value(json!({"items": [{"type": "user", "text": "hi"}, {"type": "assistant", "text": "yo"}]})).unwrap();
         assert_eq!(old.items.len(), 2);
         let sparse: Transcript = serde_json::from_value(json!({"items": [{"type": "turnEnd"}]})).unwrap();
-        assert_eq!(sparse.items, vec![Item::TurnEnd { ok: false, turns: None, cost_usd: None, ms: None }]);
-        let full = Transcript { items: vec![Item::TurnEnd { ok: true, turns: Some(9), cost_usd: Some(0.12), ms: Some(5) }], ..Default::default() };
+        // AGM1: model defaults to empty string (old saved conversations have no model field)
+        assert_eq!(sparse.items, vec![Item::TurnEnd { ok: false, turns: None, cost_usd: None, ms: None, model: String::new() }]);
+        let full = Transcript {
+            items: vec![Item::TurnEnd { ok: true, turns: Some(9), cost_usd: Some(0.12), ms: Some(5), model: "sonnet".into() }],
+            ..Default::default()
+        };
         let back: Transcript = serde_json::from_value(serde_json::to_value(&full).unwrap()).unwrap();
         assert_eq!(back, full);
     }

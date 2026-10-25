@@ -7,6 +7,9 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 
+/// Longest model id accepted (same cap as in session.rs `AgentSpec::command_line`).
+const MAX_MODEL_ID: usize = 128;
+
 use serde::{Deserialize, Serialize};
 
 /// Side panel width limits (px).
@@ -37,6 +40,8 @@ pub struct State {
     /// An OS notification when the agent finishes or needs you while the app is in the background
     /// (`bashcut.ui.setNotify`).
     pub notify: bool,
+    /// AGM1: chosen model per agent id (e.g. `"claude-code"` → `"sonnet"`). Empty string = Default.
+    pub agent_model: BTreeMap<String, String>,
     /// Where each popped-out window was, per monitor: `"<section>@<width>x<height>"` →
     /// `[x, y, width, height]` (see [`window_key`]).
     pub windows: BTreeMap<String, [f32; 4]>,
@@ -61,6 +66,7 @@ impl Default for State {
             popped: Vec::new(),
             language: None,
             notify: true,
+            agent_model: BTreeMap::new(),
             windows: BTreeMap::new(),
             seen_failures: BTreeSet::new(),
             loaded: false,
@@ -107,6 +113,8 @@ impl State {
     /// Keep the values in range and the sections known (after loading or a command).
     pub fn sanitize(&mut self, known: &[&str]) {
         self.width = if self.width.is_finite() { self.width.clamp(MIN_WIDTH, MAX_WIDTH) } else { DEFAULT_WIDTH };
+        // AGM1: drop model entries with bad keys or values
+        self.agent_model.retain(|k, v| k.len() <= 64 && v.len() <= MAX_MODEL_ID);
         let has = |s: &str| known.contains(&s);
         if self.open.as_deref().is_some_and(|s| !has(s)) {
             self.open = None;

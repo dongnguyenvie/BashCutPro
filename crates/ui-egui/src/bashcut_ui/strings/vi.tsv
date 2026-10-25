@@ -583,3 +583,7 @@ Claude Code is running in the terminal. Close it to continue here.	Claude Code �
 Take back the conversation? Close the terminal window first, or two writers share one session.	Lấy lại cuộc trò chuyện? Hãy đóng cửa sổ terminal trước, nếu không hai bên sẽ cùng ghi vào một phiên.
 Take back	Lấy lại
 Yes, take back	Đúng, lấy lại
+# AGM1: model picker
+Default	Mặc định
+Model reported by the running session	Mô hình được báo cáo bởi phiên đang chạy
+Model change takes effect on the next session	Thay đổi mô hình có hiệu lực từ phiên tiếp theo

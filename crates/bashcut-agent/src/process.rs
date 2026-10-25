@@ -81,6 +81,12 @@ pub struct AgentSpec {
     pub env: Vec<(String, String)>,
     /// A turn is stopped after this long.
     pub timeout_secs: u64,
+    /// AGM1: The flag to pass a model choice to the agent CLI (`--model` for Claude Code and Codex;
+    /// empty for agent plugins that do not support it). `{model}` is replaced by the chosen id.
+    pub model_arg: Vec<String>,
+    /// AGM1: Model options this agent accepts, in order (id, display label). The first is the
+    /// default; an empty list means free-text or "Default only" (agent plugins).
+    pub model_options: Vec<(String, String)>,
 }
 
 impl Default for AgentSpec {
@@ -96,6 +102,8 @@ impl Default for AgentSpec {
             events: stream_json::FORMAT.into(),
             env: Vec::new(),
             timeout_secs: 2 * 60 * 60,
+            model_arg: Vec::new(),
+            model_options: Vec::new(),
         }
     }
 }
@@ -132,6 +140,9 @@ impl AgentSpec {
             mcp_args: vec!["--mcp-config".into(), "{config}".into(), "--strict-mcp-config".into()],
             resume_args: vec!["--resume".into(), "{session}".into()],
             kit_args: vec!["--plugin-dir".into(), "{kit}".into()],
+            // AGM1: Claude Code's --model flag; well-known aliases + full ids (claude --help)
+            model_arg: vec!["--model".into(), "{model}".into()],
+            model_options: claude_code_models(),
             ..AgentSpec::default()
         }
     }
@@ -149,6 +160,8 @@ impl AgentSpec {
             resume_args: vec!["resume".into(), "{session}".into()],
             prompt_args: vec!["-".into()],
             events: codex_json::FORMAT.into(),
+            // AGM1: Codex -m/--model flag (free text; Codex has no enumerated list)
+            model_arg: vec!["-m".into(), "{model}".into()],
             ..AgentSpec::default()
         }
     }
@@ -162,10 +175,18 @@ impl AgentSpec {
     }
 
     /// The command line of a turn; `kit` is the agent kit folder, loaded for this process only when the agent
-    /// has [`AgentSpec::kit_args`] (AG15).
-    pub fn command_line(&self, mcp_config: Option<&Path>, session: Option<&str>, kit: Option<&Path>) -> Result<Vec<String>> {
+    /// has [`AgentSpec::kit_args`] (AG15). `model` is the chosen model id (AGM1: `--model <x>` when
+    /// non-empty and `model_arg` is set; injected before the MCP args).
+    pub fn command_line(&self, mcp_config: Option<&Path>, session: Option<&str>, kit: Option<&Path>, model: Option<&str>) -> Result<Vec<String>> {
         self.check()?;
         let mut argv = self.argv.clone();
+        // AGM1: --model before the MCP args (Claude Code / Codex accept it there)
+        if let Some(m) = model.filter(|m| !m.is_empty() && !self.model_arg.is_empty()) {
+            if !m.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.' | ':')) || m.len() > 128 {
+                return err("bad model id");
+            }
+            argv.extend(self.model_arg.iter().map(|a| a.replace("{model}", m)));
+        }
         if !self.mcp_args.is_empty() {
             let Some(cfg) = mcp_config else { return err("this agent needs the app's control channel: start BashCutPro with --control <port>") };
             let path = cfg.to_string_lossy();
@@ -188,6 +209,21 @@ impl AgentSpec {
     }
 }
 
+/// AGM1: Claude Code model options (id, display label). The first entry is the default (the agent's
+/// own configured model). Aliases come first for the picker; the full versioned ids follow for those
+/// who want to pin a specific snapshot.
+pub fn claude_code_models() -> Vec<(String, String)> {
+    vec![
+        ("sonnet".into(), "Sonnet (default)".into()),
+        ("opus".into(), "Opus".into()),
+        ("haiku".into(), "Haiku".into()),
+        ("claude-sonnet-4-5".into(), "claude-sonnet-4-5".into()),
+        ("claude-opus-4-5".into(), "claude-opus-4-5".into()),
+        ("claude-haiku-4-5".into(), "claude-haiku-4-5".into()),
+        ("claude-sonnet-4-6".into(), "claude-sonnet-4-6".into()),
+    ]
+}
+
 /// An agent plugin as the host lists it (RC6): the same fields, a timeout of 0 meaning the default and
 /// the rest capped at [`bashcut_manifest::MAX_AGENT_TIMEOUT`].
 impl From<bashcut_manifest::AgentLaunch> for AgentSpec {
@@ -204,6 +240,9 @@ impl From<bashcut_manifest::AgentLaunch> for AgentSpec {
             events: if a.events.is_empty() { d.events } else { a.events },
             env: a.env,
             timeout_secs: if a.timeout_secs == 0 { d.timeout_secs } else { a.timeout_secs.min(bashcut_manifest::MAX_AGENT_TIMEOUT) },
+            // AGM1: agent plugins have no model flag (they manage it themselves)
+            model_arg: d.model_arg,
+            model_options: d.model_options,
         }
     }
 }
@@ -628,17 +667,17 @@ mod tests {
     fn command_line_adds_the_kit_folder() {
         let (cfg, kit) = (Path::new("/t/m.json"), Path::new("/opt/my kit"));
         let spec = AgentSpec::claude_code(None);
-        let with = spec.command_line(Some(cfg), None, Some(kit)).unwrap();
+        let with = spec.command_line(Some(cfg), None, Some(kit), None).unwrap();
         assert!(with.windows(2).any(|w| w == ["--plugin-dir", "/opt/my kit"]), "{with:?}");
-        let without = spec.command_line(Some(cfg), None, None).unwrap();
+        let without = spec.command_line(Some(cfg), None, None, None).unwrap();
         assert!(!without.iter().any(|a| a == "--plugin-dir"), "{without:?}");
         // only the kit differs, and it comes after --resume, before the prompt arguments
-        let resumed = spec.command_line(Some(cfg), Some("abc-1"), Some(kit)).unwrap();
+        let resumed = spec.command_line(Some(cfg), Some("abc-1"), Some(kit), None).unwrap();
         let (r, k) = (resumed.iter().position(|a| a == "--resume"), resumed.iter().position(|a| a == "--plugin-dir"));
         assert!(r.is_some() && k.is_some() && r < k, "{resumed:?}");
         let codex = AgentSpec::codex(Some("/opt/codex".into()));
         let cfg = write_mcp_config("/apps/kit-test-cli", "127.0.0.1:9881").unwrap();
-        let argv = codex.command_line(Some(&cfg), None, Some(kit)).unwrap();
+        let argv = codex.command_line(Some(&cfg), None, Some(kit), None).unwrap();
         let _ = std::fs::remove_file(&cfg);
         assert!(!argv.iter().any(|a| a == "--plugin-dir" || a.contains("my kit")), "{argv:?}");
     }
@@ -646,12 +685,12 @@ mod tests {
     #[test]
     fn command_line_adds_mcp_and_resume() {
         let spec = AgentSpec::claude_code(None);
-        assert!(spec.command_line(None, None, None).is_err(), "Claude Code needs the bridge");
-        let argv = spec.command_line(Some(Path::new("/t/m.json")), Some("abc-1"), None).unwrap();
+        assert!(spec.command_line(None, None, None, None).is_err(), "Claude Code needs the bridge");
+        let argv = spec.command_line(Some(Path::new("/t/m.json")), Some("abc-1"), None, None).unwrap();
         assert_eq!(argv[0], "claude");
         assert!(argv.windows(2).any(|w| w == ["--mcp-config", "/t/m.json"]));
         assert!(argv.windows(2).any(|w| w == ["--resume", "abc-1"]));
-        assert!(spec.command_line(Some(Path::new("/t")), Some("x; rm -rf /"), None).is_err());
+        assert!(spec.command_line(Some(Path::new("/t")), Some("x; rm -rf /"), None, None).is_err());
         let bad = AgentSpec { events: "other".into(), ..spec };
         assert!(bad.check().is_err());
     }
@@ -660,9 +699,9 @@ mod tests {
     fn codex_gets_the_server_as_overrides_and_the_prompt_from_stdin() {
         let spec = AgentSpec::codex(Some("/opt/codex".into()));
         assert!(spec.check().is_ok());
-        assert!(spec.command_line(None, None, None).is_err(), "Codex needs the bridge");
+        assert!(spec.command_line(None, None, None, None).is_err(), "Codex needs the bridge");
         let cfg = write_mcp_config("/apps/filmcraft-cli", "127.0.0.1:9876").unwrap();
-        let argv = spec.command_line(Some(&cfg), Some("th-1"), None).unwrap();
+        let argv = spec.command_line(Some(&cfg), Some("th-1"), None, None).unwrap();
         let _ = std::fs::remove_file(&cfg);
         assert_eq!(&argv[..4], ["/opt/codex", "exec", "--json", "--skip-git-repo-check"]);
         assert!(argv.windows(2).any(|w| w == ["-c", r#"mcp_servers.bashcutpro.command="/apps/filmcraft-cli""#]), "{argv:?}");
@@ -747,7 +786,7 @@ mod tests {
     #[test]
     fn claude_code_allows_the_bashcutpro_server_only() {
         assert_eq!(SERVER, "bashcutpro");
-        let argv = AgentSpec::claude_code(Some("/opt/claude".into())).command_line(Some(Path::new("/t/m.json")), None, None).unwrap();
+        let argv = AgentSpec::claude_code(Some("/opt/claude".into())).command_line(Some(Path::new("/t/m.json")), None, None, None).unwrap();
         assert_eq!(argv[0], "/opt/claude");
         let at = |a: &str| argv.iter().position(|x| x == a);
         let allowed = at("--allowedTools").expect("--allowedTools");
@@ -810,7 +849,7 @@ mod tests {
         assert!(overrides.iter().all(|a| a.starts_with(&format!("mcp_servers.{SERVER}."))), "{overrides:?}");
         assert_eq!(spec.mcp_args.iter().filter(|a| *a == "-c").count(), 2);
         let cfg = write_mcp_config("bcpro", "127.0.0.1:47124").unwrap();
-        let argv = spec.command_line(Some(&cfg), None, None);
+        let argv = spec.command_line(Some(&cfg), None, None, None);
         let _ = std::fs::remove_file(&cfg);
         let argv = argv.unwrap();
         assert!(argv.windows(2).any(|w| w == ["-c", r#"mcp_servers.bashcutpro.command="bcpro""#]), "{argv:?}");
@@ -826,4 +865,35 @@ mod tests {
         for_each_line(data.as_bytes(), |l, cut| got.push((l.to_string(), cut)));
         assert_eq!(got, vec![("a".to_string(), false), (String::new(), true), ("b".to_string(), false)]);
     }
+
+    // AGM1: --model is injected before the MCP args when a model is chosen
+    #[test]
+    fn command_line_adds_model_before_mcp() {
+        let spec = AgentSpec::claude_code(None);
+        let cfg = Path::new("/t/m.json");
+        let with = spec.command_line(Some(cfg), None, None, Some("sonnet")).unwrap();
+        let model_pos = with.iter().position(|a| a == "--model").expect("--model");
+        let mcp_pos = with.iter().position(|a| a == "--mcp-config").expect("--mcp-config");
+        assert!(model_pos < mcp_pos, "--model must come before --mcp-config: {with:?}");
+        assert_eq!(with.get(model_pos + 1).map(String::as_str), Some("sonnet"));
+        // no model: no --model arg
+        let without = spec.command_line(Some(cfg), None, None, None).unwrap();
+        assert!(!without.iter().any(|a| a == "--model"), "{without:?}");
+        // empty string: treated as no model
+        let empty = spec.command_line(Some(cfg), None, None, Some("")).unwrap();
+        assert!(!empty.iter().any(|a| a == "--model"), "{empty:?}");
+        // bad model id: rejected
+        assert!(spec.command_line(Some(cfg), None, None, Some("bad model!")).is_err());
+        // Codex uses -m
+        let codex = AgentSpec::codex(Some("/opt/codex".into()));
+        let codex_cfg = write_mcp_config("/bc", "127.0.0.1:47200").unwrap();
+        let codex_argv = codex.command_line(Some(&codex_cfg), None, None, Some("gpt-4o")).unwrap();
+        let _ = std::fs::remove_file(&codex_cfg);
+        assert!(codex_argv.windows(2).any(|w| w == ["-m", "gpt-4o"]), "{codex_argv:?}");
+    }
+
+    // AGM1 placeholder
+    #[test]
+    #[ignore = "test ticket: 240 px model picker fits in the narrow panel"]
+    fn model_picker_fits_240px() {}
 }
