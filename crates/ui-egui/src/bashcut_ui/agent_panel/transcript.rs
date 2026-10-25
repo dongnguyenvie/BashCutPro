@@ -212,14 +212,14 @@ fn status_item(app: &mut FilmcraftApp, ui: &mut egui::Ui, before: &[Item], i: us
             ui.add_space(4.0);
             problem_card(app, ui, &format!("bashcut.agent.autherror.{i}"), text, None);
         }
-        Item::TurnEnd { turns, cost_usd, ms, .. } => turn_end(app, ui, i, *turns, *cost_usd, *ms),
+        Item::TurnEnd { turns, cost_usd, ms, model, .. } => turn_end(app, ui, i, *turns, *cost_usd, *ms, model),
         Item::User { .. } | Item::Assistant { .. } | Item::Tool { .. } => {}
     }
 }
 
-/// AGU10: the faint centred line after a finished turn, `9 steps · 41 s · $0.12`; nothing when
-/// the agent reported none of it.
-fn turn_end(app: &mut FilmcraftApp, ui: &mut egui::Ui, i: usize, turns: Option<u64>, cost_usd: Option<f64>, ms: Option<u64>) {
+/// AGU10 + AGM1: the faint centred line after a finished turn, `9 steps · 41 s · $0.12 · Sonnet 4.6`;
+/// nothing when the agent reported none of it. `model` is empty when the agent did not report one.
+fn turn_end(app: &mut FilmcraftApp, ui: &mut egui::Ui, i: usize, turns: Option<u64>, cost_usd: Option<f64>, ms: Option<u64>, model: &str) {
     let mut parts = Vec::new();
     if let Some(n) = turns.filter(|n| *n > 0) {
         parts.push(if n == 1 { s("1 step").to_string() } else { f("{n} steps", &[("n", &n.to_string())]) });
@@ -233,6 +233,10 @@ fn turn_end(app: &mut FilmcraftApp, ui: &mut egui::Ui, i: usize, turns: Option<u
     }
     if let Some(c) = cost_usd.filter(|c| c.is_finite() && *c > 0.0) {
         parts.push(format!("${c:.2}"));
+    }
+    // AGM1: append the model chip when the agent reported one
+    if !model.is_empty() {
+        parts.push(super::setup::model_chip(model));
     }
     if parts.is_empty() {
         return;

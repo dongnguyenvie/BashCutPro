@@ -318,6 +318,21 @@ labels or subclips (§1 rule 1). A project opened in upstream FilmCraft still wo
 
 ## 6. Agent panel in detail
 
+- **Model picker (AGM1)**: next to the agent picker (or below it when the panel is narrower than 300 px) a
+  **Default / Sonnet / Opus / Haiku / …** combo shows the user's chosen model for the active agent. Default (empty)
+  means the agent uses its own configured model; a specific alias or id (e.g. `claude-sonnet-4-6`) is passed as
+  `--model <x>` when the next session starts (`AgentSpec::command_line`, `bashcut-agent/src/process.rs`). The choice
+  is persisted per agent in `State::agent_model` (`ui.json`). Claude Code aliases: `sonnet`, `opus`, `haiku` and a
+  few full versioned ids (see `claude_code_models()` in `process.rs`). Codex: free-text `-m / --model`. Agent
+  plugins: no model arg (they manage it themselves; the picker is hidden). Changing the model while a session runs
+  shows a one-line note; it takes effect on the next session start (AGM2 will make it live).
+  Automation ids: `bashcut.agent.model` (the picker), `bashcut.agent.model.default`, `bashcut.agent.model.<id>`,
+  `bashcut.agent.model.custom` (Codex free-text), `bashcut.agent.model.chip` (the init-model label in the header),
+  `bashcut.agent.model.pending` (the "takes effect next session" note).
+- **Init-model chip (AGM1)**: when a live session's `system/init` carries a `model` field, a small dimmed label
+  (e.g. "Sonnet 4.6") appears in the header row after the model picker (`Agent::init_model`, cleared on
+  `end_session`). The same model id is appended to the turn summary line (AGU10): `9 steps · 41 s · $0.12 · Sonnet 4.6`.
+  Old saved conversations (no `model` in `TurnEnd`) load cleanly (`#[serde(default)]`).
 - **Start**: user picks an agent: Claude Code (`claude`, or `BASHCUT_CLAUDE`) or an agent plugin (`kind: "agent"`
   in `bashcut-plugin.json`, with an `agent` section: `args`, `mcpConfig` (`{config}`, or `{mcpCommand}`/`{mcpArgs}`),
   `resume` (`{session}`), `prompt`, `timeoutSecs` and `events`: `claude-stream-json` or `codex-json`, the rows of

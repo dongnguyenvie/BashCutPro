@@ -18,7 +18,12 @@ Downloads) when the project lives there: click **Allow**. Until you answer, the 
 nothing.
 
 1. **Save the project** first: conversations and the edit plan are kept next to it (in `<project>.fcproj.bashcut/`).
-2. Open **Agent** on the rail (**Cmd+Alt+Shift+A**). Type what you want ("cut the ums, keep it under a minute, add
+2. Open **Agent** on the rail (**Cmd+Alt+Shift+A**). Next to the **Claude Code** / **Codex** picker you will find a
+   **model picker** (Default / Sonnet / Opus / Haiku / …). **Default** lets the agent use its own configured model;
+   picking a specific alias (e.g. **Sonnet**) passes `--model sonnet` when the next session starts. The choice is
+   saved per agent. Once a session is running, a small chip in the same row shows the model it actually reported
+   ("Sonnet 4.6"). Changing the model while a session is running shows a note; it takes effect on the next session.
+3. Type what you want ("cut the ums, keep it under a minute, add
    Vietnamese captions") and press **Enter** (**Shift+Enter** for a new line).
 3. The agent's replies stream in; the commands it runs are folded into one line each. Every edit it makes is a normal
    undo step. Your messages are bubbles on the right, the agent's replies sit under its name; point at either (or at a

@@ -171,6 +171,11 @@ pub struct Agent {
     pub commands: Option<Vec<SlashCommand>>,
     /// Claude Code refused one of our flags (`unknown option`): too old for a live session.
     outdated: bool,
+    /// AGM1: The model the agent reported in its last `system/init` (`model` field). Empty when
+    /// no init was received yet or the agent does not report one.
+    pub init_model: String,
+    /// AGM1: The model id chosen by the user (persisted in ui state). Empty = Default (agent decides).
+    pub chosen_model: String,
     /// The Stop in flight as an interrupt request (AG3).
     interrupting: Option<Interrupt>,
     /// Control requests (interrupt, cancel) written so far (their ids).
@@ -231,6 +236,8 @@ impl Agent {
             driven: false,
             auth_failed: false,
             permissions: Vec::new(),
+            init_model: String::new(),
+            chosen_model: String::new(),
         }
     }
 
@@ -359,6 +366,8 @@ impl Agent {
         // the next process lists its own plugins and commands (AG15: no stale kit line from the ended one)
         self.plugins = None;
         self.commands = None;
+        // AGM1: init_model belongs to the old process; the next one will send a fresh init
+        self.init_model = String::new();
     }
 
     /// Open in Terminal (AG3): the terminal resumes this conversation's session, which must not have
@@ -434,6 +443,9 @@ impl Agent {
             // the plugins were the other agent's (AG9's kit line); unknown until this one's init
             self.plugins = None;
             self.commands = None;
+            // AGM1: init_model belongs to the old agent; clear it and the chosen model for the new one
+            self.init_model = String::new();
+            self.chosen_model = String::new();
             self.new_conversation()?;
         }
         Ok(())
@@ -546,7 +558,9 @@ impl Agent {
         };
         self.mcp_config = mcp.clone();
         let session = Some(self.conversation.session.as_str()).filter(|s| !s.is_empty());
-        self.agent.command_line(mcp.as_deref(), session, bashcut_dirs::kit::kit_dir().as_deref())
+        // AGM1: pass the chosen model (empty = Default; the agent uses its own configured model)
+        let model = Some(self.chosen_model.as_str()).filter(|m| !m.is_empty());
+        self.agent.command_line(mcp.as_deref(), session, bashcut_dirs::kit::kit_dir().as_deref(), model)
     }
 
     /// Write `message` to the live agent, starting it (with `argv`) when there is none.
@@ -611,7 +625,9 @@ impl Agent {
     fn restart_live(&mut self) -> Result<()> {
         let launch = self.launch.clone().ok_or_else(|| Error("the agent cannot be restarted".into()))?;
         let session = Some(self.conversation.session.as_str()).filter(|s| !s.is_empty());
-        let argv = self.agent.command_line(launch.mcp.as_deref(), session, bashcut_dirs::kit::kit_dir().as_deref())?;
+        // AGM1: keep the same model on restart
+        let model = Some(self.chosen_model.as_str()).filter(|m| !m.is_empty());
+        let argv = self.agent.command_line(launch.mcp.as_deref(), session, bashcut_dirs::kit::kit_dir().as_deref(), model)?;
         self.start_live(&argv, &launch)?;
         for p in self.pending.iter().filter(|p| !p.held) {
             self.write(&p.message, &p.uuid)?;
@@ -713,7 +729,16 @@ impl Agent {
             match e {
                 TurnEvent::Agent(ev) => {
                     match &ev {
-                        Event::Init { session, .. } | Event::Result { session, .. } if !session.is_empty() => {
+                        Event::Init { session, model, .. } => {
+                            if !session.is_empty() {
+                                self.conversation.session = session.clone();
+                            }
+                            // AGM1: per-message turn also reports a model
+                            if !model.is_empty() {
+                                self.init_model = model.clone();
+                            }
+                        }
+                        Event::Result { session, .. } if !session.is_empty() => {
                             self.conversation.session = session.clone();
                         }
                         _ => {}
@@ -724,7 +749,8 @@ impl Agent {
                         self.commands = Some(commands.clone());
                     }
                     let ms = self.turn_began.map(elapsed_ms);
-                    self.conversation.transcript.apply_timed(&ev, ms);
+                    // AGM1: pass init_model so TurnEnd records the actual model used
+                    self.conversation.transcript.apply_timed(&ev, ms, &self.init_model);
                 }
                 TurnEvent::Ended(end) => ended = Some(end),
             }
@@ -786,9 +812,13 @@ impl Agent {
 
     fn live_event(&mut self, ev: Event) {
         match &ev {
-            Event::Init { session, capabilities, plugins, commands, .. } => {
+            Event::Init { session, model, capabilities, plugins, commands, .. } => {
                 if !session.is_empty() {
                     self.conversation.session = session.clone();
+                }
+                // AGM1: keep the model the agent reports so the panel can show it as a chip
+                if !model.is_empty() {
+                    self.init_model = model.clone();
                 }
                 self.capabilities = capabilities.clone();
                 self.plugins = Some(plugins.clone());
@@ -857,7 +887,8 @@ impl Agent {
                     // the interrupted turn's end (its error result is not news); a turn that
                     // finished first keeps its answer
                     if *ok {
-                        self.conversation.transcript.apply_timed(&ev, self.busy_since.map(elapsed_ms));
+                        // AGM1: pass init_model
+                        self.conversation.transcript.apply_timed(&ev, self.busy_since.map(elapsed_ms), &self.init_model);
                     }
                     return self.stopped_in_place();
                 }
@@ -865,7 +896,8 @@ impl Agent {
                 if !*ok && self.status == Status::Stopping {
                     return;
                 }
-                self.conversation.transcript.apply_timed(&ev, self.busy_since.map(elapsed_ms));
+                // AGM1: pass init_model
+                self.conversation.transcript.apply_timed(&ev, self.busy_since.map(elapsed_ms), &self.init_model);
                 if let Err(e) = self.write_held() {
                     return self.live_failed(e.0);
                 }
@@ -1025,6 +1057,9 @@ impl Agent {
             "conversation": {"id": self.conversation.id, "title": self.conversation.title(), "items": self.conversation.transcript.items.len(), "session": self.conversation.session},
             "gate": self.gate().map(|g| json!({"stage": g.stage, "summary": g.summary, "evidence": g.evidence_lines()})),
             "project": self.sidecar.is_some(),
+            // AGM1
+            "initModel": self.init_model,
+            "chosenModel": self.chosen_model,
         })
     }
 
@@ -1083,6 +1118,15 @@ impl Agent {
             }
             "change" => {
                 self.answer_gate(false, &s("note"), ctx)?;
+                Ok(self.state_json())
+            }
+            // AGM1: set the model for the next session; takes effect on the next start
+            "model" => {
+                let id = s("id");
+                if !id.is_empty() && (!id.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.' | ':')) || id.len() > 128) {
+                    return err("bad model id");
+                }
+                self.chosen_model = id;
                 Ok(self.state_json())
             }
             _ => err(format!("unknown command bashcut.agent.{name}")),
@@ -1186,6 +1230,15 @@ mod tests {
         let many: std::collections::HashSet<String> = (0..100).map(|_| new_uuid()).collect();
         assert_eq!(many.len(), 100);
     }
+
+    // AGM1 test placeholders
+    #[test]
+    #[ignore = "test ticket: init_model stored after system/init"]
+    fn init_model_stored_from_init_event() {}
+
+    #[test]
+    #[ignore = "test ticket: argv has --model only when chosen model is non-empty"]
+    fn command_line_adds_model_only_when_chosen() {}
 
     #[test]
     fn a_new_agent_is_idle_with_nothing_queued() {

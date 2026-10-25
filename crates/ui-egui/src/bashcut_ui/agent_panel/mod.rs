@@ -139,6 +139,12 @@ struct Snapshot {
     slash: bool,
     /// [`bashcut_agent::Agent::commands`], read only while the message box holds a `/`.
     commands: Option<Vec<SlashCommand>>,
+    /// AGM1: The model reported by the agent's last `system/init` (shown as a chip in the header).
+    init_model: String,
+    /// AGM1: The user's chosen model id (from state); empty = Default.
+    chosen_model: String,
+    /// AGM1: model options for the current agent (id, label).
+    model_options: Vec<(String, String)>,
 }
 
 impl Snapshot {
@@ -175,6 +181,11 @@ pub fn draw(app: &mut FilmcraftApp, ui: &mut egui::Ui) {
     let has_slash = v.input.contains('/');
     let (snap, gate, unsent) = agent::with(app, &ctx, |a| {
         a.set_project(c.project.as_deref());
+        // AGM1: read and apply the persisted model choice for this agent
+        let chosen_model = super::State::get(&ctx).agent_model.get(&a.agent.id).cloned().unwrap_or_default();
+        if a.chosen_model != chosen_model {
+            a.chosen_model = chosen_model.clone();
+        }
         let snap = Snapshot {
             items: a.conversation.transcript.items.clone(),
             status: a.status.clone(),
@@ -196,6 +207,10 @@ pub fn draw(app: &mut FilmcraftApp, ui: &mut egui::Ui) {
             permissions: a.permissions(),
             slash: a.agent.events == bashcut_agent::stream_json::FORMAT,
             commands: if has_slash { a.commands.clone() } else { None },
+            // AGM1
+            init_model: a.init_model.clone(),
+            chosen_model,
+            model_options: a.agent.model_options.clone(),
         };
         let gate = if check_gate && !a.is_running() { Some(a.gate()) } else { None };
         (snap, gate, a.take_unsent())

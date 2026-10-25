@@ -17,7 +17,12 @@ Trên macOS, lượt trợ lý đầu tiên có thể hỏi *"BashCutPro" muốn
 liệu, Tải về) khi dự án nằm ở đó: bấm **Cho phép**. Khi chưa trả lời, trợ lý cứ ở trạng thái *đang chạy* mà không làm gì.
 
 1. **Lưu dự án** trước: cuộc trò chuyện và kế hoạch dựng được giữ cạnh dự án (trong `<dự án>.fcproj.bashcut/`).
-2. Mở **Trợ lý** (Agent) trên thanh bên (**Cmd+Alt+Shift+A**). Gõ điều bạn muốn ("cắt hết ừm à, dưới một phút, thêm
+2. Mở **Trợ lý** (Agent) trên thanh bên (**Cmd+Alt+Shift+A**). Cạnh ô chọn **Claude Code** / **Codex** có ô chọn
+   **mô hình** (Mặc định / Sonnet / Opus / Haiku / …). **Mặc định** để trợ lý tự dùng mô hình của nó; chọn cụ thể
+   (ví dụ **Sonnet**) sẽ truyền `--model sonnet` khi phiên tiếp theo bắt đầu. Lựa chọn được lưu theo từng trợ lý.
+   Khi phiên đang chạy, một nhãn nhỏ cạnh ô chọn mô hình hiển thị mô hình thực sự đang dùng (ví dụ "Sonnet 4.6").
+   Đổi mô hình khi đang chạy sẽ hiện một thông báo; thay đổi có hiệu lực từ phiên tiếp theo.
+3. Gõ điều bạn muốn ("cắt hết ừm à, dưới một phút, thêm
    phụ đề tiếng Việt") rồi nhấn **Enter** (**Shift+Enter** để xuống dòng).
 3. Câu trả lời hiện dần; các lệnh trợ lý chạy được gom mỗi lệnh một dòng. Mỗi thao tác trợ lý làm là một bước hoàn tác
    bình thường. Tin của bạn nằm trong khung bên phải, câu trả lời của trợ lý nằm dưới tên của nó; rê chuột vào một tin

@@ -4683,3 +4683,16 @@ fn agent_setup_strip_folds_and_expands() {
     d.no_ui_error();
     let _ = std::fs::remove_dir_all(&data);
 }
+
+// AGM1 test placeholders
+#[test]
+#[ignore = "test ticket: init model chip shows in the header after system/init"]
+fn agm1_model_chip_shows_init_model() {}
+
+#[test]
+#[ignore = "test ticket: model picker saves per agent and passes --model to the next session"]
+fn agm1_model_picker_saves_per_agent() {}
+
+#[test]
+#[ignore = "test ticket: model picker fits 240 px in both en and vi"]
+fn agm1_model_picker_fits_240px() {}
