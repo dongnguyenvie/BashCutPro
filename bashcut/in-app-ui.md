@@ -789,3 +789,9 @@ see a change.
   `bashcut.agent.stop`) while a turn runs and the box is empty; a live agent with text typed shows both. Both ids stay
   registered (zero-size when not shown). The Enter / Shift+Enter hint moved into Send's tooltip; the placeholder is
   "Message {agent}…". The `/` list is unchanged.
+- **Agent panel polish (FX44)**: the Agent section shows no blurb above its content (the empty state's "{agent} edits
+  this project with you…" line says the same; the rail tooltip keeps the blurb). The "Project not saved" card has a
+  small **Hide** (`bashcut.agent.ready.project.hide`) next to **Save…**: hidden per project, keyed by the project name
+  (an unsaved project has no path), remembered in `ui.json` (`unsavedCardHidden`, at most 64 names) and left out of the
+  Setup strip count. The plain example chip "Add captions" is a short label; the prompt it fills stays "Add captions to
+  the main sequence" (vi "Thêm phụ đề" / "Thêm phụ đề cho sequence chính").
