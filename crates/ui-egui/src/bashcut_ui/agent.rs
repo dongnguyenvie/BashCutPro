@@ -398,11 +398,19 @@ pub fn invoke(app: &mut FilmcraftApp, ctx: &egui::Context, name: &str, params: &
     }
     let c = context(app);
     let driven = !shown(ctx);
-    let r = with(app, ctx, |a| {
+    let (r, model) = with(app, ctx, |a| {
         a.driven |= driven;
-        a.command(name, params, &c)
-    })
-    .map_err(|e| e.0);
+        let r = a.command(name, params, &c);
+        // FX42: the model choice is the saved one (State::agent_model), which the panel applies each frame
+        let model = (r.is_ok() && name == "model").then(|| (a.agent.id.clone(), a.chosen_model.clone()));
+        (r, model)
+    });
+    let r = r.map_err(|e| e.0);
+    if let Some((agent, model)) = model {
+        super::State::update(ctx, |st| {
+            st.agent_model.insert(agent, model);
+        });
+    }
     if r.is_ok() && name == "send" {
         // the conversation is the panel's again
         ctx.data_mut(|d| d.remove::<TerminalWatch>(watch_key()));
