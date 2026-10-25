@@ -383,10 +383,9 @@ fn model_row(app: &mut FilmcraftApp, ui: &mut egui::Ui, ctx: &egui::Context, v: 
     });
     app.auto.add_response("bashcut.agent.model", &combo.response, &chosen_label);
     if let Some(m) = new_model {
-        // Persist in state; a live Claude Code session switches with set_model (AGM2), else the next start
-        super::super::State::update(ctx, |st| {
-            st.agent_model.insert(snap.agent.0.clone(), m.clone());
-        });
+        // FX43: only through `bashcut.agent.model`, which validates the id and saves the accepted one
+        // (FX42); a refused id shows its error in the status line and leaves the saved choice as it was.
+        // A live Claude Code session switches with set_model (AGM2), else the next start.
         call(app, ctx, v, "model", json!({"id": m}));
     }
 

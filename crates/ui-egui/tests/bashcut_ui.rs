@@ -4701,3 +4701,8 @@ fn agm1_model_picker_fits_240px() {}
 #[test]
 #[ignore = "test ticket: with fake_claude answering set_model, picking a model while idle adds a Model notice (en + vi) and updates the chip; while a turn runs the queued note shows until the turn ends"]
 fn agm2_model_picker_switches_the_live_session() {}
+
+// FX43 test placeholder
+#[test]
+#[ignore = "test ticket: a bad custom model id typed in the picker (Codex) shows the error in the status line and is not saved in State::agent_model; the previous choice stays"]
+fn fx43_model_picker_bad_custom_id_is_not_saved() {}
