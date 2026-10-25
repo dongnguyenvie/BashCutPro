@@ -88,13 +88,13 @@ Lần đầu ở một thư mục, Claude Code hỏi bạn có tin thư mục đ
 - Khi BashCutPro không tìm thấy bản bộ công cụ BashCutPro (plugin `bcp`, mang theo các công thức `/bcp:` và kỹ năng) và
   Claude Code chạy mà thiếu nó, sau tin nhắn đầu tiên bảng hiện dòng **Chưa tải kỹ năng BashCutPro**, kèm nút
   **Tải bộ công cụ…**. Nút này mở terminal để tải (clone) bộ công cụ
-  (`https://github.com/dongnguyenvie/bashcutpro-agent-kit`) về thư mục dữ liệu của BashCutPro (`bashcut-kit`), hoặc
-  chạy `git pull` nếu đã có. Không có gì được tải cho đến khi bạn bấm, và không có gì được cài vào chính Claude Code.
+  (`https://github.com/dongnguyenvie/bashcutpro-agent-kit`) về thư mục dữ liệu của BashCutPro (`bashcut-kit`), đúng phiên bản bộ công cụ mà
+  BashCutPro này được ghim, hoặc chạy `git fetch --tags` rồi `git checkout <phiên bản>` nếu đã có. Không có gì được tải cho đến khi bạn bấm, và không có gì được cài vào chính Claude Code.
   Tải xong, tin nhắn kế tiếp của bạn sẽ nạp bộ công cụ. Máy không có git thì bảng hiện địa chỉ file zip và thư mục để
   giải nén vào. Dòng ghi chú bên dưới có lệnh tùy chọn nếu bạn muốn có kỹ năng trong mọi phiên Claude Code:
   `claude plugin marketplace add dongnguyenvie/bashcutpro-agent-kit && claude plugin install
   bcp@bashcutpro-agent-kit`. Các nút công thức của cuộc trò chuyện trống cũng cần bộ công cụ.
-- Khi bộ kỹ năng bạn đang dùng nhắc đến lệnh mà BashCutPro này chưa có (bộ cũ hoặc BashCutPro cũ), bảng nói **Bộ kỹ năng này dùng N lệnh mà BashCutPro này chưa có** kèm tên các kỹ năng dùng chúng, cùng nút **Tải bộ công cụ…** (cập nhật bản đã tải bằng `git pull`). Việc kiểm tra so danh sách lệnh của bộ kỹ năng với các lệnh có sẵn trong ứng dụng, không chạy gì thêm và lặp lại sau vài giây; bộ cũ không có danh sách thì không hiện dòng này. Nếu dòng vẫn còn sau khi tải, hãy cập nhật BashCutPro.
+- Khi bộ kỹ năng bạn đang dùng nhắc đến lệnh mà BashCutPro này chưa có (bộ cũ hoặc BashCutPro cũ), bảng nói **Bộ kỹ năng này dùng N lệnh mà BashCutPro này chưa có** kèm tên các kỹ năng dùng chúng, cùng nút **Tải bộ công cụ…** (chuyển bản đã tải sang phiên bản được ghim bằng `git fetch --tags` và `git checkout`). Việc kiểm tra so danh sách lệnh của bộ kỹ năng với các lệnh có sẵn trong ứng dụng, không chạy gì thêm và lặp lại sau vài giây; bộ cũ không có danh sách thì không hiện dòng này. Nếu dòng vẫn còn sau khi tải, hãy cập nhật BashCutPro.
 - Cuộc trò chuyện trống hỏi "Chỉnh sửa gì đây?" và gợi ý vài nút mẫu (Cắt các đoạn im lặng, Thêm phụ đề cho sequence chính, cùng các công thức của bộ kit). Bấm nút chỉ điền vào ô nhắn, chưa gửi gì cho đến khi bạn bấm Gửi.
 - Bảng lệnh cũng có ba thao tác này: **Mở trợ lý trong Terminal**, **Đăng nhập Claude Code** và **Cài Claude Code**
   (trợ lý điều khiển BashCutPro có thể gọi chúng bằng `bashcut.agent.terminal`, `bashcut.agent.signIn` và

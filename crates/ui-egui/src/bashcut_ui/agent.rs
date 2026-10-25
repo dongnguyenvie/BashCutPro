@@ -551,8 +551,8 @@ pub fn git_found() -> bool {
     hints::program_found("git", std::env::var_os("PATH").as_deref())
 }
 
-/// Download kit (AG16's button and `bashcut.agent.installKit`): `git clone` of the agent kit into [`kit_target`], or
-/// `git pull` when it is already there ([`terminal::kit_job`]), in a terminal in `cwd`; user-started only, never
+/// Download kit (AG16's button and `bashcut.agent.installKit`): `git clone` of the agent kit at the `bashcut/kit.lock` tag
+/// into [`kit_target`], or `git fetch --tags` + `git checkout <tag>` when it is already there ([`terminal::kit_job`]), in a terminal in `cwd`; user-started only, never
 /// automatic. The next message loads the kit with `--plugin-dir` (AG15).
 pub fn install_kit(cwd: &Path) -> Result<(), String> {
     let dir = kit_target().ok_or_else(|| s("There is no data folder to keep the kit in.").to_string())?;

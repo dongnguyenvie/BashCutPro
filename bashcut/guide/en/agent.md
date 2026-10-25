@@ -90,15 +90,16 @@ The first time in a folder, Claude Code asks whether you trust it: choose **Yes,
 - When BashCutPro finds no copy of the BashCutPro kit (the `bcp` plugin: the `/bcp:` recipes and skills) and Claude Code
   runs without it, the panel says **BashCutPro skills are not downloaded** after the first message, with a
   **Download kit…** button. It opens a terminal that clones the kit
-  (`https://github.com/dongnguyenvie/bashcutpro-agent-kit`) into BashCutPro's data folder (`bashcut-kit`), or runs
-  `git pull` when it is already there. Nothing is downloaded until you press it, and nothing is installed into
+  (`https://github.com/dongnguyenvie/bashcutpro-agent-kit`) into BashCutPro's data folder (`bashcut-kit`) at the kit
+  version this BashCutPro is pinned to, or runs `git fetch --tags` and `git checkout <version>` when it is already
+  there. Nothing is downloaded until you press it, and nothing is installed into
   Claude Code itself. When it finishes, your next message loads the kit. Without git the panel shows the zip address
   and the folder to unpack it into instead. A small note below gives the optional command for the skills in every
   Claude Code session: `claude plugin marketplace add dongnguyenvie/bashcutpro-agent-kit && claude plugin install
   bcp@bashcutpro-agent-kit`. The recipe buttons of an empty conversation need the kit too.
 - When the kit you have names commands this BashCutPro does not have (an old kit, or an old BashCutPro), the panel says
   **This kit uses N commands this BashCutPro doesn't have** followed by the skills that use them, with the same
-  **Download kit…** button (it updates the clone with `git pull`). The check reads the kit's command index against the
+  **Download kit…** button (it moves the clone to the pinned kit version with `git fetch --tags` and `git checkout`). The check reads the kit's command index against the
   commands built into the app, starts nothing, and repeats every few seconds; an older kit without an index shows no
   line. If the line stays after the download, update BashCutPro.
 - An empty conversation asks "What should we edit?" and offers example chips (Remove the silences, Add captions to
