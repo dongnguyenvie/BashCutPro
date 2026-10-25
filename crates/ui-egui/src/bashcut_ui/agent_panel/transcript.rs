@@ -75,8 +75,15 @@ pub(super) fn transcript(app: &mut FilmcraftApp, ui: &mut egui::Ui, items: &[Ite
 
     let mut i = 0;
     while let Some(item) = items.get(i) {
-        // the name row opens a run of assistant and tool items, not every block
-        let run_start = i.checked_sub(1).and_then(|p| items.get(p)).is_none_or(|p| !matches!(p, Item::Assistant { .. } | Item::Tool { .. }));
+        // the name row opens a run of assistant and tool items, not every block.
+        // FX45 (AGU2): when tools precede the first assistant text in a run, walk back to the
+        // run's start and check whether any earlier assistant block exists in that run — if not,
+        // this is the first one and `with_name` should be true even though the immediate
+        // predecessor was a Tool item (User → Tool(s) → Assistant is one agent turn).
+        let run_start = {
+            let run_begin = items[..i].iter().rposition(|p| !matches!(p, Item::Assistant { .. } | Item::Tool { .. })).map_or(0, |j| j + 1);
+            !items[run_begin..i].iter().any(|p| matches!(p, Item::Assistant { .. }))
+        };
         let a = flow.alpha(&ctx, i);
         if a < 1.0 {
             ui.add_space((1.0 - a) * 6.0);
