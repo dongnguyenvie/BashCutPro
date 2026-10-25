@@ -46,6 +46,7 @@ fn request(ctx: &egui::Context) {
 
 #[cfg(test)]
 mod tests {
+    #[cfg(unix)]
     use super::PENDING;
 
     /// TREC1: SIGTERM within the 1 s journal debounce still leaves the last edit in snapshot.fcproj.
