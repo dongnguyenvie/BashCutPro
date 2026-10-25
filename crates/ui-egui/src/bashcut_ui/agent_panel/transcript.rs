@@ -75,15 +75,7 @@ pub(super) fn transcript(app: &mut FilmcraftApp, ui: &mut egui::Ui, items: &[Ite
 
     let mut i = 0;
     while let Some(item) = items.get(i) {
-        // the name row opens a run of assistant and tool items, not every block.
-        // FX45 (AGU2): when tools precede the first assistant text in a run, walk back to the
-        // run's start and check whether any earlier assistant block exists in that run — if not,
-        // this is the first one and `with_name` should be true even though the immediate
-        // predecessor was a Tool item (User → Tool(s) → Assistant is one agent turn).
-        let run_start = {
-            let run_begin = items[..i].iter().rposition(|p| !matches!(p, Item::Assistant { .. } | Item::Tool { .. })).map_or(0, |j| j + 1);
-            !items[run_begin..i].iter().any(|p| matches!(p, Item::Assistant { .. }))
-        };
+        let run_start = run_start(items, i);
         let a = flow.alpha(&ctx, i);
         if a < 1.0 {
             ui.add_space((1.0 - a) * 6.0);
@@ -110,6 +102,15 @@ pub(super) fn transcript(app: &mut FilmcraftApp, ui: &mut egui::Ui, items: &[Ite
         i = next;
     }
     shared::put_temp(&ctx, flow_id, flow);
+}
+
+/// Item `i` is the first assistant block of its run of assistant and tool items, so it gets the name row (not every
+/// block does). FX45 (AGU2): tools before the first assistant text do not take it away (User → Tool(s) → Assistant is
+/// one agent turn): the run is walked back to its start and the row shows if no assistant block came before in it.
+fn run_start(items: &[Item], i: usize) -> bool {
+    let before = items.get(..i).unwrap_or(items);
+    let begin = before.iter().rposition(|p| !matches!(p, Item::Assistant { .. } | Item::Tool { .. })).map_or(0, |j| j + 1);
+    !before.get(begin..).unwrap_or_default().iter().any(|p| matches!(p, Item::Assistant { .. }))
 }
 
 /// 10 px and a hairline between two turns.
@@ -256,4 +257,41 @@ fn turn_end(app: &mut FilmcraftApp, ui: &mut egui::Ui, i: usize, turns: Option<u
         .with_layout(egui::Layout::top_down(egui::Align::Center), |ui| ui.add(egui::Label::new(text).halign(egui::Align::Center).selectable(true).wrap()))
         .inner;
     app.auto.add_response(&format!("bashcut.agent.turn.{i}"), &r, &line);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn user(t: &str) -> Item {
+        Item::User { text: t.into() }
+    }
+
+    fn said(t: &str) -> Item {
+        Item::Assistant { text: t.into() }
+    }
+
+    fn tool(id: &str) -> Item {
+        Item::Tool { id: id.into(), name: "mcp__bashcutpro__command_run".into(), input: serde_json::json!({}), output: None, is_error: false }
+    }
+
+    /// FX45: User → Tool(s) → Assistant is one agent turn; its first assistant block gets the name row even though a
+    /// tool call comes right before it; later blocks of the same run do not; the next turn's first block does again.
+    #[test]
+    fn run_start_tool_before_assistant_shows_name_row() {
+        let items = [user("cut"), tool("a"), tool("b"), said("done"), tool("c"), said("more"), user("again"), said("ok"), tool("d")];
+        let starts: Vec<bool> = (0..items.len()).map(|i| run_start(&items, i)).collect();
+        assert!(starts[3], "first assistant block after tools: name row");
+        assert!(!starts[5], "a later block of the same run: no name row");
+        assert!(starts[7], "the next turn's first block: name row");
+        // a plain reply right after the user, and a transcript that opens with tools (a resumed conversation)
+        assert!(run_start(&[user("hi"), said("hello")], 1));
+        assert!(run_start(&[tool("a"), said("x")], 1));
+        assert!(!run_start(&[said("x"), tool("a"), said("y")], 2));
+        // a notice or an error ends a run, like a user message
+        assert!(run_start(&[said("x"), Item::Notice { message: "n".into() }, tool("a"), said("y")], 3));
+        // hostile index: past the end is no panic
+        assert!(!run_start(&items, items.len() + 5));
+        assert!(run_start(&[], 0));
+    }
 }
