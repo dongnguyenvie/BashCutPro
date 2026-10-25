@@ -144,6 +144,10 @@ class GenerateTest(unittest.TestCase):
         names = sorted(os.listdir(os.path.join(HERE, "share")))
         self.assertEqual([n for n in names if not n.startswith("bashcut-setup.")], ["README.md"])
 
+    @unittest.skip("test ticket: FX41 the Windows copy stages README, LICENSE*, NOTICE, OFL-<family>.txt in $Docs and the wxs harvests $(var.DocsDir)")
+    def test_windows_msi_ships_the_licence_files(self):
+        pass
+
     def test_windows_zip_entries_use_forward_slashes(self):
         # PK4: Compress-Archive on Windows PowerShell 5.1 writes zip entry names with backslashes
         generate.generate(ROOT, self.out)

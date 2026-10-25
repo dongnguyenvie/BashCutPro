@@ -23,6 +23,12 @@ overrides (`BASHCUTPRO_CLI`, `BASHCUT_FILMCRAFT_CLI`, `FILMCRAFT_CLI`); `apps/ba
 | first-run setup `bashcut-setup.sh` / `.ps1` | `Contents/Resources/bashcut/`; CLI zip | install folder; portable zip | `/usr/share/bashcutpro/` (FreeBSD: `share/bashcutpro/`) |
 | speech-to-text (`--features whisper` for `filmcraft` and `bashcutpro-cli`, #146; candle on the CPU) | app and CLI | app and CLI | app and CLI |
 
+Licence files (FX41): the Windows MSI installs the same `README.md`, `LICENSE`, `LICENSE-MIT`, `LICENSE-APACHE`,
+`NOTICE` and `OFL-<family>.txt` (one per embedded craft-fonts family, builds with `CRAFT_FONTS_DIR`) as the portable
+zip, next to `bashcutpro.exe`. The copy stages them in `windows-package\<arch>-docs` and the WiX source harvests that
+folder with a v5 `<Files>` element, so the OFL list can vary per build. Upstream's MSI ships none of them (not fixed
+upstream as of `c3b4c4de`); this lives in `generate.py`, no upstream line changes.
+
 `bcpro` is a relative symlink to `bashcutpro-cli` wherever the package can hold one (deb, rpm, tarball, AppImage,
 Flatpak, FreeBSD, the macOS app and CLI zip; PK3, NM2), not a second ~36 MB copy. Windows keeps `bcpro.exe` as a copy
 (MSI and zip carry no symlinks; a `.cmd` shim would change Ctrl+C and exit-code behaviour). Linux and FreeBSD docs

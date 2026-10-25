@@ -304,6 +304,38 @@ SUBS = [
         + '\n      <Component Id="BashcutSetup">\n        <File Id="BashcutSetupPs1" Source="$(var.BinDir)\\bashcut-setup.ps1" KeyPath="yes" />\n      </Component>\n',
         1,
     ),
+    # FX41: the MSI installs the files the portable zip carries next to the exe: README.md (ours, BR1), LICENSE,
+    # LICENSE-MIT, LICENSE-APACHE, NOTICE and the embedded craft-fonts' OFL-<family>.txt (OFL 1.1 wants the licence
+    # shipped with the fonts). Staged in $Docs, harvested by a WiX v5 <Files> element (the OFL list varies per build).
+    (
+        "windows/package.ps1",
+        "# ---- MSI ",
+        "# BashCutPro: README and licence files for the MSI, the same set as the portable zip (FX41)\n"
+        "$Docs = Join-Path $TargetDir \"windows-package\\$Arch-docs\"\n"
+        "Remove-Item -Recurse -Force $Docs -ErrorAction SilentlyContinue\n"
+        "New-Item -ItemType Directory -Force -Path $Docs | Out-Null\n"
+        "Copy-Item (Join-Path $Root 'bashcut\\packaging\\share\\README.md') $Docs\n"
+        "foreach ($f in 'LICENSE', 'LICENSE-MIT', 'LICENSE-APACHE', 'NOTICE') {\n"
+        "  $p = Join-Path $Root $f\n"
+        "  if (Test-Path $p) { Copy-Item $p $Docs }\n"
+        "}\n"
+        "if ($env:CRAFT_FONTS_DIR) {\n"
+        "  foreach ($lic in Get-ChildItem -Path (Join-Path $env:CRAFT_FONTS_DIR 'fonts\\*\\OFL.txt') -ErrorAction SilentlyContinue) {\n"
+        "    Copy-Item $lic.FullName (Join-Path $Docs \"OFL-$($lic.Directory.Name).txt\")\n"
+        "  }\n"
+        "}\n\n"
+        "# ---- MSI ",
+        1,
+    ),
+    ("windows/package.ps1", '-d "BinDir=$Stage"', '-d "BinDir=$Stage" -d "DocsDir=$Docs"', 1),
+    (
+        "windows/filmcraft.wxs",
+        "    </ComponentGroup>\n",
+        "\n      <!-- BashCutPro: README, LICENSE*, NOTICE, OFL-<family>.txt next to the exe, as in the portable zip (FX41) -->\n"
+        '      <Files Include="$(var.DocsDir)\\*" />\n'
+        "    </ComponentGroup>\n",
+        1,
+    ),
     # PK1: what the Windows copy prints and writes into portable.txt names BashCutPro and its own %APPDATA% folder
     # (bashcut_dirs::data_dir); the app exe is bashcutpro.exe (NM2)
     ("windows/package.ps1", 'Write-Output "FilmCraft $Version for Windows', 'Write-Output "BashCutPro $Version for Windows', 1),
