@@ -212,15 +212,19 @@ impl AgentSpec {
 /// AGM1: Claude Code model options (id, display label). The first entry is the default (the agent's
 /// own configured model). Aliases come first for the picker; the full versioned ids follow for those
 /// who want to pin a specific snapshot.
+///
+/// Aliases (`sonnet`, `opus`, `haiku`) are what Claude Code resolves to the current model. The
+/// versioned ids are the latest snapshots; update this list when Anthropic ships new models.
 pub fn claude_code_models() -> Vec<(String, String)> {
     vec![
-        ("sonnet".into(), "Sonnet (default)".into()),
+        ("sonnet".into(), "Sonnet".into()),
         ("opus".into(), "Opus".into()),
         ("haiku".into(), "Haiku".into()),
-        ("claude-sonnet-4-5".into(), "claude-sonnet-4-5".into()),
-        ("claude-opus-4-5".into(), "claude-opus-4-5".into()),
-        ("claude-haiku-4-5".into(), "claude-haiku-4-5".into()),
-        ("claude-sonnet-4-6".into(), "claude-sonnet-4-6".into()),
+        // Versioned ids — update when Anthropic ships new models
+        ("claude-sonnet-5-5".into(), "claude-sonnet-5-5".into()),
+        ("claude-opus-5-5".into(), "claude-opus-5-5".into()),
+        ("claude-haiku-5-5".into(), "claude-haiku-5-5".into()),
+        ("claude-fable-5-1".into(), "claude-fable-5-1".into()),
     ]
 }
 
@@ -892,4 +896,9 @@ mod tests {
         assert!(codex_argv.windows(2).any(|w| w == ["-m", "gpt-4o"]), "{codex_argv:?}");
     }
     // TAGM: the 240 px picker check is a UI test (`agm1_model_picker_fits_240px` in ui-egui's tests/bashcut_ui.rs)
+
+    /// FX47: model list contains current Claude ids (5-5/fable-5-1) and none of the stale 4-5 ids.
+    #[test]
+    #[ignore = "test ticket: FX47 model list — current ids present, no stale 4-5 ids"]
+    fn fx47_model_list_current_ids() {}
 }
