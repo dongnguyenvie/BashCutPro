@@ -144,9 +144,73 @@ class GenerateTest(unittest.TestCase):
         names = sorted(os.listdir(os.path.join(HERE, "share")))
         self.assertEqual([n for n in names if not n.startswith("bashcut-setup.")], ["README.md"])
 
-    @unittest.skip("test ticket: FX41 the Windows copy stages README, LICENSE*, NOTICE, OFL-<family>.txt in $Docs and the wxs harvests $(var.DocsDir)")
     def test_windows_msi_ships_the_licence_files(self):
-        pass
+        # FX41: the Windows copy stages README.md (ours, BR1), LICENSE*, NOTICE and the craft-fonts OFL-<family>.txt in
+        # $Docs before the MSI, wix build gets -d DocsDir, and the wxs harvests $(var.DocsDir)\* (and still parses)
+        generate.generate(ROOT, self.out)
+        ps1 = self.read("windows/package.ps1")
+        wxs = self.read("windows/filmcraft.wxs")
+        head, sep, _rest = ps1.partition("# ---- MSI ")
+        self.assertTrue(sep, "the copy keeps upstream's MSI section")
+        start = head.rfind("# BashCutPro: README and licence files for the MSI")
+        self.assertGreaterEqual(start, 0, "the docs are staged before the MSI section")
+        stage = head[start:]
+        self.assertIn('$Docs = Join-Path $TargetDir "windows-package\\$Arch-docs"\n', stage)
+        self.assertIn("Copy-Item (Join-Path $Root 'bashcut\\packaging\\share\\README.md') $Docs\n", stage)
+        self.assertIn("foreach ($f in 'LICENSE', 'LICENSE-MIT', 'LICENSE-APACHE', 'NOTICE') {\n", stage)
+        self.assertIn("(Join-Path $env:CRAFT_FONTS_DIR 'fonts\\*\\OFL.txt')", stage)
+        self.assertIn('(Join-Path $Docs "OFL-$($lic.Directory.Name).txt")', stage)
+        builds = [l for l in ps1.splitlines() if '-d "BinDir=$Stage"' in l]
+        self.assertEqual(len(builds), 1, builds)
+        self.assertIn('-d "BinDir=$Stage" -d "DocsDir=$Docs"', builds[0])
+        self.assertEqual(wxs.count('<Files Include="$(var.DocsDir)\\*" />'), 1)
+        doc = xml.dom.minidom.parseString(wxs)
+        files = doc.getElementsByTagName("Files")
+        self.assertEqual([f.getAttribute("Include") for f in files], ["$(var.DocsDir)\\*"])
+        self.assertEqual(files[0].parentNode.tagName, "ComponentGroup")
+        # run the staging block itself on a fake checkout and a fake craft-fonts tree
+        shell = shutil.which("pwsh") or shutil.which("powershell")
+        if not shell:
+            self.skipTest("no pwsh / powershell to run the staging block")
+        root = os.path.join(self.tmp, "root")
+        fonts = os.path.join(self.tmp, "craft-fonts")
+        target = os.path.join(self.tmp, "target")
+        os.makedirs(os.path.join(root, "bashcut", "packaging", "share"))
+        os.makedirs(target)
+        texts = {"README.md": "# BashCutPro readme\n", "LICENSE-MIT": "mit\n", "LICENSE-APACHE": "apache\n", "NOTICE": "notice\n"}
+        for name, text in texts.items():
+            rel = os.path.join("bashcut", "packaging", "share", name) if name == "README.md" else name
+            with open(os.path.join(root, rel), "w", encoding="utf-8") as fh:
+                fh.write(text)
+        # upstream's README at the root must not be the one staged
+        with open(os.path.join(root, "README.md"), "w", encoding="utf-8") as fh:
+            fh.write("# FilmCraft\n")
+        for family in ("NotoSansJP", "Inter"):
+            os.makedirs(os.path.join(fonts, "fonts", family))
+            with open(os.path.join(fonts, "fonts", family, "OFL.txt"), "w", encoding="utf-8") as fh:
+                fh.write("ofl %s\n" % family)
+        # a font folder without OFL.txt is skipped
+        os.makedirs(os.path.join(fonts, "fonts", "NoLicence"))
+        script = os.path.join(self.tmp, "stage.ps1")
+        with open(script, "w", encoding="utf-8") as fh:
+            fh.write("$ErrorActionPreference = 'Stop'\n$Root = $args[0]\n$TargetDir = $args[1]\n$Arch = 'x64'\n" + stage)
+        env = {**os.environ, "CRAFT_FONTS_DIR": fonts}
+        r = subprocess.run([shell, "-NoProfile", "-NonInteractive", "-File", script, root, target], capture_output=True, text=True, env=env)
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        docs = os.path.join(target, "windows-package", "x64-docs")
+        self.assertEqual(
+            sorted(os.listdir(docs)),
+            ["LICENSE-APACHE", "LICENSE-MIT", "NOTICE", "OFL-Inter.txt", "OFL-NotoSansJP.txt", "README.md"],
+        )
+        expected = {**texts, "OFL-Inter.txt": "ofl Inter\n", "OFL-NotoSansJP.txt": "ofl NotoSansJP\n"}
+        for name, text in expected.items():
+            with open(os.path.join(docs, name), encoding="utf-8") as fh:
+                self.assertEqual(fh.read(), text, name)
+        # a rerun starts from an empty folder; without CRAFT_FONTS_DIR no OFL file is staged
+        env.pop("CRAFT_FONTS_DIR")
+        r = subprocess.run([shell, "-NoProfile", "-NonInteractive", "-File", script, root, target], capture_output=True, text=True, env=env)
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertEqual(sorted(os.listdir(docs)), ["LICENSE-APACHE", "LICENSE-MIT", "NOTICE", "README.md"])
 
     def test_windows_zip_entries_use_forward_slashes(self):
         # PK4: Compress-Archive on Windows PowerShell 5.1 writes zip entry names with backslashes
