@@ -4706,3 +4706,19 @@ fn agm2_model_picker_switches_the_live_session() {}
 #[test]
 #[ignore = "test ticket: a bad custom model id typed in the picker (Codex) shows the error in the status line and is not saved in State::agent_model; the previous choice stays"]
 fn fx43_model_picker_bad_custom_id_is_not_saved() {}
+
+/// FX44 (N8): the Agent intro line shows once (empty state only, no section blurb above it), en and vi.
+#[test]
+#[ignore = "test ticket: FX44 agent blurb shown once"]
+fn agent_blurb_shown_once() {}
+
+/// FX44 (N4): Hide on the "Project not saved" card hides it and it stays hidden for that project (ui.json), not for
+/// another project name; Save… still there before hiding.
+#[test]
+#[ignore = "test ticket: FX44 not-saved card hides per project"]
+fn agent_unsaved_card_hides_per_project() {}
+
+/// FX44 (N9/N17): the agent picker's "(not installed)" suffix is translated under vi.
+#[test]
+#[ignore = "test ticket: FX44 vi not-installed suffix"]
+fn agent_picker_not_installed_suffix_vi() {}

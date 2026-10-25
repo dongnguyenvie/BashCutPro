@@ -11,7 +11,7 @@ Pop out	Tách cửa sổ
 Dock back	Gắn lại
 Close	Đóng
 Coming soon	Sắp có
-Chat with the editing agent (Claude Code, Codex) about this project.	Trò chuyện với trợ lý dựng phim (Claude Code, Codex) về dự án này.
+Chat with the editing agent (Claude Code, Codex) about this project.	Trò chuyện với trợ lý dựng phim về dự án này.
 Installed plugins, their settings and actions.	Plugin đã cài, cài đặt và thao tác của chúng.
 Plugin runs, installs and registry checks, with results.	Các lượt chạy plugin, cài đặt và kiểm tra kho plugin, kèm kết quả.
 # Plugins and Runs (BC-31)
@@ -592,3 +592,6 @@ Model changes when this turn ends	Mô hình sẽ đổi khi lượt này xong
 Model: {model}	Mô hình: {model}
 Model not changed: {error}	Chưa đổi được mô hình: {error}
 the agent refused it	Trợ lý đã từ chối
+Add captions	Thêm phụ đề
+Hide	Ẩn
+Hide this note for this project.	Ẩn ghi chú này cho dự án này.

@@ -23,7 +23,7 @@ pub(super) fn readiness(app: &mut FilmcraftApp, ui: &mut egui::Ui, ctx: &egui::C
         + usize::from(snap.kit_missing)
         + usize::from(snap.kit_gap.is_some())
         + usize::from(control_off)
-        + usize::from(!snap.has_project);
+        + usize::from(unsaved_card(app, ctx, snap));
     match issues {
         0 => {}
         1 => lines(app, ui, ctx, snap, control_off),
@@ -95,7 +95,7 @@ fn lines(app: &mut FilmcraftApp, ui: &mut egui::Ui, ctx: &egui::Context, snap: &
             super::super::control::setting(app, ui);
         });
     }
-    if !snap.has_project {
+    if unsaved_card(app, ctx, snap) {
         card(app, ui, Tone::Info, |app, ui| {
             ui.horizontal_wrapped(|ui| {
                 let line = s("Project not saved: conversations will not be kept");
@@ -106,9 +106,19 @@ fn lines(app: &mut FilmcraftApp, ui: &mut egui::Ui, ctx: &egui::Context, snap: &
                 {
                     app.ui.status = e;
                 }
+                // FX44: the card can be hidden, per project (by name), remembered in ui.json
+                if hover_button(app, ui, "bashcut.agent.ready.project.hide", s("Hide"), s("Hide this note for this project.")) {
+                    let name = app.session.project.name.clone();
+                    super::super::State::update(ctx, |st| st.hide_unsaved_card(&name));
+                }
             });
         });
     }
+}
+
+/// FX44: the "Project not saved" card shows: the project has no file and its card was not hidden.
+fn unsaved_card(app: &FilmcraftApp, ctx: &egui::Context, snap: &Snapshot) -> bool {
+    !snap.has_project && !super::super::State::get(ctx).unsaved_card_is_hidden(&app.session.project.name)
 }
 
 /// "Claude Code is not signed in" or "… account problem: billing" (AG6).

@@ -23,6 +23,8 @@ const MAX_FILE: u64 = 64 * 1024;
 const MAX_WINDOWS: usize = 64;
 /// Farthest a remembered window corner may be from the origin (px).
 const MAX_COORD: f32 = 32_000.0;
+/// Longest project key kept in `unsaved_card_hidden` (bytes; keys are cut to a quarter of this in chars).
+const MAX_PROJECT_KEY: usize = 512;
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(default, rename_all = "camelCase")]
@@ -45,6 +47,8 @@ pub struct State {
     /// Where each popped-out window was, per monitor: `"<section>@<width>x<height>"` →
     /// `[x, y, width, height]` (see [`window_key`]).
     pub windows: BTreeMap<String, [f32; 4]>,
+    /// FX44: projects (by name; an unsaved project has no path) whose "Project not saved" Agent card was hidden.
+    pub unsaved_card_hidden: BTreeSet<String>,
     /// Failed plugin runs (job ids) that were on screen in Runs; any other failure puts a dot on
     /// the rail. Not saved: job ids start over with the app.
     #[serde(skip)]
@@ -68,6 +72,7 @@ impl Default for State {
             notify: true,
             agent_model: BTreeMap::new(),
             windows: BTreeMap::new(),
+            unsaved_card_hidden: BTreeSet::new(),
             seen_failures: BTreeSet::new(),
             loaded: false,
             saved: None,
@@ -134,6 +139,28 @@ impl State {
             let Some(first) = self.windows.keys().next().cloned() else { break };
             self.windows.remove(&first);
         }
+        // FX44
+        self.unsaved_card_hidden.retain(|k| k.len() <= MAX_PROJECT_KEY);
+        while self.unsaved_card_hidden.len() > MAX_WINDOWS {
+            let Some(first) = self.unsaved_card_hidden.iter().next().cloned() else { break };
+            self.unsaved_card_hidden.remove(&first);
+        }
+    }
+
+    /// FX44: hide the "Project not saved" Agent card for `project` (its name), remembered in `ui.json`.
+    pub fn hide_unsaved_card(&mut self, project: &str) {
+        let key: String = project.chars().take(MAX_PROJECT_KEY / 4).collect();
+        if !self.unsaved_card_hidden.contains(&key) && self.unsaved_card_hidden.len() >= MAX_WINDOWS {
+            let Some(first) = self.unsaved_card_hidden.iter().next().cloned() else { return };
+            self.unsaved_card_hidden.remove(&first);
+        }
+        self.unsaved_card_hidden.insert(key);
+    }
+
+    /// FX44: the "Project not saved" Agent card was hidden for `project`.
+    pub fn unsaved_card_is_hidden(&self, project: &str) -> bool {
+        let key: String = project.chars().take(MAX_PROJECT_KEY / 4).collect();
+        self.unsaved_card_hidden.contains(&key)
     }
 
     /// Remember where `section`'s window is on this monitor (rounded, so a still window does not
@@ -318,6 +345,10 @@ mod tests {
         }
         assert!(st.windows.len() <= MAX_WINDOWS);
     }
+
+    #[test]
+    #[ignore = "test ticket: FX44 hide_unsaved_card remembers per project name, caps the set, sanitize drops long keys"]
+    fn unsaved_card_hidden_per_project() {}
 
     #[test]
     fn saves_and_loads_through_the_data_dir() {

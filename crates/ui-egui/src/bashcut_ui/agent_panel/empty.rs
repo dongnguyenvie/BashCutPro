@@ -9,8 +9,10 @@ use crate::icons::{Icon, paint};
 /// Kit recipes ([`super::super::palette::RECIPES`]) offered as example prompts on an empty transcript.
 const EXAMPLES: &[&str] = &["vlog-plan", "vlog-hook-script", "vlog-publish"];
 
-/// Plain examples: `(automation key, label)`; the label (translated) is also the prompt.
-const PLAIN: &[(&str, &str)] = &[("remove-silences", "Remove the silences"), ("add-captions", "Add captions to the main sequence")];
+/// Plain examples: `(automation key, chip label, prompt)`, both translated; the chip label is short so it fits on one
+/// line in a narrow panel (FX44), the prompt is what fills the message box.
+const PLAIN: &[(&str, &str, &str)] =
+    &[("remove-silences", "Remove the silences", "Remove the silences"), ("add-captions", "Add captions", "Add captions to the main sequence")];
 
 /// One chip per plain example, then one per [`EXAMPLES`] recipe, wrapping to the panel width; the
 /// clicked one's prompt fills the message box (not sent).
@@ -18,11 +20,11 @@ pub(super) fn examples(app: &mut FilmcraftApp, ui: &mut egui::Ui) -> Option<Stri
     let mut picked = None;
     ui.add_space(4.0);
     ui.horizontal_wrapped(|ui| {
-        for (key, label) in PLAIN {
+        for (key, label, prompt) in PLAIN {
             let r = ui.button(s(label));
             app.auto.add_response(&format!("bashcut.agent.example.{key}"), &r, s(label));
             if r.clicked() {
-                picked = Some(s(label).to_string());
+                picked = Some(s(prompt).to_string());
             }
         }
         for (id, name, _) in super::super::palette::RECIPES.iter().filter(|(id, ..)| EXAMPLES.contains(id)) {
