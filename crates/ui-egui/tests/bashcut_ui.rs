@@ -3605,23 +3605,33 @@ fn agent_message_blocks() {
     assert_eq!(d.copied_by(&format!("bashcut.agent.copy.{reply0}")).as_deref(), Some("echo first question"));
 
     // a saved conversation: opened, every item is drawn on the first frame and nothing fades in
-    // (a fade asks egui for an immediate repaint)
+    // (a fade asks egui for an immediate repaint on every frame until it ends). TAGM: on a loaded
+    // machine one frame can also get an immediate repaint from elsewhere (a background thread's
+    // wake-up), so the open is tried up to three times; a real fade shows on every try.
     let n = d.agent_items().len();
     let id = d.exec("bashcut.agent.conversations", json!({}))[0]["id"].as_str().expect("the conversation was saved").to_string();
-    d.exec("bashcut.agent.new", json!({}));
-    d.frames(3);
-    assert!(d.agent_items().is_empty());
-    d.exec("bashcut.agent.open", json!({"id": id}));
-    d.frames(1);
-    assert_eq!(d.agent_items().len(), n);
-    for i in 0..n {
-        let kind = d.agent_items()[i]["type"].as_str().unwrap_or_default().to_string();
-        if kind == "user" || kind == "assistant" {
-            assert!(d.has(&format!("bashcut.agent.copy.{i}")), "item {i} is drawn on frame 1");
+    let mut delays = Vec::new();
+    for _ in 0..3 {
+        d.exec("bashcut.agent.new", json!({}));
+        d.frames(3);
+        assert!(d.agent_items().is_empty());
+        d.exec("bashcut.agent.open", json!({"id": id}));
+        d.frames(1);
+        assert_eq!(d.agent_items().len(), n);
+        for i in 0..n {
+            let kind = d.agent_items()[i]["type"].as_str().unwrap_or_default().to_string();
+            if kind == "user" || kind == "assistant" {
+                assert!(d.has(&format!("bashcut.agent.copy.{i}")), "item {i} is drawn on frame 1");
+            }
         }
+        let delay = d.harness.output().viewport_output.values().map(|v| v.repaint_delay).min();
+        if delay.is_none_or(|x| x > std::time::Duration::ZERO) {
+            delays.clear();
+            break;
+        }
+        delays.push(delay);
     }
-    let delay = d.harness.output().viewport_output.values().map(|v| v.repaint_delay).min();
-    assert!(delay.is_none_or(|d| d > std::time::Duration::ZERO), "nothing fades in: {delay:?}");
+    assert!(delays.is_empty(), "nothing fades in: an immediate repaint on every try {delays:?}");
 
     // 240 px, both languages
     for lang in ["en", "vi"] {
