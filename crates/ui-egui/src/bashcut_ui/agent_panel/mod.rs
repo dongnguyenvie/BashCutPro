@@ -183,8 +183,8 @@ pub fn draw(app: &mut FilmcraftApp, ui: &mut egui::Ui) {
     let has_slash = v.input.contains('/');
     let (snap, gate, unsent) = agent::with(app, &ctx, |a| {
         a.set_project(c.project.as_deref());
-        // AGM1: read and apply the persisted model choice for this agent (the picker and
-        // `bashcut.agent.model` both save it there first, FX42, so this never undoes either)
+        // AGM1: read and apply the persisted model choice for this agent (`bashcut.agent.model`, which
+        // the picker goes through, saves the accepted id there, FX42/FX43, so this never undoes it)
         let chosen_model = super::State::get(&ctx).agent_model.get(&a.agent.id).cloned().unwrap_or_default();
         if a.chosen_model != chosen_model {
             a.chosen_model = chosen_model.clone();
