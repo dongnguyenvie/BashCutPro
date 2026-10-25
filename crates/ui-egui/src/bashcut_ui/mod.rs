@@ -239,9 +239,15 @@ fn rail_and_panel(app: &mut FilmcraftApp, ui: &mut egui::Ui, body: egui::Rect, s
         dock = side_panel::show(app, ui, dock, sec, st);
     }
     side_panel::floating(app, &ctx, st);
-    if let Some(sec) = State::get(&ctx).open.filter(|s| before.as_deref() != Some(s.as_str())) {
+    let drawn = State::get(&ctx);
+    if let Some(sec) = drawn.open.filter(|s| before.as_deref() != Some(s.as_str())) {
         st.show(&sec);
     }
+    // TAGM: the Agent panel saves the model pick (`bashcut.agent.model`, FX43) and the hidden
+    // "Project not saved" card (FX44) through `State::update`; keep them, or the `put` of our copy
+    // after the panels would undo them
+    st.agent_model = drawn.agent_model;
+    st.unsaved_card_hidden = drawn.unsaved_card_hidden;
     dock
 }
 

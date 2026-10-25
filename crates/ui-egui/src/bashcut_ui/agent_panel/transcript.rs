@@ -234,12 +234,13 @@ fn turn_end(app: &mut FilmcraftApp, ui: &mut egui::Ui, i: usize, turns: Option<u
     if let Some(c) = cost_usd.filter(|c| c.is_finite() && *c > 0.0) {
         parts.push(format!("${c:.2}"));
     }
+    if parts.is_empty() {
+        // TAGM: the model alone makes no line (AGU10: nothing known, no line)
+        return;
+    }
     // AGM1: append the model chip when the agent reported one
     if !model.is_empty() {
         parts.push(super::setup::model_chip(model));
-    }
-    if parts.is_empty() {
-        return;
     }
     ui.add_space(4.0);
     let line = parts.join(" · ");

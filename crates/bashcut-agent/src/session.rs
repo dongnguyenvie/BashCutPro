@@ -1313,18 +1313,110 @@ mod tests {
         assert_eq!(many.len(), 100);
     }
 
-    // AGM1 test placeholders
-    #[test]
-    #[ignore = "test ticket: init_model stored after system/init"]
-    fn init_model_stored_from_init_event() {}
+    fn init(model: &str) -> Event {
+        let line = json!({"type": "system", "subtype": "init", "session_id": "s-1", "model": model});
+        stream_json::parse_line(&line.to_string()).remove(0)
+    }
 
-    #[test]
-    #[ignore = "test ticket: argv has --model only when chosen model is non-empty"]
-    fn command_line_adds_model_only_when_chosen() {}
+    fn notices(agent: &Agent) -> Vec<String> {
+        agent.conversation.transcript.items.iter().filter_map(|i| if let Item::Notice { message } = i { Some(message.clone()) } else { None }).collect()
+    }
 
+    /// TAGM (AGM1): a `system/init` keeps its model (an init without one keeps the last), the state
+    /// shows it, and the end of the process or another agent clears it.
     #[test]
-    #[ignore = "test ticket: a model chosen while the live agent is idle writes set_model at once; while a turn runs it waits for the result; the answer adds a Model notice, a refusal a Model not changed notice and no retry"]
-    fn live_model_change_uses_set_model() {}
+    fn init_model_stored_from_init_event() {
+        let mut agent = Agent::new(vec![AgentSpec::claude_code(None), AgentSpec::codex(None)]);
+        assert!(agent.init_model.is_empty());
+        agent.live_event(init("claude-sonnet-4-6"));
+        assert_eq!(agent.init_model, "claude-sonnet-4-6");
+        assert_eq!(agent.conversation.session, "s-1");
+        agent.live_event(init(""));
+        assert_eq!(agent.init_model, "claude-sonnet-4-6", "an init without a model keeps the last one");
+        assert_eq!(agent.state_json()["initModel"], json!("claude-sonnet-4-6"));
+        agent.end_session();
+        assert!(agent.init_model.is_empty(), "the next process reports its own");
+        agent.live_event(init("claude-opus-4-6"));
+        agent.chosen_model = "opus".into();
+        agent.use_agent("codex").unwrap();
+        assert_eq!((agent.init_model.as_str(), agent.chosen_model.as_str()), ("", ""), "another agent starts with neither");
+    }
+
+    /// TAGM (AGM1): `bashcut.agent.model` takes an empty id (Default) or a plain one, refuses a bad
+    /// one without touching the choice, and the choice reaches the command line as `--model` only
+    /// when it is not empty.
+    #[test]
+    fn command_line_adds_model_only_when_chosen() {
+        let mut agent = Agent::new(vec![AgentSpec::claude_code(None)]);
+        let ctx = Context::default();
+        let st = agent.command("model", &json!({"id": "claude-sonnet-4-6"}), &ctx).unwrap();
+        assert_eq!((st["chosenModel"].clone(), st["modelQueued"].clone()), (json!("claude-sonnet-4-6"), json!(false)), "no process: nothing queued");
+        for bad in ["bad id!", "a/b", "x;rm", &"m".repeat(129)] {
+            let e = agent.command("model", &json!({"id": bad}), &ctx).unwrap_err();
+            assert_eq!(e.0, "bad model id", "{bad}");
+            assert_eq!(agent.chosen_model, "claude-sonnet-4-6", "{bad}: the choice stays");
+        }
+        assert!(agent.command("model", &json!({"id": "m".repeat(128)}), &ctx).is_ok(), "128 is the cap");
+        let cfg = Path::new("/t/m.json");
+        let argv = |a: &Agent| a.agent.command_line(Some(cfg), None, None, Some(a.chosen_model.as_str()).filter(|m| !m.is_empty())).unwrap();
+        agent.command("model", &json!({"id": "opus"}), &ctx).unwrap();
+        assert!(argv(&agent).windows(2).any(|w| w == ["--model", "opus"]), "{:?}", argv(&agent));
+        agent.command("model", &json!({"id": ""}), &ctx).unwrap();
+        assert_eq!(agent.chosen_model, "", "empty is Default");
+        assert!(!argv(&agent).iter().any(|a| a == "--model"), "{:?}", argv(&agent));
+        // no id at all is Default too
+        agent.command("model", &json!({}), &ctx).unwrap();
+        assert_eq!(agent.state_json()["chosenModel"], json!(""));
+    }
+
+    /// TAGM (AGM2): the answer to our `set_model` request: success sets the live model and the chip's
+    /// model and adds "Model: …"; a refusal adds "Model not changed: …" and is not asked again; an
+    /// answer to another request leaves the model request waiting. The full flow against a live
+    /// process (idle at once, busy after the result, a new process starting with `--model`) is in
+    /// `tests/fake_agent.rs` (`live_model_switch_waits_for_the_turn_and_is_not_retried`).
+    #[test]
+    fn live_model_change_uses_set_model() {
+        let mut agent = Agent::new(vec![AgentSpec::claude_code(None)]);
+        let answer = |request: &str, ok: bool, model: &str, error: &str| Event::Control {
+            request: request.into(),
+            ok,
+            cancelled: false,
+            model: model.into(),
+            error: error.into(),
+        };
+        agent.chosen_model = "opus".into();
+        assert!(!agent.model_queued(), "no live process: nothing queued");
+        agent.sync_model();
+        assert!(agent.model_request.is_none(), "no live process: nothing written");
+
+        agent.model_request = Some(("bashcut-model-1".into(), "opus".into()));
+        agent.live_event(answer("bashcut-cancel-9", true, "", ""));
+        assert!(agent.model_request.is_some(), "another request's answer");
+        agent.live_event(answer("bashcut-model-1", true, "claude-opus-4-6", ""));
+        assert!(agent.model_request.is_none());
+        assert_eq!((agent.live_model.as_str(), agent.init_model.as_str()), ("opus", "claude-opus-4-6"));
+        assert_eq!(notices(&agent), ["Model: claude-opus-4-6"]);
+
+        // back to the default, answered without a model name
+        agent.model_request = Some(("bashcut-model-2".into(), String::new()));
+        agent.live_event(answer("bashcut-model-2", true, "", ""));
+        assert_eq!(agent.live_model, "");
+        assert_eq!(agent.init_model, "claude-opus-4-6", "no model in the answer keeps the chip");
+        assert_eq!(notices(&agent).last().map(String::as_str), Some("Model: default"));
+
+        // refused, with and without a reason: not asked again for the same model
+        agent.chosen_model = "nope".into();
+        agent.model_request = Some(("bashcut-model-3".into(), "nope".into()));
+        agent.live_event(answer("bashcut-model-3", false, "", "Model 'nope' not found"));
+        assert_eq!(notices(&agent).last().map(String::as_str), Some("Model not changed: Model 'nope' not found"));
+        assert_eq!(agent.model_refused.as_deref(), Some("nope"));
+        assert_eq!(agent.live_model, "", "the live model stays");
+        agent.model_request = Some(("bashcut-model-4".into(), "nope".into()));
+        agent.live_event(answer("bashcut-model-4", false, "", ""));
+        assert_eq!(notices(&agent).last().map(String::as_str), Some("Model not changed: the agent refused it"));
+        assert!(!agent.model_queued(), "a refused choice is not queued");
+        assert_eq!(notices(&agent).len(), 4);
+    }
 
     #[test]
     fn a_new_agent_is_idle_with_nothing_queued() {

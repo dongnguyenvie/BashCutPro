@@ -620,9 +620,46 @@ mod tests {
         assert!(!interrupt_request("x", true).ends_with('\n'));
     }
 
+    /// TAGM (AGM2): the `set_model` request with and without a model (no newline), and the answer's
+    /// model / error read back, clipped and type-checked.
     #[test]
-    #[ignore = "test ticket: set_model_request JSON (with and without model, no newline) and a set_model control_response's model / error fields"]
-    fn set_model_request_and_answer() {}
+    fn set_model_request_and_answer() {
+        let pick: Value = serde_json::from_str(&set_model_request("bashcut-model-3", Some("opus"))).unwrap();
+        assert_eq!(pick, json!({"type": "control_request", "request_id": "bashcut-model-3", "request": {"subtype": "set_model", "model": "opus"}}));
+        let back: Value = serde_json::from_str(&set_model_request("bashcut-model-4", None)).unwrap();
+        assert_eq!(back, json!({"type": "control_request", "request_id": "bashcut-model-4", "request": {"subtype": "set_model"}}), "None: the default");
+        assert!(!set_model_request("x", Some("opus")).ends_with('\n'));
+        assert!(!set_model_request("x", None).contains('\n'));
+        // a model with quotes stays one JSON string
+        let odd: Value = serde_json::from_str(&set_model_request("x", Some("a\"b"))).unwrap();
+        assert_eq!(odd["request"]["model"], json!("a\"b"));
+
+        let ok =
+            parse_line(r#"{"type":"control_response","response":{"subtype":"success","request_id":"bashcut-model-3","response":{"model":"claude-opus-4-6"}}}"#);
+        assert_eq!(
+            ok,
+            vec![Event::Control { request: "bashcut-model-3".into(), ok: true, cancelled: false, model: "claude-opus-4-6".into(), error: String::new() }]
+        );
+        let refused = parse_line(
+            r#"{"type":"control_response","response":{"subtype":"error","request_id":"bashcut-model-5","error":"Model 'nope' not found","error_code":"not_found"}}"#,
+        );
+        assert_eq!(
+            refused,
+            vec![Event::Control {
+                request: "bashcut-model-5".into(),
+                ok: false,
+                cancelled: false,
+                model: String::new(),
+                error: "Model 'nope' not found".into()
+            }]
+        );
+        // a model that is not a string is no model; long ones are clipped
+        let typed = parse_line(r#"{"type":"control_response","response":{"subtype":"success","request_id":"m","response":{"model":42}}}"#);
+        assert!(matches!(&typed[0], Event::Control { model, ok: true, .. } if model.is_empty()), "{typed:?}");
+        let long = json!({"type": "control_response", "response": {"subtype": "error", "request_id": "m", "error": "e".repeat(2000), "response": {"model": "m".repeat(500)}}});
+        let Event::Control { model, error, .. } = &parse_line(&long.to_string())[0] else { panic!("a control answer") };
+        assert_eq!((model.chars().count(), error.chars().count()), (129, 513), "clipped with an ellipsis");
+    }
 
     #[test]
     fn queued_message_uuid_and_cancel_request() {

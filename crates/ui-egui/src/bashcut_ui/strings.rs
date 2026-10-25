@@ -375,6 +375,11 @@ mod tests {
         assert_eq!(agent("conversation c1-2: expected value at line 1"), "Cuộc trò chuyện c1-2: expected value at line 1");
         assert_eq!(agent("C:\\Dự án\\mcp.json: no bashcutpro server"), "C:\\Dự án\\mcp.json: không có máy chủ bashcutpro");
         assert_eq!(agent("/tmp/mcp.json: no command"), "/tmp/mcp.json: chưa có lệnh chạy");
+        // TAGM: the model picker's refusal and the live switch's notices (AGM1/AGM2)
+        assert_eq!(agent("bad model id"), "Mã mô hình không hợp lệ");
+        assert_eq!(agent("Model: claude-opus-4-6"), "Mô hình: claude-opus-4-6");
+        assert_eq!(agent("Model not changed: Model 'nope' not found"), "Chưa đổi được mô hình: Model 'nope' not found");
+        assert_eq!(agent("Model not changed: the agent refused it"), "Chưa đổi được mô hình: Trợ lý đã từ chối");
         // the agent's own words, and a template with an empty value, stay as they are
         assert_eq!(agent("Here is your rough cut."), "Here is your rough cut.");
         assert_eq!(agent("no agent ``"), "no agent ``");

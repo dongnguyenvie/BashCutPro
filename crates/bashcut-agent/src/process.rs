@@ -891,9 +891,5 @@ mod tests {
         let _ = std::fs::remove_file(&codex_cfg);
         assert!(codex_argv.windows(2).any(|w| w == ["-m", "gpt-4o"]), "{codex_argv:?}");
     }
-
-    // AGM1 placeholder
-    #[test]
-    #[ignore = "test ticket: 240 px model picker fits in the narrow panel"]
-    fn model_picker_fits_240px() {}
+    // TAGM: the 240 px picker check is a UI test (`agm1_model_picker_fits_240px` in ui-egui's tests/bashcut_ui.rs)
 }
