@@ -22,6 +22,12 @@
 //! ([`Event::Permission`]); the request waits in [`Agent::permissions`] until the user answers it
 //! ([`Agent::answer_permission`]: allow once, always for this project, deny). Stop, the end of the
 //! turn or of the process deny or drop what still waits, so nothing hangs on an answer.
+//!
+//! Model (AGM2): a live Claude Code session takes another model with the stream-json `set_model`
+//! control request ([`stream_json::set_model_request`]), written once the agent is idle (a change
+//! made while a turn runs waits for its end); the answer adds a "Model: X" notice. A new process
+//! starts with `--model` (AGM1), and Codex (one process per message) uses the choice from its next
+//! message.
 
 use std::collections::VecDeque;
 use std::path::{Path, PathBuf};
@@ -176,6 +182,13 @@ pub struct Agent {
     pub init_model: String,
     /// AGM1: The model id chosen by the user (persisted in ui state). Empty = Default (agent decides).
     pub chosen_model: String,
+    /// AGM2: the model (a [`Agent::chosen_model`] value) the live process runs with: started with,
+    /// or last set by `set_model`.
+    live_model: String,
+    /// AGM2: the `set_model` request in flight: its id and the model asked for.
+    model_request: Option<(String, String)>,
+    /// AGM2: a model the live process refused (not asked again until it changes or a new process starts).
+    model_refused: Option<String>,
     /// The Stop in flight as an interrupt request (AG3).
     interrupting: Option<Interrupt>,
     /// Control requests (interrupt, cancel) written so far (their ids).
@@ -238,7 +251,66 @@ impl Agent {
             permissions: Vec::new(),
             init_model: String::new(),
             chosen_model: String::new(),
+            live_model: String::new(),
+            model_request: None,
+            model_refused: None,
         }
+    }
+
+    /// AGM2: the chosen model is not the live session's yet (it waits for the turn to end, or for the
+    /// agent's answer).
+    pub fn model_queued(&self) -> bool {
+        self.live.is_some() && self.chosen_model != self.live_model && self.model_refused.as_deref() != Some(self.chosen_model.as_str())
+    }
+
+    /// AGM2: ask an idle live Claude Code session to use [`Agent::chosen_model`] (`set_model`); a busy
+    /// one is asked once its turn ends (this runs each poll).
+    fn sync_model(&mut self) {
+        if self.chosen_model == self.live_model
+            || self.model_request.is_some()
+            || self.busy()
+            || self.interrupting.is_some()
+            || self.agent.events != stream_json::FORMAT
+            || self.model_refused.as_deref() == Some(self.chosen_model.as_str())
+        {
+            return;
+        }
+        let Some(l) = self.live.as_ref().filter(|l| !l.is_finished()) else { return };
+        self.requests = self.requests.wrapping_add(1);
+        let id = format!("bashcut-model-{}", self.requests);
+        let model = self.chosen_model.clone();
+        match l.control(&stream_json::set_model_request(&id, Some(model.as_str()).filter(|m| !m.is_empty()))) {
+            Ok(()) => self.model_request = Some((id, model)),
+            Err(e) => {
+                // the process is going away: the next one starts with --model
+                log::info!("bashcut agent: set_model not written ({})", e.0);
+                self.model_refused = Some(model);
+            }
+        }
+    }
+
+    /// AGM2: the agent answered our `set_model` request.
+    fn model_answered(&mut self, asked: String, ok: bool, model: &str, error: &str) {
+        let message = if ok {
+            self.live_model = asked.clone();
+            if !model.is_empty() {
+                self.init_model = model.to_string();
+            }
+            let shown = if !model.is_empty() {
+                model
+            } else if asked.is_empty() {
+                "default"
+            } else {
+                asked.as_str()
+            };
+            format!("Model: {shown}")
+        } else {
+            let why = if error.is_empty() { "the agent refused it" } else { error };
+            self.model_refused = Some(asked);
+            format!("Model not changed: {why}")
+        };
+        self.conversation.transcript.push(Item::Notice { message });
+        self.save();
     }
 
     /// A turn runs (or a live agent has messages it has not answered).
@@ -616,6 +688,10 @@ impl Agent {
         self.live = Some(live);
         // its own system/init says again what it supports
         self.capabilities.clear();
+        // AGM2: it was started with --model <chosen> (or the agent's default)
+        self.live_model = self.chosen_model.clone();
+        self.model_request = None;
+        self.model_refused = None;
         self.in_turn = false;
         self.auth_failed = false;
         Ok(())
@@ -807,6 +883,7 @@ impl Agent {
         if !self.busy() && self.idle_since.is_some_and(|t| t.elapsed() > IDLE_CLOSE) {
             self.end_session();
         }
+        self.sync_model();
         self.busy()
     }
 
@@ -843,7 +920,10 @@ impl Agent {
                 }
                 return;
             }
-            Event::Control { request, ok, cancelled } => {
+            Event::Control { request, ok, cancelled, model, error } => {
+                if let Some((_, asked)) = self.model_request.take_if(|(id, _)| id == request) {
+                    return self.model_answered(asked, *ok, model, error);
+                }
                 if let Some(at) = self.pending.iter().position(|p| p.cancelling.as_deref() == Some(request.as_str())) {
                     if *ok && *cancelled {
                         self.pending.remove(at);
@@ -1051,6 +1131,7 @@ impl Agent {
             "queued": self.queued(),
             "queuedItems": self.queued_items(),
             "capabilities": self.capabilities,
+            "modelQueued": self.model_queued(),
             "plugins": self.plugins,
             "slashCommands": self.commands,
             "permissions": self.permissions(),
@@ -1120,13 +1201,14 @@ impl Agent {
                 self.answer_gate(false, &s("note"), ctx)?;
                 Ok(self.state_json())
             }
-            // AGM1: set the model for the next session; takes effect on the next start
+            // AGM1: set the model; AGM2: a live Claude Code session takes it now (idle) or after its turn
             "model" => {
                 let id = s("id");
                 if !id.is_empty() && (!id.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.' | ':')) || id.len() > 128) {
                     return err("bad model id");
                 }
                 self.chosen_model = id;
+                self.sync_model();
                 Ok(self.state_json())
             }
             _ => err(format!("unknown command bashcut.agent.{name}")),
@@ -1239,6 +1321,10 @@ mod tests {
     #[test]
     #[ignore = "test ticket: argv has --model only when chosen model is non-empty"]
     fn command_line_adds_model_only_when_chosen() {}
+
+    #[test]
+    #[ignore = "test ticket: a model chosen while the live agent is idle writes set_model at once; while a turn runs it waits for the result; the answer adds a Model notice, a refusal a Model not changed notice and no retry"]
+    fn live_model_change_uses_set_model() {}
 
     #[test]
     fn a_new_agent_is_idle_with_nothing_queued() {

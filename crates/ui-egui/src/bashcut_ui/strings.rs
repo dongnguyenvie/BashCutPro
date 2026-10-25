@@ -61,7 +61,7 @@ pub fn f(text: &str, args: &[(&str, &str)]) -> String {
 /// The bashcut-agent crate's messages that carry a value (VI4): the crate builds them in English
 /// with `format!`, so the panel matches them back to these templates. Longer forms first; the
 /// fixed ones are plain catalog rows. `{error}` is translated again when it is one of ours.
-pub const AGENT_MESSAGES: [&str; 17] = [
+pub const AGENT_MESSAGES: [&str; 19] = [
     "the agent exited with status {code}: {output}",
     "the agent exited with status {code}",
     "the agent was killed: {output}",
@@ -79,6 +79,9 @@ pub const AGENT_MESSAGES: [&str; 17] = [
     "plan.json: {error}",
     "{path}: no {server} server",
     "{path}: no command",
+    // AGM2: the live model switch's notices
+    "Model: {model}",
+    "Model not changed: {error}",
 ];
 
 /// A bashcut-agent error or notice in our language: a catalog row, else an [`AGENT_MESSAGES`]

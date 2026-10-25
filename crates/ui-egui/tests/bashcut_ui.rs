@@ -4696,3 +4696,8 @@ fn agm1_model_picker_saves_per_agent() {}
 #[test]
 #[ignore = "test ticket: model picker fits 240 px in both en and vi"]
 fn agm1_model_picker_fits_240px() {}
+
+// AGM2 test placeholders
+#[test]
+#[ignore = "test ticket: with fake_claude answering set_model, picking a model while idle adds a Model notice (en + vi) and updates the chip; while a turn runs the queued note shows until the turn ends"]
+fn agm2_model_picker_switches_the_live_session() {}

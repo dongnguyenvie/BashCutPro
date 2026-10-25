@@ -22,7 +22,9 @@ nothing.
    **model picker** (Default / Sonnet / Opus / Haiku / …). **Default** lets the agent use its own configured model;
    picking a specific alias (e.g. **Sonnet**) passes `--model sonnet` when the next session starts. The choice is
    saved per agent. Once a session is running, a small chip in the same row shows the model it actually reported
-   ("Sonnet 4.6"). Changing the model while a session is running shows a note; it takes effect on the next session.
+   ("Sonnet 4.6"). With Claude Code, changing the model switches the running session: when it is idle at once,
+   while it works once the turn ends (a note says so), and the conversation shows "Model: …". Codex uses the new
+   model from your next message.
 3. Type what you want ("cut the ums, keep it under a minute, add
    Vietnamese captions") and press **Enter** (**Shift+Enter** for a new line).
 3. The agent's replies stream in; the commands it runs are folded into one line each. Every edit it makes is a normal

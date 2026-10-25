@@ -143,6 +143,8 @@ struct Snapshot {
     init_model: String,
     /// AGM1: The user's chosen model id (from state); empty = Default.
     chosen_model: String,
+    /// AGM2: the chosen model waits for the live session's turn to end (or its answer).
+    model_queued: bool,
     /// AGM1: model options for the current agent (id, label).
     model_options: Vec<(String, String)>,
 }
@@ -211,6 +213,7 @@ pub fn draw(app: &mut FilmcraftApp, ui: &mut egui::Ui) {
             init_model: a.init_model.clone(),
             chosen_model,
             model_options: a.agent.model_options.clone(),
+            model_queued: a.model_queued(),
         };
         let gate = if check_gate && !a.is_running() { Some(a.gate()) } else { None };
         (snap, gate, a.take_unsent())
