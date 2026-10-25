@@ -1,0 +1,80 @@
+[
+  {
+    "enabled": true,
+    "focusable": true,
+    "id": "bashcut.rail.agent",
+    "label": "Agent",
+    "rect": [
+      1367.0,
+      45.0,
+      28.0,
+      28.0
+    ],
+    "widgetId": "1d4547ef1b768242"
+  },
+  {
+    "enabled": true,
+    "focusable": true,
+    "id": "bashcut.rail.batch",
+    "label": "Batch",
+    "rect": [
+      1367.0,
+      79.0,
+      28.0,
+      28.0
+    ],
+    "widgetId": "bae0ca583fb2468d"
+  },
+  {
+    "enabled": true,
+    "focusable": true,
+    "id": "bashcut.rail.looks",
+    "label": "Looks",
+    "rect": [
+      1367.0,
+      113.0,
+      28.0,
+      28.0
+    ],
+    "widgetId": "da57d9e3f6364cbe"
+  },
+  {
+    "enabled": true,
+    "focusable": true,
+    "id": "bashcut.rail.library",
+    "label": "Library",
+    "rect": [
+      1367.0,
+      147.0,
+      28.0,
+      28.0
+    ],
+    "widgetId": "73e58acfcf0b3763"
+  },
+  {
+    "enabled": true,
+    "focusable": true,
+    "id": "bashcut.rail.plugins",
+    "label": "Plugins",
+    "rect": [
+      1367.0,
+      181.0,
+      28.0,
+      28.0
+    ],
+    "widgetId": "011590b13abde81f"
+  },
+  {
+    "enabled": true,
+    "focusable": true,
+    "id": "bashcut.rail.runs",
+    "label": "Runs",
+    "rect": [
+      1367.0,
+      215.0,
+      28.0,
+      28.0
+    ],
+    "widgetId": "f95e9cddbc4e92a0"
+  }
+]

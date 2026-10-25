@@ -1,0 +1,201 @@
+[
+  {
+    "enabled": true,
+    "focusable": true,
+    "id": "bashcut.agent.picker",
+    "label": "Claude Code",
+    "rect": [
+      1032.0,
+      112.0,
+      107.53125,
+      24.0
+    ],
+    "widgetId": "c13c6eb5e83d587e"
+  },
+  {
+    "enabled": true,
+    "focusable": true,
+    "id": "bashcut.agent.menu",
+    "label": "More",
+    "rect": [
+      1320.0,
+      115.0,
+      20.0,
+      18.0
+    ],
+    "widgetId": "0baba68618d98238"
+  },
+  {
+    "enabled": true,
+    "focusable": true,
+    "id": "bashcut.agent.new",
+    "label": "New",
+    "rect": [
+      1294.0,
+      115.0,
+      20.0,
+      18.0
+    ],
+    "widgetId": "53053a15da0d0300"
+  },
+  {
+    "enabled": true,
+    "focusable": true,
+    "id": "bashcut.agent.conversations",
+    "label": "New conversation",
+    "rect": [
+      1145.53125,
+      112.0,
+      142.46875,
+      24.0
+    ],
+    "widgetId": "d6424a715b51f33a"
+  },
+  {
+    "enabled": true,
+    "focusable": false,
+    "id": "bashcut.agent.ready.project",
+    "label": "Project not saved: conversations will not be kept",
+    "rect": [
+      1043.0,
+      147.0,
+      251.25,
+      24.0
+    ],
+    "widgetId": "fb263feba120858e"
+  },
+  {
+    "enabled": true,
+    "focusable": true,
+    "id": "bashcut.agent.save",
+    "label": "Save\u2026",
+    "rect": [
+      1043.0,
+      175.0,
+      54.125,
+      24.0
+    ],
+    "widgetId": "51aa5ee7e916ff0c"
+  },
+  {
+    "enabled": true,
+    "focusable": true,
+    "id": "bashcut.agent.example.remove-silences",
+    "label": "Remove the silences",
+    "rect": [
+      1032.0,
+      314.0,
+      132.71875,
+      24.0
+    ],
+    "widgetId": "f6a0c2235eaa5889"
+  },
+  {
+    "enabled": true,
+    "focusable": true,
+    "id": "bashcut.agent.example.add-captions",
+    "label": "Add captions to the main sequence",
+    "rect": [
+      1032.0,
+      342.0,
+      216.34375,
+      24.0
+    ],
+    "widgetId": "07563c3b239e36f2"
+  },
+  {
+    "enabled": true,
+    "focusable": true,
+    "id": "bashcut.agent.example.vlog-plan",
+    "label": "Plan a vlog",
+    "rect": [
+      1254.34375,
+      342.0,
+      78.15625,
+      24.0
+    ],
+    "widgetId": "bced0bb5ec13d2a4"
+  },
+  {
+    "enabled": true,
+    "focusable": true,
+    "id": "bashcut.agent.example.vlog-hook-script",
+    "label": "Hook and script",
+    "rect": [
+      1032.0,
+      370.0,
+      105.8125,
+      24.0
+    ],
+    "widgetId": "f56763100dd70806"
+  },
+  {
+    "enabled": true,
+    "focusable": true,
+    "id": "bashcut.agent.example.vlog-publish",
+    "label": "Finish for posting",
+    "rect": [
+      1143.8125,
+      370.0,
+      114.125,
+      24.0
+    ],
+    "widgetId": "56b2bbcc0a1c3667"
+  },
+  {
+    "id": "bashcut.agent.transcript",
+    "label": "",
+    "rect": [
+      1032.0,
+      210.0,
+      308.0,
+      593.46875
+    ]
+  },
+  {
+    "enabled": true,
+    "focusable": true,
+    "id": "bashcut.agent.input",
+    "label": "message",
+    "rect": [
+      1039.0,
+      824.5,
+      294.0,
+      14.53125
+    ],
+    "widgetId": "4bfe058f6c9745d6"
+  },
+  {
+    "id": "bashcut.agent.context",
+    "label": "Main Edit \u00b7 0:04.3",
+    "rect": [
+      1039.0,
+      843.0,
+      86.65625,
+      24.0
+    ]
+  },
+  {
+    "enabled": false,
+    "focusable": true,
+    "id": "bashcut.agent.send",
+    "label": "Send (Enter sends, Shift+Enter for a new line)",
+    "rect": [
+      1309.0,
+      843.0,
+      24.0,
+      24.0
+    ],
+    "widgetId": "19d04b6c641dffb9"
+  },
+  {
+    "id": "bashcut.agent.stop",
+    "label": "Stop",
+    "rect": [
+      1333.0,
+      843.0,
+      0.0,
+      0.0
+    ]
+  }
+]
