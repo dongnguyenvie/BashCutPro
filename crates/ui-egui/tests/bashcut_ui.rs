@@ -2624,16 +2624,25 @@ fn a_session_without_the_bcp_plugin_shows_the_kit_line() {
     assert!(cmds.contains(terminal::KIT_MARKETPLACE) && cmds.contains(terminal::KIT_INSTALL), "{cmds}");
     d.click("bashcut.agent.installKit");
     let (_, job, hint) = opened().pop().expect("Download kit opened a terminal");
-    assert!(matches!(&job, terminal::Job::Script(l) if l.contains("git") && (l.contains(terminal::KIT_REPO_URL) || l.contains("pull"))), "{job:?}");
+    assert!(matches!(&job, terminal::Job::Script(l) if l.contains("git") && l.contains(terminal::KIT_REPO_URL)), "{job:?}");
     assert!(hint.is_some_and(|h| h.contains("kit")));
-    // AG16: the first download clones into <data dir>/bashcut-kit, a folder that holds a clone is pulled
+    // AG16/PLK7: the first download clones the kit.lock tag into <data dir>/bashcut-kit; a folder that holds a
+    // clone fetches the tags and checks that tag out (POSIX `&&`, PowerShell `;`, as kit_job builds them)
+    let (os, tag) = (terminal::Os::current(), terminal::kit_tag());
+    let tag_q = if os == terminal::Os::Windows { terminal::ps_quote(tag) } else { terminal::sh_quote(tag) };
     let target = std::path::PathBuf::from(std::env::var_os("BASHCUTPRO_DATA_DIR").unwrap_or_default()).join("bashcut-kit");
+    assert_eq!(job, terminal::kit_job(os, "git", &target, false));
     let Some(terminal::Job::Script(first)) = Some(job) else { panic!("a script") };
-    assert!(first.contains("clone") && !first.contains("pull") && first.contains(&*target.to_string_lossy()), "{first}");
+    assert!(first.contains(&format!("clone --branch {tag_q} --depth 1")) && !first.contains("fetch"), "{first}");
+    assert!(first.contains(&*target.to_string_lossy()), "{first}");
     std::fs::create_dir_all(target.join(".git")).unwrap();
     d.click("bashcut.agent.installKit");
     let (_, job, _) = opened().pop().expect("Download kit again opened a terminal");
-    assert!(matches!(&job, terminal::Job::Script(l) if l.contains("pull") && !l.contains("clone")), "{job:?}");
+    assert_eq!(job, terminal::kit_job(os, "git", &target, true));
+    let Some(terminal::Job::Script(again)) = Some(job) else { panic!("a script") };
+    let sep = if os == terminal::Os::Windows { "; & " } else { " && " };
+    assert!(again.contains(&format!("fetch --tags{sep}")) && again.ends_with(&format!("checkout {tag_q}")), "{again}");
+    assert!(!again.contains("clone") && !again.contains("pull"), "{again}");
     std::fs::remove_dir_all(target.join(".git")).unwrap();
 
     d.exec("bashcut.agent.send", json!({"text": "with the kit"}));
