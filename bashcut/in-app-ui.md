@@ -323,7 +323,9 @@ labels or subclips (§1 rule 1). A project opened in upstream FilmCraft still wo
   means the agent uses its own configured model; a specific alias or id (e.g. `claude-sonnet-4-6`) is passed as
   `--model <x>` when the next session starts (`AgentSpec::command_line`, `bashcut-agent/src/process.rs`). The choice
   is persisted per agent in `State::agent_model` (`ui.json`). Claude Code aliases: `sonnet`, `opus`, `haiku` and a
-  few full versioned ids (see `claude_code_models()` in `process.rs`). Codex: free-text `-m / --model`. Agent
+  few full versioned ids (see `claude_code_models()` in `process.rs`). Codex: free-text `-m / --model` (a field in
+  the open list, which a click into it keeps open; the id is applied on Enter or when the field loses focus, and a
+  refused one shows "bad model id" in the status line, FX43/TAGM). Agent
   plugins: no model arg (they manage it themselves; the picker is hidden).
   **Live switch (AGM2)**: a running Claude Code process takes the new choice with the stream-json control request
   `{"type":"control_request","request_id":"bashcut-model-N","request":{"subtype":"set_model","model":"sonnet"}}`
@@ -342,7 +344,8 @@ labels or subclips (§1 rule 1). A project opened in upstream FilmCraft still wo
   `bashcut.agent.model.pending` (the "changes when this turn ends" note of a live session, else "takes effect on the next session").
 - **Init-model chip (AGM1)**: when a live session's `system/init` carries a `model` field, a small dimmed label
   (e.g. "Sonnet 4.6") appears in the header row after the model picker (`Agent::init_model`, cleared on
-  `end_session`). The same model id is appended to the turn summary line (AGU10): `9 steps · 41 s · $0.12 · Sonnet 4.6`.
+  `end_session`). The same model id is appended to the turn summary line (AGU10): `9 steps · 41 s · $0.12 · Sonnet 4.6`;
+  the model alone makes no line (TAGM: a turn with no steps, time or cost still shows none).
   Old saved conversations (no `model` in `TurnEnd`) load cleanly (`#[serde(default)]`).
 - **Start**: user picks an agent: Claude Code (`claude`, or `BASHCUT_CLAUDE`) or an agent plugin (`kind: "agent"`
   in `bashcut-plugin.json`, with an `agent` section: `args`, `mcpConfig` (`{config}`, or `{mcpCommand}`/`{mcpArgs}`),

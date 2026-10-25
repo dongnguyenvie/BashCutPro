@@ -364,7 +364,10 @@ fn model_row(app: &mut FilmcraftApp, ui: &mut egui::Ui, ctx: &egui::Context, v: 
     let picker_text = egui::WidgetText::from(chosen_label.as_str()).into_galley(ui, Some(egui::TextWrapMode::Extend), f32::INFINITY, egui::TextStyle::Button);
     let picker_w = (picker_text.size().x + 28.0).clamp(70.0, 140.0);
     let mut new_model: Option<String> = None;
-    let combo = egui::ComboBox::from_id_salt("bashcut.agent.model").selected_text(chosen_label.as_str()).width(picker_w).show_ui(ui, |ui| {
+    // TAGM: with the free-text field, a click into it must not close the list (egui's default)
+    let close = if snap.model_options.is_empty() { egui::PopupCloseBehavior::CloseOnClickOutside } else { egui::PopupCloseBehavior::CloseOnClick };
+    let picker = egui::ComboBox::from_id_salt("bashcut.agent.model").close_behavior(close);
+    let combo = picker.selected_text(chosen_label.as_str()).width(picker_w).show_ui(ui, |ui| {
         // Default entry (empty string = agent decides)
         let default_label = s("Default");
         let r = ui.add(egui::Button::selectable(snap.chosen_model.is_empty(), default_label));
@@ -383,11 +386,19 @@ fn model_row(app: &mut FilmcraftApp, ui: &mut egui::Ui, ctx: &egui::Context, v: 
         // Codex or agent with no fixed list: also offer a free-text field
         if snap.model_options.is_empty() {
             ui.separator();
-            let mut custom = snap.chosen_model.clone();
-            let r = ui.text_edit_singleline(&mut custom);
+            // TAGM: the text being typed is kept between frames until the field loses focus
+            let edit = ui.make_persistent_id("bashcut.agent.model.custom");
+            let typed = if ui.memory(|m| m.has_focus(edit)) { ui.data(|d| d.get_temp::<String>(edit)) } else { None };
+            let mut custom = typed.unwrap_or_else(|| snap.chosen_model.clone());
+            let r = ui.add(egui::TextEdit::singleline(&mut custom).id(edit));
             app.auto.add_response("bashcut.agent.model.custom", &r, &snap.chosen_model);
-            if r.lost_focus() && custom != snap.chosen_model {
-                new_model = Some(custom);
+            if r.lost_focus() {
+                ui.data_mut(|d| d.remove::<String>(edit));
+                if custom != snap.chosen_model {
+                    new_model = Some(custom);
+                }
+            } else if r.has_focus() {
+                ui.data_mut(|d| d.insert_temp(edit, custom));
             }
         }
     });

@@ -2135,7 +2135,9 @@ fn runs_rows_stay_clear_of_the_section_scroll_bar() {
 /// The init lists the slash commands `bcp:setup`, `bcp:review` (skills), `compact` and the terminal-only `doctor`.
 /// `FAKE_MODE` (comma separated): `receipt` / `cancel-queued` announce `interrupt_receipt_v1` /
 /// `interrupt_cancel_queued_v1`; `slow-stop` / `slow-cancel` answer the interrupt / a cancel after a
-/// pause; `outdated` refuses a flag like an old Claude Code. Every start, control request, answer,
+/// pause; `outdated` refuses a flag like an old Claude Code. The init's model is `claude-<x>-4-6` for
+/// `--model <x>` (else `fake`); `set_model` switches it the same way (a model containing `nope` is
+/// refused with `Model '…' not found`). Every start, control request, answer,
 /// taken message and EOF is a JSON line in `FAKE_LOG` ([`Fake::notes`]).
 const LIVE_FAKE: &str = r#"
 import json, os, queue, sys, threading, time
@@ -2146,6 +2148,9 @@ if args == ["--version"]:
 opts = set(os.environ.get("FAKE_MODE", "").split(","))
 resumed = args[args.index("--resume") + 1] if "--resume" in args else ""
 session = resumed or "live-1"
+def full(m):
+    return "claude-%s-4-6" % m if m else "fake"
+model = full(args[args.index("--model") + 1] if "--model" in args else "")
 log = open(os.environ["FAKE_LOG"], "a")
 go = os.environ.get("FAKE_GO", "")
 def note(kind, **kw):
@@ -2191,6 +2196,13 @@ def control(m):
         for w in hit:
             waiting.remove(w)
         answer("success", response={"cancelled": bool(hit)})
+    if r.get("subtype") == "set_model":
+        global model
+        asked = r.get("model")
+        if asked and "nope" in asked:
+            return answer("error", error="Model '%s' not found" % asked, error_code="not_found")
+        model = full(asked)
+        answer("success", response={"model": model})
     return None
 def pump(timeout):
     global eof
@@ -2214,7 +2226,7 @@ def turn(m):
     text = text_of(m)
     note("take", text=text, uuid=m.get("uuid", ""))
     plugins = [] if "no kit" in text else [{"name": "bcp", "path": "/kit", "source": "bcp@bashcutpro-agent-kit"}]
-    out({"type": "system", "subtype": "init", "session_id": session, "model": "fake", "capabilities": caps, "plugins": plugins,
+    out({"type": "system", "subtype": "init", "session_id": session, "model": model, "capabilities": caps, "plugins": plugins,
          "slash_commands": ["bcp:setup", "bcp:review", "compact", "doctor"], "skills": ["bcp:setup", "bcp:review"], "terminal_slash_commands": ["doctor"]})
     out({"type": "user", "isReplay": True, "uuid": m.get("uuid", ""), "message": m["message"]})
     if "please sign in" in text:
@@ -3639,13 +3651,14 @@ fn agent_turn_summary_line() {
     let end = d.agent_items().iter().position(|i| i["type"] == json!("turnEnd")).expect("a turn-end item");
     let id = format!("bashcut.agent.turn.{end}");
     let line = d.wait_element(&id, |e| !e.is_null())["label"].as_str().unwrap_or_default().to_string();
-    assert!(line.starts_with("9 steps · ") && line.ends_with(" s · $0.12"), "{line}");
+    // AGM1: the session's model ends the line (the fake reports "fake")
+    assert!(line.starts_with("9 steps · ") && line.ends_with(" s · $0.12 · Fake"), "{line}");
     let secs: u64 = line.split(" · ").nth(1).and_then(|s| s.trim_end_matches(" s").parse().ok()).expect("seconds");
     assert!((1..30).contains(&secs), "the fake took about a second: {line}");
     let (en, vi) = d.labels(&id);
     assert_eq!(en, json!(line));
     let vi = vi.as_str().unwrap_or_default().to_string();
-    assert!(vi.starts_with("9 bước · ") && vi.ends_with(" giây · $0.12"), "{vi}");
+    assert!(vi.starts_with("9 bước · ") && vi.ends_with(" giây · $0.12 · Fake"), "{vi}");
     for lang in ["en", "vi"] {
         d.look(lang, 240.0);
         d.shot(&format!("agu10-turn-{lang}-240"));
@@ -4684,28 +4697,273 @@ fn agent_setup_strip_folds_and_expands() {
     let _ = std::fs::remove_dir_all(&data);
 }
 
-// AGM1 test placeholders
-#[test]
-#[ignore = "test ticket: init model chip shows in the header after system/init"]
-fn agm1_model_chip_shows_init_model() {}
+impl Driver {
+    /// The model saved for `agent` in `State::agent_model` (`None`: never chosen).
+    fn saved_model(&mut self, agent: &str) -> Option<String> {
+        self.state()["agentModel"][agent].as_str().map(str::to_string)
+    }
 
-#[test]
-#[ignore = "test ticket: model picker saves per agent and passes --model to the next session"]
-fn agm1_model_picker_saves_per_agent() {}
+    /// Pick `option` (`default`, `opus`, …) in the Agent header's model picker with real clicks.
+    fn pick_model(&mut self, option: &str) {
+        self.click("bashcut.agent.model");
+        let id = format!("bashcut.agent.model.{option}");
+        assert!(self.has(&id), "{id} in the open picker");
+        self.click(&id);
+    }
 
-#[test]
-#[ignore = "test ticket: model picker fits 240 px in both en and vi"]
-fn agm1_model_picker_fits_240px() {}
+    /// The transcript's notices, oldest first.
+    fn agent_notices(&mut self) -> Vec<String> {
+        self.agent_items().iter().filter(|i| i["type"] == json!("notice")).filter_map(|i| i["message"].as_str().map(str::to_string)).collect()
+    }
 
-// AGM2 test placeholders
-#[test]
-#[ignore = "test ticket: with fake_claude answering set_model, picking a model while idle adds a Model notice (en + vi) and updates the chip; while a turn runs the queued note shows until the turn ends"]
-fn agm2_model_picker_switches_the_live_session() {}
+    /// Wait until the transcript has the notice `text`.
+    fn agent_noticed(&mut self, text: &str) {
+        let n = self.wait(|d| json!(d.agent_notices()), |n| n.as_array().is_some_and(|a| a.iter().any(|m| m == text)));
+        assert!(n.as_array().is_some_and(|a| a.iter().any(|m| m == text)), "no notice {text:?}: {n}");
+    }
+}
 
-// FX43 test placeholder
+/// The arguments the fake's last process started with.
+fn last_start_args(fake: &Fake) -> Vec<String> {
+    fake.notes("start").last().and_then(|n| serde_json::from_value(n["args"].clone()).ok()).unwrap_or_default()
+}
+
+/// The `set_model` requests the fake read, oldest first (their `model`).
+fn set_models(fake: &Fake) -> Vec<Value> {
+    fake.notes("control").iter().filter(|c| c["request"]["subtype"] == json!("set_model")).map(|c| c["request"]["model"].clone()).collect()
+}
+
+/// TAGM (AGM1): no chip before the agent reported a model; after the session's `system/init` the
+/// header shows the model it reported ("fake" → "Fake") after the picker; a new conversation (the
+/// process ends) drops it until the next init.
 #[test]
-#[ignore = "test ticket: a bad custom model id typed in the picker (Codex) shows the error in the status line and is not saved in State::agent_model; the previous choice stays"]
-fn fx43_model_picker_bad_custom_id_is_not_saved() {}
+fn agm1_model_chip_shows_init_model() {
+    let Some(fake) = fake_claude("agm1_model_chip_shows_init_model", "agm1-chip", &[]) else { return };
+    let mut d = fake.driver();
+    assert!(!d.has("bashcut.agent.model.chip"), "no chip before an init");
+    assert_eq!(d.agent_state()["initModel"], json!(""));
+    d.exec("bashcut.agent.send", json!({"text": "hello"}));
+    d.agent_said("echo hello");
+    d.agent_idle();
+    let chip = d.wait_element("bashcut.agent.model.chip", |e| !e.is_null());
+    assert_eq!(chip["label"], json!("Fake"), "{chip}");
+    assert_eq!(d.agent_state()["initModel"], json!("fake"));
+    let (picker, chip) = (edges(&mut d, "bashcut.agent.model").expect("picker"), edges(&mut d, "bashcut.agent.model.chip").expect("chip"));
+    assert!(chip[0] >= picker[2] - 0.5, "the chip {chip:?} follows the picker {picker:?}");
+    d.exec("bashcut.agent.new", json!({}));
+    d.frames(3);
+    assert!(!d.has("bashcut.agent.model.chip"), "the ended process's model goes");
+    d.no_ui_error();
+}
+
+/// TAGM (AGM1): the picker saves the choice per agent (`State::agent_model`, in `ui.json` too): the
+/// next session starts with `--model opus` and the chip shows "Opus 4.6"; Codex keeps its own
+/// (Default) choice and switching back brings Opus back; Default saves an empty id and starts
+/// without `--model`. Per agent, not per project (bashcut/in-app-ui.md: the choice stays per agent).
+#[test]
+fn agm1_model_picker_saves_per_agent() {
+    let Some(fake) = fake_claude("agm1_model_picker_saves_per_agent", "agm1-save", &[]) else { return };
+    let mut d = fake.driver();
+    assert_eq!(d.element("bashcut.agent.model")["label"], json!("Default"));
+    d.pick_model("opus");
+    assert_eq!(d.saved_model("claude-code").as_deref(), Some("opus"));
+    assert_eq!(d.element("bashcut.agent.model")["label"], json!("Opus"));
+    let ui_json = fake.dir.join("data").join("bashcut").join("ui.json");
+    let saved = d.wait(|_| json!(std::fs::read_to_string(&ui_json).unwrap_or_default()), |t| t.as_str().is_some_and(|t| t.contains("\"opus\"")));
+    assert!(saved.as_str().is_some_and(|t| t.contains("agentModel") && t.contains("\"opus\"")), "ui.json keeps it: {saved}");
+
+    d.exec("bashcut.agent.send", json!({"text": "hello"}));
+    d.agent_said("echo hello");
+    d.agent_idle();
+    let args = last_start_args(&fake);
+    assert!(args.windows(2).any(|w| w == ["--model", "opus"]), "{args:?}");
+    assert_eq!(d.wait_element("bashcut.agent.model.chip", |e| e["label"] == json!("Opus 4.6"))["label"], json!("Opus 4.6"));
+
+    // Codex has its own choice
+    d.exec("bashcut.agent.use", json!({"agent": "codex"}));
+    d.frames(3);
+    assert_eq!(d.element("bashcut.agent.model")["label"], json!("Default"), "Codex: nothing chosen");
+    assert_eq!(d.saved_model("codex"), None);
+    d.exec("bashcut.agent.use", json!({"agent": "claude-code"}));
+    d.frames(3);
+    assert_eq!(d.element("bashcut.agent.model")["label"], json!("Opus"), "Claude Code's choice came back");
+    assert_eq!(d.agent_state()["chosenModel"], json!("opus"));
+
+    // Default: an empty id, no --model
+    d.pick_model("default");
+    assert_eq!(d.saved_model("claude-code").as_deref(), Some(""));
+    assert_eq!(d.element("bashcut.agent.model")["label"], json!("Default"));
+    d.exec("bashcut.agent.send", json!({"text": "again"}));
+    d.agent_said("echo again");
+    d.agent_idle();
+    let args = last_start_args(&fake);
+    assert!(!args.iter().any(|a| a == "--model"), "{args:?}");
+    d.no_ui_error();
+}
+
+/// TAGM (AGM1): at 240 px (the picker moves below the agent picker) the model picker and the chip
+/// stay inside the panel in English and Vietnamese, with Default and with Opus, and Default reads
+/// "Mặc định".
+#[test]
+fn agm1_model_picker_fits_240px() {
+    let Some(fake) = fake_claude("agm1_model_picker_fits_240px", "agm1-240", &[]) else { return };
+    let mut d = fake.driver();
+    d.exec("bashcut.agent.send", json!({"text": "hello"}));
+    d.agent_said("echo hello");
+    d.agent_idle();
+    d.exec("bashcut.ui.setWidth", json!({"width": 240.0}));
+    d.frames(3);
+    let (en, vi) = d.labels("bashcut.agent.model");
+    assert_eq!((en, vi), (json!("Default"), json!("Mặc định")));
+    for option in ["default", "opus"] {
+        if option == "opus" {
+            d.pick_model("opus");
+        }
+        for lang in ["en", "vi"] {
+            d.exec("bashcut.ui.setLanguage", json!({"language": lang}));
+            d.frames(3);
+            let panel = edges(&mut d, "bashcut.panel.agent").expect("panel");
+            for id in ["bashcut.agent.model", "bashcut.agent.model.chip"] {
+                let r = d.wait(|d| json!(edges(d, id)), |r| !r.is_null());
+                let r: Vec<f32> = r.as_array().unwrap_or_else(|| panic!("{lang} {option}: {id}")).iter().map(|v| v.as_f64().unwrap_or(0.0) as f32).collect();
+                assert!(r[0] >= panel[0] - 0.5 && r[2] <= panel[2] + 0.5, "{lang} {option}: {id} {r:?} inside {panel:?}");
+            }
+        }
+    }
+    d.exec("bashcut.ui.setLanguage", json!({"language": null}));
+    d.exec("bashcut.ui.setWidth", json!({"width": 340.0}));
+    d.no_ui_error();
+}
+
+/// TAGM (AGM2): with the fake answering `set_model`, a model picked while the live session is idle
+/// switches it at once: the notice "Model: claude-opus-4-6" (Vietnamese "Mô hình: …") and the chip
+/// "Opus 4.6". Picked while a turn runs, the note "Model changes when this turn ends" (en/vi) shows
+/// until the turn ends, then the switch happens. A refused model adds "Model not changed: …" once.
+#[test]
+fn agm2_model_picker_switches_the_live_session() {
+    let Some(fake) = fake_claude("agm2_model_picker_switches_the_live_session", "agm2", &[]) else { return };
+    let mut d = fake.driver();
+    d.exec("bashcut.agent.send", json!({"text": "hello"}));
+    d.agent_said("echo hello");
+    d.agent_idle();
+
+    // idle: at once
+    d.pick_model("opus");
+    d.agent_noticed("Model: claude-opus-4-6");
+    assert_eq!(set_models(&fake), [json!("opus")]);
+    assert_eq!(d.wait_element("bashcut.agent.model.chip", |e| e["label"] == json!("Opus 4.6"))["label"], json!("Opus 4.6"));
+    assert!(!d.has("bashcut.agent.model.pending"), "nothing waits");
+    d.exec("bashcut.ui.setLanguage", json!({"language": "vi"}));
+    d.frames(3);
+    assert!(d.harness.query_by_label("Mô hình: claude-opus-4-6").is_some(), "the notice drawn in Vietnamese");
+    d.exec("bashcut.ui.setLanguage", json!({"language": null}));
+    d.frames(2);
+
+    // while a turn runs: the note, then the switch once it ends
+    d.exec("bashcut.agent.send", json!({"text": "hold the cut"}));
+    d.agent_said("working on hold the cut");
+    d.pick_model("haiku");
+    assert_eq!(d.agent_state()["modelQueued"], json!(true));
+    let (en, vi) = d.labels("bashcut.agent.model.pending");
+    assert_eq!((en, vi), (json!("Model changes when this turn ends"), json!("Mô hình sẽ đổi khi lượt này xong")));
+    assert_eq!(set_models(&fake).len(), 1, "nothing written during the turn");
+    fake.go();
+    d.agent_noticed("Model: claude-haiku-4-6");
+    let items = d.agent_items();
+    let at = |what: &dyn Fn(&Value) -> bool| items.iter().position(what);
+    let (end, switched) =
+        (at(&|i| i["type"] == json!("turnEnd") && i["model"] == json!("claude-opus-4-6")), at(&|i| i["message"] == json!("Model: claude-haiku-4-6")));
+    assert!(end.is_some() && end < switched, "the switch comes after the turn ends: {items:?}");
+    d.agent_idle();
+    d.frames(3);
+    assert!(!d.has("bashcut.agent.model.pending"), "the note goes with the switch");
+    assert_eq!(d.wait_element("bashcut.agent.model.chip", |e| e["label"] == json!("Haiku 4.6"))["label"], json!("Haiku 4.6"));
+    assert_eq!(fake.notes("start").len(), 1, "one process all along");
+
+    // refused: once, the chip stays
+    d.exec("bashcut.agent.model", json!({"id": "nope"}));
+    d.agent_noticed("Model not changed: Model 'nope' not found");
+    d.frames(10);
+    assert_eq!(set_models(&fake).len(), 3, "not asked again");
+    assert_eq!(d.agent_state()["modelQueued"], json!(false));
+    assert_eq!(d.element("bashcut.agent.model.chip")["label"], json!("Haiku 4.6"));
+    d.exec("bashcut.ui.setLanguage", json!({"language": "vi"}));
+    d.frames(3);
+    assert!(d.harness.query_by_label("Chưa đổi được mô hình: Model 'nope' not found").is_some(), "the refusal drawn in Vietnamese");
+    d.exec("bashcut.ui.setLanguage", json!({"language": null}));
+    d.no_ui_error();
+}
+
+/// TAGM (FX42): `bashcut.agent.model` over the control channel saves the choice the panel applies
+/// each frame, so it survives the next frames and the picker shows it; a bad id is refused with
+/// "bad model id" and the saved choice stays.
+#[test]
+fn fx42_model_command_is_saved_and_survives_a_frame() {
+    let data = std::env::temp_dir().join(format!("bashcut-ui-fx42-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&data);
+    let mut d = Driver::with_data(&data, |_| {});
+    d.click("bashcut.rail.agent");
+    let st = d.exec("bashcut.agent.model", json!({"id": "sonnet"}));
+    assert_eq!(st["chosenModel"], json!("sonnet"));
+    d.frames(5);
+    assert_eq!(d.agent_state()["chosenModel"], json!("sonnet"), "the panel's next frames keep it");
+    assert_eq!(d.saved_model("claude-code").as_deref(), Some("sonnet"));
+    assert_eq!(d.element("bashcut.agent.model")["label"], json!("Sonnet (default)"));
+
+    let r = d.call("engine.execute", json!({"command": "bashcut.agent.model", "params": {"id": "bad id!"}}));
+    assert_ne!(r["ok"], json!(true), "{r}");
+    assert!(r.to_string().contains("bad model id"), "{r}");
+    d.frames(5);
+    assert_eq!(d.agent_state()["chosenModel"], json!("sonnet"));
+    assert_eq!(d.saved_model("claude-code").as_deref(), Some("sonnet"));
+    assert_eq!(d.element("bashcut.agent.model")["label"], json!("Sonnet (default)"));
+    d.no_ui_error();
+    let _ = std::fs::remove_dir_all(&data);
+}
+
+/// TAGM (FX43): with Codex (free-text model), a bad id typed in the picker's field and committed
+/// (Enter) shows "bad model id" in the status line (Vietnamese "Mã mô hình không hợp lệ"), is not
+/// saved in `State::agent_model`, and the picker keeps the previous choice; a good id typed the
+/// same way is saved and clears the error.
+#[test]
+fn fx43_model_picker_bad_custom_id_is_not_saved() {
+    let data = std::env::temp_dir().join(format!("bashcut-ui-fx43-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&data);
+    let mut d = Driver::with_data(&data, |_| {});
+    d.click("bashcut.rail.agent");
+    d.exec("bashcut.agent.use", json!({"agent": "codex"}));
+    d.exec("bashcut.agent.model", json!({"id": "gpt-5"}));
+    d.frames(3);
+    assert_eq!(d.element("bashcut.agent.model")["label"], json!("gpt-5"));
+    let type_model = |d: &mut Driver, text: &str| {
+        d.click("bashcut.agent.model");
+        d.click("bashcut.agent.model.custom");
+        d.ok("ui.key", json!({"key": "Cmd+A"}));
+        d.ok("ui.type", json!({"text": text}));
+        d.frames(2);
+        d.ok("ui.key", json!({"key": "Enter"}));
+        d.frames(3);
+    };
+    type_model(&mut d, "bad id!");
+    let status = d.wait_element("bashcut.agent.status", |e| !e.is_null());
+    assert_eq!(status["label"], json!("bad model id"), "{status}");
+    let (_, vi) = d.labels("bashcut.agent.status");
+    assert_eq!(vi, json!("Mã mô hình không hợp lệ"));
+    assert_eq!(d.saved_model("codex").as_deref(), Some("gpt-5"), "not saved");
+    assert_eq!(d.agent_state()["chosenModel"], json!("gpt-5"));
+    d.ok("ui.key", json!({"key": "Escape"}));
+    d.frames(3);
+    assert_eq!(d.element("bashcut.agent.model")["label"], json!("gpt-5"), "the previous choice stays");
+
+    type_model(&mut d, "gpt-5-codex");
+    assert_eq!(d.saved_model("codex").as_deref(), Some("gpt-5-codex"));
+    d.ok("ui.key", json!({"key": "Escape"}));
+    d.frames(3);
+    assert_eq!(d.element("bashcut.agent.model")["label"], json!("gpt-5-codex"));
+    assert!(!d.has("bashcut.agent.status"), "a good id clears the error");
+    d.no_ui_error();
+    let _ = std::fs::remove_dir_all(&data);
+}
 
 /// FX44 (N8): the Agent intro line shows once (empty state only, no section blurb above it), en and vi.
 #[test]

@@ -160,6 +160,8 @@ fn failure_and_stop_end_the_turn() {
 /// `interrupt_cancel_queued_v1`; `refuse` answers the interrupt with an error, `silent` never answers
 /// it, `ack-only` acknowledges it and keeps working; `keep` answers `cancel_async_message` with
 /// `cancelled: false` and keeps the message; `outdated` refuses a flag like an old Claude Code.
+/// The init's model is `claude-<x>-4-6` for `--model <x>` (else `fake`); `set_model` switches it the
+/// same way (a model containing `nope` is refused with `Model '…' not found`).
 /// A `FAKE_EARLY` file that exists is removed and the process exits 0 before reading anything. Every
 /// start, line read, control request, control response (`answer`), taken message, SIGINT and EOF is a
 /// JSON line in `FAKE_LOG` ([`LiveFake::notes`]).
@@ -169,6 +171,9 @@ args = sys.argv[1:]
 opts = set(os.environ.get("FAKE_MODE", "").split(","))
 resumed = args[args.index("--resume") + 1] if "--resume" in args else ""
 session = resumed or "live-1"
+def full(m):
+    return "claude-%s-4-6" % m if m else "fake"
+model = full(args[args.index("--model") + 1] if "--model" in args else "")
 log = open(os.environ["FAKE_LOG"], "a")
 def note(kind, **kw):
     log.write(json.dumps(dict(pid=os.getpid(), kind=kind, **kw)) + "\n")
@@ -227,6 +232,13 @@ def control(m):
         for w in hit:
             waiting.remove(w)
         answer("success", response={"cancelled": bool(hit)})
+    if r.get("subtype") == "set_model":
+        global model
+        m = r.get("model")
+        if m and "nope" in m:
+            return answer("error", error="Model '%s' not found" % m, error_code="not_found")
+        model = full(m)
+        answer("success", response={"model": model})
     return None
 def pump(timeout):
     global eof
@@ -268,7 +280,7 @@ def ask(text, n):
 def turn(m):
     text = text_of(m)
     note("take", text=text, uuid=m.get("uuid", ""))
-    out({"type": "system", "subtype": "init", "session_id": session, "model": "fake", "capabilities": caps})
+    out({"type": "system", "subtype": "init", "session_id": session, "model": model, "capabilities": caps})
     out({"type": "user", "isReplay": True, "uuid": m.get("uuid", ""), "message": m["message"]})
     asks = re.search(r"ask (\d+)", text)
     if asks and not ask(text, int(asks.group(1))):
@@ -1086,4 +1098,82 @@ fn codex_json_agent_plugin_runs_a_turn() {
     assert!(agent.conversation.transcript.items.iter().any(|i| matches!(i, Item::Tool { output: Some(o), .. } if o == "ok")));
     assert!(agent.conversation.transcript.last_answer().unwrap().contains("cut the intro"));
     let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// The `set_model` control requests the fake read, oldest first (their `model`, `None` for the default).
+fn set_models(f: &LiveFake) -> Vec<Option<String>> {
+    f.notes("control").iter().filter(|c| c["request"]["subtype"] == "set_model").map(|c| c["request"]["model"].as_str().map(str::to_string)).collect()
+}
+
+fn notices(agent: &Agent) -> Vec<String> {
+    agent.conversation.transcript.items.iter().filter_map(|i| if let Item::Notice { message } = i { Some(message.clone()) } else { None }).collect()
+}
+
+/// TAGM (AGM1/AGM2): a new process starts with `--model`; a model picked while the live agent is
+/// idle goes out as `set_model` at once and its answer adds "Model: …" and updates the init model;
+/// one picked while a turn runs waits for the turn's result; a refusal adds "Model not changed: …"
+/// and is not asked again; a restarted process starts with the choice and is not asked again.
+#[test]
+fn live_model_switch_waits_for_the_turn_and_is_not_retried() {
+    let Some(mut f) = LiveFake::new("model", "") else { return };
+    f.spec.model_arg = vec!["--model".into(), "{model}".into()];
+    let mut agent = f.agent();
+    let ctx = f.ctx.clone();
+    agent.command("model", &serde_json::json!({"id": "sonnet"}), &ctx).unwrap();
+    agent.send("first", &ctx).unwrap();
+    run(&mut agent);
+    assert!(f.last_args().windows(2).any(|w| w == ["--model", "sonnet"]), "{:?}", f.last_args());
+    assert_eq!(agent.init_model, "claude-sonnet-4-6");
+    assert!(set_models(&f).is_empty(), "started with the choice: nothing to switch");
+    assert!(!agent.model_queued());
+
+    // idle: at once
+    agent.command("model", &serde_json::json!({"id": "opus"}), &ctx).unwrap();
+    until(&mut agent, "the opus answer", |a| notices(a).iter().any(|n| n == "Model: claude-opus-4-6"));
+    assert_eq!(set_models(&f), [Some("opus".to_string())]);
+    assert_eq!(agent.init_model, "claude-opus-4-6");
+    assert!(!agent.model_queued());
+
+    // while a turn runs: after its result
+    agent.send("slow second", &ctx).unwrap();
+    working(&mut agent, "slow second");
+    agent.command("model", &serde_json::json!({"id": "haiku"}), &ctx).unwrap();
+    assert!(agent.model_queued(), "waits for the turn");
+    assert_eq!(agent.state_json()["modelQueued"], true);
+    assert_eq!(set_models(&f).len(), 1, "nothing written during the turn");
+    run(&mut agent);
+    until(&mut agent, "the haiku answer", |a| notices(a).iter().any(|n| n == "Model: claude-haiku-4-6"));
+    assert_eq!(set_models(&f), [Some("opus".to_string()), Some("haiku".to_string())]);
+    let items = &agent.conversation.transcript.items;
+    let echo = items.iter().position(|i| matches!(i, Item::Assistant { text } if text.starts_with("echo") && text.ends_with("slow second")));
+    let switched = items.iter().position(|i| matches!(i, Item::Notice { message } if message == "Model: claude-haiku-4-6"));
+    assert!(echo.is_some() && echo < switched, "the switch comes after the turn's answer: {items:?}");
+    assert!(!agent.model_queued());
+
+    // refused: one notice, never asked again
+    agent.command("model", &serde_json::json!({"id": "nope"}), &ctx).unwrap();
+    until(&mut agent, "the refusal", |a| notices(a).iter().any(|n| n.starts_with("Model not changed")));
+    for _ in 0..10 {
+        agent.poll();
+        std::thread::sleep(Duration::from_millis(20));
+    }
+    assert_eq!(notices(&agent).last().map(String::as_str), Some("Model not changed: Model 'nope' not found"));
+    assert_eq!(set_models(&f).len(), 3, "not retried: {:?}", set_models(&f));
+    assert!(!agent.model_queued(), "a refused choice is not queued");
+    assert_eq!(agent.init_model, "claude-haiku-4-6", "the session keeps its model");
+
+    // back to the live model: nothing to write; a new process starts with it and is not asked
+    agent.command("model", &serde_json::json!({"id": "haiku"}), &ctx).unwrap();
+    agent.poll();
+    assert_eq!(set_models(&f).len(), 3);
+    kill(f.pids()[0]);
+    until(&mut agent, "the killed agent to end", |a| a.state_json()["live"] == false);
+    agent.send("third", &ctx).unwrap();
+    run(&mut agent);
+    assert_eq!(f.pids().len(), 2);
+    assert!(f.last_args().windows(2).any(|w| w == ["--model", "haiku"]), "{:?}", f.last_args());
+    assert_eq!(set_models(&f).len(), 3, "the new process started with the choice");
+    assert_eq!(agent.init_model, "claude-haiku-4-6");
+    no_error(&agent);
+    agent.shutdown();
 }

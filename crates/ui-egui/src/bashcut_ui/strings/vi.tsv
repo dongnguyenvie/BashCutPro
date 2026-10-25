@@ -595,3 +595,5 @@ the agent refused it	Trợ lý đã từ chối
 Add captions	Thêm phụ đề
 Hide	Ẩn
 Hide this note for this project.	Ẩn ghi chú này cho dự án này.
+# TAGM: bashcut.agent.model refuses an id
+bad model id	Mã mô hình không hợp lệ
