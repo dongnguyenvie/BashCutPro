@@ -383,7 +383,7 @@ fn model_row(app: &mut FilmcraftApp, ui: &mut egui::Ui, ctx: &egui::Context, v: 
     });
     app.auto.add_response("bashcut.agent.model", &combo.response, &chosen_label);
     if let Some(m) = new_model {
-        // Persist in state; takes effect on the next session start
+        // Persist in state; a live Claude Code session switches with set_model (AGM2), else the next start
         super::super::State::update(ctx, |st| {
             st.agent_model.insert(snap.agent.0.clone(), m.clone());
         });
@@ -399,9 +399,14 @@ fn model_row(app: &mut FilmcraftApp, ui: &mut egui::Ui, ctx: &egui::Context, v: 
         r.on_hover_text(s("Model reported by the running session"));
     }
 
-    // Changing model while running: one-line note that it takes effect next session (AGM2 makes it live)
-    if !snap.chosen_model.is_empty() && !snap.init_model.is_empty() && snap.chosen_model != snap.init_model {
-        let note_text = s("Model change takes effect on the next session");
+    // AGM2: a live session switches when its turn ends; another agent (Codex) from its next start
+    let note_text = if snap.live {
+        snap.model_queued.then(|| s("Model changes when this turn ends"))
+    } else {
+        (!snap.chosen_model.is_empty() && !snap.init_model.is_empty() && snap.chosen_model != snap.init_model)
+            .then(|| s("Model change takes effect on the next session"))
+    };
+    if let Some(note_text) = note_text {
         let t = app.tokens;
         let r = super::super::widgets::note(ui, note_text, super::super::widgets::NOTE, t.text_dim);
         app.auto.add_response("bashcut.agent.model.pending", &r, note_text);

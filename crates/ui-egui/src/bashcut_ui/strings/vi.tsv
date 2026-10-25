@@ -587,3 +587,8 @@ Yes, take back	Đúng, lấy lại
 Default	Mặc định
 Model reported by the running session	Mô hình được báo cáo bởi phiên đang chạy
 Model change takes effect on the next session	Thay đổi mô hình có hiệu lực từ phiên tiếp theo
+# AGM2: live model switch
+Model changes when this turn ends	Mô hình sẽ đổi khi lượt này xong
+Model: {model}	Mô hình: {model}
+Model not changed: {error}	Chưa đổi được mô hình: {error}
+the agent refused it	Trợ lý đã từ chối

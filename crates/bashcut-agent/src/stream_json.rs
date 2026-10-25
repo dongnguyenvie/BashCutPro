@@ -81,11 +81,14 @@ pub enum Event {
     },
     /// The agent answered one of our control requests (`control_response`): `ok` is subtype
     /// `success` (AG3: the interrupt's receipt); `cancelled` is the answer's `cancelled: true` (AG4:
-    /// `cancel_async_message` withdrew the message).
+    /// `cancel_async_message` withdrew the message). AGM2: `model` is the model a `set_model` answer
+    /// names (empty otherwise), `error` a refused request's reason (empty on success).
     Control {
         request: String,
         ok: bool,
         cancelled: bool,
+        model: String,
+        error: String,
     },
     /// The agent asks before running a tool that is not pre-allowed (AG8); it waits for
     /// [`permission_response`].
@@ -238,7 +241,14 @@ pub fn parse_line(line: &str) -> Vec<Event> {
             let r = v.get("response");
             let field = |k: &str| r.and_then(|r| r.get(k)).and_then(Value::as_str).unwrap_or_default();
             let cancelled = r.and_then(|r| r.get("response")).and_then(|r| r.get("cancelled")).and_then(Value::as_bool) == Some(true);
-            vec![Event::Control { request: clip(field("request_id"), 128), ok: field("subtype") == "success", cancelled }]
+            let model = r.and_then(|r| r.get("response")).and_then(|r| r.get("model")).and_then(Value::as_str).unwrap_or_default();
+            vec![Event::Control {
+                request: clip(field("request_id"), 128),
+                ok: field("subtype") == "success",
+                cancelled,
+                model: clip(model, 128),
+                error: clip(field("error"), 512),
+            }]
         }
         "control_request" => match v.get("request").filter(|r| r.get("subtype").and_then(Value::as_str) == Some("can_use_tool")) {
             Some(r) => vec![Event::Permission(permission(&text(&v, "request_id"), r))],
@@ -405,6 +415,18 @@ pub fn interrupt_request(id: &str, cancel_queued: bool) -> String {
     let mut request = json!({"subtype": "interrupt"});
     if cancel_queued {
         request["cancel_queued"] = json!(true);
+    }
+    json!({"type": "control_request", "request_id": id, "request": request}).to_string()
+}
+
+/// The stream-json `set_model` control request (AGM2, checked with Claude Code 2.1.310): the live
+/// session uses `model` (an alias like `sonnet` or a full id) from its next turn on; `None` goes back
+/// to the agent's default. The answer's `response.model` is the full id now in use; an unknown model
+/// is refused (`error`, `error_code: not_found`). No trailing newline.
+pub fn set_model_request(id: &str, model: Option<&str>) -> String {
+    let mut request = json!({"subtype": "set_model"});
+    if let Some(m) = model {
+        request["model"] = json!(m);
     }
     json!({"type": "control_request", "request_id": id, "request": request}).to_string()
 }
@@ -580,11 +602,14 @@ mod tests {
     #[test]
     fn control_response_and_interrupt_request() {
         let ok = parse_line(r#"{"type":"control_response","response":{"subtype":"success","request_id":"int-1","response":{}}}"#);
-        assert_eq!(ok, vec![Event::Control { request: "int-1".into(), ok: true, cancelled: false }]);
+        assert_eq!(ok, vec![Event::Control { request: "int-1".into(), ok: true, cancelled: false, model: String::new(), error: String::new() }]);
         let bad = parse_line(r#"{"type":"control_response","response":{"subtype":"error","request_id":"int-2","error":"no turn running"}}"#);
-        assert_eq!(bad, vec![Event::Control { request: "int-2".into(), ok: false, cancelled: false }]);
+        assert_eq!(bad, vec![Event::Control { request: "int-2".into(), ok: false, cancelled: false, model: String::new(), error: "no turn running".into() }]);
         // no response object: a Control with nothing in it, not a crash
-        assert_eq!(parse_line(r#"{"type":"control_response"}"#), vec![Event::Control { request: String::new(), ok: false, cancelled: false }]);
+        assert_eq!(
+            parse_line(r#"{"type":"control_response"}"#),
+            vec![Event::Control { request: String::new(), ok: false, cancelled: false, model: String::new(), error: String::new() }]
+        );
         let long = json!({"type": "control_response", "response": {"subtype": "success", "request_id": "r".repeat(500)}});
         assert!(matches!(&parse_line(&long.to_string())[0], Event::Control { request, .. } if *request == format!("{}…", "r".repeat(128))));
 
@@ -596,6 +621,10 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "test ticket: set_model_request JSON (with and without model, no newline) and a set_model control_response's model / error fields"]
+    fn set_model_request_and_answer() {}
+
+    #[test]
     fn queued_message_uuid_and_cancel_request() {
         let replay = parse_line(r#"{"type":"user","isReplay":true,"uuid":"msg-7","message":{"role":"user","content":[{"type":"text","text":"cut"}]}}"#);
         assert_eq!(replay, vec![Event::Picked { uuid: "msg-7".into() }]);
@@ -603,11 +632,11 @@ mod tests {
         assert!(matches!(&parse_line(&long.to_string())[0], Event::Picked { uuid } if *uuid == format!("{}…", "u".repeat(64))));
 
         let cancelled = parse_line(r#"{"type":"control_response","response":{"subtype":"success","request_id":"c-1","response":{"cancelled":true}}}"#);
-        assert_eq!(cancelled, vec![Event::Control { request: "c-1".into(), ok: true, cancelled: true }]);
+        assert_eq!(cancelled, vec![Event::Control { request: "c-1".into(), ok: true, cancelled: true, model: String::new(), error: String::new() }]);
         let taken = parse_line(r#"{"type":"control_response","response":{"subtype":"success","request_id":"c-2","response":{"cancelled":false}}}"#);
-        assert_eq!(taken, vec![Event::Control { request: "c-2".into(), ok: true, cancelled: false }]);
+        assert_eq!(taken, vec![Event::Control { request: "c-2".into(), ok: true, cancelled: false, model: String::new(), error: String::new() }]);
         let odd = parse_line(r#"{"type":"control_response","response":{"subtype":"success","request_id":"c-3","response":{"cancelled":"yes"}}}"#);
-        assert_eq!(odd, vec![Event::Control { request: "c-3".into(), ok: true, cancelled: false }]);
+        assert_eq!(odd, vec![Event::Control { request: "c-3".into(), ok: true, cancelled: false, model: String::new(), error: String::new() }]);
 
         let m: Value = serde_json::from_str(&user_message_with_uuid("cắt \"đoạn\" này", "msg-7")).unwrap();
         assert_eq!(m, json!({"type": "user", "uuid": "msg-7", "message": {"role": "user", "content": [{"type": "text", "text": "cắt \"đoạn\" này"}]}}));

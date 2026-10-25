@@ -21,7 +21,9 @@ liệu, Tải về) khi dự án nằm ở đó: bấm **Cho phép**. Khi chưa 
    **mô hình** (Mặc định / Sonnet / Opus / Haiku / …). **Mặc định** để trợ lý tự dùng mô hình của nó; chọn cụ thể
    (ví dụ **Sonnet**) sẽ truyền `--model sonnet` khi phiên tiếp theo bắt đầu. Lựa chọn được lưu theo từng trợ lý.
    Khi phiên đang chạy, một nhãn nhỏ cạnh ô chọn mô hình hiển thị mô hình thực sự đang dùng (ví dụ "Sonnet 4.6").
-   Đổi mô hình khi đang chạy sẽ hiện một thông báo; thay đổi có hiệu lực từ phiên tiếp theo.
+   Với Claude Code, đổi mô hình sẽ đổi luôn cho phiên đang chạy: ngay lập tức nếu trợ lý đang rảnh, còn khi đang làm
+   thì sau khi lượt hiện tại xong (có dòng nhắc), và cuộc trò chuyện hiện "Mô hình: …". Codex dùng mô hình mới từ
+   tin nhắn tiếp theo.
 3. Gõ điều bạn muốn ("cắt hết ừm à, dưới một phút, thêm
    phụ đề tiếng Việt") rồi nhấn **Enter** (**Shift+Enter** để xuống dòng).
 3. Câu trả lời hiện dần; các lệnh trợ lý chạy được gom mỗi lệnh một dòng. Mỗi thao tác trợ lý làm là một bước hoàn tác

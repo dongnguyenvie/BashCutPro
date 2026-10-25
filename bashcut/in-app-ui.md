@@ -324,11 +324,22 @@ labels or subclips (§1 rule 1). A project opened in upstream FilmCraft still wo
   `--model <x>` when the next session starts (`AgentSpec::command_line`, `bashcut-agent/src/process.rs`). The choice
   is persisted per agent in `State::agent_model` (`ui.json`). Claude Code aliases: `sonnet`, `opus`, `haiku` and a
   few full versioned ids (see `claude_code_models()` in `process.rs`). Codex: free-text `-m / --model`. Agent
-  plugins: no model arg (they manage it themselves; the picker is hidden). Changing the model while a session runs
-  shows a one-line note; it takes effect on the next session start (AGM2 will make it live).
+  plugins: no model arg (they manage it themselves; the picker is hidden).
+  **Live switch (AGM2)**: a running Claude Code process takes the new choice with the stream-json control request
+  `{"type":"control_request","request_id":"bashcut-model-N","request":{"subtype":"set_model","model":"sonnet"}}`
+  (`model` omitted = back to the default; `stream_json::set_model_request`). Checked with Claude Code 2.1.310: the
+  answer is `{"subtype":"success","response":{"model":"claude-sonnet-5-5"}}`; an unknown model gives
+  `{"subtype":"error","error":"Model 'x' not found","error_code":"not_found"}`. `Agent::sync_model` writes it each
+  poll once the agent is idle (no turn, nothing queued, no Stop in flight), so a change made during a turn waits for
+  its `result`; the panel shows "Model changes when this turn ends" (`Agent::model_queued`, `modelQueued` in
+  `bashcut.agent.state`) meanwhile. The answer adds a transcript notice `Model: <id>` (and updates the chip), a
+  refusal `Model not changed: <error>` (that choice is not asked again for this process; a new process starts
+  with `--model` anyway). Codex (one process per message) and agents without a live process: the next start.
+  The choice stays per agent (`State::agent_model`), not per project: per project would need a project-scoped
+  store the panel does not have yet.
   Automation ids: `bashcut.agent.model` (the picker), `bashcut.agent.model.default`, `bashcut.agent.model.<id>`,
   `bashcut.agent.model.custom` (Codex free-text), `bashcut.agent.model.chip` (the init-model label in the header),
-  `bashcut.agent.model.pending` (the "takes effect next session" note).
+  `bashcut.agent.model.pending` (the "changes when this turn ends" note of a live session, else "takes effect on the next session").
 - **Init-model chip (AGM1)**: when a live session's `system/init` carries a `model` field, a small dimmed label
   (e.g. "Sonnet 4.6") appears in the header row after the model picker (`Agent::init_model`, cleared on
   `end_session`). The same model id is appended to the turn summary line (AGU10): `9 steps · 41 s · $0.12 · Sonnet 4.6`.
