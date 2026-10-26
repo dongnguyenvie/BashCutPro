@@ -84,8 +84,9 @@ pub struct AgentSpec {
     /// AGM1: The flag to pass a model choice to the agent CLI (`--model` for Claude Code and Codex;
     /// empty for agent plugins that do not support it). `{model}` is replaced by the chosen id.
     pub model_arg: Vec<String>,
-    /// AGM1: Model options this agent accepts, in order (id, display label). The first is the
-    /// default; an empty list means free-text or "Default only" (agent plugins).
+    /// AGM1: Model options this agent accepts, in picker order (id, display label). None of them is
+    /// the default: the picker adds its own "Default" entry (empty choice, no model flag, the agent's
+    /// own configured model). An empty list means free-text or "Default only" (agent plugins).
     pub model_options: Vec<(String, String)>,
 }
 
@@ -209,9 +210,10 @@ impl AgentSpec {
     }
 }
 
-/// AGM1: Claude Code model options (id, display label). The first entry is the default (the agent's
-/// own configured model). Aliases come first for the picker; the full versioned ids follow for those
-/// who want to pin a specific snapshot.
+/// AGM1: Claude Code model options (id, display label). The default is not in this list: the
+/// picker's own "Default" entry (empty choice, no `--model`) leaves the agent's configured model.
+/// Aliases come first for the picker; the full versioned ids follow for those who want to pin a
+/// specific snapshot.
 ///
 /// Aliases (`sonnet`, `opus`, `haiku`) are what Claude Code resolves to the current model. The
 /// versioned ids are the latest snapshots; update this list when Anthropic ships new models.

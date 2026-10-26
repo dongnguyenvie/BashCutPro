@@ -159,8 +159,13 @@ no "cannot be opened" / "downloaded from the internet" warning that blocks it.
 - Package on each OS (`packaging/<os>/package.sh`, `packaging/windows/package.ps1`), then `bashcut/scripts/smoke.sh` /
   `smoke.ps1` on mac 01 and geekomT ([smoke.md](../smoke.md)); install the package, launch with the rail, run a
   2-item batch.
-- Windows (PK1, first real run 2026-10-23): needs WiX v5 (`dotnet tool install --global wix --version 5.0.2`; a
-  user-level .NET from `dotnet-install.ps1` works with `DOTNET_ROOT` set). Windows PowerShell 5.1 and `pwsh` both
+- Every release build sets `CRAFT_FONTS_DIR=<absolute path of a craft-fonts checkout>` and `CRAFT_FONTS_REQUIRED=1`
+  (`crates/text/build.rs` then fails instead of shipping without the fonts; [docs/releasing.md](../../docs/releasing.md)).
+  Package sizes with craft-fonts: about 100 MB on Linux (deb/rpm/tar.gz/AppImage), 100 MB for the macOS DMG and
+  130 MB for the Windows MSI; without them about 45 MB (the sizes quoted below are from builds without craft-fonts).
+- Windows (PK1, first real run 2026-10-23): needs WiX v5 (`dotnet tool install --global wix --version 5.0.2`), and
+  WiX 5 needs a .NET 8 runtime: install it per user (`dotnet-install.ps1 -Channel 8.0`, into
+  `%USERPROFILE%\.dotnet`) and export `DOTNET_ROOT` to that folder (RB2 did this on 02). Windows PowerShell 5.1 and `pwsh` both
   work: the copy writes the portable zip's entries itself with `/` (PK4; 5.1's `Compress-Archive` and
   `ZipFile.CreateFromDirectory` write backslashes, which `unzip` warns about). Without
   signing secrets every binary and the MSI stay unsigned (a warning, not an error). Output in `dist/release/`:
@@ -212,9 +217,9 @@ no "cannot be opened" / "downloaded from the internet" warning that blocks it.
   - Windows smoke (`smoke.ps1`): set `CARGO_PROFILE_RELEASE_DEBUG=line-tables-only` for the release build, or the ISA
     check misnames 2 failures.
   - Builds ship without craft-fonts (no Japanese UI/title glyphs) unless `CRAFT_FONTS_DIR` points at a
-    [craft-fonts](https://github.com/storytold/craft-fonts) checkout when you package. Upstream is making this
-    explicit: `CRAFT_FONTS_REQUIRED` fails the build without it
-    ([storytold/filmcraft#2646](https://github.com/storytold/filmcraft/pull/2646)). Set it for release builds.
+    [craft-fonts](https://github.com/storytold/craft-fonts) checkout when you package; `CRAFT_FONTS_REQUIRED=1`
+    fails the build without it ([storytold/filmcraft#2646](https://github.com/storytold/filmcraft/pull/2646)).
+    Releases always set both (see the first checklist item).
 - Codec patents: for a paid build prefer the OS encoders (VideoToolbox, Media Foundation) and get legal advice before
   selling.
 
