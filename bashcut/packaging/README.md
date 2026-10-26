@@ -220,6 +220,10 @@ no "cannot be opened" / "downloaded from the internet" warning that blocks it.
     [craft-fonts](https://github.com/storytold/craft-fonts) checkout when you package; `CRAFT_FONTS_REQUIRED=1`
     fails the build without it ([storytold/filmcraft#2646](https://github.com/storytold/filmcraft/pull/2646)).
     Releases always set both (see the first checklist item).
+- **Site fallback (RP1):** after publishing the GitHub release, update `app/data/latest-release.json`
+  in `bashcut-site` with the new tag, release URL and asset list (name, download URL, size), then merge
+  to main. This keeps `/pro`, `/vi/pro` and `/api/pro-release` on the correct version even when the
+  GitHub API is rate-limited.
 - Codec patents: for a paid build prefer the OS encoders (VideoToolbox, Media Foundation) and get legal advice before
   selling.
 
